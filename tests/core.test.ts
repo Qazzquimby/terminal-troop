@@ -214,8 +214,10 @@ test("visibility polygons sample obstacle corners between regular rays", () => {
   const nearCorner = points.filter((point) => {
     const dx = point.x - source.x;
     const dy = point.y - source.y;
-    return Math.hypot(dx, dy) > 0 &&
-      Math.abs(Math.atan2(dy, dx) - cornerAngle) < 1e-6;
+    return (
+      Math.hypot(dx, dy) > 0 &&
+      Math.abs(Math.atan2(dy, dx) - cornerAngle) < 1e-6
+    );
   });
 
   expect(nearCorner.length).toBeGreaterThanOrEqual(3);

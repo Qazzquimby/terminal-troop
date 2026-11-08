@@ -201,7 +201,8 @@ export function draw(
     if (
       !inView(entity, camera) ||
       !isVisible(game.world.map, sources, lights, entity)
-    ) return;
+    )
+      return;
     ctx.save();
     definition.draw(ctx, entity, now, game);
     ctx.restore();

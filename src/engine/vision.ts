@@ -195,15 +195,18 @@ function cornerRayOffsets(
       const bottomLeft = isSolid(map, col - 1, row);
       const bottomRight = isSolid(map, col, row);
       const solidCount =
-        Number(topLeft) + Number(topRight) +
-        Number(bottomLeft) + Number(bottomRight);
+        Number(topLeft) +
+        Number(topRight) +
+        Number(bottomLeft) +
+        Number(bottomRight);
 
       if (solidCount === 0 || solidCount === 4) continue;
       if (solidCount === 2 && topLeft !== bottomRight) continue;
 
       const direction = Math.atan2(dy, dx);
       for (const adjustment of [-1e-7, 0, 1e-7]) {
-        const offset = ((direction + adjustment - start) % turn + turn) % turn;
+        const offset =
+          (((direction + adjustment - start) % turn) + turn) % turn;
         if (offset <= sweep) offsets.push(offset);
       }
     }
