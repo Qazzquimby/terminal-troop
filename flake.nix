@@ -15,6 +15,7 @@
           packages = with pkgs; [
             nodejs_24
             pnpm
+            just
           ];
 
           shellHook = ''

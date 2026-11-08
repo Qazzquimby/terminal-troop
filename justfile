@@ -1,0 +1,69 @@
+# terminal-troop task runner
+
+default:
+    @just --list
+
+# Install dependencies
+[group('dev')]
+install:
+    pnpm install
+
+# Start the Vite dev server
+[group('dev')]
+dev:
+    pnpm dev
+
+# Production build
+[group('dev')]
+build:
+    pnpm build
+
+# Serve the production build locally
+[group('dev')]
+preview:
+    pnpm preview
+
+# Format everything
+[group('dev')]
+format:
+    pnpm format
+
+# Typecheck
+[group('check')]
+typecheck:
+    pnpm typecheck
+
+# Run tests once
+[group('check')]
+test:
+    pnpm test
+
+# Run tests in watch mode
+[group('check')]
+test-watch:
+    pnpm test:watch
+
+# Lint everything
+[group('check')]
+lint:
+    pnpm lint
+
+# Unused exports/files/deps check
+[group('check')]
+knip:
+    pnpm knip
+
+# Textual-duplication check
+[group('check')]
+dupes:
+    pnpm dupes
+
+# Check formatting without writing
+[group('check')]
+format-check:
+    pnpm format-check
+
+# The gate: typecheck, lint, test, knip, dupes, format-check
+[group('check')]
+check:
+    pnpm check
