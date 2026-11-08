@@ -41,7 +41,7 @@ async function client(
   return { session, transport };
 }
 
-const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 } };
+const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
 
 test("clients in the same room build the same world", async () => {
   const a = await client("a");
