@@ -1,6 +1,9 @@
 import { STAMINA_MAX, VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
+import type { Interpolated } from "./interpolation.js";
+import { renderAim, renderPosition } from "./interpolation.js";
 import type { Point, World } from "./map.js";
 import type { Player } from "./player.js";
+import { aimAt } from "./player.js";
 import type { Session } from "./session.js";
 import type { VisionSource } from "./vision.js";
 import {
@@ -140,12 +143,46 @@ function clipSources(
   ctx.clip(path);
 }
 
+/**
+ * A render-time copy of the session with every body blended `alpha` of the way from its
+ * pre-step position to its current one. Remote players turn along the shortest arc; the local
+ * player faces `mouse` (a world point) from where it is drawn. The simulation is left untouched.
+ */
+export function interpolatedView(
+  game: Session,
+  alpha: number,
+  mouse: Point,
+): Session {
+  const at = <T extends Interpolated>(body: T): T => ({
+    ...body,
+    ...renderPosition(body, alpha),
+  });
+  const placed = at(game.local);
+  const local = { ...placed, aim: aimAt(placed, mouse) };
+  const players = new Map(
+    [...game.players].map(([id, player]) => [
+      id,
+      player === game.local
+        ? local
+        : { ...at(player), aim: renderAim(player, alpha) },
+    ]),
+  );
+  const entities = new Map(
+    [...game.entities].map(([id, entity]) => [id, at(entity)]),
+  );
+  return { ...game, local, players, entities };
+}
+
+/** Draws the session as of `alpha` (0..1) through the current fixed step. */
 export function draw(
   ctx: CanvasRenderingContext2D,
-  game: Session,
+  simulation: Session,
   camera: Point,
   now: number,
+  alpha: number,
+  mouse: Point,
 ): void {
+  const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
   const sources = visionOrigins(game, viewer);
   const lights = lightSources(game, viewer);

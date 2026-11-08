@@ -9,6 +9,7 @@ import type { Session } from "./engine/session.js";
 import {
   createSession,
   receiveState,
+  roomKey,
   sendState,
   updateSession,
 } from "./engine/session.js";
@@ -17,7 +18,12 @@ import { createInput } from "./engine/input.js";
 import { createInventoryHud } from "./engine/hud.js";
 import { draw } from "./engine/render.js";
 import { createCamera, updateCamera } from "./engine/camera.js";
+import { renderPosition, stepAlpha } from "./engine/interpolation.js";
 import { createSfx } from "./engine/audio.js";
+import { createPerfStats } from "./engine/perf-stats.js";
+import { createCountingTransport } from "./engine/counting-transport.js";
+import type { DebugInfo } from "./engine/debug-overlay.js";
+import { createDebugOverlay } from "./engine/debug-overlay.js";
 import type { Transport } from "./engine/transport.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport.js";
@@ -42,6 +48,7 @@ const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
 const inventoryEl = element("#inventory", HTMLElement);
 const inventoryList = element("#inventory-slots", HTMLOListElement);
+const debugEl = element("#debug", HTMLPreElement);
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -52,6 +59,7 @@ const envResult = loadClientEnv(
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env
       .VITE_SUPABASE_PUBLISHABLE_KEY,
+    VITE_WORLD: import.meta.env.VITE_WORLD,
   },
   import.meta.env.PROD ? "production" : "development",
 );
@@ -75,7 +83,13 @@ function selectTransport(params: URLSearchParams): Transport {
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera();
-const transport = selectTransport(new URLSearchParams(location.search));
+const startParams = new URLSearchParams(location.search);
+const counted = createCountingTransport(selectTransport(startParams), () =>
+  performance.now(),
+);
+const transport = counted.transport;
+const perf = createPerfStats();
+const debugOverlay = createDebugOverlay(debugEl, startParams.has("debug"));
 const sfx = createSfx();
 const nameKey = "world:name";
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
@@ -97,6 +111,9 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 const input = createInput(canvas, camera, {
   toggleInventory() {
     if (game !== null) inventoryOpen = !inventoryOpen;
+  },
+  toggleDebug() {
+    debugOverlay.toggle();
   },
 });
 
@@ -154,8 +171,8 @@ async function enterRoom(rawCode: string): Promise<void> {
     roomInput.value = code;
     localStorage.setItem(nameKey, name);
 
-    const session = createSession(playerId, name, code, sfx);
-    await transport.join(code, {
+    const session = createSession(playerId, name, code, env.world, sfx);
+    await transport.join(roomKey(code, env.world), {
       [NetEvent.STATE]: (payload) => {
         receiveState(session, payload);
       },
@@ -187,20 +204,48 @@ async function enterRoom(rawCode: string): Promise<void> {
   }
 }
 
+function debugInfo(): DebugInfo {
+  const now = performance.now();
+  const session = game;
+  return {
+    perf: perf.snapshot(now),
+    room:
+      session === null
+        ? null
+        : {
+            net: counted.rates(now),
+            playerCount: session.players.size,
+            remotes: [...session.players.values()]
+              .filter((player) => player !== session.local)
+              .map((player) => ({
+                name: player.name,
+                ageMs: now - player.lastSeen,
+              })),
+          },
+  };
+}
+
 function frame(now: number): void {
   const elapsed = Math.min((now - lastFrame) / 1000, MAX_FRAME_S);
   lastFrame = now;
+  const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
   if (game !== null) {
     accumulator += elapsed;
+    const updateStart = performance.now();
     while (accumulator >= FIXED_DT) {
-      updateSession(game, input.getControls(), FIXED_DT, now);
-      updateCamera(camera, game.local);
+      updateSession(game, input.getControls(now), FIXED_DT, now);
       accumulator -= FIXED_DT;
+      frameStats.steps++;
     }
+    frameStats.updateMs = performance.now() - updateStart;
 
+    const alpha = stepAlpha(accumulator, FIXED_DT);
     sendState(game, transport, now);
-    draw(ctx, game, camera, now);
+    updateCamera(camera, renderPosition(game.local, alpha));
+    const drawStart = performance.now();
+    draw(ctx, game, camera, now, alpha, input.mouseWorld());
+    frameStats.drawMs = performance.now() - drawStart;
     updateInventory(game.local.inventory, inventoryOpen);
   } else {
     inventoryEl.hidden = true;
@@ -209,6 +254,8 @@ function frame(now: number): void {
   }
 
   updateStatus();
+  perf.recordFrame(frameStats);
+  debugOverlay.update(now, debugInfo);
   requestAnimationFrame(frame);
 }
 

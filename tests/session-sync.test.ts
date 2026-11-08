@@ -29,7 +29,13 @@ async function client(
 ): Promise<{ session: Session; transport: Transport }> {
   const transport = createBroadcastChannelTransport();
   open.push(transport);
-  const session = createSession(id, id.toUpperCase(), ROOM, createSfx());
+  const session = createSession(
+    id,
+    id.toUpperCase(),
+    ROOM,
+    "standard",
+    createSfx(),
+  );
   await transport.join(ROOM, {
     [NetEvent.STATE]: (payload) => {
       receiveState(session, payload);

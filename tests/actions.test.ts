@@ -4,19 +4,23 @@ import { createActionState, toControls } from "../src/engine/actions.js";
 
 const AIM = { x: 0, y: 0 };
 
-function step(state: ReturnType<typeof createActionState>) {
-  const frame = state.consume();
+type ActionState = ReturnType<typeof createActionState>;
+
+function step(state: ActionState, until = 1000) {
+  const frame = state.consume(until);
   return { frame, controls: toControls(frame, AIM) };
 }
 
-function holding(...codes: string[]) {
+function holding(...actions: Action[]) {
   const state = createActionState();
-  for (const code of codes) state.keyDown(code, false);
+  for (const action of actions) state.press(action, 0);
   return state;
 }
 
+const actions = (...list: Action[]) => new Set<Action>(list);
+
 test("held actions stay held across steps", () => {
-  const state = holding("KeyD");
+  const state = holding("moveRight");
   for (let i = 0; i < 3; i++) {
     const { frame, controls } = step(state);
     expect(frame.held.has("moveRight")).toBe(true);
@@ -24,89 +28,136 @@ test("held actions stay held across steps", () => {
   }
 });
 
+test("a press is reported in one step only", () => {
+  const state = holding("moveRight");
+  expect(step(state).frame.pressed).toEqual(actions("moveRight"));
+  expect(step(state).frame.pressed.size).toBe(0);
+});
+
 test("a tap between steps registers as pressed and released exactly once", () => {
   const state = createActionState();
-  state.keyDown("Tab", false);
-  state.keyUp("Tab");
+  state.press("toggleInventory", 1);
+  state.release("toggleInventory", 2);
   const first = step(state).frame;
-  expect(first.pressed).toEqual(new Set<Action>(["toggleInventory"]));
-  expect(first.released).toEqual(new Set<Action>(["toggleInventory"]));
+  expect(first.pressed).toEqual(actions("toggleInventory"));
+  expect(first.released).toEqual(actions("toggleInventory"));
   expect(first.held.size).toBe(0);
   const second = step(state).frame;
   expect(second.pressed.size).toBe(0);
   expect(second.released.size).toBe(0);
 });
 
-test("releasing a held key is reported in one step", () => {
-  const state = holding("KeyD");
-  step(state);
-  state.keyUp("KeyD");
-  expect(step(state).frame.released).toEqual(new Set<Action>(["moveRight"]));
+test("a release is reported in one step", () => {
+  const state = holding("moveRight");
+  step(state, 10);
+  state.release("moveRight", 20);
+  const { frame, controls } = step(state, 30);
+  expect(frame.released).toEqual(actions("moveRight"));
+  expect(controls.move).toEqual({ x: 0, y: 0 });
+  expect(step(state, 40).frame.released.size).toBe(0);
+});
+
+test("releasing an action that is not held does nothing", () => {
+  const state = createActionState();
+  state.release("sprint", 0);
   expect(step(state).frame.released.size).toBe(0);
 });
 
-test("key repeat does not press again", () => {
-  const state = holding("KeyW");
-  step(state);
-  expect(state.keyDown("KeyW", true)).toEqual([]);
-  expect(step(state).frame.pressed.size).toBe(0);
+test("pressing an already-held action is a no-op", () => {
+  const state = holding("moveUp");
+  step(state, 10);
+  state.press("moveUp", 20);
+  const { frame } = step(state, 30);
+  expect(frame.pressed.size).toBe(0);
+  expect(frame.held.has("moveUp")).toBe(true);
 });
 
-test("a key still held after blur resumes on auto-repeat without a press", () => {
-  const state = holding("KeyD");
-  step(state);
-  state.clear();
-  step(state);
-  expect(state.keyDown("KeyD", true)).toEqual([]);
+test("resuming holds an action without pressing it", () => {
+  const state = createActionState();
+  state.resume("moveRight", 0);
   const { frame, controls } = step(state);
-  expect(frame.held.has("moveRight")).toBe(true);
   expect(frame.pressed.size).toBe(0);
+  expect(frame.held.has("moveRight")).toBe(true);
   expect(controls.move).toEqual({ x: 1, y: 0 });
 });
 
-test("a repeat for an untracked UI key returns no fresh actions", () => {
-  const state = createActionState();
-  expect(state.keyDown("Tab", true)).toEqual([]);
-  expect(step(state).frame.pressed.size).toBe(0);
-});
-
-test("releasing one of two keys bound to an action keeps it held", () => {
-  const state = holding("ShiftLeft");
-  expect(state.keyDown("ShiftRight", false)).toEqual([]);
-  state.keyUp("ShiftLeft");
-  const stillHeld = step(state);
-  expect(stillHeld.controls.sprint).toBe(true);
-  expect(stillHeld.frame.released.size).toBe(0);
-  state.keyUp("ShiftRight");
-  const letGo = step(state);
-  expect(letGo.controls.sprint).toBe(false);
-  expect(letGo.frame.released).toEqual(new Set<Action>(["sprint"]));
-});
-
-test("blur clears held and pressed actions and releases held ones", () => {
-  const state = holding("KeyW", "ShiftLeft");
-  state.clear();
+test("blur releases held actions and drops pending presses", () => {
+  const state = holding("moveUp", "sprint");
+  state.clear(1);
   const { frame, controls } = step(state);
   expect(frame.held.size).toBe(0);
   expect(frame.pressed.size).toBe(0);
-  expect(frame.released).toEqual(new Set<Action>(["moveUp", "sprint"]));
+  expect(frame.released).toEqual(actions("moveUp", "sprint"));
   expect(controls).toEqual({ move: { x: 0, y: 0 }, aim: AIM, sprint: false });
 });
 
+test("an event after the step's end stays queued for a later step", () => {
+  const state = createActionState();
+  state.press("moveLeft", 50);
+  const early = step(state, 40).frame;
+  expect(early.held.size).toBe(0);
+  expect(early.pressed.size).toBe(0);
+  const late = step(state, 60).frame;
+  expect(late.pressed).toEqual(actions("moveLeft"));
+  expect(late.held).toEqual(actions("moveLeft"));
+});
+
+test("events inside one step apply in time order", () => {
+  const state = createActionState();
+  state.press("moveUp", 10);
+  state.clear(20);
+  state.release("moveDown", 15);
+  state.press("moveDown", 5);
+  state.press("sprint", 30);
+  const { frame } = step(state, 40);
+  expect(frame.held).toEqual(actions("sprint"));
+  expect(frame.pressed).toEqual(actions("sprint"));
+  expect(frame.released).toEqual(actions("moveUp", "moveDown"));
+});
+
+test("a press and release inside one step show as both", () => {
+  const state = createActionState();
+  state.press("moveRight", 10);
+  state.release("moveRight", 20);
+  const { frame } = step(state, 25);
+  expect(frame.pressed).toEqual(actions("moveRight"));
+  expect(frame.released).toEqual(actions("moveRight"));
+  expect(frame.held.size).toBe(0);
+});
+
+test("a step ending between a press and its release holds, then the next step releases", () => {
+  const state = createActionState();
+  state.press("moveRight", 10);
+  state.release("moveRight", 20);
+  const first = step(state, 15).frame;
+  expect(first.held).toEqual(actions("moveRight"));
+  expect(first.pressed).toEqual(actions("moveRight"));
+  expect(first.released.size).toBe(0);
+  const second = step(state, 25).frame;
+  expect(second.held.size).toBe(0);
+  expect(second.pressed.size).toBe(0);
+  expect(second.released).toEqual(actions("moveRight"));
+});
+
 test("opposite move directions cancel", () => {
-  expect(step(holding("KeyA", "ArrowRight")).controls.move).toEqual({
+  expect(step(holding("moveLeft", "moveRight")).controls.move).toEqual({
     x: 0,
     y: 0,
   });
-  expect(step(holding("ArrowUp", "KeyS")).controls.move).toEqual({
+  expect(step(holding("moveUp", "moveDown")).controls.move).toEqual({
     x: 0,
     y: 0,
   });
 });
 
 test("diagonal movement is normalized", () => {
-  const { move } = step(holding("KeyW", "KeyD")).controls;
+  const { move } = step(holding("moveUp", "moveRight")).controls;
   expect(Math.hypot(move.x, move.y)).toBeCloseTo(1);
   expect(move.x).toBeCloseTo(Math.SQRT1_2);
   expect(move.y).toBeCloseTo(-Math.SQRT1_2);
+});
+
+test("sprint follows the held sprint action", () => {
+  expect(step(holding("moveRight")).controls.sprint).toBe(false);
+  expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
 });

@@ -1,6 +1,7 @@
 import type { Action } from "./actions.js";
-import { actionsFor, createActionState, toControls } from "./actions.js";
+import { createActionState, toControls } from "./actions.js";
 import { VIEW_H, VIEW_W } from "./config.js";
+import { createKeyboardSource } from "./keyboard.js";
 import type { Point } from "./map.js";
 import type { Controls } from "./player.js";
 
@@ -19,9 +20,18 @@ export function createInput(
   canvas: HTMLCanvasElement,
   camera: Point,
   uiActions: UiActions,
-): { getControls: () => Controls } {
+): {
+  getControls: (until: number) => Controls;
+  mouseWorld: () => Point;
+} {
   const state = createActionState();
+  const keyboard = createKeyboardSource(state);
   const mouse = { x: VIEW_W / 2, y: VIEW_H / 2 };
+  /** The mouse in world space, through the camera as it currently stands. */
+  const mouseWorld = (): Point => ({
+    x: mouse.x + camera.x,
+    y: mouse.y + camera.y,
+  });
 
   canvas.addEventListener("pointermove", (event) => {
     const rect = canvas.getBoundingClientRect();
@@ -30,27 +40,35 @@ export function createInput(
   });
 
   window.addEventListener("keydown", (event) => {
-    if (isTyping(event) || actionsFor(event.code).length === 0) return;
+    if (isTyping(event) || keyboard.actionsFor(event.code).length === 0) {
+      return;
+    }
     event.preventDefault();
-    for (const action of state.keyDown(event.code, event.repeat)) {
+    for (const action of keyboard.keyDown(
+      event.code,
+      event.repeat,
+      event.timeStamp,
+    )) {
       uiActions[action]?.();
     }
   });
 
   window.addEventListener("keyup", (event) => {
-    state.keyUp(event.code);
+    keyboard.keyUp(event.code, event.timeStamp);
   });
-  window.addEventListener("blur", () => {
-    state.clear();
+  window.addEventListener("blur", (event) => {
+    keyboard.blur(event.timeStamp);
   });
 
   return {
-    /** Call once per simulation step: pressed actions are delivered to exactly one step. */
-    getControls() {
-      return toControls(state.consume(), {
-        x: mouse.x + camera.x,
-        y: mouse.y + camera.y,
-      });
+    /**
+     * Call once per simulation step with the step's end time (`performance.now()` clock):
+     * input up to that time applies, and each press is delivered to exactly one step.
+     */
+    getControls(until) {
+      return toControls(state.consume(until), mouseWorld());
     },
+    /** Reads the mouse without consuming input; safe to call from render. */
+    mouseWorld,
   };
 }
