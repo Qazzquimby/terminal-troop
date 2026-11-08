@@ -169,19 +169,6 @@ export function isVisible(
   );
 }
 
-export function canSeePoint(
-  game: Session,
-  viewer: Viewer,
-  point: Point,
-): boolean {
-  return isVisible(
-    game.world.map,
-    visionOrigins(game, viewer),
-    lightSources(game, viewer),
-    point,
-  );
-}
-
 function cornerRayOffsets(
   map: TileMap,
   origin: Point,
