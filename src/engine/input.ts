@@ -6,7 +6,7 @@ interface InputActions {
   toggleInventory: () => void;
 }
 
-const MOVE_KEYS = new Set([
+const HELD_KEYS = new Set([
   "KeyW",
   "KeyA",
   "KeyS",
@@ -15,6 +15,8 @@ const MOVE_KEYS = new Set([
   "ArrowLeft",
   "ArrowDown",
   "ArrowRight",
+  "ShiftLeft",
+  "ShiftRight",
 ]);
 
 function isTyping(event: KeyboardEvent): boolean {
@@ -48,7 +50,7 @@ export function createInput(
       return;
     }
 
-    if (MOVE_KEYS.has(event.code)) {
+    if (HELD_KEYS.has(event.code)) {
       event.preventDefault();
       keys.add(event.code);
     }
@@ -75,6 +77,7 @@ export function createInput(
       return {
         move: { x, y },
         aim: { x: mouse.x + camera.x, y: mouse.y + camera.y },
+        sprint: keys.has("ShiftLeft") || keys.has("ShiftRight"),
       };
     },
   };

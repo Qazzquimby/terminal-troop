@@ -103,7 +103,9 @@ function drawShade(
     const path = new Path2D();
     path.rect(camera.x, camera.y, VIEW_W, VIEW_H);
     path.moveTo(first.x, first.y);
-    for (const point of rest) path.lineTo(point.x, point.y);
+    rest.forEach((point) => {
+      path.lineTo(point.x, point.y);
+    });
     path.closePath();
     ctx.clip(path, "evenodd");
   }
@@ -127,21 +129,21 @@ export function draw(
   ctx.translate(-camera.x, -camera.y);
   drawTerrain(ctx, game.world, camera);
 
-  for (const entity of game.entities.values()) {
+  game.entities.forEach((entity) => {
     const definition = game.entityTypes.get(entity.kind);
-    if (definition === undefined) continue;
-    if (!inView(entity, camera) || !canSeePoint(game, viewer, entity)) continue;
+    if (definition === undefined) return;
+    if (!inView(entity, camera) || !canSeePoint(game, viewer, entity)) return;
     ctx.save();
     definition.draw(ctx, entity, now, game);
     ctx.restore();
-  }
+  });
 
-  for (const player of game.players.values()) {
+  game.players.forEach((player) => {
     const isSelf = player === viewer;
-    if (!inView(player, camera)) continue;
+    if (!inView(player, camera)) return;
     if (isSelf || canSeePoint(game, viewer, player))
       drawPlayer(ctx, player, isSelf);
-  }
+  });
 
   drawShade(ctx, game, viewer, camera);
   ctx.restore();
