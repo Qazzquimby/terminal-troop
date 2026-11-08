@@ -4,6 +4,7 @@ import {
   PLAYER_ACCELERATION,
   PLAYER_RADIUS,
   PLAYER_SPEED,
+  SPRINT_MULTIPLIER,
 } from "./config.js";
 import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
@@ -15,6 +16,7 @@ import { createInventory } from "./inventory.js";
 export interface Controls {
   readonly move: Point;
   readonly aim: Point;
+  readonly sprint: boolean;
 }
 
 export interface Player extends Body {
@@ -62,8 +64,11 @@ export function updatePlayer(
   dt: number,
   map: TileMap,
 ): void {
-  const targetX = controls.move.x * PLAYER_SPEED;
-  const targetY = controls.move.y * PLAYER_SPEED;
+  const speed = controls.sprint
+    ? PLAYER_SPEED * SPRINT_MULTIPLIER
+    : PLAYER_SPEED;
+  const targetX = controls.move.x * speed;
+  const targetY = controls.move.y * speed;
   const dx = targetX - player.vx;
   const dy = targetY - player.vy;
   const distance = Math.hypot(dx, dy);

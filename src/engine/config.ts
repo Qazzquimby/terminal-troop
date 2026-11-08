@@ -18,6 +18,7 @@ export const VISION_RAYS = 360;
 
 export const PLAYER_RADIUS = 14;
 export const PLAYER_SPEED = 220;
+export const SPRINT_MULTIPLIER = 1.6;
 export const PLAYER_ACCELERATION = 1100;
 export const PLAYER_NAME_MAX = 8;
 export const INVENTORY_SLOTS = 12;
