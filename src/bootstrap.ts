@@ -17,8 +17,10 @@ import { createInput } from "./engine/input.js";
 import { createInventoryHud } from "./engine/hud.js";
 import { draw } from "./engine/render.js";
 import { createCamera, updateCamera } from "./engine/camera.js";
-import { getRoomCode, joinRoom, leaveRoom, send } from "./engine/net.js";
 import { createSfx } from "./engine/audio.js";
+import type { Transport } from "./engine/transport.js";
+import { createSupabaseTransport } from "./adapters/supabase-transport.js";
+import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
 
 function element<T extends HTMLElement>(
   selector: string,
@@ -44,15 +46,29 @@ const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
 const ctx = context;
 
+/**
+ * Online play needs both Supabase env vars. Without them, or with `?local` in the URL, rooms
+ * run over BroadcastChannel between windows of this browser.
+ */
+function selectTransport(params: URLSearchParams): Transport {
+  const url = import.meta.env.VITE_SUPABASE_URL ?? "";
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
+  if (params.has("local") || url === "" || key === "") {
+    return createBroadcastChannelTransport();
+  }
+  return createSupabaseTransport(url, key);
+}
+
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera();
-const net = { send };
+const transport = selectTransport(new URLSearchParams(location.search));
 const sfx = createSfx();
 const nameKey = "world:name";
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
 let game: Session | null = null;
+let roomCode: string | null = null;
 let connecting = false;
 let inventoryOpen = false;
 let errorText = "";
@@ -81,10 +97,21 @@ function updateStatus(): void {
     statusEl.textContent = "Connecting…";
   } else if (game !== null) {
     const count = game.players.size;
-    statusEl.textContent = `Room ${getRoomCode() ?? "?"} · ${String(count)} player${count === 1 ? "" : "s"}`;
+    statusEl.textContent = `Room ${roomCode ?? "?"} (${transport.label}) · ${String(count)} player${count === 1 ? "" : "s"}`;
   } else {
     statusEl.textContent = "Create or join a room to start.";
   }
+}
+
+function sayHello(session: Session): void {
+  void transport.send(NetEvent.HELLO, { id: playerId });
+  sendState(session, transport, performance.now(), true);
+}
+
+async function leaveRoom(): Promise<void> {
+  if (roomCode !== null) await transport.send(NetEvent.BYE, { id: playerId });
+  roomCode = null;
+  await transport.leave();
 }
 
 async function enterRoom(rawCode: string): Promise<void> {
@@ -115,27 +142,25 @@ async function enterRoom(rawCode: string): Promise<void> {
     localStorage.setItem(nameKey, name);
 
     const session = createSession(playerId, name, code, sfx);
-    await joinRoom(
-      code,
-      playerId,
-      {
-        [NetEvent.STATE]: (payload) => {
-          receiveState(session, payload);
-        },
-        [NetEvent.HELLO]: () => {
-          sendState(session, net, performance.now(), true);
-        },
-        [NetEvent.BYE]: (payload) => {
-          const parsed = PresenceMessage.safeParse(payload);
-          if (parsed.success && parsed.data.id !== playerId)
-            session.players.delete(parsed.data.id);
-        },
+    await transport.join(code, {
+      [NetEvent.STATE]: (payload) => {
+        receiveState(session, payload);
       },
-      () => {
-        send(NetEvent.HELLO, { id: playerId });
-        sendState(session, net, performance.now(), true);
+      [NetEvent.HELLO]: () => {
+        sendState(session, transport, performance.now(), true);
       },
-    );
+      [NetEvent.BYE]: (payload) => {
+        const parsed = PresenceMessage.safeParse(payload);
+        if (parsed.success && parsed.data.id !== playerId)
+          session.players.delete(parsed.data.id);
+      },
+    });
+    roomCode = code;
+    sayHello(session);
+
+    const params = new URLSearchParams(location.search);
+    params.set("room", code);
+    history.replaceState({}, "", `${location.pathname}?${params.toString()}`);
 
     game = session;
     updateCamera(camera, game.local);
@@ -161,7 +186,7 @@ function frame(now: number): void {
       accumulator -= FIXED_DT;
     }
 
-    sendState(game, net, now);
+    sendState(game, transport, now);
     draw(ctx, game, camera, now);
     updateInventory(game.local.inventory, inventoryOpen);
   } else {
@@ -203,10 +228,11 @@ copyBtn.addEventListener("click", () => {
 document.addEventListener("visibilitychange", () => {
   accumulator = 0;
   lastFrame = performance.now();
-  if (game !== null && !document.hidden) {
-    send(NetEvent.HELLO, { id: playerId });
-    sendState(game, net, performance.now(), true);
-  }
+  if (game !== null && !document.hidden) sayHello(game);
+});
+
+window.addEventListener("beforeunload", () => {
+  if (roomCode !== null) void transport.send(NetEvent.BYE, { id: playerId });
 });
 
 requestAnimationFrame(frame);
