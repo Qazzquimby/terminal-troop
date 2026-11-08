@@ -3,8 +3,42 @@ import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
 
+export type VisionShape =
+  | { readonly kind: "omnidirectional" }
+  | {
+      readonly kind: "cone";
+      readonly direction: number;
+      readonly angle: number;
+    };
+
+export interface VisionSource extends Point {
+  readonly shape?: VisionShape;
+  readonly range?: number;
+}
+
 interface Viewer extends Point {
   readonly id: string;
+  readonly aim: number;
+}
+
+function withinVision(source: VisionSource, point: Point): boolean {
+  const dx = point.x - source.x;
+  const dy = point.y - source.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance > (source.range ?? Infinity)) return false;
+  if (distance === 0 || source.shape?.kind !== "cone") return true;
+
+  const difference = Math.atan2(dy, dx) - source.shape.direction;
+  const angle = Math.atan2(Math.sin(difference), Math.cos(difference));
+  return Math.abs(angle) <= source.shape.angle / 2;
+}
+
+export function canSeeFrom(
+  map: TileMap,
+  source: VisionSource,
+  point: Point,
+): boolean {
+  return withinVision(source, point) && hasLineOfSight(map, source, point);
 }
 
 function castRay(
@@ -64,9 +98,17 @@ export function hasLineOfSight(map: TileMap, from: Point, to: Point): boolean {
   );
 }
 
-export function visionOrigins(game: Session, viewer: Viewer): Point[] {
+export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   return [
-    viewer,
+    {
+      x: viewer.x,
+      y: viewer.y,
+      shape: {
+        kind: "cone",
+        direction: viewer.aim,
+        angle: Math.PI / 2,
+      },
+    },
     ...[...game.entities.values()].filter(
       (entity) => entity.ownerId === viewer.id && entity.grantsVision,
     ),
@@ -79,23 +121,31 @@ export function canSeePoint(
   point: Point,
 ): boolean {
   return visionOrigins(game, viewer).some((origin) =>
-    hasLineOfSight(game.world.map, origin, point),
+    canSeeFrom(game.world.map, origin, point),
   );
 }
 
 export function visibilityPolygon(
   map: TileMap,
-  origin: Point,
+  origin: VisionSource,
   rayCount: number = VISION_RAYS,
   maxDist: number = Math.hypot(map.cols * map.cell, map.rows * map.cell),
 ): Point[] {
-  const points: Point[] = [];
+  const cone = origin.shape?.kind === "cone" ? origin.shape : undefined;
+  const points: Point[] = cone === undefined ? [] : [{ x: origin.x, y: origin.y }];
+  const sweep = cone?.angle ?? Math.PI * 2;
+  const start = cone === undefined ? 0 : cone.direction - sweep / 2;
+  const count =
+    cone === undefined
+      ? rayCount
+      : Math.max(2, Math.ceil((rayCount * sweep) / (Math.PI * 2)) + 1);
+  const limit = Math.min(maxDist, origin.range ?? Infinity);
 
-  for (let i = 0; i < rayCount; i++) {
-    const angle = (i / rayCount) * Math.PI * 2;
+  for (let i = 0; i < count; i++) {
+    const angle = start + (i / (cone === undefined ? count : count - 1)) * sweep;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
-    const distance = castRay(map, origin.x, origin.y, dx, dy, maxDist);
+    const distance = castRay(map, origin.x, origin.y, dx, dy, limit);
     points.push({ x: origin.x + dx * distance, y: origin.y + dy * distance });
   }
 
