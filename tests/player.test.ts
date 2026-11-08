@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { PLAYER_SPEED, SPRINT_MULTIPLIER } from "../src/engine/config.js";
+import {
+  PLAYER_SPEED,
+  SPRINT_MULTIPLIER,
+  STAMINA_MAX,
+} from "../src/engine/config.js";
 import type { World } from "../src/engine/map.js";
 import type { Player } from "../src/engine/player.js";
 import { createPlayer, updatePlayer } from "../src/engine/player.js";
@@ -50,4 +54,30 @@ test("releasing sprint decelerates back to normal speed", () => {
 
   run(player, world, false, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED);
+});
+
+test("holding sprint while standing still does not drain stamina", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  const controls = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: true };
+  for (let i = 0; i < 300; i++) {
+    updatePlayer(player, controls, STEP, world.map);
+  }
+  expect(player.stamina.value).toBe(STAMINA_MAX);
+});
+
+test("running out of stamina drops sprint to walk speed until recovered", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  run(player, world, true, 60 * 4);
+  expect(player.stamina.exhausted).toBe(true);
+  expect(player.vx).toBeCloseTo(PLAYER_SPEED);
+
+  // Sprint stays held: exhausted players walk and regenerate.
+  while (player.stamina.exhausted) {
+    run(player, world, true, 1);
+    expect(player.vx).toBeLessThanOrEqual(PLAYER_SPEED);
+  }
+  run(player, world, true, 15);
+  expect(player.vx).toBeCloseTo(PLAYER_SPEED * SPRINT_MULTIPLIER);
 });

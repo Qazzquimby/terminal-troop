@@ -1,4 +1,4 @@
-import { VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
+import { STAMINA_MAX, VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
 import type { Point, World } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -81,6 +81,19 @@ function drawPlayer(
   ctx.fillText(player.name, player.x, player.y - player.radius - 8);
 }
 
+function drawStamina(ctx: CanvasRenderingContext2D, player: Player): void {
+  const { value, exhausted } = player.stamina;
+  if (value >= STAMINA_MAX) return;
+
+  const width = player.radius * 2;
+  const x = player.x - player.radius;
+  const y = player.y + player.radius + 6;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.fillRect(x - 1, y - 1, width + 2, 6);
+  ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
+  ctx.fillRect(x, y, (width * value) / STAMINA_MAX, 4);
+}
+
 function drawShade(
   ctx: CanvasRenderingContext2D,
   game: Session,
@@ -146,5 +159,6 @@ export function draw(
   });
 
   drawShade(ctx, game, viewer, camera);
+  drawStamina(ctx, viewer);
   ctx.restore();
 }
