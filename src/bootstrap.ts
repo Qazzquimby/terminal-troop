@@ -283,7 +283,6 @@ copyBtn.addEventListener("click", () => {
   );
 });
 
-// Hidden time needs no special case: frames resume and catch the simulation up to the clock.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && game !== null) sayHello(game);
 });
