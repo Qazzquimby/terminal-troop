@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
+    "jimkit-env": "^0.8.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

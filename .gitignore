@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .direnv/
+.claude/worktrees/
 /.env.local
 .cecli*
 *.log
