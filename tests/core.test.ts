@@ -4,7 +4,12 @@ import { VIEW_H, VIEW_W } from "../src/engine/config.js";
 import { moveWithCollision } from "../src/engine/collision.js";
 import type { TileMap } from "../src/engine/map.js";
 import { createMap, isAreaFree, mulberry32 } from "../src/engine/map.js";
-import { hasLineOfSight } from "../src/engine/vision.js";
+import type { VisionSource } from "../src/engine/vision.js";
+import {
+  canSeeFrom,
+  hasLineOfSight,
+  visibilityPolygon,
+} from "../src/engine/vision.js";
 
 function emptyMap(): TileMap {
   return { cell: 50, cols: 6, rows: 6, solid: new Uint8Array(36) };
@@ -44,6 +49,93 @@ test("wall movement stops at the collision face", () => {
   expect(body.x).toBe(86);
   expect(Math.abs(body.vx)).toBe(0);
   expect(isAreaFree(map, body.x, body.y, 14)).toBe(true);
+});
+
+test("cone vision includes its edges but excludes points behind it", () => {
+  const map = emptyMap();
+  const source: VisionSource = {
+    x: 75,
+    y: 75,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+
+  expect(canSeeFrom(map, source, source)).toBe(true);
+  expect(canSeeFrom(map, source, { x: 125, y: 75 })).toBe(true);
+  expect(canSeeFrom(map, source, { x: 125, y: 125 })).toBe(true);
+  expect(canSeeFrom(map, source, { x: 125, y: 25 })).toBe(true);
+  expect(canSeeFrom(map, source, { x: 25, y: 75 })).toBe(false);
+  expect(canSeeFrom(map, source, { x: 75, y: 125 })).toBe(false);
+});
+
+test("cone vision handles directions across the angle wraparound", () => {
+  const source: VisionSource = {
+    x: 150,
+    y: 150,
+    shape: { kind: "cone", direction: Math.PI - 0.1, angle: Math.PI / 2 },
+  };
+
+  expect(canSeeFrom(emptyMap(), source, { x: 100, y: 140 })).toBe(true);
+  expect(canSeeFrom(emptyMap(), source, { x: 200, y: 150 })).toBe(false);
+});
+
+test("cone vision remains blocked by walls", () => {
+  const source: VisionSource = {
+    x: 75,
+    y: 125,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+
+  expect(canSeeFrom(mapWithCenterWall(), source, { x: 175, y: 125 })).toBe(
+    false,
+  );
+});
+
+test("omnidirectional vision supports an independent range", () => {
+  const source: VisionSource = {
+    x: 150,
+    y: 150,
+    shape: { kind: "omnidirectional" },
+    range: 50,
+  };
+
+  expect(canSeeFrom(emptyMap(), source, { x: 100, y: 150 })).toBe(true);
+  expect(canSeeFrom(emptyMap(), source, { x: 200, y: 150 })).toBe(true);
+  expect(canSeeFrom(emptyMap(), source, { x: 201, y: 150 })).toBe(false);
+  expect(canSeeFrom(emptyMap(), { x: 150, y: 150 }, { x: 25, y: 150 })).toBe(
+    true,
+  );
+});
+
+test("cone polygons include the origin and both boundary rays", () => {
+  const source: VisionSource = {
+    x: 150,
+    y: 150,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+    range: 40,
+  };
+
+  const points = visibilityPolygon(emptyMap(), source, 8, 100);
+
+  expect(points).toHaveLength(4);
+  expect(points[0]).toEqual({ x: 150, y: 150 });
+  expect(points[1]?.x).toBeCloseTo(150 + 40 / Math.sqrt(2));
+  expect(points[1]?.y).toBeCloseTo(150 - 40 / Math.sqrt(2));
+  expect(points[2]).toEqual({ x: 190, y: 150 });
+  expect(points[3]?.x).toBeCloseTo(150 + 40 / Math.sqrt(2));
+  expect(points[3]?.y).toBeCloseTo(150 + 40 / Math.sqrt(2));
+});
+
+test("omnidirectional polygons retain the full circle", () => {
+  const points = visibilityPolygon(
+    emptyMap(),
+    { x: 150, y: 150, shape: { kind: "omnidirectional" }, range: 40 },
+    4,
+  );
+
+  expect(points).toHaveLength(4);
+  expect(points[0]).toEqual({ x: 190, y: 150 });
+  expect(points[2]?.x).toBeCloseTo(110);
+  expect(points[2]?.y).toBeCloseTo(150);
 });
 
 test("visibility is blocked by walls", () => {
