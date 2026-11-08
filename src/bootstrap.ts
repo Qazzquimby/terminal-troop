@@ -234,7 +234,7 @@ function frame(now: number): void {
     accumulator += elapsed;
     const updateStart = performance.now();
     while (accumulator >= FIXED_DT) {
-      updateSession(game, input.getControls(), FIXED_DT, now);
+      updateSession(game, input.getControls(now), FIXED_DT, now);
       accumulator -= FIXED_DT;
       frameStats.steps++;
     }
