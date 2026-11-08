@@ -3,11 +3,13 @@ import type { Settings, SettingsStore } from "./engine/settings.js";
 
 /**
  * Binds the `#settings` dialog to `store`: controls show the stored settings and edits update it.
- * Opens as a modal; Escape and the close button close it.
+ * Opens as a modal; `toggle` and the close button close it. `onOpenChange` hears every open and
+ * close, with its time.
  */
 export function createSettingsMenu(
   dialog: HTMLDialogElement,
   store: SettingsStore,
+  onOpenChange: (open: boolean, time: number) => void,
 ) {
   const control = (id: string) => element(`#${id}`, HTMLInputElement, dialog);
   const openMic = control("voice-mode-open");
@@ -35,36 +37,30 @@ export function createSettingsMenu(
     });
   });
 
-  // The game's key handler skips focused inputs, so the dialog closes itself on Escape.
-  dialog.addEventListener("keydown", (event) => {
-    if (event.code !== "Escape") return;
+  // Escape is bound to the toggle-settings action, so the dialog must not also close itself.
+  dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
-    event.stopPropagation();
-    dialog.close();
   });
 
-  // A control left focused in the closed dialog would count as typing and swallow game keys.
-  dialog.addEventListener("close", () => {
-    const focused = document.activeElement;
-    if (focused instanceof HTMLElement && dialog.contains(focused))
-      focused.blur();
+  dialog.addEventListener("close", (event) => {
+    onOpenChange(false, event.timeStamp);
   });
 
   render(store.get());
   store.subscribe(render);
 
-  function open(): void {
+  function open(time: number): void {
     if (dialog.open) return;
     dialog.showModal();
+    onOpenChange(true, time);
     (pushToTalk.checked ? pushToTalk : openMic).focus();
   }
 
   return {
-    isOpen: (): boolean => dialog.open,
     open,
-    toggle(): void {
+    toggle(time: number): void {
       if (dialog.open) dialog.close();
-      else open();
+      else open(time);
     },
   };
 }

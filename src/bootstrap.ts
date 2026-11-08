@@ -22,6 +22,7 @@ import type { DebugInfo } from "./engine/debug-overlay.js";
 import { createDebugOverlay } from "./engine/debug-overlay.js";
 import { createSettingsStore } from "./engine/settings.js";
 import { createSettingsMenu } from "./settings-menu.js";
+import { trackInputContext } from "./app-context.js";
 import { element } from "./dom.js";
 import type { Transport } from "./engine/transport.js";
 import { loadClientEnv } from "./env.js";
@@ -91,7 +92,6 @@ const settings = createSettingsStore({
     localStorage.setItem(settingsKey, value);
   },
 });
-const settingsMenu = createSettingsMenu(settingsDialog, settings);
 sfx.setMasterVolume(settings.get().audio.masterVolume);
 settings.subscribe((current) => {
   sfx.setMasterVolume(current.audio.masterVolume);
@@ -119,14 +119,22 @@ const input = createInput(
     toggleInventory() {
       if (game !== null) inventoryOpen = !inventoryOpen;
     },
-    toggleSettings() {
-      settingsMenu.toggle();
+    toggleSettings(time) {
+      settingsMenu.toggle(time);
     },
     toggleDebug() {
       debugOverlay.toggle();
     },
   },
-  settingsMenu.isOpen,
+  "play",
+);
+const inputContext = trackInputContext("play", input.setContext);
+const settingsMenu = createSettingsMenu(
+  settingsDialog,
+  settings,
+  (open, time) => {
+    inputContext.set(open ? "menu" : "play", time);
+  },
 );
 
 function updateStatus(): void {
@@ -281,8 +289,8 @@ createBtn.addEventListener("click", () => {
   void enterRoom(code);
 });
 
-settingsBtn.addEventListener("click", () => {
-  settingsMenu.open();
+settingsBtn.addEventListener("click", (event) => {
+  settingsMenu.open(event.timeStamp);
 });
 
 joinBtn.addEventListener("click", () => {

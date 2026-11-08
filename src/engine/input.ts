@@ -1,37 +1,33 @@
-import type { Action } from "./actions.js";
-import { IDLE_FRAME, createActionState, toControls } from "./actions.js";
+import type { Action, InputContext } from "./actions.js";
+import { ACTIONS, createActionState, toControls } from "./actions.js";
 import { VIEW_H, VIEW_W } from "./config.js";
 import { createKeyboardSource } from "./keyboard.js";
 import type { Point } from "./map.js";
 import type { Controls } from "./player.js";
 
-/** UI actions fire immediately on press, outside the simulation step. */
-type UiActions = Partial<Record<Action, () => void>>;
-
-function isTyping(event: KeyboardEvent): boolean {
-  return (
-    event.target instanceof HTMLElement &&
-    (event.target.matches("input, textarea, select") ||
-      event.target.isContentEditable)
-  );
-}
+/** UI actions fire immediately on press, outside the simulation step, with the press time. */
+type UiActions = Partial<Record<Action, (time: number) => void>>;
 
 /**
- * While `isSuspended()` (a modal is open) key presses are left to the page and every step
- * sees no actions, but key releases still reach the action state, so a key let go while
- * suspended is not still held once it resumes.
+ * Only actions active in the current context respond, and only their keys are kept from
+ * the page; every other key keeps its default (focus moves, sliders, typing).
  */
 export function createInput(
   canvas: HTMLCanvasElement,
   camera: Point,
   uiActions: UiActions,
-  isSuspended: () => boolean,
+  context: InputContext,
 ): {
   getControls: (until: number) => Controls;
   mouseWorld: () => Point;
+  setContext: (context: InputContext, time: number) => void;
 } {
   const state = createActionState();
-  const keyboard = createKeyboardSource(state);
+  const keyboard = createKeyboardSource<Action, InputContext>(
+    state,
+    ACTIONS,
+    context,
+  );
   const mouse = { x: VIEW_W / 2, y: VIEW_H / 2 };
   /** The mouse in world space, through the camera as it currently stands. */
   const mouseWorld = (): Point => ({
@@ -46,20 +42,13 @@ export function createInput(
   });
 
   window.addEventListener("keydown", (event) => {
-    if (
-      isSuspended() ||
-      isTyping(event) ||
-      keyboard.actionsFor(event.code).length === 0
-    ) {
-      return;
-    }
-    event.preventDefault();
+    if (keyboard.actionsFor(event.code).length > 0) event.preventDefault();
     for (const action of keyboard.keyDown(
       event.code,
       event.repeat,
       event.timeStamp,
     )) {
-      uiActions[action]?.();
+      uiActions[action]?.(event.timeStamp);
     }
   });
 
@@ -74,14 +63,18 @@ export function createInput(
     /**
      * Call once per simulation step with the step's end time (`performance.now()` clock):
      * input up to that time applies, and each press is delivered to exactly one step.
-     * While suspended the step still consumes (so releases land and nothing queues up)
-     * but sees no actions.
      */
     getControls(until) {
-      const frame = state.consume(until);
-      return toControls(isSuspended() ? IDLE_FRAME : frame, mouseWorld());
+      return toControls(state.consume(until), mouseWorld());
     },
     /** Reads the mouse without consuming input; safe to call from render. */
     mouseWorld,
+    /**
+     * Makes `context` the active one from `time`: held actions not active in it are
+     * released at that time.
+     */
+    setContext(next, time) {
+      keyboard.setContext(next, time);
+    },
   };
 }
