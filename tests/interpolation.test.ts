@@ -24,7 +24,7 @@ const walkRight = { move: { x: 1, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
 const origin = { x: 0, y: 0 };
 
 function session(): Session {
-  return createSession("me", "ME", "LERP1", createSfx());
+  return createSession("me", "ME", "LERP1", "standard", createSfx());
 }
 
 test("lerp blends between two values", () => {

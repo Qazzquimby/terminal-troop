@@ -1,5 +1,5 @@
 import { range } from "lodash-es";
-import { MAP_CELL } from "./config.js";
+import { MAP_CELL, VIEW_H, VIEW_W } from "./config.js";
 
 export interface Point {
   x: number;
@@ -21,6 +21,11 @@ export interface World {
 }
 
 export type Rng = () => number;
+
+/** "standard" is the procedural world; "dev" is a one-screen square for testing. */
+export const WORLD_KINDS = ["standard", "dev"] as const;
+
+export type WorldKind = (typeof WORLD_KINDS)[number];
 
 type Cell = readonly [col: number, row: number];
 
@@ -228,6 +233,37 @@ export function buildWorld(
     W: cols * MAP_CELL,
     H: rows * MAP_CELL,
     map: createMap(cols, rows, rng),
+  };
+}
+
+/** Top-left cells of the dev square's 2x2 pillars, off-centre so the middle rows and columns stay clear. */
+export const DEV_PILLARS: readonly Cell[] = [
+  [4, 1],
+  [12, 9],
+];
+
+/**
+ * One screen of open floor with two small pillars. Deterministic; the border is the edge of the
+ * world, which `isSolid` already treats as solid.
+ */
+export function buildDevWorld(): World {
+  const cols = VIEW_W / MAP_CELL;
+  const rows = VIEW_H / MAP_CELL;
+  const solid = new Uint8Array(cols * rows);
+  for (const [col, row] of DEV_PILLARS) {
+    for (const [dc, dr] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ] as const) {
+      solid[(row + dr) * cols + (col + dc)] = 1;
+    }
+  }
+  return {
+    W: VIEW_W,
+    H: VIEW_H,
+    map: { cell: MAP_CELL, cols, rows, solid },
   };
 }
 
