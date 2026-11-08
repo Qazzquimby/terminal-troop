@@ -77,14 +77,14 @@ export function updateSession(
 ): void {
   updatePlayer(game.local, controls, dt, game.world.map);
 
-  for (const [id, player] of game.players) {
-    if (id === game.localId) continue;
+  game.players.forEach((player, id) => {
+    if (id === game.localId) return;
     if (now - player.lastSeen > STALE_S * 1000) {
       game.players.delete(id);
     } else {
       smoothPlayer(player, dt);
     }
-  }
+  });
 
   updateEntities(game, dt);
 }

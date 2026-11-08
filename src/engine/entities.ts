@@ -68,11 +68,12 @@ export function spawnEntity(
 }
 
 export function updateEntities(game: Session, dt: number): void {
-  for (const entity of [...game.entities.values()]) {
-    if (!game.entities.has(entity.id)) continue;
+  // Snapshot first: an update may spawn or remove entities.
+  [...game.entities.values()].forEach((entity) => {
+    if (!game.entities.has(entity.id)) return;
 
     game.entityTypes.get(entity.kind)?.update?.(entity, dt, game);
-    if (!game.entities.has(entity.id)) continue;
+    if (!game.entities.has(entity.id)) return;
 
     if (entity.collides) {
       moveWithCollision(entity, entity.radius, dt, game.world.map);
@@ -80,5 +81,5 @@ export function updateEntities(game: Session, dt: number): void {
       entity.x += entity.vx * dt;
       entity.y += entity.vy * dt;
     }
-  }
+  });
 }

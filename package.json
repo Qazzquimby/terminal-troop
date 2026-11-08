@@ -20,10 +20,12 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
     "jimkit-env": "^0.8.0",
+    "lodash-es": "^4.18.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/lodash-es": "^4.17.12",
     "@vitest/eslint-plugin": "^1.6.28",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",

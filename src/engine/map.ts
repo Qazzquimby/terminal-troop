@@ -1,3 +1,4 @@
+import { range } from "lodash-es";
 import { MAP_CELL } from "./config.js";
 
 export interface Point {
@@ -72,13 +73,25 @@ function pick<T>(items: readonly T[], rng: Rng): T {
   return item;
 }
 
+/** Rotates a quarter turn `times` times. */
+function rotate(cells: Cell[], times: number): Cell[] {
+  return times <= 0
+    ? cells
+    : rotate(
+        cells.map(([c, r]): Cell => [-r, c]),
+        times - 1,
+      );
+}
+
 function transform(
   shape: readonly Cell[],
   rot: number,
   mirror: boolean,
 ): Cell[] {
-  let cells: Cell[] = shape.map(([c, r]) => [mirror ? -c : c, r]);
-  for (let i = 0; i < rot; i++) cells = cells.map(([c, r]) => [-r, c]);
+  const cells = rotate(
+    shape.map(([c, r]): Cell => [mirror ? -c : c, r]),
+    rot,
+  );
   const minC = Math.min(...cells.map((p) => p[0]));
   const minR = Math.min(...cells.map((p) => p[1]));
   return cells.map(([c, r]) => [c - minC, r - minR]);
@@ -103,19 +116,25 @@ function canPlace(
   ox: number,
   oy: number,
 ): boolean {
-  for (const [dc, dr] of cells) {
+  return cells.every(([dc, dr]) => {
     const c = ox + dc;
     const r = oy + dr;
-    // Stay GAP cells away from the border
-    if (c < GAP || r < GAP || c >= cols - GAP || r >= rows - GAP) return false;
-    // Stay GAP cells away from every other obstacle
-    for (let rr = r - GAP; rr <= r + GAP; rr++) {
-      for (let cc = c - GAP; cc <= c + GAP; cc++) {
-        if (solid[rr * cols + cc] === 1) return false;
-      }
-    }
-  }
-  return true;
+    // Stay GAP cells away from the border, and from every other obstacle
+    const inBounds = c >= GAP && r >= GAP && c < cols - GAP && r < rows - GAP;
+    return inBounds && neighbourhoodClear(solid, cols, c, r);
+  });
+}
+
+/** True when no cell within GAP of (c, r) is solid. Caller keeps (c, r) GAP from the edge. */
+function neighbourhoodClear(
+  solid: Uint8Array,
+  cols: number,
+  c: number,
+  r: number,
+): boolean {
+  return range(r - GAP, r + GAP + 1).every((rr) =>
+    range(c - GAP, c + GAP + 1).every((cc) => solid[rr * cols + cc] !== 1),
+  );
 }
 
 /**
@@ -156,9 +175,9 @@ function sealDisconnected(solid: Uint8Array, cols: number, rows: number): void {
 
   if (sizes.length <= 1) return;
   const best = sizes.indexOf(Math.max(...sizes));
-  for (let i = 0; i < solid.length; i++) {
-    if (solid[i] !== 1 && region[i] !== best) solid[i] = 1;
-  }
+  solid.forEach((value, i) => {
+    if (value !== 1 && region[i] !== best) solid[i] = 1;
+  });
 }
 
 /**
@@ -174,10 +193,9 @@ export function createMap(
   // Visit chunks in random order, but place shapes at jittered positions
   // (not snapped to chunk edges) with random rotation/mirroring, so the
   // result doesn't read as a grid.
-  const chunks: Cell[] = [];
-  for (let cy = 0; cy < rows; cy += CHUNK) {
-    for (let cx = 0; cx < cols; cx += CHUNK) chunks.push([cx, cy]);
-  }
+  const chunks = range(0, rows, CHUNK).flatMap((cy) =>
+    range(0, cols, CHUNK).map((cx): Cell => [cx, cy]),
+  );
   shuffle(chunks, rng);
 
   for (const [cx, cy] of chunks) {
@@ -189,7 +207,9 @@ export function createMap(
       const ox = cx - 1 + Math.floor(rng() * (CHUNK + 2));
       const oy = cy - 1 + Math.floor(rng() * (CHUNK + 2));
       if (!canPlace(solid, cols, rows, cells, ox, oy)) continue;
-      for (const [dc, dr] of cells) solid[(oy + dr) * cols + (ox + dc)] = 1;
+      cells.forEach(([dc, dr]) => {
+        solid[(oy + dr) * cols + (ox + dc)] = 1;
+      });
       placed++;
     }
   }
