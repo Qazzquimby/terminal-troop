@@ -13,6 +13,11 @@ install:
 dev:
     pnpm dev
 
+# Start the dev server on the one-screen dev square world, for testing
+[group('dev')]
+dev-square:
+    pnpm dev:square
+
 # Production build
 [group('dev')]
 build:

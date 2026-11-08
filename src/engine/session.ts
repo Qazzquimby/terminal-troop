@@ -12,8 +12,8 @@ import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
-import type { World } from "./map.js";
-import { buildWorld, isAreaFree, mulberry32 } from "./map.js";
+import type { World, WorldKind } from "./map.js";
+import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player } from "./player.js";
 import {
   createPlayer,
@@ -45,17 +45,27 @@ function roomSeed(code: string): number {
   return seed >>> 0;
 }
 
+/**
+ * The channel a room's players meet on. The world kind is part of it, so clients running
+ * different worlds land in separate rooms rather than on mismatched maps.
+ */
+export function roomKey(code: string, kind: WorldKind): string {
+  return kind === "standard" ? code : `${kind}:${code}`;
+}
+
+function buildRoomWorld(roomCode: string, kind: WorldKind): World {
+  if (kind === "dev") return buildDevWorld();
+  return buildWorld(WORLD_COLS, WORLD_ROWS, mulberry32(roomSeed(roomCode)));
+}
+
 export function createSession(
   localId: string,
   name: string,
   roomCode: string,
+  worldKind: WorldKind,
   sfx: Sfx,
 ): Session {
-  const world = buildWorld(
-    WORLD_COLS,
-    WORLD_ROWS,
-    mulberry32(roomSeed(roomCode)),
-  );
+  const world = buildRoomWorld(roomCode, worldKind);
   const local = createPlayer(localId, name, world);
 
   return {
