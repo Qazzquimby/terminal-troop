@@ -23,7 +23,7 @@ const NO_EXPORT_STAR = [
 const TEST_SOURCE = ["tests/**"];
 
 export default tseslint.config(
-  { ignores: ["dist/", "node_modules/"] },
+  { ignores: ["dist/", "node_modules/", ".claude/worktrees/"] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

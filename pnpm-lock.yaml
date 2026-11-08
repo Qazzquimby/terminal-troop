@@ -10,6 +10,9 @@ importers:
       "@supabase/supabase-js":
         specifier: ^2.57.0
         version: 2.118.0
+      jimkit-env:
+        specifier: ^0.8.0
+        version: 0.8.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -1329,6 +1332,13 @@ packages:
         integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==,
       }
 
+  dotenv@17.4.2:
+    resolution:
+      {
+        integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==,
+      }
+    engines: { node: ">=12" }
+
   es-module-lexer@2.3.2:
     resolution:
       {
@@ -1596,6 +1606,12 @@ packages:
     resolution:
       {
         integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==,
+      }
+
+  jimkit-env@0.8.0:
+    resolution:
+      {
+        integrity: sha512-AIaOLZm1v12Y+1i8o9oeGNzX1uOZ18wqUnS0xbZX9PISlukErWCy7WiZJisEor3rBNaHGiB/Quk+MDRwKT6+QQ==,
       }
 
   jiti@2.7.0:
@@ -2734,6 +2750,8 @@ snapshots:
 
   deep-is@0.1.4: {}
 
+  dotenv@17.4.2: {}
+
   es-module-lexer@2.3.2: {}
 
   esbuild@0.28.2:
@@ -2913,6 +2931,11 @@ snapshots:
       is-extglob: 2.1.1
 
   isexe@2.0.0: {}
+
+  jimkit-env@0.8.0:
+    dependencies:
+      dotenv: 17.4.2
+      zod: 4.6.7
 
   jiti@2.7.0: {}
 

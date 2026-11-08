@@ -19,6 +19,7 @@ import { draw } from "./engine/render.js";
 import { createCamera, updateCamera } from "./engine/camera.js";
 import { createSfx } from "./engine/audio.js";
 import type { Transport } from "./engine/transport.js";
+import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
 
@@ -46,17 +47,29 @@ const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
 const ctx = context;
 
+const envResult = loadClientEnv(
+  {
+    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env
+      .VITE_SUPABASE_PUBLISHABLE_KEY,
+  },
+  import.meta.env.PROD ? "production" : "development",
+);
+if (!envResult.success) {
+  statusEl.textContent = envResult.error.message;
+  throw envResult.error;
+}
+const env = envResult.data;
+
 /**
- * Online play needs both Supabase env vars. Without them, or with `?local` in the URL, rooms
- * run over BroadcastChannel between windows of this browser.
+ * Online play when Supabase is configured. Without it, or with `?local` in the URL, rooms run
+ * over BroadcastChannel between windows of this browser.
  */
 function selectTransport(params: URLSearchParams): Transport {
-  const url = import.meta.env.VITE_SUPABASE_URL ?? "";
-  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
-  if (params.has("local") || url === "" || key === "") {
+  if (params.has("local") || env.supabase === null) {
     return createBroadcastChannelTransport();
   }
-  return createSupabaseTransport(url, key);
+  return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
 }
 
 const playerId = crypto.randomUUID();
