@@ -8,6 +8,7 @@ import {
 } from "./config.js";
 import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
+import type { Interpolated } from "./interpolation.js";
 import type { Point, TileMap, World } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { Inventory } from "./inventory.js";
@@ -21,7 +22,7 @@ export interface Controls {
   readonly sprint: boolean;
 }
 
-export interface Player extends Body {
+export interface Player extends Body, Interpolated {
   readonly id: string;
   readonly kind: typeof EntityKind.PLAYER;
   name: string;
@@ -51,6 +52,8 @@ export function createPlayer(id: string, name: string, world: World): Player {
     name,
     kind: EntityKind.PLAYER,
     ...position,
+    prevX: position.x,
+    prevY: position.y,
     tx: position.x,
     ty: position.y,
     vx: 0,

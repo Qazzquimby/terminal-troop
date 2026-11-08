@@ -1,4 +1,6 @@
 import { STAMINA_MAX, VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
+import type { Interpolated } from "./interpolation.js";
+import { renderPosition } from "./interpolation.js";
 import type { Point, World } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -128,12 +130,37 @@ function drawShade(
   ctx.restore();
 }
 
+/**
+ * A render-time copy of the session with every body blended `alpha` of the way from its
+ * pre-step position to its current one. The simulation state is left untouched.
+ */
+export function interpolatedView(game: Session, alpha: number): Session {
+  const at = <T extends Interpolated>(body: T): T => ({
+    ...body,
+    ...renderPosition(body, alpha),
+  });
+  const local = at(game.local);
+  const players = new Map(
+    [...game.players].map(([id, player]) => [
+      id,
+      player === game.local ? local : at(player),
+    ]),
+  );
+  const entities = new Map(
+    [...game.entities].map(([id, entity]) => [id, at(entity)]),
+  );
+  return { ...game, local, players, entities };
+}
+
+/** Draws the session as of `alpha` (0..1) through the current fixed step. */
 export function draw(
   ctx: CanvasRenderingContext2D,
-  game: Session,
+  simulation: Session,
   camera: Point,
   now: number,
+  alpha: number,
 ): void {
+  const game = interpolatedView(simulation, alpha);
   const viewer = game.local;
 
   ctx.fillStyle = "#090b0e";

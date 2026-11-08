@@ -17,6 +17,7 @@ import { createInput } from "./engine/input.js";
 import { createInventoryHud } from "./engine/hud.js";
 import { draw } from "./engine/render.js";
 import { createCamera, updateCamera } from "./engine/camera.js";
+import { renderPosition, stepAlpha } from "./engine/interpolation.js";
 import { createSfx } from "./engine/audio.js";
 import type { Transport } from "./engine/transport.js";
 import { loadClientEnv } from "./env.js";
@@ -195,12 +196,13 @@ function frame(now: number): void {
     accumulator += elapsed;
     while (accumulator >= FIXED_DT) {
       updateSession(game, input.getControls(), FIXED_DT, now);
-      updateCamera(camera, game.local);
       accumulator -= FIXED_DT;
     }
 
+    const alpha = stepAlpha(accumulator, FIXED_DT);
     sendState(game, transport, now);
-    draw(ctx, game, camera, now);
+    updateCamera(camera, renderPosition(game.local, alpha));
+    draw(ctx, game, camera, now, alpha);
     updateInventory(game.local.inventory, inventoryOpen);
   } else {
     inventoryEl.hidden = true;
