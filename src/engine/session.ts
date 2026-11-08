@@ -20,6 +20,7 @@ import {
   updatePlayer,
 } from "./player.js";
 import { StateMessage } from "./protocol.js";
+import type { Transport } from "./transport.js";
 
 export interface Session {
   readonly localId: string;
@@ -32,10 +33,6 @@ export interface Session {
   readonly entityTypes: Map<number, EntityDefinition>;
   nextEntityId: number;
   lastSent: number;
-}
-
-interface Sender {
-  send: (event: NetEvent, payload: unknown) => void;
 }
 
 function roomSeed(code: string): number {
@@ -94,13 +91,13 @@ export function updateSession(
 
 export function sendState(
   game: Session,
-  net: Sender,
+  transport: Pick<Transport, "send">,
   now: number,
   force = false,
 ): void {
   if (!force && now - game.lastSent < 1000 / SEND_HZ) return;
   game.lastSent = now;
-  net.send(NetEvent.STATE, playerState(game.local));
+  void transport.send(NetEvent.STATE, playerState(game.local));
 }
 
 export function receiveState(game: Session, payload: unknown): void {
