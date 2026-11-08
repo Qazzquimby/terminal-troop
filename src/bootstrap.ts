@@ -20,20 +20,13 @@ import { createPerfStats } from "./engine/perf-stats.js";
 import { createCountingTransport } from "./engine/counting-transport.js";
 import type { DebugInfo } from "./engine/debug-overlay.js";
 import { createDebugOverlay } from "./engine/debug-overlay.js";
+import { createSettingsStore } from "./engine/settings.js";
+import { createSettingsMenu } from "./settings-menu.js";
+import { element } from "./dom.js";
 import type { Transport } from "./engine/transport.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
-
-function element<T extends HTMLElement>(
-  selector: string,
-  type: new () => T,
-): T {
-  const found = document.querySelector(selector);
-  if (!(found instanceof type))
-    throw new Error(`Missing ${type.name} ${selector}`);
-  return found;
-}
 
 const canvas = element("#game", HTMLCanvasElement);
 const statusEl = element("#status", HTMLParagraphElement);
@@ -45,6 +38,8 @@ const copyBtn = element("#copy", HTMLButtonElement);
 const inventoryEl = element("#inventory", HTMLElement);
 const inventoryList = element("#inventory-slots", HTMLOListElement);
 const debugEl = element("#debug", HTMLPreElement);
+const settingsDialog = element("#settings", HTMLDialogElement);
+const settingsBtn = element("#settings-open", HTMLButtonElement);
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -88,6 +83,19 @@ const perf = createPerfStats();
 const debugOverlay = createDebugOverlay(debugEl, startParams.has("debug"));
 const sfx = createSfx();
 const nameKey = "world:name";
+const settingsKey = "terminal-troop:settings";
+// The store catches anything these throw (storage can be disabled or full).
+const settings = createSettingsStore({
+  get: () => localStorage.getItem(settingsKey),
+  set: (value) => {
+    localStorage.setItem(settingsKey, value);
+  },
+});
+const settingsMenu = createSettingsMenu(settingsDialog, settings);
+sfx.setMasterVolume(settings.get().audio.masterVolume);
+settings.subscribe((current) => {
+  sfx.setMasterVolume(current.audio.masterVolume);
+});
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
 let game: Session | null = null;
@@ -104,14 +112,22 @@ function nonEmpty(value: string | null): string | null {
 
 nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 
-const input = createInput(canvas, camera, {
-  toggleInventory() {
-    if (game !== null) inventoryOpen = !inventoryOpen;
+const input = createInput(
+  canvas,
+  camera,
+  {
+    toggleInventory() {
+      if (game !== null) inventoryOpen = !inventoryOpen;
+    },
+    toggleSettings() {
+      settingsMenu.toggle();
+    },
+    toggleDebug() {
+      debugOverlay.toggle();
+    },
   },
-  toggleDebug() {
-    debugOverlay.toggle();
-  },
-});
+  settingsMenu.isOpen,
+);
 
 function updateStatus(): void {
   createBtn.disabled = connecting;
@@ -263,6 +279,10 @@ createBtn.addEventListener("click", () => {
     .join("")
     .toUpperCase();
   void enterRoom(code);
+});
+
+settingsBtn.addEventListener("click", () => {
+  settingsMenu.open();
 });
 
 joinBtn.addEventListener("click", () => {

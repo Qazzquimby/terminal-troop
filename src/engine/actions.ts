@@ -10,6 +10,7 @@ export const BINDINGS = {
   sprint: ["ShiftLeft", "ShiftRight"],
   toggleInventory: ["Tab"],
   toggleDebug: ["F3"],
+  toggleSettings: ["Escape"],
 } as const;
 
 export type Action = keyof typeof BINDINGS;
@@ -35,6 +36,13 @@ export interface ActionSink {
   /** Blur: every held action counts as released and pending presses are dropped. */
   clear(time: number): void;
 }
+
+/** A frame with no actions, for steps that must ignore input (e.g. while a menu is open). */
+export const IDLE_FRAME: ActionFrame = {
+  held: new Set(),
+  pressed: new Set(),
+  released: new Set(),
+};
 
 type ActionEvent =
   | {

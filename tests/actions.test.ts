@@ -1,6 +1,10 @@
 import { expect, test } from "vitest";
 import type { Action } from "../src/engine/actions.js";
-import { createActionState, toControls } from "../src/engine/actions.js";
+import {
+  IDLE_FRAME,
+  createActionState,
+  toControls,
+} from "../src/engine/actions.js";
 
 const AIM = { x: 0, y: 0 };
 
@@ -160,4 +164,20 @@ test("diagonal movement is normalized", () => {
 test("sprint follows the held sprint action", () => {
   expect(step(holding("moveRight")).controls.sprint).toBe(false);
   expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
+});
+
+test("an action held into a suspension and released during it is not held afterwards", () => {
+  const state = holding("moveRight");
+  expect(step(state, 10).controls.move.x).toBe(1);
+
+  // Suspended: steps still consume, but the game sees the idle frame.
+  state.release("moveRight", 20);
+  state.consume(30);
+  expect(toControls(IDLE_FRAME, AIM).move).toEqual({ x: 0, y: 0 });
+
+  // Resumed: no drift, and the release is not replayed into a later step.
+  const after = step(state, 40);
+  expect(after.controls.move).toEqual({ x: 0, y: 0 });
+  expect(after.frame.held).toEqual(actions());
+  expect(after.frame.released).toEqual(actions());
 });
