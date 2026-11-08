@@ -1,4 +1,5 @@
 import {
+  FIXED_DT,
   NetEvent,
   PLAYER_RADIUS,
   SEND_HZ,
@@ -17,6 +18,7 @@ import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player } from "./player.js";
 import {
   createPlayer,
+  idleControls,
   playerState,
   smoothPlayer,
   updatePlayer,
@@ -105,6 +107,17 @@ export function updateSession(
   });
 
   updateEntities(game, dt);
+}
+
+/** Simulates time the page spent away: `steps` fixed steps with idle controls. */
+export function catchUpSession(
+  game: Session,
+  steps: number,
+  now: number,
+): void {
+  for (let i = 0; i < steps; i++) {
+    updateSession(game, idleControls(game.local), FIXED_DT, now);
+  }
 }
 
 export function sendState(

@@ -1,12 +1,9 @@
 import "./engine/style.css";
-import {
-  FIXED_DT,
-  MAX_FRAME_S,
-  NetEvent,
-  PLAYER_NAME_MAX,
-} from "./engine/config.js";
+import { FIXED_DT, NetEvent, PLAYER_NAME_MAX } from "./engine/config.js";
+import { splitFrameTime } from "./engine/frame-time.js";
 import type { Session } from "./engine/session.js";
 import {
+  catchUpSession,
   createSession,
   receiveState,
   roomKey,
@@ -90,6 +87,8 @@ let inventoryOpen = false;
 let errorText = "";
 let lastFrame = performance.now();
 let accumulator = 0;
+let hiddenAt: number | null = null;
+let hiddenFor = 0;
 
 function nonEmpty(value: string | null): string | null {
   return value === null || value === "" ? null : value;
@@ -191,11 +190,16 @@ async function enterRoom(rawCode: string): Promise<void> {
 }
 
 function frame(now: number): void {
-  const elapsed = Math.min((now - lastFrame) / 1000, MAX_FRAME_S);
+  const { idleSteps, live } = splitFrameTime(
+    (now - lastFrame) / 1000,
+    hiddenFor,
+  );
   lastFrame = now;
+  hiddenFor = 0;
 
   if (game !== null) {
-    accumulator += elapsed;
+    catchUpSession(game, idleSteps, now);
+    accumulator += live;
     while (accumulator >= FIXED_DT) {
       updateSession(game, input.getControls(), FIXED_DT, now);
       accumulator -= FIXED_DT;
@@ -242,10 +246,15 @@ copyBtn.addEventListener("click", () => {
   );
 });
 
+// Time spent hidden is caught up by the next frame (see splitFrameTime), not dropped.
 document.addEventListener("visibilitychange", () => {
-  accumulator = 0;
-  lastFrame = performance.now();
-  if (game !== null && !document.hidden) sayHello(game);
+  if (document.hidden) {
+    hiddenAt = performance.now();
+    return;
+  }
+  if (hiddenAt !== null) hiddenFor += (performance.now() - hiddenAt) / 1000;
+  hiddenAt = null;
+  if (game !== null) sayHello(game);
 });
 
 window.addEventListener("beforeunload", () => {

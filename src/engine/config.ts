@@ -28,6 +28,8 @@ export const SEND_HZ = 15;
 export const STALE_S = 15;
 export const FIXED_DT = 1 / 60;
 export const MAX_FRAME_S = 0.1;
+/** Most time spent away (hidden or not animating) that is simulated on return. */
+export const MAX_CATCH_UP_S = 30;
 
 export const STAMINA_MAX = 100;
 /** Per second while sprinting: a full bar lasts 3s. */
