@@ -12,6 +12,8 @@ import type { Point, TileMap, World } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { Inventory } from "./inventory.js";
 import { createInventory } from "./inventory.js";
+import type { Stamina } from "./stamina.js";
+import { canSprint, createStamina, updateStamina } from "./stamina.js";
 
 export interface Controls {
   readonly move: Point;
@@ -30,6 +32,8 @@ export interface Player extends Body {
   radius: number;
   lastSeen: number;
   inventory: Inventory;
+  /** Only meaningful for the local player; never sent over the network. */
+  stamina: Stamina;
 }
 
 export interface PlayerState {
@@ -55,6 +59,7 @@ export function createPlayer(id: string, name: string, world: World): Player {
     radius: PLAYER_RADIUS,
     lastSeen: performance.now(),
     inventory: createInventory(INVENTORY_SLOTS),
+    stamina: createStamina(),
   };
 }
 
@@ -64,9 +69,11 @@ export function updatePlayer(
   dt: number,
   map: TileMap,
 ): void {
-  const speed = controls.sprint
-    ? PLAYER_SPEED * SPRINT_MULTIPLIER
-    : PLAYER_SPEED;
+  const moving = controls.move.x !== 0 || controls.move.y !== 0;
+  const sprinting = controls.sprint && moving && canSprint(player.stamina);
+  player.stamina = updateStamina(player.stamina, sprinting, dt);
+
+  const speed = sprinting ? PLAYER_SPEED * SPRINT_MULTIPLIER : PLAYER_SPEED;
   const targetX = controls.move.x * speed;
   const targetY = controls.move.y * speed;
   const dx = targetX - player.vx;

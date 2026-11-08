@@ -28,3 +28,13 @@ export const SEND_HZ = 15;
 export const STALE_S = 15;
 export const FIXED_DT = 1 / 60;
 export const MAX_FRAME_S = 0.1;
+
+export const STAMINA_MAX = 100;
+/** Per second while sprinting: a full bar lasts 3s. */
+export const STAMINA_DRAIN = STAMINA_MAX / 3;
+/** Per second once regeneration starts: empty to full in 4s. */
+export const STAMINA_REGEN = STAMINA_MAX / 4;
+/** Seconds without sprinting before regeneration starts. */
+export const STAMINA_REGEN_DELAY = 0.6;
+/** After hitting 0, sprint stays locked until stamina is back to this. */
+export const STAMINA_RECOVER = STAMINA_MAX * 0.3;
