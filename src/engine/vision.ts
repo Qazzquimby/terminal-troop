@@ -1,5 +1,6 @@
 import {
   PLAYER_LIGHT_RANGE,
+  PLAYER_SURROUNDINGS_RADIUS,
   PLAYER_VISION_ANGLE,
   VISION_RAYS,
 } from "./config.js";
@@ -52,6 +53,36 @@ export function canSeeFrom(
   return withinVision(source, point) && hasLineOfSight(map, source, point);
 }
 
+/**
+ * Identifies a wall cell. Rays can stop on the solid ring just outside the map, so cells are
+ * numbered row-major over the map padded by one cell on every side.
+ */
+type WallKey = number;
+
+export function wallCell(
+  map: TileMap,
+  key: WallKey,
+): { readonly col: number; readonly row: number } {
+  const stride = map.cols + 2;
+  return { col: (key % stride) - 1, row: Math.floor(key / stride) - 1 };
+}
+
+interface RayHit {
+  readonly distance: number;
+  /** The wall cell that stopped the ray, if one did before `maxDist`. */
+  readonly wall: WallKey | undefined;
+}
+
+function hitAt(
+  map: TileMap,
+  distance: number,
+  col: number,
+  row: number,
+): RayHit | undefined {
+  if (!isSolid(map, col, row)) return undefined;
+  return { distance, wall: (row + 1) * (map.cols + 2) + col + 1 };
+}
+
 function castRay(
   map: TileMap,
   x: number,
@@ -59,11 +90,12 @@ function castRay(
   dx: number,
   dy: number,
   maxDist: number,
-): number {
+): RayHit {
   const cell = map.cell;
   let col = Math.floor(x / cell);
   let row = Math.floor(y / cell);
-  if (isSolid(map, col, row)) return 0;
+  const inside = hitAt(map, 0, col, row);
+  if (inside !== undefined) return inside;
 
   const stepCol = Math.sign(dx);
   const stepRow = Math.sign(dy);
@@ -84,27 +116,27 @@ function castRay(
 
   for (;;) {
     const distance = Math.min(maxX, maxY);
-    if (distance >= maxDist) return maxDist;
+    if (distance >= maxDist) return { distance: maxDist, wall: undefined };
 
     if (Math.abs(maxX - maxY) <= 1e-9) {
-      if (
-        isSolid(map, col + stepCol, row) ||
-        isSolid(map, col, row + stepRow) ||
-        isSolid(map, col + stepCol, row + stepRow)
-      ) {
-        return distance;
-      }
+      const corner =
+        hitAt(map, distance, col + stepCol, row) ??
+        hitAt(map, distance, col, row + stepRow) ??
+        hitAt(map, distance, col + stepCol, row + stepRow);
+      if (corner !== undefined) return corner;
       col += stepCol;
       row += stepRow;
       maxX += deltaX;
       maxY += deltaY;
     } else if (maxX < maxY) {
       col += stepCol;
-      if (isSolid(map, col, row)) return maxX;
+      const hit = hitAt(map, maxX, col, row);
+      if (hit !== undefined) return hit;
       maxX += deltaX;
     } else {
       row += stepRow;
-      if (isSolid(map, col, row)) return maxY;
+      const hit = hitAt(map, maxY, col, row);
+      if (hit !== undefined) return hit;
       maxY += deltaY;
     }
   }
@@ -116,10 +148,15 @@ export function hasLineOfSight(map: TileMap, from: Point, to: Point): boolean {
   const distance = Math.hypot(dx, dy);
   if (distance === 0) return true;
 
-  return (
-    castRay(map, from.x, from.y, dx / distance, dy / distance, distance) >=
-    distance
+  const hit = castRay(
+    map,
+    from.x,
+    from.y,
+    dx / distance,
+    dy / distance,
+    distance,
   );
+  return hit.distance >= distance;
 }
 
 function playerVision(viewer: Viewer): VisionSource {
@@ -134,9 +171,15 @@ function playerVision(viewer: Viewer): VisionSource {
   };
 }
 
+/** The small circle around the viewer that is both seen and lit, behind them included. */
+function playerSurroundings(viewer: Viewer): LightSource {
+  return { x: viewer.x, y: viewer.y, range: PLAYER_SURROUNDINGS_RADIUS };
+}
+
 export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   return [
     playerVision(viewer),
+    playerSurroundings(viewer),
     ...[...game.entities.values()].filter(
       (entity) => entity.ownerId === viewer.id && entity.grantsVision,
     ),
@@ -146,6 +189,7 @@ export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
 export function lightSources(game: Session, viewer: Viewer): LightSource[] {
   const lights: LightSource[] = [
     { ...playerVision(viewer), range: PLAYER_LIGHT_RANGE },
+    playerSurroundings(viewer),
   ];
 
   game.entities.forEach((entity) => {
@@ -215,12 +259,35 @@ function cornerRayOffsets(
   return offsets;
 }
 
+export interface VisibilityPolygon {
+  readonly points: readonly Point[];
+  /** The wall cells whose faces the polygon's rays end on. */
+  readonly walls: ReadonlySet<WallKey>;
+}
+
+/**
+ * Wall cells to draw as lit: a face some vision polygon reaches that some light polygon also
+ * reaches. Walls stop rays, so they are never inside the polygons themselves.
+ */
+export function litWalls(
+  seen: readonly VisibilityPolygon[],
+  lit: readonly VisibilityPolygon[],
+): Set<WallKey> {
+  const result = new Set<WallKey>();
+  for (const polygon of seen) {
+    for (const wall of polygon.walls) {
+      if (lit.some((light) => light.walls.has(wall))) result.add(wall);
+    }
+  }
+  return result;
+}
+
 export function visibilityPolygon(
   map: TileMap,
   origin: VisionSource,
   rayCount: number = VISION_RAYS,
   maxDist: number = Math.hypot(map.cols * map.cell, map.rows * map.cell),
-): Point[] {
+): VisibilityPolygon {
   const cone = origin.shape?.kind === "cone" ? origin.shape : undefined;
   const points: Point[] =
     cone === undefined ? [] : [{ x: origin.x, y: origin.y }];
@@ -231,6 +298,7 @@ export function visibilityPolygon(
       ? rayCount
       : Math.max(2, Math.ceil((rayCount * sweep) / (Math.PI * 2)) + 1);
   const limit = Math.min(maxDist, origin.range ?? Infinity);
+  const walls = new Set<WallKey>();
 
   const offsets = new Set(cornerRayOffsets(map, origin, start, sweep, limit));
   for (let i = 0; i < count; i++) {
@@ -241,9 +309,10 @@ export function visibilityPolygon(
     const angle = start + offset;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
-    const distance = castRay(map, origin.x, origin.y, dx, dy, limit);
+    const { distance, wall } = castRay(map, origin.x, origin.y, dx, dy, limit);
     points.push({ x: origin.x + dx * distance, y: origin.y + dy * distance });
+    if (wall !== undefined) walls.add(wall);
   }
 
-  return points;
+  return { points, walls };
 }

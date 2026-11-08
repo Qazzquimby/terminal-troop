@@ -17,6 +17,8 @@ export const VIEW_H = 600;
 export const VISION_RAYS = 360;
 export const PLAYER_VISION_ANGLE = Math.PI / 2;
 export const PLAYER_LIGHT_RANGE = MAP_CELL * 4;
+/** Radius of the circle around the player that is always seen and lit, behind them too. */
+export const PLAYER_SURROUNDINGS_RADIUS = MAP_CELL * 1.4;
 
 export const PLAYER_RADIUS = 14;
 export const PLAYER_SPEED = 220;
