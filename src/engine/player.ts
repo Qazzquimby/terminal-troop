@@ -97,18 +97,6 @@ export function updatePlayer(
   moveWithCollision(player, player.radius, dt, map);
 }
 
-/** No movement, no sprint, aim held where the player already faces. */
-export function idleControls(player: Player): Controls {
-  return {
-    move: { x: 0, y: 0 },
-    aim: {
-      x: player.x + Math.cos(player.aim),
-      y: player.y + Math.sin(player.aim),
-    },
-    sprint: false,
-  };
-}
-
 /** The facing, in radians, from `from` towards `target`. */
 export function aimAt(from: Point, target: Point): number {
   return Math.atan2(target.y - from.y, target.x - from.x);

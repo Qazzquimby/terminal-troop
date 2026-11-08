@@ -97,6 +97,20 @@ canvas {
   text-align: center;
   pointer-events: none;
 }
+.debug-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #090b0eb3;
+  color: #9fe6a0;
+  font:
+    12px/1.35 ui-monospace,
+    monospace;
+  pointer-events: none;
+}
 .inventory {
   position: absolute;
   top: 12px;

@@ -1,9 +1,8 @@
 import "./engine/style.css";
 import { FIXED_DT, NetEvent, PLAYER_NAME_MAX } from "./engine/config.js";
-import { splitFrameTime } from "./engine/frame-time.js";
+import { STEP_LIMITS, advanceSim } from "./engine/sim-clock.js";
 import type { Session } from "./engine/session.js";
 import {
-  catchUpSession,
   createSession,
   receiveState,
   roomKey,
@@ -17,6 +16,10 @@ import { draw } from "./engine/render.js";
 import { createCamera, updateCamera } from "./engine/camera.js";
 import { renderPosition, stepAlpha } from "./engine/interpolation.js";
 import { createSfx } from "./engine/audio.js";
+import { createPerfStats } from "./engine/perf-stats.js";
+import { createCountingTransport } from "./engine/counting-transport.js";
+import type { DebugInfo } from "./engine/debug-overlay.js";
+import { createDebugOverlay } from "./engine/debug-overlay.js";
 import type { Transport } from "./engine/transport.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport.js";
@@ -41,6 +44,7 @@ const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
 const inventoryEl = element("#inventory", HTMLElement);
 const inventoryList = element("#inventory-slots", HTMLOListElement);
+const debugEl = element("#debug", HTMLPreElement);
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -75,7 +79,13 @@ function selectTransport(params: URLSearchParams): Transport {
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera();
-const transport = selectTransport(new URLSearchParams(location.search));
+const startParams = new URLSearchParams(location.search);
+const counted = createCountingTransport(selectTransport(startParams), () =>
+  performance.now(),
+);
+const transport = counted.transport;
+const perf = createPerfStats();
+const debugOverlay = createDebugOverlay(debugEl, startParams.has("debug"));
 const sfx = createSfx();
 const nameKey = "world:name";
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
@@ -85,10 +95,8 @@ let roomCode: string | null = null;
 let connecting = false;
 let inventoryOpen = false;
 let errorText = "";
-let lastFrame = performance.now();
-let accumulator = 0;
-let hiddenAt: number | null = null;
-let hiddenFor = 0;
+/** The time (ms, `performance.now()` clock) up to which the simulation has run. */
+let simTime = 0;
 
 function nonEmpty(value: string | null): string | null {
   return value === null || value === "" ? null : value;
@@ -99,6 +107,9 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 const input = createInput(canvas, camera, {
   toggleInventory() {
     if (game !== null) inventoryOpen = !inventoryOpen;
+  },
+  toggleDebug() {
+    debugOverlay.toggle();
   },
 });
 
@@ -144,7 +155,6 @@ async function enterRoom(rawCode: string): Promise<void> {
   game = null;
   copyBtn.hidden = true;
   inventoryOpen = false;
-  accumulator = 0;
   updateStatus();
 
   try {
@@ -178,38 +188,63 @@ async function enterRoom(rawCode: string): Promise<void> {
     history.replaceState({}, "", `${location.pathname}?${params.toString()}`);
 
     game = session;
+    simTime = performance.now();
     updateCamera(camera, game.local);
     copyBtn.hidden = false;
   } catch (error) {
     errorText = error instanceof Error ? error.message : "Unable to join room.";
   } finally {
     connecting = false;
-    lastFrame = performance.now();
     updateStatus();
   }
 }
 
-function frame(now: number): void {
-  const { idleSteps, live } = splitFrameTime(
-    (now - lastFrame) / 1000,
-    hiddenFor,
-  );
-  lastFrame = now;
-  hiddenFor = 0;
+function debugInfo(): DebugInfo {
+  const now = performance.now();
+  const session = game;
+  return {
+    perf: perf.snapshot(now),
+    room:
+      session === null
+        ? null
+        : {
+            net: counted.rates(now),
+            playerCount: session.players.size,
+            remotes: [...session.players.values()]
+              .filter((player) => player !== session.local)
+              .map((player) => ({
+                name: player.name,
+                ageMs: now - player.lastSeen,
+              })),
+          },
+  };
+}
+
+/**
+ * Reads the clock here rather than taking the rAF timestamp: that is the frame start, and key
+ * events handled after it carry later times, which would push them a frame late.
+ */
+function frame(): void {
+  const now = performance.now();
+  const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
   if (game !== null) {
-    catchUpSession(game, idleSteps, now);
-    accumulator += live;
-    while (accumulator >= FIXED_DT) {
-      updateSession(game, input.getControls(), FIXED_DT, now);
-      accumulator -= FIXED_DT;
-    }
+    const session = game;
+    const updateStart = performance.now();
+    const advanced = advanceSim(simTime, now, (until) => {
+      updateSession(session, input.getControls(until), FIXED_DT, until);
+    });
+    simTime = advanced.simTime;
+    frameStats.steps = advanced.steps;
+    frameStats.updateMs = performance.now() - updateStart;
 
-    const alpha = stepAlpha(accumulator, FIXED_DT);
-    sendState(game, transport, now);
-    updateCamera(camera, renderPosition(game.local, alpha));
-    draw(ctx, game, camera, now, alpha, input.mouseWorld());
-    updateInventory(game.local.inventory, inventoryOpen);
+    const alpha = stepAlpha(now - simTime, STEP_LIMITS.dtMs);
+    sendState(session, transport, now);
+    updateCamera(camera, renderPosition(session.local, alpha));
+    const drawStart = performance.now();
+    draw(ctx, session, camera, now, alpha, input.mouseWorld());
+    frameStats.drawMs = performance.now() - drawStart;
+    updateInventory(session.local.inventory, inventoryOpen);
   } else {
     inventoryEl.hidden = true;
     ctx.fillStyle = "#090b0e";
@@ -217,6 +252,8 @@ function frame(now: number): void {
   }
 
   updateStatus();
+  perf.recordFrame(frameStats);
+  debugOverlay.update(now, debugInfo);
   requestAnimationFrame(frame);
 }
 
@@ -246,15 +283,9 @@ copyBtn.addEventListener("click", () => {
   );
 });
 
-// Time spent hidden is caught up by the next frame (see splitFrameTime), not dropped.
+// Hidden time needs no special case: frames resume and catch the simulation up to the clock.
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    hiddenAt = performance.now();
-    return;
-  }
-  if (hiddenAt !== null) hiddenFor += (performance.now() - hiddenAt) / 1000;
-  hiddenAt = null;
-  if (game !== null) sayHello(game);
+  if (!document.hidden && game !== null) sayHello(game);
 });
 
 window.addEventListener("beforeunload", () => {
