@@ -1,10 +1,6 @@
 import "./engine/style.css";
-import {
-  FIXED_DT,
-  MAX_FRAME_S,
-  NetEvent,
-  PLAYER_NAME_MAX,
-} from "./engine/config.js";
+import { FIXED_DT, NetEvent, PLAYER_NAME_MAX } from "./engine/config.js";
+import { STEP_LIMITS, advanceSim } from "./engine/sim-clock.js";
 import type { Session } from "./engine/session.js";
 import {
   createSession,
@@ -99,8 +95,8 @@ let roomCode: string | null = null;
 let connecting = false;
 let inventoryOpen = false;
 let errorText = "";
-let lastFrame = performance.now();
-let accumulator = 0;
+/** The time (ms, `performance.now()` clock) up to which the simulation has run. */
+let simTime = 0;
 
 function nonEmpty(value: string | null): string | null {
   return value === null || value === "" ? null : value;
@@ -159,7 +155,6 @@ async function enterRoom(rawCode: string): Promise<void> {
   game = null;
   copyBtn.hidden = true;
   inventoryOpen = false;
-  accumulator = 0;
   updateStatus();
 
   try {
@@ -193,13 +188,13 @@ async function enterRoom(rawCode: string): Promise<void> {
     history.replaceState({}, "", `${location.pathname}?${params.toString()}`);
 
     game = session;
+    simTime = performance.now();
     updateCamera(camera, game.local);
     copyBtn.hidden = false;
   } catch (error) {
     errorText = error instanceof Error ? error.message : "Unable to join room.";
   } finally {
     connecting = false;
-    lastFrame = performance.now();
     updateStatus();
   }
 }
@@ -225,28 +220,31 @@ function debugInfo(): DebugInfo {
   };
 }
 
-function frame(now: number): void {
-  const elapsed = Math.min((now - lastFrame) / 1000, MAX_FRAME_S);
-  lastFrame = now;
+/**
+ * Reads the clock here rather than taking the rAF timestamp: that is the frame start, and key
+ * events handled after it carry later times, which would push them a frame late.
+ */
+function frame(): void {
+  const now = performance.now();
   const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
   if (game !== null) {
-    accumulator += elapsed;
+    const session = game;
     const updateStart = performance.now();
-    while (accumulator >= FIXED_DT) {
-      updateSession(game, input.getControls(now), FIXED_DT, now);
-      accumulator -= FIXED_DT;
-      frameStats.steps++;
-    }
+    const advanced = advanceSim(simTime, now, (until) => {
+      updateSession(session, input.getControls(until), FIXED_DT, until);
+    });
+    simTime = advanced.simTime;
+    frameStats.steps = advanced.steps;
     frameStats.updateMs = performance.now() - updateStart;
 
-    const alpha = stepAlpha(accumulator, FIXED_DT);
-    sendState(game, transport, now);
-    updateCamera(camera, renderPosition(game.local, alpha));
+    const alpha = stepAlpha(now - simTime, STEP_LIMITS.dtMs);
+    sendState(session, transport, now);
+    updateCamera(camera, renderPosition(session.local, alpha));
     const drawStart = performance.now();
-    draw(ctx, game, camera, now, alpha, input.mouseWorld());
+    draw(ctx, session, camera, now, alpha, input.mouseWorld());
     frameStats.drawMs = performance.now() - drawStart;
-    updateInventory(game.local.inventory, inventoryOpen);
+    updateInventory(session.local.inventory, inventoryOpen);
   } else {
     inventoryEl.hidden = true;
     ctx.fillStyle = "#090b0e";
@@ -286,9 +284,7 @@ copyBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
-  accumulator = 0;
-  lastFrame = performance.now();
-  if (game !== null && !document.hidden) sayHello(game);
+  if (!document.hidden && game !== null) sayHello(game);
 });
 
 window.addEventListener("beforeunload", () => {
