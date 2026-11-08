@@ -1,44 +1,3 @@
-import { AbilitySlot } from "./config.js";
-import { CLASS_DEFS } from "./classes/index.js";
-
-const SLOTS = Object.values(AbilitySlot);
-
-export function createAbilityUseDetector() {
-  let previous = {
-    [AbilitySlot.PRIMARY]: 0,
-    [AbilitySlot.SECONDARY]: 0,
-  };
-
-  let previousClassId = null;
-
-  return function detectAbilityUse(player) {
-    if (!player || player.classId !== previousClassId) {
-      previousClassId = player?.classId ?? null;
-
-      previous = Object.fromEntries(
-        SLOTS.map((slot) => [slot, player?.cooldowns[slot] ?? 0]),
-      );
-
-      return [];
-    }
-
-    const used = [];
-    const definition = CLASS_DEFS[player.classId];
-
-    for (const slot of SLOTS) {
-      const cooldown = player.cooldowns[slot];
-
-      if (definition[slot] && cooldown > previous[slot]) {
-        used.push(slot);
-      }
-
-      previous[slot] = cooldown;
-    }
-
-    return used;
-  };
-}
-
 
 // -----------------------------------------------------------------------------
 // Audio
@@ -87,6 +46,7 @@ export function createSfx() {
 
   // ID -> active looping sound
   const activeLoops = new Map();
+  const pendingLoops = new Map();
 
 
   function getAudioContext() {
@@ -138,7 +98,7 @@ export function createSfx() {
     // after a user interaction.
     await context.resume();
 
-    const mix = spatialMix(origin, listener);
+    let mix = spatialMix(origin, listener);
 
     const source = context.createBufferSource();
     const gain = context.createGain();
@@ -157,6 +117,13 @@ export function createSfx() {
     source.start();
 
     let stopped = false;
+
+    source.onended = () => {
+      stopped = true;
+      source.disconnect();
+      gain.disconnect();
+      panner.disconnect();
+    };
 
     const handle = {
       stop(fadeTime = 0.1) {
@@ -186,19 +153,20 @@ export function createSfx() {
       setVolume(value) {
         if (stopped) return;
 
-        gain.gain.value = mix.volume * value;
+        volume = value;
+        gain.gain.value = mix.volume * volume;
       },
 
       setPosition(newOrigin, newListener) {
         if (stopped) return;
 
-        const newMix = spatialMix(
+        mix = spatialMix(
           newOrigin,
           newListener,
         );
 
-        gain.gain.value = newMix.volume * volume;
-        panner.pan.value = newMix.pan;
+        gain.gain.value = mix.volume * volume;
+        panner.pan.value = mix.pan;
       },
     };
 
@@ -216,23 +184,35 @@ export function createSfx() {
     // If this ID is already playing, stop the old one.
     stop(id);
 
-    const handle = await play(
-      url,
-      origin,
-      listener,
-      {
-        ...options,
-        loop: true,
-      },
-    );
+    const request = Symbol();
+    pendingLoops.set(id, request);
 
-    activeLoops.set(id, handle);
+    try {
+      const handle = await play(
+        url,
+        origin,
+        listener,
+        {
+          ...options,
+          loop: true,
+        },
+      );
 
-    return handle;
+      if (pendingLoops.get(id) !== request) {
+        handle.stop(0);
+        return;
+      }
+
+      activeLoops.set(id, handle);
+      return handle;
+    } finally {
+      if (pendingLoops.get(id) === request) pendingLoops.delete(id);
+    }
   }
 
 
   function stop(id, fadeTime = 0.1) {
+    pendingLoops.delete(id);
     const handle = activeLoops.get(id);
 
     if (!handle) return;
@@ -243,6 +223,7 @@ export function createSfx() {
 
 
   function stopAll(fadeTime = 0.1) {
+    pendingLoops.clear();
     for (const handle of activeLoops.values()) {
       handle.stop(fadeTime);
     }
@@ -251,27 +232,11 @@ export function createSfx() {
   }
 
 
-  async function playAbility(event, listener) {
-    const ability = CLASS_DEFS[event.classId][event.slot];
-
-    if (!ability?.sound) return;
-
-    return play(
-      ability.sound,
-      event,
-      listener,
-      {
-        volume: ability.volume ?? 1,
-      },
-    );
-  }
-
 
   return {
     play,
     playLoop,
     stop,
     stopAll,
-    playAbility,
   };
 }

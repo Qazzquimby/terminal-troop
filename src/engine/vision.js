@@ -1,5 +1,4 @@
 import { VISION_RAYS } from "./config.js";
-import { CLASS_DEFS } from "./classes/index.js";
 import { isSolid } from "./map.js";
 
 export function castRay(map, x, y, dx, dy, maxDist) {
@@ -48,27 +47,22 @@ export function visionOrigins(game, viewer) {
   ];
 }
 
-export function xrayRadius(viewer) {
-  return CLASS_DEFS[viewer.classId].xrayRadius?.(viewer) ?? 0;
-}
-
 export function canSeePoint(game, viewer, point) {
-  const radius = xrayRadius(viewer);
-  if (radius > 0 && Math.hypot(point.x - viewer.x, point.y - viewer.y) <= radius) {
-    return true;
-  }
   return visionOrigins(game, viewer).some((origin) =>
     hasLineOfSight(game.world.map, origin, point),
   );
 }
 
 export function canSee(game, viewer, target) {
-  const def = CLASS_DEFS[viewer.classId];
-  return def.senses?.(viewer, target, game) || canSeePoint(game, viewer, target);
+  return canSeePoint(game, viewer, target);
 }
 
-export function visibilityPolygon(map, origin, rayCount = VISION_RAYS) {
-  const maxDist = Math.hypot(map.cols * map.cell, map.rows * map.cell);
+export function visibilityPolygon(
+  map,
+  origin,
+  rayCount = VISION_RAYS,
+  maxDist = Math.hypot(map.cols * map.cell, map.rows * map.cell),
+) {
   const points = [];
 
   for (let i = 0; i < rayCount; i++) {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Terminal-Troop</title>
+    <title>World Prototype</title>
   </head>
   <body>
     <main class="app">
@@ -22,18 +22,15 @@
         <div class="play-area">
           <div class="canvas-wrap">
             <canvas id="game" width="900" height="600"></canvas>
-            <div id="round-banner" class="round-banner" hidden></div>
+            <p class="controls-hint">WASD / arrows to move · Tab to toggle inventory</p>
           </div>
         </div>
-        <aside class="sidebar">
-          <h2>Scoreboard</h2>
-          <p id="round-timer" class="round-timer"></p>
-          <ol id="scoreboard"></ol>
-          <div id="ability-hud" class="ability-hud" hidden></div>
-          <div id="class-picker" class="class-picker"></div>
+        <aside id="inventory" class="inventory" hidden aria-labelledby="inventory-title">
+          <h2 id="inventory-title">Inventory</h2>
+          <ol id="inventory-slots"></ol>
         </aside>
       </section>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/bootstrap.js"></script>
   </body>
 </html>

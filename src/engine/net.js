@@ -33,6 +33,7 @@ export async function leaveRoom() {
   }
   channel = null;
   roomCode = null;
+  localId = null;
 }
 
 export async function joinRoom(code, id, handlers, onSubscribed) {
@@ -45,7 +46,7 @@ export async function joinRoom(code, id, handlers, onSubscribed) {
   }
   localId = id;
 
-  channel = supabase.channel(`dot-duel:${roomCode}`, {
+  channel = supabase.channel(`world-v1:${roomCode}`, {
     config: { broadcast: { self: false } },
   });
 
@@ -53,9 +54,28 @@ export async function joinRoom(code, id, handlers, onSubscribed) {
     channel.on("broadcast", { event }, ({ payload }) => handler(payload));
   }
 
-  await channel.subscribe((status) => {
-    if (status === "SUBSCRIBED") onSubscribed(roomCode);
-  });
+  const joinedChannel = channel;
+
+  try {
+    await new Promise((resolve, reject) => {
+      joinedChannel.subscribe((status) => {
+        if (channel !== joinedChannel) return;
+        if (status === "SUBSCRIBED") {
+          onSubscribed(roomCode);
+          resolve();
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          reject(new Error(`Room connection failed: ${status}`));
+        }
+      });
+    });
+  } catch (error) {
+    await leaveRoom();
+    throw error;
+  }
 
   history.replaceState({}, "", `${location.pathname}?room=${roomCode}`);
 }

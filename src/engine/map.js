@@ -3,9 +3,6 @@ import {MAP_CELL} from "./config.js";
 const EPSILON = 1e-6;
 
 // Tuning
-const CELLS_PER_PLAYER = 75 //65;
-const MIN_CELLS = 150;
-const ASPECT = 1.5;            // width : height
 const CHUNK = 6;               // chunk size in cells (only used to spread obstacles out)
 const GAP = 1;                 // min free cells between any two obstacles / the border
 
@@ -44,13 +41,6 @@ export function mulberry32(seed) {
     };
 }
 
-/** World size in pixels for a given player count. */
-export function getWorldSize(playerCount) {
-    const area = Math.max(MIN_CELLS, playerCount * CELLS_PER_PLAYER);
-    const cols = Math.round(Math.sqrt(area * ASPECT));
-    const rows = Math.round(area / cols);
-    return {cols, rows};
-}
 
 function transform(shape, rot, mirror) {
     let cells = shape.map(([c, r]) => [mirror ? -c : c, r]);
@@ -190,39 +180,6 @@ export function isAreaFree(map, x, y, half) {
     return true;
 }
 
-export const TRAIL_S = 2;
-
-export function recordTrails(trails, game, now) {
-    const {cell, cols} = game.world.map;
-    for (const player of game.players.values()) {
-        if (player.status !== 0 || player.id === game.localId) continue;
-        const col = Math.floor(player.x / cell);
-        const row = Math.floor(player.y / cell);
-        if (col >= 0 && row >= 0 && col < game.world.map.cols && row < game.world.map.rows) {
-            trails.set(row * cols + col, now);
-        }
-    }
-    for (const [index, at] of trails) {
-        if (now - at > TRAIL_S * 1000) trails.delete(index);
-    }
-}
-
-export function trailStrength(trails, map, x, y, now) {
-    const col = Math.floor(x / map.cell);
-    const row = Math.floor(y / map.cell);
-    if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return 0;
-    const at = trails.get(row * map.cols + col);
-    return at === undefined ? 0 : Math.max(0, 1 - (now - at) / (TRAIL_S * 1000));
-}
-
-export function* trailTiles(trails, map, now) {
-    for (const [index, at] of trails) {
-        const strength = Math.max(0, 1 - (now - at) / (TRAIL_S * 1000));
-        if (strength > 0) {
-            yield {col: index % map.cols, row: Math.floor(index / map.cols), strength};
-        }
-    }
-}
 
 export function randomFreePosition(world, clearance) {
     const {W, H, map} = world;
