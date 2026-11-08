@@ -95,10 +95,11 @@ test("remote players are smoothed toward their latest reported position", async 
 test("state sends are throttled unless forced", async () => {
   const a = await client("a");
   const b = await client("b");
+  const sentX = a.session.local.x;
   sendState(a.session, a.transport, 1000, true);
   a.session.local.x += 5;
   sendState(a.session, a.transport, 1001);
   await flush();
 
-  expect(b.session.players.get("a")?.tx).toBe(a.session.local.x - 5);
+  expect(b.session.players.get("a")?.tx).toBe(sentX);
 });
