@@ -20,6 +20,12 @@ const NO_EXPORT_STAR = [
   },
 ];
 
+const NO_REDUCE = ["reduce", "reduceRight"].map((name) => ({
+  selector: `CallExpression[callee.property.name='${name}']`,
+  message:
+    "reduce obscures intent: use map/filter/Object.fromEntries/a loop, or a lodash-es helper (sum, groupBy, keyBy, ...).",
+}));
+
 const TEST_SOURCE = ["tests/**"];
 
 export default tseslint.config(
@@ -57,7 +63,12 @@ export default tseslint.config(
         "error",
         { assertionStyle: "never" },
       ],
-      "no-restricted-syntax": ["error", ...NO_EXPORT_STAR, ...NO_PREDICATES],
+      "no-restricted-syntax": [
+        "error",
+        ...NO_EXPORT_STAR,
+        ...NO_PREDICATES,
+        ...NO_REDUCE,
+      ],
       "@typescript-eslint/strict-boolean-expressions": [
         "error",
         {
@@ -72,6 +83,10 @@ export default tseslint.config(
   {
     files: ["**/*.js"],
     ...tseslint.configs.disableTypeChecked,
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      "no-restricted-syntax": ["error", ...NO_REDUCE],
+    },
   },
   {
     // A focused or skipped test quietly shrinks the gate. it.fails stays legal: it runs, and
