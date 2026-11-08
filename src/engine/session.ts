@@ -10,7 +10,7 @@ import {
 import type { Sfx } from "./audio.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { updateEntities } from "./entities.js";
-import type { Interpolated } from "./interpolation.js";
+import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { World } from "./map.js";
 import { buildWorld, isAreaFree, mulberry32 } from "./map.js";
@@ -72,7 +72,7 @@ export function createSession(
 }
 
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
-function movingBodies(game: Session): Interpolated[] {
+function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
 }
 
@@ -120,6 +120,7 @@ export function receiveState(game: Session, payload: unknown): void {
     player = createPlayer(state.id, state.name, game.world);
     player.x = state.x;
     player.y = state.y;
+    player.aim = state.aim;
     snapPrevious(player);
     game.players.set(state.id, player);
   }
@@ -127,6 +128,6 @@ export function receiveState(game: Session, payload: unknown): void {
   player.name = state.name;
   player.tx = state.x;
   player.ty = state.y;
-  player.aim = state.aim;
+  player.taim = state.aim;
   player.lastSeen = performance.now();
 }

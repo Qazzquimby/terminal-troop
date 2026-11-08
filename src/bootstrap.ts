@@ -202,7 +202,7 @@ function frame(now: number): void {
     const alpha = stepAlpha(accumulator, FIXED_DT);
     sendState(game, transport, now);
     updateCamera(camera, renderPosition(game.local, alpha));
-    draw(ctx, game, camera, now, alpha);
+    draw(ctx, game, camera, now, alpha, input.mouseWorld());
     updateInventory(game.local.inventory, inventoryOpen);
   } else {
     inventoryEl.hidden = true;
