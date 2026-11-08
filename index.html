@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tag</title>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <div class="room-controls">
+          <input id="name" maxlength="8" placeholder="NAME" autocomplete="off" />
+          <button id="create">Create room</button>
+          <input id="room" maxlength="8" placeholder="ROOM CODE" autocomplete="off" />
+          <button id="join">Join</button>
+          <button id="copy" hidden>Copy link</button>
+        </div>
+        <p id="status">Create a room to start.</p>
+      </header>
+
+      <section id="game-wrap" class="game-wrap">
+        <div class="play-area">
+          <div class="canvas-wrap">
+            <canvas id="game" width="900" height="600"></canvas>
+            <div id="round-banner" class="round-banner" hidden></div>
+          </div>
+        </div>
+        <aside class="sidebar">
+          <h2>Scoreboard</h2>
+          <p id="round-timer" class="round-timer"></p>
+          <ol id="scoreboard"></ol>
+          <div id="ability-hud" class="ability-hud" hidden></div>
+          <div id="class-picker" class="class-picker"></div>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
