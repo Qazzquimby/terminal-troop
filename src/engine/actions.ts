@@ -42,9 +42,16 @@ export function createActionState() {
     BINDINGS[action].some((code) => keys.has(code));
 
   return {
-    /** Returns the actions this key newly pressed (edge-triggered, ignores repeat). */
+    /**
+     * Returns the actions this key newly pressed (edge-triggered). A repeat only
+     * restores a key still held after blur: it is held again but not pressed.
+     */
     keyDown(code: string, repeat: boolean): Action[] {
-      if (repeat || keys.has(code)) return [];
+      if (keys.has(code)) return [];
+      if (repeat) {
+        keys.add(code);
+        return [];
+      }
       const fresh = actionsFor(code).filter((action) => !isHeld(action));
       keys.add(code);
       for (const action of fresh) pressed.add(action);

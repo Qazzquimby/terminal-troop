@@ -52,6 +52,24 @@ test("key repeat does not press again", () => {
   expect(step(state).frame.pressed.size).toBe(0);
 });
 
+test("a key still held after blur resumes on auto-repeat without a press", () => {
+  const state = holding("KeyD");
+  step(state);
+  state.clear();
+  step(state);
+  expect(state.keyDown("KeyD", true)).toEqual([]);
+  const { frame, controls } = step(state);
+  expect(frame.held.has("moveRight")).toBe(true);
+  expect(frame.pressed.size).toBe(0);
+  expect(controls.move).toEqual({ x: 1, y: 0 });
+});
+
+test("a repeat for an untracked UI key returns no fresh actions", () => {
+  const state = createActionState();
+  expect(state.keyDown("Tab", true)).toEqual([]);
+  expect(step(state).frame.pressed.size).toBe(0);
+});
+
 test("releasing one of two keys bound to an action keeps it held", () => {
   const state = holding("ShiftLeft");
   expect(state.keyDown("ShiftRight", false)).toEqual([]);
