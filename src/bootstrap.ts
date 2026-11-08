@@ -179,7 +179,7 @@ async function enterRoom(rawCode: string): Promise<void> {
     history.replaceState({}, "", `${location.pathname}?${params.toString()}`);
 
     game = session;
-    updateCamera(camera, game.local, game.world);
+    updateCamera(camera, game.local);
     copyBtn.hidden = false;
   } catch (error) {
     errorText = error instanceof Error ? error.message : "Unable to join room.";
@@ -203,7 +203,7 @@ function frame(now: number): void {
 
     const alpha = stepAlpha(accumulator, FIXED_DT);
     sendState(game, transport, now);
-    updateCamera(camera, renderPosition(game.local, alpha), game.world);
+    updateCamera(camera, renderPosition(game.local, alpha));
     draw(ctx, game, camera, now, alpha, input.mouseWorld());
     updateInventory(game.local.inventory, inventoryOpen);
   } else {

@@ -23,14 +23,8 @@ function mapWithCenterWall(): TileMap {
 
 test("camera centers its target even at the world boundary", () => {
   const camera = createCamera();
-  updateCamera(camera, { x: 14, y: 14 }, { W: 8000, H: 6000 });
+  updateCamera(camera, { x: 14, y: 14 });
   expect(camera).toEqual({ x: 14 - VIEW_W / 2, y: 14 - VIEW_H / 2 });
-});
-
-test("camera centres a world that fits the view", () => {
-  const camera = createCamera();
-  updateCamera(camera, { x: 14, y: 14 }, { W: VIEW_W, H: VIEW_H });
-  expect(camera).toEqual({ x: 0, y: 0 });
 });
 
 test("map generation is reproducible from a seed", () => {
