@@ -15,6 +15,8 @@ export const WORLD_SEED = 1;
 export const VIEW_W = 900;
 export const VIEW_H = 600;
 export const VISION_RAYS = 360;
+export const PLAYER_VISION_ANGLE = Math.PI / 2;
+export const PLAYER_LIGHT_RANGE = MAP_CELL * 4;
 
 export const PLAYER_RADIUS = 14;
 export const PLAYER_SPEED = 220;

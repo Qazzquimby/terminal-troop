@@ -8,6 +8,7 @@ import type { VisionSource } from "../src/engine/vision.js";
 import {
   canSeeFrom,
   hasLineOfSight,
+  isVisible,
   visibilityPolygon,
 } from "../src/engine/vision.js";
 
@@ -136,6 +137,88 @@ test("omnidirectional polygons retain the full circle", () => {
   expect(points[0]).toEqual({ x: 190, y: 150 });
   expect(points[2]?.x).toBeCloseTo(110);
   expect(points[2]?.y).toBeCloseTo(150);
+});
+
+test("visibility requires both vision and illumination", () => {
+  const map = emptyMap();
+  const source: VisionSource = {
+    x: 75,
+    y: 125,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+  const lights = [{ x: 75, y: 125, range: 50 }];
+
+  expect(isVisible(map, [source], [], { x: 100, y: 125 })).toBe(false);
+  expect(isVisible(map, [], lights, { x: 100, y: 125 })).toBe(false);
+  expect(isVisible(map, [source], lights, { x: 100, y: 125 })).toBe(true);
+  expect(isVisible(map, [source], lights, { x: 150, y: 125 })).toBe(false);
+  expect(isVisible(map, [source], lights, { x: 50, y: 125 })).toBe(false);
+});
+
+test("a narrow light extends illumination without widening vision", () => {
+  const source: VisionSource = {
+    x: 75,
+    y: 150,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+  const innate = { ...source, range: 40 };
+  const flashlight = {
+    x: source.x,
+    y: source.y,
+    shape: { kind: "cone" as const, direction: 0, angle: Math.PI / 6 },
+    range: 150,
+  };
+  const map = emptyMap();
+
+  expect(isVisible(map, [source], [innate], { x: 175, y: 150 })).toBe(false);
+  expect(
+    isVisible(map, [source], [innate, flashlight], { x: 175, y: 150 }),
+  ).toBe(true);
+  expect(
+    isVisible(map, [source], [innate, flashlight], { x: 175, y: 200 }),
+  ).toBe(false);
+});
+
+test("walls can block illumination without blocking the viewer", () => {
+  const map = mapWithCenterWall();
+  const source = { x: 175, y: 75 };
+  const light = { x: 75, y: 125, range: 250 };
+  const point = { x: 175, y: 125 };
+
+  expect(canSeeFrom(map, source, point)).toBe(true);
+  expect(isVisible(map, [source], [light], point)).toBe(false);
+  expect(
+    isVisible(map, [source], [light, { ...point, range: 25 }], point),
+  ).toBe(true);
+});
+
+test("rays cannot leak through a wall corner in either direction", () => {
+  const map = mapWithCenterWall();
+  const first = { x: 75, y: 125 };
+  const second = { x: 125, y: 75 };
+
+  expect(hasLineOfSight(map, first, second)).toBe(false);
+  expect(hasLineOfSight(map, second, first)).toBe(false);
+});
+
+test("visibility polygons sample obstacle corners between regular rays", () => {
+  const source: VisionSource = {
+    x: 75,
+    y: 125,
+    range: 150,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+
+  const points = visibilityPolygon(mapWithCenterWall(), source, 8);
+  const cornerAngle = Math.atan2(-25, 75);
+  const nearCorner = points.filter((point) => {
+    const dx = point.x - source.x;
+    const dy = point.y - source.y;
+    return Math.hypot(dx, dy) > 0 &&
+      Math.abs(Math.atan2(dy, dx) - cornerAngle) < 1e-6;
+  });
+
+  expect(nearCorner.length).toBeGreaterThanOrEqual(3);
 });
 
 test("visibility is blocked by walls", () => {
