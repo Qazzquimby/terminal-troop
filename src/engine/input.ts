@@ -1,23 +1,11 @@
+import type { Action } from "./actions.js";
+import { actionsFor, createActionState, toControls } from "./actions.js";
 import { VIEW_H, VIEW_W } from "./config.js";
 import type { Point } from "./map.js";
 import type { Controls } from "./player.js";
 
-interface InputActions {
-  toggleInventory: () => void;
-}
-
-const HELD_KEYS = new Set([
-  "KeyW",
-  "KeyA",
-  "KeyS",
-  "KeyD",
-  "ArrowUp",
-  "ArrowLeft",
-  "ArrowDown",
-  "ArrowRight",
-  "ShiftLeft",
-  "ShiftRight",
-]);
+/** UI actions fire immediately on press, outside the simulation step. */
+type UiActions = Partial<Record<Action, () => void>>;
 
 function isTyping(event: KeyboardEvent): boolean {
   return (
@@ -30,9 +18,9 @@ function isTyping(event: KeyboardEvent): boolean {
 export function createInput(
   canvas: HTMLCanvasElement,
   camera: Point,
-  actions: InputActions,
+  uiActions: UiActions,
 ): { getControls: () => Controls } {
-  const keys = new Set<string>();
+  const state = createActionState();
   const mouse = { x: VIEW_W / 2, y: VIEW_H / 2 };
 
   canvas.addEventListener("pointermove", (event) => {
@@ -42,43 +30,27 @@ export function createInput(
   });
 
   window.addEventListener("keydown", (event) => {
-    if (isTyping(event)) return;
-
-    if (event.code === "Tab") {
-      event.preventDefault();
-      if (!event.repeat) actions.toggleInventory();
-      return;
-    }
-
-    if (HELD_KEYS.has(event.code)) {
-      event.preventDefault();
-      keys.add(event.code);
+    if (isTyping(event) || actionsFor(event.code).length === 0) return;
+    event.preventDefault();
+    for (const action of state.keyDown(event.code, event.repeat)) {
+      uiActions[action]?.();
     }
   });
 
-  window.addEventListener("keyup", (event) => keys.delete(event.code));
+  window.addEventListener("keyup", (event) => {
+    state.keyUp(event.code);
+  });
   window.addEventListener("blur", () => {
-    keys.clear();
+    state.clear();
   });
-
-  const held = (...codes: string[]): number =>
-    Number(codes.some((code) => keys.has(code)));
 
   return {
+    /** Call once per simulation step: pressed actions are delivered to exactly one step. */
     getControls() {
-      let x = held("KeyD", "ArrowRight") - held("KeyA", "ArrowLeft");
-      let y = held("KeyS", "ArrowDown") - held("KeyW", "ArrowUp");
-      const length = Math.hypot(x, y);
-      if (length > 0) {
-        x /= length;
-        y /= length;
-      }
-
-      return {
-        move: { x, y },
-        aim: { x: mouse.x + camera.x, y: mouse.y + camera.y },
-        sprint: keys.has("ShiftLeft") || keys.has("ShiftRight"),
-      };
+      return toControls(state.consume(), {
+        x: mouse.x + camera.x,
+        y: mouse.y + camera.y,
+      });
     },
   };
 }
