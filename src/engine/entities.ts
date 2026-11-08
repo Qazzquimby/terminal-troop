@@ -1,8 +1,9 @@
 import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
+import type { Interpolated } from "./interpolation.js";
 import type { Session } from "./session.js";
 
-export interface WorldEntity extends Body {
+export interface WorldEntity extends Body, Interpolated {
   readonly id: string;
   readonly kind: number;
   radius: number;
@@ -54,6 +55,8 @@ export function spawnEntity(
     kind,
     x,
     y,
+    prevX: x,
+    prevY: y,
     vx: 0,
     vy: 0,
     radius: definition.radius,

@@ -8,6 +8,8 @@ import {
 } from "./config.js";
 import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
+import type { Facing, Interpolated } from "./interpolation.js";
+import { lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { Inventory } from "./inventory.js";
@@ -21,14 +23,15 @@ export interface Controls {
   readonly sprint: boolean;
 }
 
-export interface Player extends Body {
+export interface Player extends Body, Interpolated, Facing {
   readonly id: string;
   readonly kind: typeof EntityKind.PLAYER;
   name: string;
   /** Network target position; remote players are smoothed towards it. */
   tx: number;
   ty: number;
-  aim: number;
+  /** Network target facing; remote players turn towards it along the shortest arc. */
+  taim: number;
   radius: number;
   lastSeen: number;
   inventory: Inventory;
@@ -51,11 +54,15 @@ export function createPlayer(id: string, name: string, world: World): Player {
     name,
     kind: EntityKind.PLAYER,
     ...position,
+    prevX: position.x,
+    prevY: position.y,
     tx: position.x,
     ty: position.y,
     vx: 0,
     vy: 0,
     aim: 0,
+    prevAim: 0,
+    taim: 0,
     radius: PLAYER_RADIUS,
     lastSeen: performance.now(),
     inventory: createInventory(INVENTORY_SLOTS),
@@ -86,14 +93,20 @@ export function updatePlayer(
     player.vy += (dy / distance) * change;
   }
 
-  player.aim = Math.atan2(controls.aim.y - player.y, controls.aim.x - player.x);
+  player.aim = aimAt(player, controls.aim);
   moveWithCollision(player, player.radius, dt, map);
+}
+
+/** The facing, in radians, from `from` towards `target`. */
+export function aimAt(from: Point, target: Point): number {
+  return Math.atan2(target.y - from.y, target.x - from.x);
 }
 
 export function smoothPlayer(player: Player, dt: number): void {
   const amount = 1 - Math.exp(-12 * dt);
   player.x += (player.tx - player.x) * amount;
   player.y += (player.ty - player.y) * amount;
+  player.aim = lerpAngle(player.aim, player.taim, amount);
 }
 
 export function playerState(player: Player): PlayerState {

@@ -19,9 +19,14 @@ export function createInput(
   canvas: HTMLCanvasElement,
   camera: Point,
   uiActions: UiActions,
-): { getControls: () => Controls } {
+): { getControls: () => Controls; mouseWorld: () => Point } {
   const state = createActionState();
   const mouse = { x: VIEW_W / 2, y: VIEW_H / 2 };
+  /** The mouse in world space, through the camera as it currently stands. */
+  const mouseWorld = (): Point => ({
+    x: mouse.x + camera.x,
+    y: mouse.y + camera.y,
+  });
 
   canvas.addEventListener("pointermove", (event) => {
     const rect = canvas.getBoundingClientRect();
@@ -47,10 +52,9 @@ export function createInput(
   return {
     /** Call once per simulation step: pressed actions are delivered to exactly one step. */
     getControls() {
-      return toControls(state.consume(), {
-        x: mouse.x + camera.x,
-        y: mouse.y + camera.y,
-      });
+      return toControls(state.consume(), mouseWorld());
     },
+    /** Reads the mouse without consuming input; safe to call from render. */
+    mouseWorld,
   };
 }
