@@ -2,7 +2,13 @@ import { VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
 import type { Point, World } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
-import { canSeePoint, visibilityPolygon, visionOrigins } from "./vision.js";
+import type { VisionSource } from "./vision.js";
+import {
+  isVisible,
+  lightSources,
+  visibilityPolygon,
+  visionOrigins,
+} from "./vision.js";
 
 interface Circle extends Point {
   readonly radius: number;
@@ -81,38 +87,44 @@ function drawPlayer(
   ctx.fillText(player.name, player.x, player.y - player.radius - 8);
 }
 
-function drawShade(
+function clipSources(
   ctx: CanvasRenderingContext2D,
   game: Session,
-  viewer: Player,
+  sources: readonly VisionSource[],
   camera: Point,
 ): void {
-  const maxDistance = Math.hypot(VIEW_W, VIEW_H);
-  ctx.save();
+  const path = new Path2D();
 
-  for (const origin of visionOrigins(game, viewer)) {
-    if (!inView({ ...origin, radius: maxDistance }, camera)) continue;
+  for (const source of sources) {
+    const maxDistance = Math.hypot(
+      Math.max(
+        Math.abs(source.x - camera.x),
+        Math.abs(source.x - camera.x - VIEW_W),
+      ),
+      Math.max(
+        Math.abs(source.y - camera.y),
+        Math.abs(source.y - camera.y - VIEW_H),
+      ),
+    );
+    if (!inView({ ...source, radius: source.range ?? maxDistance }, camera))
+      continue;
+
     const [first, ...rest] = visibilityPolygon(
       game.world.map,
-      origin,
+      source,
       VISION_RAYS,
       maxDistance,
     );
     if (first === undefined) continue;
 
-    const path = new Path2D();
-    path.rect(camera.x, camera.y, VIEW_W, VIEW_H);
     path.moveTo(first.x, first.y);
     rest.forEach((point) => {
       path.lineTo(point.x, point.y);
     });
     path.closePath();
-    ctx.clip(path, "evenodd");
   }
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
-  ctx.fillRect(camera.x, camera.y, VIEW_W, VIEW_H);
-  ctx.restore();
+  ctx.clip(path);
 }
 
 export function draw(
@@ -122,17 +134,24 @@ export function draw(
   now: number,
 ): void {
   const viewer = game.local;
+  const sources = visionOrigins(game, viewer);
+  const lights = lightSources(game, viewer);
 
-  ctx.fillStyle = "#090b0e";
+  ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
+  clipSources(ctx, game, sources, camera);
+  clipSources(ctx, game, lights, camera);
   drawTerrain(ctx, game.world, camera);
 
   game.entities.forEach((entity) => {
     const definition = game.entityTypes.get(entity.kind);
     if (definition === undefined) return;
-    if (!inView(entity, camera) || !canSeePoint(game, viewer, entity)) return;
+    if (
+      !inView(entity, camera) ||
+      !isVisible(game.world.map, sources, lights, entity)
+    ) return;
     ctx.save();
     definition.draw(ctx, entity, now, game);
     ctx.restore();
@@ -141,10 +160,9 @@ export function draw(
   game.players.forEach((player) => {
     const isSelf = player === viewer;
     if (!inView(player, camera)) return;
-    if (isSelf || canSeePoint(game, viewer, player))
+    if (isSelf || isVisible(game.world.map, sources, lights, player))
       drawPlayer(ctx, player, isSelf);
   });
 
-  drawShade(ctx, game, viewer, camera);
   ctx.restore();
 }
