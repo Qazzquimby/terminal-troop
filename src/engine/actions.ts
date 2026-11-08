@@ -9,6 +9,7 @@ const BINDINGS = {
   moveRight: ["KeyD", "ArrowRight"],
   sprint: ["ShiftLeft", "ShiftRight"],
   toggleInventory: ["Tab"],
+  toggleDebug: ["F3"],
 } as const;
 
 export type Action = keyof typeof BINDINGS;
