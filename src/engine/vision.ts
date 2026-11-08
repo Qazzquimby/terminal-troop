@@ -3,7 +3,7 @@ import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
 
-export type VisionShape =
+type VisionShape =
   | { readonly kind: "omnidirectional" }
   | {
       readonly kind: "cone";
@@ -132,7 +132,8 @@ export function visibilityPolygon(
   maxDist: number = Math.hypot(map.cols * map.cell, map.rows * map.cell),
 ): Point[] {
   const cone = origin.shape?.kind === "cone" ? origin.shape : undefined;
-  const points: Point[] = cone === undefined ? [] : [{ x: origin.x, y: origin.y }];
+  const points: Point[] =
+    cone === undefined ? [] : [{ x: origin.x, y: origin.y }];
   const sweep = cone?.angle ?? Math.PI * 2;
   const start = cone === undefined ? 0 : cone.direction - sweep / 2;
   const count =
@@ -142,7 +143,8 @@ export function visibilityPolygon(
   const limit = Math.min(maxDist, origin.range ?? Infinity);
 
   for (let i = 0; i < count; i++) {
-    const angle = start + (i / (cone === undefined ? count : count - 1)) * sweep;
+    const angle =
+      start + (i / (cone === undefined ? count : count - 1)) * sweep;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     const distance = castRay(map, origin.x, origin.y, dx, dy, limit);
