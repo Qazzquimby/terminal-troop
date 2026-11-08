@@ -1,43 +1,42 @@
-/**
- * @typedef {Object} ItemDefinition
- * @property {string} id
- * @property {string} name
- * @property {number} maxStack
- */
+export interface ItemDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly maxStack: number;
+}
 
-/**
- * @typedef {Object} InventoryStack
- * @property {ItemDefinition} item
- * @property {number} quantity
- */
+/** @public */
+export interface InventoryStack {
+  readonly item: ItemDefinition;
+  quantity: number;
+}
 
-/** @param {number} slotCount */
-export function createInventory(slotCount) {
+export type Inventory = (InventoryStack | null)[];
+
+export function createInventory(slotCount: number): Inventory {
   if (!Number.isInteger(slotCount) || slotCount < 1) {
     throw new RangeError("Inventory size must be a positive integer.");
   }
-  return Array.from({ length: slotCount }, () => /** @type {InventoryStack|null} */ (null));
+  return Array.from({ length: slotCount }, () => null);
 }
 
-function requireQuantity(quantity) {
+function requireQuantity(quantity: number): void {
   if (!Number.isInteger(quantity) || quantity < 1) {
     throw new RangeError("Quantity must be a positive integer.");
   }
 }
 
-/**
- * @param {(InventoryStack|null)[]} inventory
- * @param {ItemDefinition} item
- * @param {number} quantity
- * @returns {number} Quantity that did not fit.
- */
-export function addItem(inventory, item, quantity) {
+/** @public Returns the quantity that did not fit. */
+export function addItem(
+  inventory: Inventory,
+  item: ItemDefinition,
+  quantity: number,
+): number {
   requireQuantity(quantity);
   requireQuantity(item.maxStack);
 
   let remaining = quantity;
   for (const stack of inventory) {
-    if (!stack || stack.item.id !== item.id) continue;
+    if (stack?.item.id !== item.id) continue;
     const added = Math.min(remaining, stack.item.maxStack - stack.quantity);
     stack.quantity += added;
     remaining -= added;
@@ -45,7 +44,7 @@ export function addItem(inventory, item, quantity) {
   }
 
   for (let index = 0; index < inventory.length && remaining > 0; index++) {
-    if (inventory[index]) continue;
+    if (inventory[index] !== null) continue;
     const added = Math.min(remaining, item.maxStack);
     inventory[index] = { item, quantity: added };
     remaining -= added;
@@ -54,20 +53,19 @@ export function addItem(inventory, item, quantity) {
   return remaining;
 }
 
-/**
- * @param {(InventoryStack|null)[]} inventory
- * @param {number} slot
- * @param {number} quantity
- * @returns {number} Quantity removed.
- */
-export function removeItem(inventory, slot, quantity) {
+/** @public Returns the quantity removed. */
+export function removeItem(
+  inventory: Inventory,
+  slot: number,
+  quantity: number,
+): number {
   requireQuantity(quantity);
   if (!Number.isInteger(slot) || slot < 0 || slot >= inventory.length) {
     throw new RangeError("Invalid inventory slot.");
   }
 
   const stack = inventory[slot];
-  if (!stack) return 0;
+  if (stack === null || stack === undefined) return 0;
 
   const removed = Math.min(quantity, stack.quantity);
   stack.quantity -= removed;

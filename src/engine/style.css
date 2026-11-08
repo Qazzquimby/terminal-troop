@@ -1,5 +1,8 @@
-* { box-sizing: border-box; }
-html, body {
+* {
+  box-sizing: border-box;
+}
+html,
+body {
   margin: 0;
   height: 100%;
   background: #090b0e;
@@ -13,14 +16,20 @@ html, body {
   padding: 8px;
   gap: 8px;
 }
-header, .room-controls {
+header,
+.room-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
-#status { margin: 0; color: #aaa; font-size: 14px; }
-button, input {
+#status {
+  margin: 0;
+  color: #aaa;
+  font-size: 14px;
+}
+button,
+input {
   border: 1px solid #444;
   border-radius: 6px;
   padding: 6px 10px;
@@ -28,18 +37,33 @@ button, input {
   color: #eee;
   font: inherit;
 }
-input { width: 130px; }
-#room { text-transform: uppercase; }
-button { cursor: pointer; }
-button:disabled { opacity: 0.5; cursor: wait; }
-button:hover:not(:disabled) { background: #303943; }
-button:focus-visible, input:focus-visible { outline: 2px solid #73cfff; }
+input {
+  width: 130px;
+}
+#room {
+  text-transform: uppercase;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+button:hover:not(:disabled) {
+  background: #303943;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #73cfff;
+}
 .game-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
 }
-.play-area, .canvas-wrap {
+.play-area,
+.canvas-wrap {
   display: flex;
   width: 100%;
   height: 100%;
@@ -47,7 +71,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid #73cfff; }
   align-items: center;
   justify-content: center;
 }
-.canvas-wrap { position: relative; container-type: size; }
+.canvas-wrap {
+  position: relative;
+  container-type: size;
+}
 canvas {
   display: block;
   width: min(100cqw, 150cqh);
@@ -82,7 +109,10 @@ canvas {
   border-radius: 8px;
   background: #12171ff2;
 }
-.inventory h2 { margin: 0 0 12px; font-size: 18px; }
+.inventory h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
 #inventory-slots {
   display: grid;
   gap: 6px;
@@ -97,5 +127,10 @@ canvas {
   padding: 8px;
   background: #222a33;
 }
-.slot-number { width: 20px; color: #8795a5; }
-[hidden] { display: none !important; }
+.slot-number {
+  width: 20px;
+  color: #8795a5;
+}
+[hidden] {
+  display: none !important;
+}

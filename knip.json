@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": ["src/bootstrap.ts"],
+  "project": ["src/**/*.ts", "tests/**/*.ts", "*.js"],
+  "includeEntryExports": true
+}
