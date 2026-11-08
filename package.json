@@ -5,12 +5,33 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --test",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "knip": "knip",
+    "dupes": "jscpd",
+    "format": "prettier --write .",
+    "format-check": "prettier --check .",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm knip && pnpm dupes && pnpm format-check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
-    "vite": "^7.1.0"
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@vitest/eslint-plugin": "^1.6.28",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jscpd": "^5.4.2",
+    "knip": "^6.44.1",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^7.1.0",
+    "vitest": "^5.0.5"
   }
 }

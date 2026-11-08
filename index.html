@@ -9,9 +9,19 @@
     <main class="app">
       <header>
         <div class="room-controls">
-          <input id="name" maxlength="8" placeholder="NAME" autocomplete="off" />
+          <input
+            id="name"
+            maxlength="8"
+            placeholder="NAME"
+            autocomplete="off"
+          />
           <button id="create">Create room</button>
-          <input id="room" maxlength="8" placeholder="ROOM CODE" autocomplete="off" />
+          <input
+            id="room"
+            maxlength="8"
+            placeholder="ROOM CODE"
+            autocomplete="off"
+          />
           <button id="join">Join</button>
           <button id="copy" hidden>Copy link</button>
         </div>
@@ -22,15 +32,22 @@
         <div class="play-area">
           <div class="canvas-wrap">
             <canvas id="game" width="900" height="600"></canvas>
-            <p class="controls-hint">WASD / arrows to move · Tab to toggle inventory</p>
+            <p class="controls-hint">
+              WASD / arrows to move · Tab to toggle inventory
+            </p>
           </div>
         </div>
-        <aside id="inventory" class="inventory" hidden aria-labelledby="inventory-title">
+        <aside
+          id="inventory"
+          class="inventory"
+          hidden
+          aria-labelledby="inventory-title"
+        >
           <h2 id="inventory-title">Inventory</h2>
           <ol id="inventory-slots"></ol>
         </aside>
       </section>
     </main>
-    <script type="module" src="/src/bootstrap.js"></script>
+    <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>

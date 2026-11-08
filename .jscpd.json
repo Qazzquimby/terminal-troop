@@ -1,0 +1,9 @@
+{
+  "path": ["src", "tests"],
+  "format": ["typescript", "javascript"],
+  "minTokens": 50,
+  "threshold": 0,
+  "reporters": ["console"],
+  "gitignore": true,
+  "ignore": ["**/*.test.ts", "**/node_modules/**", "**/dist/**"]
+}
