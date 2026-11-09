@@ -11,6 +11,7 @@ import {
 import type { Session, SimConfig, WorldKind } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 import type { z } from "zod";
+import { electHost } from "./host.js";
 import { createRoster } from "./presence.js";
 import type {
   Presence,
@@ -91,6 +92,12 @@ export interface Room {
   setHidden(hidden: boolean): void;
   /** Undefined for a remote player who is gone, or outside a room. */
   presenceOf(id: string): Presence | undefined;
+  /**
+   * The one player who runs the shared world, the same on every client that hears the same
+   * players; undefined outside a room. Moves as players arrive, leave, go away, or hide or
+   * show their page.
+   */
+  hostId(): string | undefined;
 }
 
 /** A joined room's live parts, shared by its message handlers, its pulse and the frame. */
@@ -206,6 +213,8 @@ export function createRoom(deps: RoomDeps): Room {
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
+        // A STATE counts as heard with the page visible, so a hidden page says otherwise at once.
+        if (hidden) sendHeartbeat();
       }),
       [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
         const change = room.roster.apply(id, { kind: "bye" }, clock.now());
@@ -364,5 +373,17 @@ export function createRoom(deps: RoomDeps): Room {
     },
 
     presenceOf: (id) => link?.roster.get(id),
+
+    hostId() {
+      if (link === null) return undefined;
+      const { roster } = link;
+      return electHost(
+        { id: localId, active: !hidden },
+        [...roster.ids()].map((id) => ({
+          id,
+          active: roster.get(id)?.kind === "present",
+        })),
+      );
+    },
   };
 }

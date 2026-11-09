@@ -269,9 +269,7 @@ function debugInfo(): DebugInfo {
     room:
       session === null
         ? null
-        : roomDebugInfo(session, now, counted.rates(now), (id) =>
-            room.presenceOf(id),
-          ),
+        : roomDebugInfo(session, now, counted.rates(now), room),
   };
 }
 

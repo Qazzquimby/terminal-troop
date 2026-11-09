@@ -15,9 +15,18 @@ interface RemotePresence {
   readonly lastHeard: number;
 }
 
+/** What the overlay reads from the room. */
+interface RoomView {
+  /** Undefined for a remote player who is gone. */
+  presenceOf(id: string): RemotePresence | undefined;
+  hostId(): string | undefined;
+}
+
 interface RoomDebugInfo {
   readonly net: MessageRates;
   readonly playerCount: number;
+  /** The host's name, "you" for the local player, or its id when its name is unknown. */
+  readonly host: string;
   /** Remote players, their presence, and the age of the last message from each. */
   readonly remotes: readonly {
     name: string;
@@ -28,19 +37,24 @@ interface RoomDebugInfo {
 
 /**
  * The room part of the overlay for `session` at `now`, given the current message rates and
- * each remote player's presence; a player without one shows as gone.
+ * the room; a player without a presence shows as gone.
  */
 export function roomDebugInfo(
   session: Session,
   now: number,
   rates: MessageRates,
-  presenceOf: (id: string) => RemotePresence | undefined,
+  room: RoomView,
 ): RoomDebugInfo {
+  const hostId = room.hostId() ?? session.localId;
   return {
     net: rates,
     playerCount: session.players.size,
+    host:
+      hostId === session.localId
+        ? "you"
+        : (session.players.get(hostId)?.name ?? hostId),
     remotes: remotePlayers(session).map((player) => {
-      const presence = presenceOf(player.id);
+      const presence = room.presenceOf(player.id);
       return {
         name: player.name,
         presence: presence?.kind ?? "gone",
@@ -71,6 +85,7 @@ function formatDebug({ perf, room }: DebugInfo): string {
     `steps   avg ${perf.stepsAvg.toFixed(2)}  0: ${percent(perf.zeroStepShare)}  2+: ${percent(perf.multiStepShare)}`,
     `update  avg ${ms(perf.updateMsAvg)} ms`,
     `net     sent ${String(room.net.sentPerS)}/s  recv ${String(room.net.receivedPerS)}/s`,
+    `host    ${room.host}`,
     `players ${String(room.playerCount)}`,
     ...room.remotes.map(
       (remote) =>

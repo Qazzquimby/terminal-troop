@@ -575,3 +575,80 @@ describe("payloads that do not parse are dropped", () => {
     ]);
   });
 });
+
+describe("host", () => {
+  /** Players a, b and c in one room; a keeps its own clock, so it falls silent unless moved. */
+  async function trio() {
+    const hub = createHub();
+    const clock = createManualClock();
+    const a = setup(hub, "a", createManualClock());
+    const b = setup(hub, "b", clock);
+    const c = setup(hub, "c", clock);
+    for (const { room } of [a, b, c]) await room.join("ABC", "P");
+    const hosts = (...players: { room: Room }[]) =>
+      players.map(({ room }) => room.hostId());
+    return { a, b, c, clock, hosts };
+  }
+
+  test("is undefined outside a room, and the local player when alone", async () => {
+    const { room } = setup();
+    expect(room.hostId()).toBeUndefined();
+    await room.join("ABC", "ME");
+    expect(room.hostId()).toBe("me");
+    await room.leave();
+    expect(room.hostId()).toBeUndefined();
+  });
+
+  test("every player agrees on the lowest id", async () => {
+    const { a, b, c, hosts } = await trio();
+    expect(hosts(a, b, c)).toEqual(["a", "a", "a"]);
+  });
+
+  test("passes to the next lowest id when the host leaves", async () => {
+    const { a, b, c, hosts } = await trio();
+    await a.room.leave();
+    expect(hosts(b, c)).toEqual(["b", "b"]);
+  });
+
+  test("passes on when the host falls silent, and returns when it is heard again", async () => {
+    const { a, b, c, clock, hosts } = await trio();
+    clock.advance(3000);
+    expect(hosts(b, c)).toEqual(["a", "a"]);
+    clock.advance(4000);
+    expect(b.room.presenceOf("a")?.kind).toBe("away");
+    expect(hosts(b, c)).toEqual(["b", "b"]);
+    a.clock.advance(1000);
+    expect(hosts(b, c)).toEqual(["a", "a"]);
+  });
+
+  test("passes on when the host times out", async () => {
+    const { a, b, c, clock, hosts } = await trio();
+    clock.advance(31_000);
+    expect(b.room.presenceOf("a")).toBeUndefined();
+    expect(hosts(b, c)).toEqual(["b", "b"]);
+    expect(a.room.hostId()).toBe("a");
+  });
+
+  test("a hidden page is passed over by everyone, itself included, until shown", async () => {
+    const { a, b, c, hosts } = await trio();
+    a.room.setHidden(true);
+    expect(hosts(a, b, c)).toEqual(["b", "b", "b"]);
+    a.room.setHidden(false);
+    expect(hosts(a, b, c)).toEqual(["a", "a", "a"]);
+  });
+
+  test("with every page hidden, the lowest id hosts", async () => {
+    const { a, b, c, hosts } = await trio();
+    for (const { room } of [a, b, c]) room.setHidden(true);
+    expect(hosts(a, b, c)).toEqual(["a", "a", "a"]);
+  });
+
+  test("a newcomer passes over a hidden page too", async () => {
+    const { a, b, c, hosts } = await trio();
+    a.room.setHidden(true);
+    const d = setup(a.hub, "d", b.clock);
+    await d.room.join("ABC", "D");
+    expect(d.room.presenceOf("a")?.kind).toBe("away");
+    expect(hosts(a, b, c, d)).toEqual(["b", "b", "b", "b"]);
+  });
+});
