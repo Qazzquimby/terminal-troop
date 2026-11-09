@@ -1,11 +1,19 @@
 import { STAMINA_MAX, VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
 import type { Interpolated } from "./interpolation.js";
 import { renderAim, renderPosition } from "./interpolation.js";
-import type { Point, World } from "./map.js";
+import type { Point, TileMap, World } from "./map.js";
 import type { Player } from "./player.js";
 import { aimAt } from "./player.js";
 import type { Session } from "./session.js";
-import { canSeePoint, visibilityPolygon, visionOrigins } from "./vision.js";
+import type { VisibilityPolygon, VisionSource } from "./vision.js";
+import {
+  isVisible,
+  lightSources,
+  litWalls,
+  wallCell,
+  visibilityPolygon,
+  visionOrigins,
+} from "./vision.js";
 
 interface Circle extends Point {
   readonly radius: number;
@@ -44,13 +52,7 @@ function drawTerrain(
 
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
-      const x = col * map.cell;
-      const y = row * map.cell;
-      if (map.solid[row * map.cols + col] === 1) {
-        ctx.fillStyle = "#41464c";
-        ctx.fillRect(x, y, map.cell, map.cell);
-      }
-      ctx.strokeRect(x, y, map.cell, map.cell);
+      ctx.strokeRect(col * map.cell, row * map.cell, map.cell, map.cell);
     }
   }
 
@@ -97,38 +99,74 @@ function drawStamina(ctx: CanvasRenderingContext2D, player: Player): void {
   ctx.fillRect(x, y, (width * value) / STAMINA_MAX, 4);
 }
 
-function drawShade(
+/**
+ * Lit wall tiles, drawn outside the darkness clip: rays stop at wall faces, so walls are never
+ * inside a visibility polygon. Fully drawn so a wall reads apart from both floor and darkness.
+ */
+function drawLitWalls(
   ctx: CanvasRenderingContext2D,
-  game: Session,
-  viewer: Player,
-  camera: Point,
+  map: TileMap,
+  walls: ReadonlySet<number>,
 ): void {
-  const maxDistance = Math.hypot(VIEW_W, VIEW_H);
-  ctx.save();
+  ctx.fillStyle = "#4b525a";
+  ctx.strokeStyle = "#5f6871";
+  ctx.lineWidth = 1;
+  walls.forEach((wall) => {
+    const { col, row } = wallCell(map, wall);
+    const x = col * map.cell;
+    const y = row * map.cell;
+    ctx.fillRect(x, y, map.cell, map.cell);
+    ctx.strokeRect(x + 0.5, y + 0.5, map.cell - 1, map.cell - 1);
+  });
+}
 
-  for (const origin of visionOrigins(game, viewer)) {
-    if (!inView({ ...origin, radius: maxDistance }, camera)) continue;
-    const [first, ...rest] = visibilityPolygon(
-      game.world.map,
-      origin,
-      VISION_RAYS,
-      maxDistance,
+/** Visibility polygons for the sources that can reach the view, cut off at its far corner. */
+function tracePolygons(
+  map: TileMap,
+  sources: readonly VisionSource[],
+  camera: Point,
+): VisibilityPolygon[] {
+  const polygons: VisibilityPolygon[] = [];
+
+  for (const source of sources) {
+    const maxDistance = Math.hypot(
+      Math.max(
+        Math.abs(source.x - camera.x),
+        Math.abs(source.x - camera.x - VIEW_W),
+      ),
+      Math.max(
+        Math.abs(source.y - camera.y),
+        Math.abs(source.y - camera.y - VIEW_H),
+      ),
     );
+    if (!inView({ ...source, radius: source.range ?? maxDistance }, camera))
+      continue;
+
+    polygons.push(visibilityPolygon(map, source, VISION_RAYS, maxDistance));
+  }
+
+  return polygons;
+}
+
+/** Restricts drawing to the union of `polygons`. */
+function clipTo(
+  ctx: CanvasRenderingContext2D,
+  polygons: readonly VisibilityPolygon[],
+): void {
+  const path = new Path2D();
+
+  for (const { points } of polygons) {
+    const [first, ...rest] = points;
     if (first === undefined) continue;
 
-    const path = new Path2D();
-    path.rect(camera.x, camera.y, VIEW_W, VIEW_H);
     path.moveTo(first.x, first.y);
     rest.forEach((point) => {
       path.lineTo(point.x, point.y);
     });
     path.closePath();
-    ctx.clip(path, "evenodd");
   }
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
-  ctx.fillRect(camera.x, camera.y, VIEW_W, VIEW_H);
-  ctx.restore();
+  ctx.clip(path);
 }
 
 /**
@@ -172,30 +210,42 @@ export function draw(
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
+  const sources = visionOrigins(game, viewer);
+  const lights = lightSources(game, viewer);
+  const { map } = game.world;
+  const seen = tracePolygons(map, sources, camera);
+  const lit = tracePolygons(map, lights, camera);
 
-  ctx.fillStyle = "#090b0e";
+  ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
+
+  // Inside the darkness: only what is both seen and lit.
+  ctx.save();
+  clipTo(ctx, seen);
+  clipTo(ctx, lit);
   drawTerrain(ctx, game.world, camera);
 
   game.entities.forEach((entity) => {
     const definition = game.entityTypes.get(entity.kind);
     if (definition === undefined) return;
-    if (!inView(entity, camera) || !canSeePoint(game, viewer, entity)) return;
+    if (!inView(entity, camera) || !isVisible(map, sources, lights, entity))
+      return;
     ctx.save();
     definition.draw(ctx, entity, now, game);
     ctx.restore();
   });
 
   game.players.forEach((player) => {
-    const isSelf = player === viewer;
-    if (!inView(player, camera)) return;
-    if (isSelf || canSeePoint(game, viewer, player))
-      drawPlayer(ctx, player, isSelf);
+    if (player === viewer || !inView(player, camera)) return;
+    if (isVisible(map, sources, lights, player)) drawPlayer(ctx, player, false);
   });
+  ctx.restore();
 
-  drawShade(ctx, game, viewer, camera);
+  // Above the darkness: lit wall faces, then the local player and its HUD.
+  drawLitWalls(ctx, map, litWalls(seen, lit));
+  drawPlayer(ctx, viewer, true);
   drawStamina(ctx, viewer);
   ctx.restore();
 }

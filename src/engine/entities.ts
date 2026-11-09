@@ -2,6 +2,7 @@ import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
 import type { Interpolated } from "./interpolation.js";
 import type { Session } from "./session.js";
+import type { LightEmission } from "./vision.js";
 
 export interface WorldEntity extends Body, Interpolated {
   readonly id: string;
@@ -17,6 +18,7 @@ export interface WorldEntity extends Body, Interpolated {
 export interface EntityDefinition {
   readonly radius: number;
   readonly collides?: boolean;
+  readonly light?: (entity: WorldEntity) => LightEmission | null;
   readonly update?: (entity: WorldEntity, dt: number, game: Session) => void;
   readonly draw: (
     ctx: CanvasRenderingContext2D,
