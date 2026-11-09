@@ -11,6 +11,9 @@ interface VoiceAudio {
   output: () => AudioNode;
 }
 
+/** Time constant, in seconds, of the ramp a peer's gain and pan follow to a new level. */
+const LEVEL_RAMP_S = 0.05;
+
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
@@ -102,8 +105,9 @@ export function createWebRtcVoice(
     const peer = peers.get(peerId);
     if (peer === undefined) return;
     const { gain, pan } = levels.levels(peerId);
-    peer.gain.gain.value = gain;
-    peer.panner.pan.value = pan;
+    const now = peer.gain.context.currentTime;
+    peer.gain.gain.setTargetAtTime(gain, now, LEVEL_RAMP_S);
+    peer.panner.pan.setTargetAtTime(pan, now, LEVEL_RAMP_S);
   }
 
   function requestMic(): void {
