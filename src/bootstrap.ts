@@ -21,11 +21,16 @@ import { createPerfStats } from "./engine/perf-stats.js";
 import { createCountingTransport } from "./engine/counting-transport.js";
 import type { DebugInfo } from "./engine/debug-overlay.js";
 import { createDebugOverlay } from "./engine/debug-overlay.js";
+import {
+  createMicIndicatorView,
+  micIndicator,
+} from "./engine/mic-indicator.js";
 import type { Settings } from "./engine/settings.js";
 import { createSettingsStore } from "./engine/settings.js";
 import { createSettingsMenu, menuPeers } from "./settings-menu.js";
 import { trackInputContext } from "./app-context.js";
 import { element } from "./dom.js";
+import { actionKeyLabel } from "./engine/actions.js";
 import type { Transport } from "./engine/transport.js";
 import type { Voice, VoiceSettings } from "./engine/voice.js";
 import {
@@ -48,6 +53,7 @@ const copyBtn = element("#copy", HTMLButtonElement);
 const inventoryEl = element("#inventory", HTMLElement);
 const inventoryList = element("#inventory-slots", HTMLOListElement);
 const debugEl = element("#debug", HTMLPreElement);
+const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
@@ -99,6 +105,7 @@ const counted = createCountingTransport(selectTransport(params), () =>
 const transport = counted.transport;
 const perf = createPerfStats();
 const debugOverlay = createDebugOverlay(debugEl, params.has("debug"));
+const micView = createMicIndicatorView(micEl);
 const sfx = createSfx();
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
@@ -112,11 +119,17 @@ const voice = selectVoice(settings.get().voice);
 // Debug hook for driving voice from the console or a test browser.
 if (params.has("debug")) Object.assign(window, { voice });
 
+const talkKey = actionKeyLabel("pushToTalk");
+element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
+  `Push to talk (${talkKey})`;
+
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
   applyVoiceSettings(voice, current.voice);
   controlsHint.textContent =
-    current.voice.mode === "pushToTalk" ? `${baseHint} · V to talk` : baseHint;
+    current.voice.mode === "pushToTalk"
+      ? `${baseHint} · ${talkKey} to talk`
+      : baseHint;
 }
 applySettings(settings.get());
 settings.subscribe(applySettings);
@@ -336,6 +349,11 @@ function frame(): void {
   updateStatus();
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
+  micView.show(
+    game === null
+      ? null
+      : micIndicator(voice.status(), settings.get().voice.muted, talkKey),
+  );
   requestAnimationFrame(frame);
 }
 

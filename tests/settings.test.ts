@@ -28,7 +28,7 @@ const throwingStorage: SettingsStorage = {
 test("a fresh store has the defaults", () => {
   const store = createSettingsStore(memoryStorage());
   expect(store.get()).toEqual({
-    voice: { mode: "open", muted: false, volume: 1 },
+    voice: { mode: "pushToTalk", muted: false, volume: 1 },
     audio: { masterVolume: 1 },
   });
 });
@@ -41,7 +41,7 @@ test("update merges into the current settings and persists them", () => {
   store.update({ audio: { masterVolume: 0.25 } });
 
   const expected = {
-    voice: { mode: "open", muted: true, volume: 1 },
+    voice: { mode: "pushToTalk", muted: true, volume: 1 },
     audio: { masterVolume: 0.25 },
   };
   expect(store.get()).toEqual(expected);
@@ -57,7 +57,7 @@ test("update clamps out-of-range volumes", () => {
 
 test("update ignores invalid values and keeps the current ones", () => {
   const store = createSettingsStore(memoryStorage());
-  store.update({ voice: { mode: "pushToTalk", volume: 0.5 } });
+  store.update({ voice: { mode: "open", volume: 0.5 } });
 
   // Values outside the type, as an untyped caller could pass.
   const invalid: Partial<Settings["voice"]> = {};
@@ -67,7 +67,7 @@ test("update ignores invalid values and keeps the current ones", () => {
   store.update({ voice: { volume: Number.NaN } });
 
   expect(store.get().voice).toEqual({
-    mode: "pushToTalk",
+    mode: "open",
     muted: false,
     volume: 0.5,
   });
@@ -95,11 +95,11 @@ test("subscribers hear changes until they unsubscribe", () => {
   const listener = vi.fn();
   const unsubscribe = store.subscribe(listener);
 
-  store.update({ voice: { mode: "pushToTalk" } });
+  store.update({ voice: { mode: "open" } });
   expect(listener).toHaveBeenCalledTimes(1);
   expect(listener).toHaveBeenLastCalledWith(store.get());
 
-  store.update({ voice: { mode: "pushToTalk" } });
+  store.update({ voice: { mode: "open" } });
   expect(listener).toHaveBeenCalledTimes(1);
 
   unsubscribe();

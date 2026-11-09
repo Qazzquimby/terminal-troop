@@ -19,6 +19,29 @@ export const ACTIONS = {
 
 export type Action = keyof typeof ACTIONS;
 
+const NAMED_KEYS: Readonly<Record<string, string>> = {
+  ShiftLeft: "Shift",
+  ShiftRight: "Shift",
+  Escape: "Esc",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+};
+
+/** Display text for a `KeyboardEvent.code`; an unknown code is shown as itself. */
+export function keyLabel(code: string): string {
+  const named = NAMED_KEYS[code];
+  if (named !== undefined) return named;
+  const match = /^(?:Key|Digit)(.)$/.exec(code);
+  return match?.[1] ?? code;
+}
+
+/** Display text for the first key bound to `action`. */
+export function actionKeyLabel(action: Action): string {
+  return keyLabel(ACTIONS[action].keys[0]);
+}
+
 /**
  * What input is for right now: the contexts named in `ACTIONS` (`play`, `menu`),
  * plus `text`, focus in a text field, where no action is active.

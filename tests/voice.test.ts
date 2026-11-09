@@ -264,7 +264,7 @@ describe("null voice", () => {
     voice.leave();
     expect(sent).toEqual([]);
     expect(voice.status()).toEqual({
-      mode: "open",
+      mode: "pushToTalk",
       mic: "unavailable",
       transmitting: false,
       peers: [],
