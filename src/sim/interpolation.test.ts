@@ -1,6 +1,5 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/index.js";
-import { FIXED_DT, PLAYER_RADIUS } from "./config.js";
+import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { lerp, lerpAngle, renderPosition, wrapAngle } from "./interpolation.js";
 import { randomFreePosition } from "./map.js";
 import type { Player } from "./player.js";
@@ -8,10 +7,20 @@ import { createPlayer } from "./player.js";
 import type { Session } from "./session.js";
 import { createSession, receiveState, updateSession } from "./session.js";
 
+const FIXED_DT = 1 / 60;
+const PLAYER_RADIUS = testSimConfig.player.radius;
+
 const walkRight = { move: { x: 1, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
 
 function session(): Session {
-  return createSession("me", "ME", "LERP1", "standard", createSfx());
+  return createSession(
+    "me",
+    "ME",
+    "LERP1",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
 }
 
 test("lerp blends between two values", () => {
@@ -27,7 +36,7 @@ test("render position blends from the previous position", () => {
 });
 
 test("a spawned player starts with no previous motion", () => {
-  const player = createPlayer("p", "P", session().world);
+  const player = createPlayer("p", "P", session().world, testSimConfig);
   expect({ x: player.prevX, y: player.prevY }).toEqual({
     x: player.x,
     y: player.y,

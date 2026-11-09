@@ -1,9 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
-import { createSfx } from "../audio/index.js";
 import {
-  FIXED_DT,
-  PLAYER_RADIUS,
   randomFreePosition,
   createSession,
   receiveState,
@@ -13,6 +10,7 @@ import {
 import { NetEvent } from "../net/index.js";
 import type { Session } from "../sim/index.js";
 import type { Transport } from "../net/index.js";
+import { testSfx, testSimConfig } from "./sim-config.js";
 
 const ROOM = "SYNC1";
 const open: Transport[] = [];
@@ -36,7 +34,8 @@ async function client(
     id.toUpperCase(),
     ROOM,
     "standard",
-    createSfx(),
+    testSfx(),
+    testSimConfig,
   );
   await transport.join(ROOM, {
     [NetEvent.STATE]: (payload) => {
@@ -77,7 +76,7 @@ test("remote players are smoothed toward their latest reported position", async 
   await flush();
 
   // Reports inside a wall are rejected, so move to another known-free spot.
-  const target = randomFreePosition(a.session.world, PLAYER_RADIUS);
+  const target = randomFreePosition(a.session.world, a.session.local.radius);
   a.session.local.x = target.x;
   a.session.local.y = target.y;
   sendState(a.session, a.transport, 1000, true);
@@ -88,7 +87,7 @@ test("remote players are smoothed toward their latest reported position", async 
   expect({ x: remote.tx, y: remote.ty }).toEqual(target);
   const gapBefore = Math.hypot(target.x - remote.x, target.y - remote.y);
 
-  updateSession(b.session, idle, FIXED_DT, performance.now());
+  updateSession(b.session, idle, 1 / 60, performance.now());
   const gapAfter = Math.hypot(target.x - remote.x, target.y - remote.y);
   expect(gapAfter).toBeLessThan(gapBefore);
   expect(gapAfter).toBeGreaterThan(0);

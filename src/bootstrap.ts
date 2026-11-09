@@ -1,7 +1,6 @@
 import {
-  FIXED_DT,
-  createSimClock,
   createSession,
+  createSimClock,
   receiveState,
   remotePlayers,
   removePlayer,
@@ -12,7 +11,6 @@ import {
 } from "./sim/index.js";
 import {
   NetEvent,
-  PLAYER_NAME_MAX,
   PresenceMessage,
   createCountingTransport,
 } from "./net/index.js";
@@ -43,6 +41,7 @@ import type { Settings } from "./settings/index.js";
 import { createSettingsStore } from "./settings/index.js";
 import type { Transport } from "./net/index.js";
 import type { Voice, VoiceSettings } from "./voice/index.js";
+import { config } from "./config.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
@@ -103,15 +102,20 @@ function selectVoice(initial: VoiceSettings): Voice {
 const params = new URLSearchParams(location.search);
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
-const camera = createCamera();
+const camera = createCamera(config.view);
+const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
 );
 const transport = counted.transport;
 const perf = createPerfStats();
-const debugOverlay = createDebugOverlay(debugEl, params.has("debug"));
+const debugOverlay = createDebugOverlay(
+  debugEl,
+  params.has("debug"),
+  config.ui,
+);
 const micView = createMicIndicatorView(micEl);
-const sfx = createSfx();
+const sfx = createSfx(config.audio);
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
 const settings = createSettingsStore({
@@ -145,7 +149,6 @@ let roomCode: string | null = null;
 let connecting = false;
 let inventoryOpen = false;
 let errorText = "";
-const simClock = createSimClock();
 
 function nonEmpty(value: string | null): string | null {
   return value === null || value === "" ? null : value;
@@ -156,6 +159,7 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 const input = createInput(
   canvas,
   camera,
+  config.view,
   {
     toggleInventory: {
       press() {
@@ -246,21 +250,30 @@ async function enterRoom(rawCode: string): Promise<void> {
     await leaveRoom();
 
     const name =
-      nonEmpty(nameInput.value.trim().slice(0, PLAYER_NAME_MAX)) ?? defaultName;
+      nonEmpty(nameInput.value.trim().slice(0, config.player.nameMax)) ??
+      defaultName;
     nameInput.value = name;
     roomInput.value = code;
     localStorage.setItem(nameKey, name);
 
-    const session = createSession(playerId, name, code, env.world, sfx, {
-      playerJoined: (id) => {
-        voice.addPeer(id);
-        refreshPeers(session);
+    const session = createSession(
+      playerId,
+      name,
+      code,
+      env.world,
+      sfx,
+      config,
+      {
+        playerJoined: (id) => {
+          voice.addPeer(id);
+          refreshPeers(session);
+        },
+        playerLeft: (id) => {
+          voice.removePeer(id);
+          refreshPeers(session);
+        },
       },
-      playerLeft: (id) => {
-        voice.removePeer(id);
-        refreshPeers(session);
-      },
-    });
+    );
     await transport.join(roomKey(code, env.world), {
       [NetEvent.STATE]: (payload) => {
         receiveState(session, payload);
@@ -285,7 +298,7 @@ async function enterRoom(rawCode: string): Promise<void> {
     history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
 
     game = session;
-    simClock.reset(performance.now());
+    clock.reset(performance.now());
     updateCamera(camera, game.local);
     copyBtn.hidden = false;
   } catch (error) {
@@ -317,12 +330,12 @@ function frame(): void {
   if (game !== null) {
     const session = game;
     const updateStart = performance.now();
-    const { steps, alpha } = simClock.advance(now, (until) => {
-      updateSession(session, input.getControls(until), FIXED_DT, until);
+    const { steps, alpha } = clock.advance(now, (until) => {
+      updateSession(session, input.getControls(until), clock.dt, until);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
-    applyProximity(session, voice);
+    applyProximity(session, voice, config.voice);
 
     sendState(session, transport, now);
     updateCamera(camera, renderPosition(session.local, alpha));

@@ -1,8 +1,9 @@
 import { expect, test } from "vitest";
-import { FIXED_DT } from "./config.js";
 import { createSimClock, planSteps, stepAlpha } from "./sim-clock.js";
 
 const LIMITS = { dtMs: 10, maxCatchUpMs: 1000, maxStepsPerFrame: 20 };
+const CONFIG = { fixedDt: 0.01, maxCatchUpS: 1, maxStepsPerFrame: 20 };
+const FIXED_DT = 1 / 60;
 
 const noStep = (): void => undefined;
 
@@ -17,7 +18,7 @@ test("a gap past the cap drops the excess", () => {
 
 test("the per-frame budget leaves a remainder for later frames", () => {
   expect(planSteps(0, 500, LIMITS)).toEqual({ simTime: 0, steps: 20 });
-  const clock = createSimClock(LIMITS);
+  const clock = createSimClock(CONFIG);
   expect(clock.advance(500, noStep)).toEqual({ steps: 20, alpha: 1 });
   expect(clock.advance(500, noStep).steps).toBe(20);
 });
@@ -29,7 +30,7 @@ test("a zero or negative gap runs nothing", () => {
 
 test("each step gets its own end time", () => {
   const ends: number[] = [];
-  createSimClock(LIMITS).advance(35, (until) => ends.push(until));
+  createSimClock(CONFIG).advance(35, (until) => ends.push(until));
   expect(ends).toEqual([10, 20, 30]);
 });
 
@@ -41,13 +42,13 @@ test("alpha is the leftover fraction of a step, clamped to 0..1", () => {
 });
 
 test("alpha is the remainder past the last step", () => {
-  const clock = createSimClock(LIMITS);
+  const clock = createSimClock(CONFIG);
   expect(clock.advance(35, noStep)).toEqual({ steps: 3, alpha: 0.5 });
   expect(clock.advance(38, noStep).alpha).toBeCloseTo(0.8);
 });
 
 test("reset starts the simulation at the given time", () => {
-  const clock = createSimClock(LIMITS);
+  const clock = createSimClock(CONFIG);
   clock.advance(500, noStep);
   clock.reset(1000);
   const ends: number[] = [];

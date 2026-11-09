@@ -1,4 +1,12 @@
-import { FIXED_DT, MAX_CATCH_UP_S, MAX_STEPS_PER_FRAME } from "./config.js";
+/** The fixed-step clock's tuning, in seconds. */
+export interface SimClockConfig {
+  /** Length of one fixed step. */
+  readonly fixedDt: number;
+  /** The simulation falls at most this far behind the clock; older time is dropped. */
+  readonly maxCatchUpS: number;
+  /** Most fixed steps one frame runs; a longer backlog spreads over the next frames. */
+  readonly maxStepsPerFrame: number;
+}
 
 /** Times in ms on the `performance.now()` clock. */
 interface StepLimits {
@@ -9,12 +17,6 @@ interface StepLimits {
   /** Most steps run in one frame; the rest wait for later frames. */
   readonly maxStepsPerFrame: number;
 }
-
-const STEP_LIMITS: StepLimits = {
-  dtMs: FIXED_DT * 1000,
-  maxCatchUpMs: MAX_CATCH_UP_S * 1000,
-  maxStepsPerFrame: MAX_STEPS_PER_FRAME,
-};
 
 interface StepPlan {
   /** Where the simulation starts this frame, after dropping time past the cap. */
@@ -39,11 +41,18 @@ export function stepAlpha(elapsed: number, step: number): number {
   return Math.min(Math.max(elapsed / step, 0), 1);
 }
 
-/** Fixed-step sim time, in ms on the `performance.now()` clock. */
-export function createSimClock(limits: StepLimits = STEP_LIMITS) {
+/** Fixed-step sim time, in ms on the `performance.now()` clock, under `config`'s limits. */
+export function createSimClock(config: SimClockConfig) {
+  const limits: StepLimits = {
+    dtMs: config.fixedDt * 1000,
+    maxCatchUpMs: config.maxCatchUpS * 1000,
+    maxStepsPerFrame: config.maxStepsPerFrame,
+  };
   /** The time up to which the simulation has run. */
   let simTime = 0;
   return {
+    /** Length of one fixed step, in seconds. */
+    dt: config.fixedDt,
     /** Starts the simulation at `now`, with no steps owed. */
     reset(now: number): void {
       simTime = now;

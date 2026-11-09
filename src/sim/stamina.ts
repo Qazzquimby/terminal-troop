@@ -1,21 +1,27 @@
-import {
-  STAMINA_DRAIN,
-  STAMINA_MAX,
-  STAMINA_RECOVER,
-  STAMINA_REGEN,
-  STAMINA_REGEN_DELAY,
-} from "./config.js";
+/** Stamina tuning. */
+export interface StaminaConfig {
+  /** A full bar. */
+  readonly max: number;
+  /** Lost per second while sprinting. */
+  readonly drain: number;
+  /** Gained per second once regeneration starts. */
+  readonly regen: number;
+  /** Seconds without sprinting before regeneration starts. */
+  readonly regenDelay: number;
+  /** After hitting 0, sprint stays locked until stamina is back to this. */
+  readonly recover: number;
+}
 
 export interface Stamina {
   readonly value: number;
-  /** Set on reaching 0; blocks sprint until `STAMINA_RECOVER`. */
+  /** Set on reaching 0; blocks sprint until stamina is back to `recover`. */
   readonly exhausted: boolean;
   /** Seconds since the player last sprinted. */
   readonly rested: number;
 }
 
-export function createStamina(): Stamina {
-  return { value: STAMINA_MAX, exhausted: false, rested: STAMINA_REGEN_DELAY };
+export function createStamina(config: StaminaConfig): Stamina {
+  return { value: config.max, exhausted: false, rested: config.regenDelay };
 }
 
 export function canSprint(stamina: Stamina): boolean {
@@ -26,20 +32,21 @@ export function updateStamina(
   stamina: Stamina,
   sprinting: boolean,
   dt: number,
+  config: StaminaConfig,
 ): Stamina {
   if (sprinting) {
-    const value = Math.max(0, stamina.value - STAMINA_DRAIN * dt);
+    const value = Math.max(0, stamina.value - config.drain * dt);
     return { value, exhausted: value === 0, rested: 0 };
   }
 
-  const rested = Math.min(STAMINA_REGEN_DELAY, stamina.rested + dt);
+  const rested = Math.min(config.regenDelay, stamina.rested + dt);
   const value =
-    rested >= STAMINA_REGEN_DELAY
-      ? Math.min(STAMINA_MAX, stamina.value + STAMINA_REGEN * dt)
+    rested >= config.regenDelay
+      ? Math.min(config.max, stamina.value + config.regen * dt)
       : stamina.value;
   return {
     value,
-    exhausted: stamina.exhausted && value < STAMINA_RECOVER,
+    exhausted: stamina.exhausted && value < config.recover,
     rested,
   };
 }

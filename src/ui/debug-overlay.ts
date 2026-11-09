@@ -3,7 +3,11 @@ import type { PerfSnapshot } from "../perf-stats/index.js";
 import { remotePlayers } from "../sim/index.js";
 import type { Session } from "../sim/index.js";
 
-const REFRESH_MS = 250;
+/** UI tuning. */
+export interface UiConfig {
+  /** Least time between debug overlay refreshes, in ms. */
+  readonly debugRefreshMs: number;
+}
 
 interface RoomDebugInfo {
   readonly net: MessageRates;
@@ -57,8 +61,12 @@ function formatDebug({ perf, room }: DebugInfo): string {
   return lines.join("\n");
 }
 
-/** A text overlay that refreshes a few times a second, and only while visible. */
-export function createDebugOverlay(element: HTMLElement, open: boolean) {
+/** A text overlay that refreshes at most once per `debugRefreshMs`, and only while visible. */
+export function createDebugOverlay(
+  element: HTMLElement,
+  open: boolean,
+  config: UiConfig,
+) {
   let visible = open;
   let lastRefresh = -Infinity;
   element.hidden = !visible;
@@ -71,7 +79,7 @@ export function createDebugOverlay(element: HTMLElement, open: boolean) {
     },
     /** `read` runs only when the text is due for a refresh. */
     update(now: number, read: () => DebugInfo): void {
-      if (!visible || now - lastRefresh < REFRESH_MS) return;
+      if (!visible || now - lastRefresh < config.debugRefreshMs) return;
       lastRefresh = now;
       element.textContent = formatDebug(read());
     },

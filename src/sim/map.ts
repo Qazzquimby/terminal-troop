@@ -1,5 +1,23 @@
 import { range } from "lodash-es";
-import { MAP_CELL, VIEW_H, VIEW_W } from "./config.js";
+
+/** The world's size and grid, and how bodies meet its walls. */
+export interface WorldConfig {
+  /** Side of one map cell, in pixels. */
+  readonly cell: number;
+  /** Size of the standard world, in cells. */
+  readonly cols: number;
+  readonly rows: number;
+  /** Mixed with the room code to seed the standard world. */
+  readonly seed: number;
+  /** Share of a body's speed kept, reversed, when it hits a wall. */
+  readonly wallBounce: number;
+}
+
+/** The size of the screen's view of the world, in pixels. */
+export interface ViewConfig {
+  readonly width: number;
+  readonly height: number;
+}
 
 export interface Point {
   x: number;
@@ -191,6 +209,7 @@ function sealDisconnected(solid: Uint8Array, cols: number, rows: number): void {
 export function createMap(
   cols: number,
   rows: number,
+  cell: number,
   rng: Rng = Math.random,
 ): TileMap {
   const solid = new Uint8Array(cols * rows);
@@ -221,18 +240,16 @@ export function createMap(
 
   sealDisconnected(solid, cols, rows);
 
-  return { cell: MAP_CELL, cols, rows, solid };
+  return { cell, cols, rows, solid };
 }
 
-export function buildWorld(
-  cols: number,
-  rows: number,
-  rng: Rng = Math.random,
-): World {
+/** The standard world at `config`'s size; `rng` lays out its obstacles. */
+export function buildWorld(config: WorldConfig, rng: Rng): World {
+  const { cols, rows, cell } = config;
   return {
-    W: cols * MAP_CELL,
-    H: rows * MAP_CELL,
-    map: createMap(cols, rows, rng),
+    W: cols * cell,
+    H: rows * cell,
+    map: createMap(cols, rows, cell, rng),
   };
 }
 
@@ -246,9 +263,9 @@ export const DEV_PILLARS: readonly Cell[] = [
  * One screen of open floor with two small pillars. Deterministic; the border is the edge of the
  * world, which `isSolid` already treats as solid.
  */
-export function buildDevWorld(): World {
-  const cols = VIEW_W / MAP_CELL;
-  const rows = VIEW_H / MAP_CELL;
+export function buildDevWorld(cell: number, view: ViewConfig): World {
+  const cols = view.width / cell;
+  const rows = view.height / cell;
   const solid = new Uint8Array(cols * rows);
   for (const [col, row] of DEV_PILLARS) {
     for (const [dc, dr] of [
@@ -261,9 +278,9 @@ export function buildDevWorld(): World {
     }
   }
   return {
-    W: VIEW_W,
-    H: VIEW_H,
-    map: { cell: MAP_CELL, cols, rows, solid },
+    W: view.width,
+    H: view.height,
+    map: { cell, cols, rows, solid },
   };
 }
 

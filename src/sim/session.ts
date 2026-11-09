@@ -1,20 +1,12 @@
-import { NetEvent, StateMessage } from "../net/index.js";
-import {
-  PLAYER_RADIUS,
-  SEND_HZ,
-  STALE_S,
-  WORLD_COLS,
-  WORLD_ROWS,
-  WORLD_SEED,
-} from "./config.js";
+import { NetEvent, parseStateMessage } from "../net/index.js";
 import type { Sfx } from "../audio/index.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
-import type { World, WorldKind } from "./map.js";
+import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
-import type { Controls, Player } from "./player.js";
+import type { Controls, Player, PlayerRules } from "./player.js";
 import {
   createPlayer,
   playerState,
@@ -22,6 +14,25 @@ import {
   updatePlayer,
 } from "./player.js";
 import type { Transport } from "../net/index.js";
+import type { LightConfig, VisionConfig } from "./vision.js";
+
+/** How a session shares state with the room. */
+interface SyncConfig {
+  /** Most state sends per second. */
+  readonly sendHz: number;
+  /** Seconds without a state before a remote player is dropped. */
+  readonly staleS: number;
+  /** Rate, per second, at which remote players ease towards their reported state. */
+  readonly smoothing: number;
+}
+
+/** The tuning a session runs on; it keeps this for its lifetime. */
+export interface SimConfig extends PlayerRules {
+  readonly view: ViewConfig;
+  readonly vision: VisionConfig;
+  readonly light: LightConfig;
+  readonly net: SyncConfig;
+}
 
 /** Hears when a remote player appears or goes away. */
 export interface RosterEvents {
@@ -36,6 +47,7 @@ const NO_ROSTER_EVENTS: RosterEvents = {
 
 export interface Session {
   readonly localId: string;
+  readonly config: SimConfig;
   /** The local player; also present in `players`. */
   readonly local: Player;
   readonly world: World;
@@ -48,8 +60,8 @@ export interface Session {
   lastSent: number;
 }
 
-function roomSeed(code: string): number {
-  let seed = WORLD_SEED;
+function roomSeed(code: string, base: number): number {
+  let seed = base;
   for (const character of code) {
     seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
   }
@@ -64,9 +76,16 @@ export function roomKey(code: string, kind: WorldKind): string {
   return kind === "standard" ? code : `${kind}:${code}`;
 }
 
-function buildRoomWorld(roomCode: string, kind: WorldKind): World {
-  if (kind === "dev") return buildDevWorld();
-  return buildWorld(WORLD_COLS, WORLD_ROWS, mulberry32(roomSeed(roomCode)));
+function buildRoomWorld(
+  roomCode: string,
+  kind: WorldKind,
+  config: SimConfig,
+): World {
+  if (kind === "dev") return buildDevWorld(config.world.cell, config.view);
+  return buildWorld(
+    config.world,
+    mulberry32(roomSeed(roomCode, config.world.seed)),
+  );
 }
 
 export function createSession(
@@ -75,13 +94,15 @@ export function createSession(
   roomCode: string,
   worldKind: WorldKind,
   sfx: Sfx,
+  config: SimConfig,
   roster: RosterEvents = NO_ROSTER_EVENTS,
 ): Session {
-  const world = buildRoomWorld(roomCode, worldKind);
-  const local = createPlayer(localId, name, world);
+  const world = buildRoomWorld(roomCode, worldKind, config);
+  const local = createPlayer(localId, name, world, config);
 
   return {
     localId,
+    config,
     local,
     world,
     sfx,
@@ -111,13 +132,13 @@ export function updateSession(
   now: number,
 ): void {
   movingBodies(game).forEach(storePrevious);
-  updatePlayer(game.local, controls, dt, game.world.map);
+  updatePlayer(game.local, controls, dt, game.world.map, game.config);
 
   for (const player of remotePlayers(game)) {
-    if (now - player.lastSeen > STALE_S * 1000) {
+    if (now - player.lastSeen > game.config.net.staleS * 1000) {
       removePlayer(game, player.id);
     } else {
-      smoothPlayer(player, dt);
+      smoothPlayer(player, dt, game.config.net.smoothing);
     }
   }
 
@@ -136,21 +157,21 @@ export function sendState(
   now: number,
   force = false,
 ): void {
-  if (!force && now - game.lastSent < 1000 / SEND_HZ) return;
+  if (!force && now - game.lastSent < 1000 / game.config.net.sendHz) return;
   game.lastSent = now;
   void transport.send(NetEvent.STATE, playerState(game.local));
 }
 
 export function receiveState(game: Session, payload: unknown): void {
-  const parsed = StateMessage.safeParse(payload);
-  if (!parsed.success) return;
-  const state = parsed.data;
+  const state = parseStateMessage(payload, game.config.player.nameMax);
+  if (state === null) return;
   if (state.id === game.localId) return;
-  if (!isAreaFree(game.world.map, state.x, state.y, PLAYER_RADIUS)) return;
+  if (!isAreaFree(game.world.map, state.x, state.y, game.config.player.radius))
+    return;
 
   let player = game.players.get(state.id);
   if (player === undefined) {
-    player = createPlayer(state.id, state.name, game.world);
+    player = createPlayer(state.id, state.name, game.world, game.config);
     player.x = state.x;
     player.y = state.y;
     player.aim = state.aim;
