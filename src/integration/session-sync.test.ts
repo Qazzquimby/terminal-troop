@@ -27,7 +27,7 @@ async function flush(): Promise<void> {
 async function client(
   id: string,
 ): Promise<{ session: Session; transport: Transport }> {
-  const transport = createBroadcastChannelTransport();
+  const transport = createBroadcastChannelTransport(NetEvent);
   open.push(transport);
   const session = createSession(
     id,

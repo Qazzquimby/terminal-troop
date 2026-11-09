@@ -100,7 +100,7 @@ const env = envResult.data;
  */
 function selectTransport(params: URLSearchParams): Transport {
   if (params.has("local") || env.supabase === null) {
-    return createBroadcastChannelTransport();
+    return createBroadcastChannelTransport(NetEvent);
   }
   return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
 }
