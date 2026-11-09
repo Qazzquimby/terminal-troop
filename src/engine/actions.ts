@@ -1,18 +1,29 @@
 import type { Point } from "./map.js";
 import type { Controls } from "./player.js";
 
-/** The only place key codes are named. */
-export const BINDINGS = {
-  moveUp: ["KeyW", "ArrowUp"],
-  moveLeft: ["KeyA", "ArrowLeft"],
-  moveDown: ["KeyS", "ArrowDown"],
-  moveRight: ["KeyD", "ArrowRight"],
-  sprint: ["ShiftLeft", "ShiftRight"],
-  toggleInventory: ["Tab"],
-  toggleDebug: ["F3"],
+/**
+ * The only place key codes and context permissions are named: each action's keys,
+ * and the input contexts it is active in.
+ */
+export const ACTIONS = {
+  moveUp: { keys: ["KeyW", "ArrowUp"], contexts: ["play"] },
+  moveLeft: { keys: ["KeyA", "ArrowLeft"], contexts: ["play"] },
+  moveDown: { keys: ["KeyS", "ArrowDown"], contexts: ["play"] },
+  moveRight: { keys: ["KeyD", "ArrowRight"], contexts: ["play"] },
+  sprint: { keys: ["ShiftLeft", "ShiftRight"], contexts: ["play"] },
+  toggleInventory: { keys: ["Tab"], contexts: ["play"] },
+  toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
+  toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
 } as const;
 
-export type Action = keyof typeof BINDINGS;
+export type Action = keyof typeof ACTIONS;
+
+/**
+ * What input is for right now: the contexts named in `ACTIONS` (`play`, `menu`),
+ * plus `text`, focus in a text field, where no action is active.
+ */
+export type InputContext =
+  (typeof ACTIONS)[Action]["contexts"][number] | "text";
 
 /** What one simulation step sees: held actions, and actions pressed or released since the previous step. */
 export interface ActionFrame {
@@ -25,13 +36,13 @@ export interface ActionFrame {
  * What a source of actions (keyboard, gamepad, touch, a script) drives. Every
  * event carries its time in ms on the `performance.now()` clock.
  */
-export interface ActionSink {
+export interface ActionSink<A extends string = Action> {
   /** Edge-triggered: pressing an action that is already held does nothing. */
-  press(action: Action, time: number): void;
+  press(action: A, time: number): void;
   /** Releases a held action; does nothing if it was not held. */
-  release(action: Action, time: number): void;
-  /** Holds an action again without counting it as pressed, e.g. after blur. */
-  resume(action: Action, time: number): void;
+  release(action: A, time: number): void;
+  /** Holds an action again without counting it as pressed, e.g. after blur or a context switch. */
+  resume(action: A, time: number): void;
   /** Blur: every held action counts as released and pending presses are dropped. */
   clear(time: number): void;
 }

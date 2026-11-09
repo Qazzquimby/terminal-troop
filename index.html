@@ -26,7 +26,59 @@
           <button id="copy" hidden>Copy link</button>
         </div>
         <p id="status">Create a room to start.</p>
+        <button id="settings-open" class="settings-open" aria-haspopup="dialog">
+          Settings
+        </button>
       </header>
+
+      <dialog id="settings" class="settings" aria-labelledby="settings-title">
+        <form method="dialog">
+          <h2 id="settings-title">Settings</h2>
+          <fieldset>
+            <legend>Voice chat</legend>
+            <label class="settings-choice">
+              <input
+                id="voice-mode-open"
+                type="radio"
+                name="voice-mode"
+                value="open"
+              />
+              Open mic
+            </label>
+            <label class="settings-choice">
+              <input
+                id="voice-mode-ptt"
+                type="radio"
+                name="voice-mode"
+                value="pushToTalk"
+              />
+              Push to talk (V)
+            </label>
+            <label class="settings-choice">
+              <input id="voice-muted" type="checkbox" />
+              Mute mic
+            </label>
+            <label class="settings-range" for="voice-volume">
+              Voice volume
+            </label>
+            <input id="voice-volume" type="range" min="0" max="1" step="0.05" />
+          </fieldset>
+          <fieldset>
+            <legend>Audio</legend>
+            <label class="settings-range" for="master-volume">
+              Master volume
+            </label>
+            <input
+              id="master-volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+            />
+          </fieldset>
+          <button id="settings-close" class="settings-close">Close</button>
+        </form>
+      </dialog>
 
       <section id="game-wrap" class="game-wrap">
         <div class="play-area">
@@ -35,6 +87,7 @@
             <pre id="debug" class="debug-overlay" hidden></pre>
             <p class="controls-hint">
               WASD / arrows to move · Shift to sprint · Tab to toggle inventory
+              · Esc for settings
             </p>
           </div>
         </div>

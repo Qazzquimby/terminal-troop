@@ -36,6 +36,8 @@ export interface Sfx {
   ) => Promise<SoundHandle | null>;
   stop: (id: string, fadeTime?: number) => void;
   stopAll: (fadeTime?: number) => void;
+  /** Scales every sound; 0..1. */
+  setMasterVolume: (value: number) => void;
 }
 
 function spatialMix(origin: Point | null, listener: Point | null): Mix {
@@ -54,6 +56,8 @@ function spatialMix(origin: Point | null, listener: Point | null): Mix {
 
 export function createSfx(): Sfx {
   let audioContext: AudioContext | null = null;
+  let master: GainNode | null = null;
+  let masterVolume = 1;
 
   const buffers = new Map<string, Promise<AudioBuffer>>();
   const activeLoops = new Map<string, SoundHandle>();
@@ -62,6 +66,21 @@ export function createSfx(): Sfx {
   function getAudioContext(): AudioContext {
     audioContext ??= new AudioContext();
     return audioContext;
+  }
+
+  /** Every sound passes through this gain on its way out. */
+  function getMaster(context: AudioContext): GainNode {
+    if (master === null) {
+      master = context.createGain();
+      master.gain.value = masterVolume;
+      master.connect(context.destination);
+    }
+    return master;
+  }
+
+  function setMasterVolume(value: number): void {
+    masterVolume = value;
+    if (master !== null) master.gain.value = value;
   }
 
   function loadBuffer(url: string): Promise<AudioBuffer> {
@@ -110,7 +129,7 @@ export function createSfx(): Sfx {
 
     source.connect(gain);
     gain.connect(panner);
-    panner.connect(context.destination);
+    panner.connect(getMaster(context));
     source.start();
 
     let stopped = false;
@@ -205,5 +224,5 @@ export function createSfx(): Sfx {
     activeLoops.clear();
   }
 
-  return { play, playLoop, stop, stopAll };
+  return { play, playLoop, stop, stopAll, setMasterVolume };
 }
