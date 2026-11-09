@@ -12,24 +12,31 @@ import {
 } from "../sim/index.js";
 import type { Session, WorldKind } from "../sim/index.js";
 import { ChaserState } from "./chaser.js";
-import { MonsterKind, registerMonsters, spawnMonsters } from "./index.js";
+import type { MonsterConfig } from "./index.js";
+import { MonsterKind, createMonsters } from "./index.js";
 
-function populated(code: string, kind: WorldKind = "standard"): Session {
+function populated(
+  code: string,
+  kind: WorldKind = "standard",
+  config: MonsterConfig = testMonsterConfig,
+): Session {
   const game = createSession("me", "ME", code, kind, testSfx(), testSimConfig);
   // Players start at random; this one stands at the same spot every time.
   Object.assign(game.local, randomFreePosition(game.world, 14, mulberry32(9)));
-  registerMonsters(game, testMonsterConfig);
-  spawnMonsters(game, testMonsterConfig);
+  const monsters = createMonsters(config);
+  monsters.register(game);
+  monsters.populate(game);
   return game;
 }
 
 const placed = (game: Session) =>
   [...game.entities.values()].map(({ x, y }) => ({ x, y }));
 
-test("spawns the configured chasers on free floor, wandering", () => {
+test("spawns chasers by the area of the world, on free floor, wandering", () => {
   const game = populated("SPAWN");
   const entities = [...game.entities.values()];
-  expect(entities).toHaveLength(testMonsterConfig.chasers);
+  // 4000x3000 at 0.25 per million square pixels.
+  expect(entities).toHaveLength(3);
   for (const entity of entities) {
     expect(entity.kind).toBe(MonsterKind.CHASER);
     expect(isAreaFree(game.world.map, entity.x, entity.y, entity.radius)).toBe(
@@ -57,7 +64,12 @@ test("spawns away from the players", () => {
 
 test("a world too small for the clearance still spawns them, as far off as it can", () => {
   const game = populated("SPAWN", "dev");
-  expect(game.entities.size).toBe(testMonsterConfig.chasers);
+  expect(game.entities.size).toBe(testMonsterConfig.minChasers);
+});
+
+test("a denser world spawns more", () => {
+  const dense = { ...testMonsterConfig, chaserDensity: 1 };
+  expect(populated("SPAWN", "standard", dense).entities.size).toBe(12);
 });
 
 test("the spots are seeded by the room", () => {

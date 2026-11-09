@@ -1,7 +1,5 @@
 import type { Sfx } from "../audio/index.js";
 import type { Scope } from "../lib/scope/index.js";
-import { registerMonsters, spawnMonsters } from "../monsters/index.js";
-import type { MonsterConfig } from "../monsters/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
@@ -41,6 +39,14 @@ export interface RoomConfig {
   readonly presence: PresenceTiming;
 }
 
+/** The monsters a room's world holds. */
+export interface Monsters {
+  /** Registers their kinds with a new session, before any snapshot reaches it. */
+  register(session: Session): void;
+  /** Spawns the ones a new world starts with. */
+  populate(session: Session): void;
+}
+
 /**
  * - lobby: in no room; `error` says why the last attempt to join failed
  * - connecting: joining the room `code`
@@ -75,7 +81,7 @@ export interface RoomDeps {
   readonly clock: RoomClock;
   readonly config: RoomConfig;
   readonly sim: SimConfig;
-  readonly monsters: MonsterConfig;
+  readonly monsters: Monsters;
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
@@ -187,7 +193,7 @@ export function createRoom(deps: RoomDeps): Room {
     const hosting = view?.id === localId;
     room.session.hosting = hosting;
     if (hosting && !room.populated) {
-      spawnMonsters(room.session, deps.monsters);
+      deps.monsters.populate(room.session);
       room.populated = true;
     }
   }
@@ -338,7 +344,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sfx,
       deps.sim,
     );
-    registerMonsters(session, deps.monsters);
+    deps.monsters.register(session);
     session.hosting = false;
     const room: Link = {
       scope,

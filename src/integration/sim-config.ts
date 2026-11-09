@@ -24,9 +24,10 @@ export const testSimConfig: SimConfig = {
   net: { smoothing: 12 },
 };
 
-/** Three chasers, which walk at 50px/s, chase at 200px/s and see 300px. */
+/** Three chasers in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at 200px/s and see 300px. */
 export const testMonsterConfig: MonsterConfig = {
-  chasers: 3,
+  chaserDensity: 0.25,
+  minChasers: 2,
   seed: 3,
   clearance: 400,
   chaser: {

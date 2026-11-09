@@ -53,7 +53,9 @@ export const config = {
     },
   },
   monsters: {
-    chasers: 6,
+    // 7 in the standard world, 2 in the dev square.
+    chaserDensity: 0.15,
+    minChasers: 2,
     seed: 1,
     clearance: CELL * 10,
     chaser: {

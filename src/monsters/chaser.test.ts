@@ -13,7 +13,7 @@ import {
 import type { Session, WorldEntity } from "../sim/index.js";
 import type { ChaserConfig } from "./chaser.js";
 import { ChaserState, freshChaser } from "./chaser.js";
-import { MonsterKind, registerMonsters } from "./index.js";
+import { MonsterKind, createMonsters } from "./index.js";
 
 const DT = 1 / 60;
 const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
@@ -29,7 +29,7 @@ function world(chaser: ChaserConfig = config): Session {
     testSfx(),
     testSimConfig,
   );
-  registerMonsters(game, { ...testMonsterConfig, chaser });
+  createMonsters({ ...testMonsterConfig, chaser }).register(game);
   return game;
 }
 

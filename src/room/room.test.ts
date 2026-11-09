@@ -3,24 +3,23 @@ import {
   createManualClock,
   testRoomConfig,
 } from "../integration/room-helpers.js";
-import {
-  testMonsterConfig,
-  testSfx,
-  testSimConfig,
-} from "../integration/sim-config.js";
+import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { createScope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
   playerState,
   randomFreePosition,
+  registerEntityType,
+  spawnEntity,
   updateSession,
 } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
+import { z } from "zod";
 import { roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
-import type { Room, RoomState } from "./room.js";
+import type { Monsters, Room, RoomState } from "./room.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
@@ -129,6 +128,25 @@ function createHub() {
   };
 }
 
+/** Monsters that start as three blobs across the dev square, each drifting right at 20px/s. */
+const blobs: Monsters = {
+  register(session) {
+    registerEntityType(session, 1, {
+      radius: 10,
+      data: z.object({ steps: z.number().int() }),
+      update(entity, data) {
+        entity.vx = 20;
+        return { steps: data.steps + 1 };
+      },
+      draw: () => undefined,
+    });
+  },
+  populate(session) {
+    for (const x of [100, 400, 700])
+      spawnEntity(session, 1, x, 300, { steps: 0 });
+  },
+};
+
 /**
  * Voice whose rooms record each call into `log`, and hand their failure callback to
  * `failures`.
@@ -187,7 +205,7 @@ function setup(hub = createHub(), id = "me", clock = createManualClock()) {
     },
     config: testRoomConfig,
     sim: testSimConfig,
-    monsters: testMonsterConfig,
+    monsters: blobs,
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange() {
       changes++;
@@ -909,7 +927,7 @@ describe("host", () => {
       clock.advance(1000);
       play(get("a"), 0);
       const entity = { id: "z:1", kind: 1, x: 450, y: 300 };
-      const data = { mode: "wander", seed: 1, route: [], pause: 0 };
+      const data = { steps: 0 };
       listener.send(NetEvent.ENTITIES, {
         host: "b",
         entities: [{ ...entity, data }],
