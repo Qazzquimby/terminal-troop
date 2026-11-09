@@ -23,6 +23,10 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 /** Transports that deliver to every other member of the same room, synchronously. */
 function createHub() {
   const members = new Map<string, { room: string; handlers: Handlers }>();
+  /** While set, members hear only those in their own group; members in no group hear everyone. */
+  let groups: Map<string, number> | null = null;
+  const hears = (from: string, to: string): boolean =>
+    groups === null || groups.get(from) === groups.get(to);
 
   function transport(name: string, log: string[]) {
     let held: {
@@ -54,7 +58,7 @@ function createHub() {
         const self = members.get(name);
         if (self === undefined) return Promise.resolve();
         for (const [other, member] of members) {
-          if (other !== name && member.room === self.room)
+          if (other !== name && member.room === self.room && hears(name, other))
             member.handlers[event]?.(payload);
         }
         return Promise.resolve();
@@ -98,6 +102,17 @@ function createHub() {
     transport,
     listener,
     inRoom: (name: string) => members.has(name),
+    /** Splits the members into `sides` that hear only each other, until `heal`. */
+    partition(...sides: string[][]) {
+      groups = new Map(
+        sides.flatMap((side, index) =>
+          side.map((name) => [name, index] as const),
+        ),
+      );
+    },
+    heal() {
+      groups = null;
+    },
   };
 }
 
@@ -322,7 +337,7 @@ async function withListener() {
     other.send(NetEvent.STATE, { id: "x", name: "X", ...spot, aim: 0 });
   };
   const beat = (hidden: boolean) => {
-    other.send(NetEvent.HEARTBEAT, { id: "x", hidden });
+    other.send(NetEvent.HEARTBEAT, { id: "x", hidden, host: null });
   };
   const hasX = () => session.players.has("x");
   return { ...ctx, other, session, spot, sendState, beat, hasX };
@@ -388,6 +403,9 @@ describe("players and voice", () => {
 });
 
 describe("presence", () => {
+  /** The view a player alone in the room elects on its first heartbeat. */
+  const alone = { id: "me", term: 0 };
+
   test("a peer sending only hidden heartbeats for 60s stays a voice peer", async () => {
     const { room, log, clock, sendState, beat, hasX } = await withListener();
     sendState();
@@ -464,9 +482,9 @@ describe("presence", () => {
     expect(beats()).toEqual([]);
     clock.advance(3000);
     expect(beats().map((message) => message.payload)).toEqual([
-      { id: "me", hidden: false },
-      { id: "me", hidden: false },
-      { id: "me", hidden: false },
+      { id: "me", hidden: false, host: alone },
+      { id: "me", hidden: false, host: alone },
+      { id: "me", hidden: false, host: alone },
     ]);
   });
 
@@ -475,9 +493,9 @@ describe("presence", () => {
     room.setHidden(true);
     clock.advance(2000);
     expect(other.heard.map((message) => message.payload)).toEqual([
-      { id: "me", hidden: true },
-      { id: "me", hidden: true },
-      { id: "me", hidden: true },
+      { id: "me", hidden: true, host: null },
+      { id: "me", hidden: true, host: alone },
+      { id: "me", hidden: true, host: alone },
     ]);
   });
 });
@@ -509,7 +527,9 @@ describe("state sends", () => {
     clock.advance(SEND_GAP + 2);
     other.send(NetEvent.HELLO, { id: "x" });
     expect(states()).toBe(2);
-    const last = other.heard.at(-1);
+    const last = other.heard
+      .filter((message) => message.event === NetEvent.STATE)
+      .at(-1);
     expect(last?.payload).toEqual(playerState(joined(room).session.local));
   });
 
@@ -517,7 +537,10 @@ describe("state sends", () => {
     const { room, other } = await watched();
     room.setHidden(true);
     expect(other.heard).toEqual([
-      { event: NetEvent.HEARTBEAT, payload: { id: "me", hidden: true } },
+      {
+        event: NetEvent.HEARTBEAT,
+        payload: { id: "me", hidden: true, host: null },
+      },
     ]);
   });
 
@@ -528,7 +551,10 @@ describe("state sends", () => {
     other.heard.length = 0;
     room.setHidden(false);
     expect(other.heard).toEqual([
-      { event: NetEvent.HEARTBEAT, payload: { id: "me", hidden: false } },
+      {
+        event: NetEvent.HEARTBEAT,
+        payload: { id: "me", hidden: false, host: null },
+      },
     ]);
     room.frame(SEND_GAP + 2);
     expect(states()).toBe(1);
@@ -565,90 +591,173 @@ describe("payloads that do not parse are dropped", () => {
     expect(room.presenceOf("x")?.kind).toBe("away");
   });
 
-  test("a HELLO without an id forces no state send", async () => {
+  test("a HELLO without an id forces no reply", async () => {
     const { other } = await heard();
     other.send(NetEvent.HELLO, null);
     expect(other.heard).toEqual([]);
     other.send(NetEvent.HELLO, { id: "x" });
     expect(other.heard.map((message) => message.event)).toEqual([
       NetEvent.STATE,
+      NetEvent.HEARTBEAT,
     ]);
   });
 });
 
 describe("host", () => {
-  /** Players a, b and c in one room; a keeps its own clock, so it falls silent unless moved. */
-  async function trio() {
+  type Player = ReturnType<typeof setup>;
+
+  /**
+   * Players joined in order to one room. They share one clock, except those in `own`, whose
+   * clocks move only when told to.
+   */
+  async function gather(ids: readonly string[], own: readonly string[] = []) {
     const hub = createHub();
     const clock = createManualClock();
-    const a = setup(hub, "a", createManualClock());
-    const b = setup(hub, "b", clock);
-    const c = setup(hub, "c", clock);
-    for (const { room } of [a, b, c]) await room.join("ABC", "P");
-    const hosts = (...players: { room: Room }[]) =>
-      players.map(({ room }) => room.hostId());
-    return { a, b, c, clock, hosts };
+    const players = new Map<string, Player>();
+    const get = (id: string): Player => {
+      const player = players.get(id);
+      if (player === undefined) throw new Error(`no player ${id}`);
+      return player;
+    };
+    const add = async (id: string): Promise<Player> => {
+      const player = setup(
+        hub,
+        id,
+        own.includes(id) ? createManualClock() : clock,
+      );
+      players.set(id, player);
+      await player.room.join("ABC", id.toUpperCase());
+      return player;
+    };
+    for (const id of ids) await add(id);
+    const hosts = () => [...players.values()].map(({ room }) => room.hostId());
+    return { hub, clock, get, add, hosts };
   }
 
-  test("is undefined outside a room, and the local player when alone", async () => {
-    const { room } = setup();
+  /** `values` with each run of repeats cut to one. */
+  const runs = <T>(values: readonly T[]): T[] =>
+    values.filter((value, index) => index === 0 || value !== values[index - 1]);
+
+  test("is undefined outside a room, and the local player alone after a heartbeat", async () => {
+    const { room, clock } = setup();
     expect(room.hostId()).toBeUndefined();
     await room.join("ABC", "ME");
+    expect(room.hostId()).toBeUndefined();
+    clock.advance(1000);
     expect(room.hostId()).toBe("me");
     await room.leave();
     expect(room.hostId()).toBeUndefined();
   });
 
-  test("every player agrees on the lowest id", async () => {
-    const { a, b, c, hosts } = await trio();
-    expect(hosts(a, b, c)).toEqual(["a", "a", "a"]);
+  test("the first players agree on the lowest id", async () => {
+    const { clock, hosts } = await gather(["b", "c", "a"]);
+    clock.advance(1000);
+    expect(hosts()).toEqual(["a", "a", "a"]);
   });
 
-  test("passes to the next lowest id when the host leaves", async () => {
-    const { a, b, c, hosts } = await trio();
-    await a.room.leave();
-    expect(hosts(b, c)).toEqual(["b", "b"]);
+  test("a newcomer adopts the host at once, even with a lower id", async () => {
+    const { clock, add, hosts } = await gather(["b", "c"]);
+    clock.advance(1000);
+    const a = await add("a");
+    expect(a.room.hostId()).toBe("b");
+    clock.advance(10_000);
+    expect(hosts()).toEqual(["b", "b", "b"]);
   });
 
-  test("passes on when the host falls silent, and returns when it is heard again", async () => {
-    const { a, b, c, clock, hosts } = await trio();
-    clock.advance(3000);
-    expect(hosts(b, c)).toEqual(["a", "a"]);
-    clock.advance(4000);
-    expect(b.room.presenceOf("a")?.kind).toBe("away");
-    expect(hosts(b, c)).toEqual(["b", "b"]);
-    a.clock.advance(1000);
-    expect(hosts(b, c)).toEqual(["a", "a"]);
+  test("a hitch on the host hands over once, with no hand-back", async () => {
+    const { clock, get, hosts } = await gather(["a", "b", "c"], ["a"]);
+    clock.advance(1000);
+    get("a").clock.advance(1000);
+    expect(hosts()).toEqual(["a", "a", "a"]);
+
+    const seen: (string | undefined)[][] = [[], [], []];
+    for (let time = 1500; time <= 15_000; time += 500) {
+      clock.advance(time);
+      if (time >= 7000) get("a").clock.stall(time);
+      hosts().forEach((host, index) => seen[index]?.push(host));
+    }
+    expect(seen.map(runs)).toEqual([
+      ["a", "b"],
+      ["a", "b"],
+      ["a", "b"],
+    ]);
   });
 
-  test("passes on when the host times out", async () => {
-    const { a, b, c, clock, hosts } = await trio();
-    clock.advance(31_000);
-    expect(b.room.presenceOf("a")).toBeUndefined();
-    expect(hosts(b, c)).toEqual(["b", "b"]);
-    expect(a.room.hostId()).toBe("a");
+  test("a host cut off from the room keeps the role alone, then steps down when it returns", async () => {
+    const { hub, clock, hosts } = await gather(["a", "b", "c"]);
+    clock.advance(1000);
+    hub.partition(["a"], ["b", "c"]);
+    clock.advance(6000);
+    expect(hosts()).toEqual(["a", "b", "b"]);
+    hub.heal();
+    clock.advance(8000);
+    expect(hosts()).toEqual(["b", "b", "b"]);
   });
 
-  test("a hidden page is passed over by everyone, itself included, until shown", async () => {
-    const { a, b, c, hosts } = await trio();
-    a.room.setHidden(true);
-    expect(hosts(a, b, c)).toEqual(["b", "b", "b"]);
-    a.room.setHidden(false);
-    expect(hosts(a, b, c)).toEqual(["a", "a", "a"]);
+  test("players that elected apart agree within a heartbeat of hearing each other", async () => {
+    const { hub, clock, hosts } = await gather(["a", "b", "c", "d"]);
+    clock.advance(1000);
+    hub.partition(["a"], ["b"], ["c", "d"]);
+    clock.advance(6000);
+    expect(hosts()).toEqual(["a", "b", "c", "c"]);
+    hub.heal();
+    clock.advance(7000);
+    expect(hosts()).toEqual(["b", "b", "b", "b"]);
+    clock.advance(20_000);
+    expect(hosts()).toEqual(["b", "b", "b", "b"]);
   });
 
-  test("with every page hidden, the lowest id hosts", async () => {
-    const { a, b, c, hosts } = await trio();
-    for (const { room } of [a, b, c]) room.setHidden(true);
-    expect(hosts(a, b, c)).toEqual(["a", "a", "a"]);
+  test("hands over at the next heartbeat when the host leaves", async () => {
+    const { clock, get } = await gather(["a", "b", "c"]);
+    clock.advance(1000);
+    await get("a").room.leave();
+    clock.advance(2000);
+    expect([get("b").room.hostId(), get("c").room.hostId()]).toEqual([
+      "b",
+      "b",
+    ]);
   });
 
-  test("a newcomer passes over a hidden page too", async () => {
-    const { a, b, c, hosts } = await trio();
-    a.room.setHidden(true);
-    const d = setup(a.hub, "d", b.clock);
-    await d.room.join("ABC", "D");
+  test("hands over when the host times out", async () => {
+    const { clock, get } = await gather(["a", "b", "c"], ["a"]);
+    clock.advance(1000);
+    get("a").clock.advance(1000);
+    clock.advance(32_000);
+    expect(get("b").room.presenceOf("a")).toBeUndefined();
+    expect([get("b").room.hostId(), get("c").room.hostId()]).toEqual([
+      "b",
+      "b",
+    ]);
+  });
+
+  test("a hidden host hands over, and does not take the role back when shown", async () => {
+    const { clock, get, hosts } = await gather(["a", "b", "c"]);
+    clock.advance(1000);
+    get("a").room.setHidden(true);
+    clock.advance(2000);
+    expect(hosts()).toEqual(["b", "b", "b"]);
+    get("a").room.setHidden(false);
+    clock.advance(10_000);
+    expect(hosts()).toEqual(["b", "b", "b"]);
+  });
+
+  test("with every page hidden, the host stays", async () => {
+    const { clock, get, hosts } = await gather(["a", "b", "c"]);
+    clock.advance(1000);
+    for (const id of ["a", "b", "c"]) get(id).room.setHidden(true);
+    clock.advance(5000);
+    expect(hosts()).toEqual(["a", "a", "a"]);
+  });
+
+  test("a newcomer passes over a hidden page", async () => {
+    const { clock, get, add, hosts } = await gather(["a", "b", "c"]);
+    clock.advance(1000);
+    get("a").room.setHidden(true);
+    clock.advance(2000);
+    const d = await add("d");
     expect(d.room.presenceOf("a")?.kind).toBe("away");
-    expect(hosts(a, b, c, d)).toEqual(["b", "b", "b", "b"]);
+    expect(d.room.hostId()).toBe("b");
+    clock.advance(5000);
+    expect(hosts()).toEqual(["b", "b", "b", "b"]);
   });
 });

@@ -25,7 +25,7 @@ interface RoomView {
 interface RoomDebugInfo {
   readonly net: MessageRates;
   readonly playerCount: number;
-  /** The host's name, "you" for the local player, or its id when its name is unknown. */
+  /** The host's name, "you" for the local player, its id when its name is unknown, or "none". */
   readonly host: string;
   /** Remote players, their presence, and the age of the last message from each. */
   readonly remotes: readonly {
@@ -45,14 +45,16 @@ export function roomDebugInfo(
   rates: MessageRates,
   room: RoomView,
 ): RoomDebugInfo {
-  const hostId = room.hostId() ?? session.localId;
+  const hostId = room.hostId();
   return {
     net: rates,
     playerCount: session.players.size,
     host:
-      hostId === session.localId
-        ? "you"
-        : (session.players.get(hostId)?.name ?? hostId),
+      hostId === undefined
+        ? "none"
+        : hostId === session.localId
+          ? "you"
+          : (session.players.get(hostId)?.name ?? hostId),
     remotes: remotePlayers(session).map((player) => {
       const presence = room.presenceOf(player.id);
       return {

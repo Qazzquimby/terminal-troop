@@ -11,7 +11,8 @@ import {
 import type { Session, SimConfig, WorldKind } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 import type { z } from "zod";
-import { electHost } from "./host.js";
+import { adopt, elect } from "./host.js";
+import type { Candidate, HostView } from "./host.js";
 import { createRoster } from "./presence.js";
 import type {
   Presence,
@@ -93,9 +94,10 @@ export interface Room {
   /** Undefined for a remote player who is gone, or outside a room. */
   presenceOf(id: string): Presence | undefined;
   /**
-   * The one player who runs the shared world, the same on every client that hears the same
-   * players; undefined outside a room. Moves as players arrive, leave, go away, or hide or
-   * show their page.
+   * The one player who runs the shared world. A host keeps the role while it is active; only
+   * when it goes away, leaves or hides does a new one take over, and every client adopts the
+   * latest election it hears. Undefined outside a room, and on joining until the host is
+   * heard or the first heartbeat elects one.
    */
   hostId(): string | undefined;
 }
@@ -111,6 +113,10 @@ interface Link {
   lastSent: number;
   /** The next frame sends state whatever the throttle says. */
   forceState: boolean;
+  /** Undefined until the first view is heard or the first heartbeat elects one. */
+  host: HostView | undefined;
+  /** When the last heartbeat was due to go out. */
+  lastPulse: number;
 }
 
 const ALREADY_CONNECTING = "Already connecting.";
@@ -151,8 +157,24 @@ export function createRoom(deps: RoomDeps): Room {
     void send(NetEvent.STATE, playerState(room.session.local));
   }
 
-  function sendHeartbeat(): void {
-    void send(NetEvent.HEARTBEAT, { id: localId, hidden });
+  function sendHeartbeat(room: Link): void {
+    void send(NetEvent.HEARTBEAT, {
+      id: localId,
+      hidden,
+      host: room.host ?? null,
+    });
+  }
+
+  /** The local player first, then every remote player present or away. */
+  function candidates(room: Link): [Candidate, ...Candidate[]] {
+    const { roster } = room;
+    return [
+      { id: localId, active: !hidden },
+      ...[...roster.ids()].map((id) => ({
+        id,
+        active: roster.get(id)?.kind === "present",
+      })),
+    ];
   }
 
   function syncVoice(room: Link): void {
@@ -209,12 +231,14 @@ export function createRoom(deps: RoomDeps): Room {
       }),
       [NetEvent.HEARTBEAT]: on(NetEvent.HEARTBEAT, (message) => {
         hear(room, message.id, { kind: "heard", hidden: message.hidden });
+        if (room.roster.get(message.id) !== undefined)
+          room.host = adopt(room.host, message.host);
       }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
-        // A STATE counts as heard with the page visible, so a hidden page says otherwise at once.
-        if (hidden) sendHeartbeat();
+        // The newcomer learns the host view at once, and a hidden page undoes the visible STATE.
+        sendHeartbeat(room);
       }),
       [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
         const change = room.roster.apply(id, { kind: "bye" }, clock.now());
@@ -228,14 +252,23 @@ export function createRoom(deps: RoomDeps): Room {
     };
   }
 
-  /** Says the local player is still here, then moves every remote player along by the time. */
+  /**
+   * Moves every remote player along by the time, elects a host if the one held no longer
+   * qualifies, then says the local player is still here.
+   */
   function pulse(room: Link): void {
     if (room.scope.disposed) return;
-    sendHeartbeat();
-    const changes = room.roster.sweep(clock.now());
+    const now = clock.now();
+    // A page whose timers stalled finds everyone silent, so it waits for their news to elect.
+    const stalled = now - room.lastPulse > config.presence.awayAfterMs;
+    room.lastPulse = now;
+    const changes = room.roster.sweep(now);
     if (room.voiceRoom !== null)
       applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     settle(room, changes);
+    if (!stalled || room.host === undefined)
+      room.host = elect(room.host, candidates(room));
+    sendHeartbeat(room);
   }
 
   /**
@@ -266,6 +299,8 @@ export function createRoom(deps: RoomDeps): Room {
       peers: new Set(),
       lastSent: -Infinity,
       forceState: false,
+      host: undefined,
+      lastPulse: clock.now(),
     };
     await transport.join(roomKey(code, deps.world), handlers(room));
     if (scope.disposed) {
@@ -368,22 +403,12 @@ export function createRoom(deps: RoomDeps): Room {
       const shown = hidden && !next;
       hidden = next;
       if (link === null) return;
-      sendHeartbeat();
+      sendHeartbeat(link);
       if (shown) link.forceState = true;
     },
 
     presenceOf: (id) => link?.roster.get(id),
 
-    hostId() {
-      if (link === null) return undefined;
-      const { roster } = link;
-      return electHost(
-        { id: localId, active: !hidden },
-        [...roster.ids()].map((id) => ({
-          id,
-          active: roster.get(id)?.kind === "present",
-        })),
-      );
-    },
+    hostId: () => link?.host?.id,
   };
 }

@@ -46,6 +46,15 @@ export function createManualClock() {
       }
       time = until;
     },
+    /** Moves to `until` as a stalled page does: each interval that came due runs once, there. */
+    stall(until: number): void {
+      time = until;
+      for (const interval of [...intervals]) {
+        if (interval.next > until) continue;
+        interval.next = until + interval.ms;
+        interval.fn();
+      }
+    },
     /** Intervals still running. */
     running: (): number => intervals.size,
   };

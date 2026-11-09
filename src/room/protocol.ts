@@ -17,8 +17,17 @@ function stateMessage(nameMax: number) {
 /** HELLO and BYE carry only the sender's id. */
 const PresenceMessage = z.object({ id: PlayerId });
 
-/** A heartbeat carries the sender's id and whether its page is hidden. */
-const HeartbeatMessage = PresenceMessage.extend({ hidden: z.boolean() });
+/** Who the sender takes for the host, and the election that chose it. */
+const HostView = z.object({ id: PlayerId, term: z.number().int().min(0) });
+
+/**
+ * A heartbeat carries the sender's id, whether its page is hidden, and its host view; null
+ * before it has one.
+ */
+const HeartbeatMessage = PresenceMessage.extend({
+  hidden: z.boolean(),
+  host: HostView.nullable(),
+});
 
 /** Every event's payload schema; a missing event fails to compile. */
 export function roomMessages(nameMax: number) {

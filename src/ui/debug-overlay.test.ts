@@ -34,7 +34,7 @@ test("room info lists remote players with their presence and the age of their la
   });
 });
 
-test("a remote host shows by name, or by id when it has no player yet", () => {
+test("a remote host shows by name, by id when it has no player yet, and none before one is known", () => {
   const info = (hostId: string) =>
     roomDebugInfo(withRemote(), 0, rates, {
       presenceOf: () => undefined,
@@ -42,6 +42,12 @@ test("a remote host shows by name, or by id when it has no player yet", () => {
     }).host;
   expect(info("them")).toBe("THEM");
   expect(info("ghost")).toBe("ghost");
+  expect(
+    roomDebugInfo(withRemote(), 0, rates, {
+      presenceOf: () => undefined,
+      hostId: () => undefined,
+    }).host,
+  ).toBe("none");
 });
 
 test("alone in the room lists no remotes", () => {
