@@ -30,6 +30,7 @@ import { createSettingsStore } from "./engine/settings.js";
 import { createSettingsMenu, menuPeers } from "./settings-menu.js";
 import { trackInputContext } from "./app-context.js";
 import { element } from "./dom.js";
+import { actionKeyLabel } from "./engine/actions.js";
 import type { Transport } from "./engine/transport.js";
 import type { Voice, VoiceSettings } from "./engine/voice.js";
 import {
@@ -118,11 +119,17 @@ const voice = selectVoice(settings.get().voice);
 // Debug hook for driving voice from the console or a test browser.
 if (params.has("debug")) Object.assign(window, { voice });
 
+const talkKey = actionKeyLabel("pushToTalk");
+element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
+  `Push to talk (${talkKey})`;
+
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
   applyVoiceSettings(voice, current.voice);
   controlsHint.textContent =
-    current.voice.mode === "pushToTalk" ? `${baseHint} · V to talk` : baseHint;
+    current.voice.mode === "pushToTalk"
+      ? `${baseHint} · ${talkKey} to talk`
+      : baseHint;
 }
 applySettings(settings.get());
 settings.subscribe(applySettings);
@@ -345,7 +352,7 @@ function frame(): void {
   micView.show(
     game === null
       ? null
-      : micIndicator(voice.status(), settings.get().voice.muted),
+      : micIndicator(voice.status(), settings.get().voice.muted, talkKey),
   );
   requestAnimationFrame(frame);
 }

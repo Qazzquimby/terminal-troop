@@ -29,7 +29,7 @@ export interface SettingsStorage {
 type Listener = (settings: Settings) => void;
 
 export const DEFAULT_SETTINGS: Settings = {
-  voice: { mode: "open", muted: false, volume: 1 },
+  voice: { mode: "pushToTalk", muted: false, volume: 1 },
   audio: { masterVolume: 1 },
 };
 
