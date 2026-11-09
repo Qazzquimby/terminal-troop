@@ -1,12 +1,12 @@
 import { afterEach, expect, expectTypeOf, test, vi } from "vitest";
 import { createBroadcastChannelTransport } from "./broadcast-channel-transport.js";
-import { NET_EVENTS, NetEvent } from "../../net/index.js";
+import { NetEvent } from "../../net/index.js";
 import type { Transport } from "../../net/index.js";
 
 const open: Transport[] = [];
 
 function transport(): Transport {
-  const created = createBroadcastChannelTransport(NET_EVENTS);
+  const created = createBroadcastChannelTransport(NetEvent);
   open.push(created);
   return created;
 }
@@ -92,8 +92,8 @@ test("ignores messages that are not transport envelopes", async () => {
   expect(bobGot).not.toHaveBeenCalled();
 });
 
-test("drops event names outside the given list and dispatches listed ones", async () => {
-  const bob = createBroadcastChannelTransport([NetEvent.STATE]);
+test("drops event names outside the given object and dispatches its events", async () => {
+  const bob = createBroadcastChannelTransport({ STATE: NetEvent.STATE });
   open.push(bob);
   const state = vi.fn();
   const hello = vi.fn();
@@ -111,8 +111,8 @@ test("drops event names outside the given list and dispatches listed ones", asyn
   expect(state).toHaveBeenCalledWith({ id: "a" });
 });
 
-test("accepts only NetEvent names as its event list", () => {
+test("accepts only NetEvent names as its event object", () => {
   expectTypeOf(createBroadcastChannelTransport)
     .parameter(0)
-    .toEqualTypeOf<readonly [NetEvent, ...NetEvent[]]>();
+    .toEqualTypeOf<Readonly<Record<string, NetEvent>>>();
 });

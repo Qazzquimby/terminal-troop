@@ -10,7 +10,6 @@ import {
   stepAlpha,
 } from "./sim/index.js";
 import {
-  NET_EVENTS,
   NetEvent,
   PresenceMessage,
   createCountingTransport,
@@ -88,7 +87,7 @@ const env = envResult.data;
  */
 function selectTransport(params: URLSearchParams): Transport {
   if (params.has("local") || env.supabase === null) {
-    return createBroadcastChannelTransport(NET_EVENTS);
+    return createBroadcastChannelTransport(NetEvent);
   }
   return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
 }
