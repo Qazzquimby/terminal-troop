@@ -9,30 +9,44 @@ export interface UiConfig {
   readonly debugRefreshMs: number;
 }
 
+/** A remote player's presence kind and when it was last heard from. */
+interface RemotePresence {
+  readonly kind: string;
+  readonly lastHeard: number;
+}
+
 interface RoomDebugInfo {
   readonly net: MessageRates;
   readonly playerCount: number;
-  /** Remote players and the age of their last state update. */
-  readonly remotes: readonly { name: string; ageMs: number }[];
+  /** Remote players, their presence, and the age of the last message from each. */
+  readonly remotes: readonly {
+    name: string;
+    presence: string;
+    ageMs: number;
+  }[];
 }
 
 /**
  * The room part of the overlay for `session` at `now`, given the current message rates and
- * when each remote player was last heard from.
+ * each remote player's presence; a player without one shows as gone.
  */
 export function roomDebugInfo(
   session: Session,
   now: number,
   rates: MessageRates,
-  lastHeard: (id: string) => number | undefined,
+  presenceOf: (id: string) => RemotePresence | undefined,
 ): RoomDebugInfo {
   return {
     net: rates,
     playerCount: session.players.size,
-    remotes: remotePlayers(session).map((player) => ({
-      name: player.name,
-      ageMs: now - (lastHeard(player.id) ?? now),
-    })),
+    remotes: remotePlayers(session).map((player) => {
+      const presence = presenceOf(player.id);
+      return {
+        name: player.name,
+        presence: presence?.kind ?? "gone",
+        ageMs: now - (presence?.lastHeard ?? now),
+      };
+    }),
   };
 }
 
@@ -59,7 +73,8 @@ function formatDebug({ perf, room }: DebugInfo): string {
     `net     sent ${String(room.net.sentPerS)}/s  recv ${String(room.net.receivedPerS)}/s`,
     `players ${String(room.playerCount)}`,
     ...room.remotes.map(
-      (remote) => `  ${remote.name.padEnd(8)} ${remote.ageMs.toFixed(0)} ms`,
+      (remote) =>
+        `  ${remote.name.padEnd(8)} ${remote.presence.padEnd(7)} ${remote.ageMs.toFixed(0)} ms`,
     ),
   );
   return lines.join("\n");

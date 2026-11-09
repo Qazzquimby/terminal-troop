@@ -6,18 +6,32 @@ export interface MenuPeer {
   readonly id: string;
   readonly name: string;
   readonly muted: boolean;
+  readonly away: boolean;
 }
 
-/** The remote `players`, ordered by name, each marked muted if listed in `mutedIds`. */
+/**
+ * The remote `players`, ordered by name, each marked muted if listed in `mutedIds` and away
+ * if `isAway` says so.
+ */
 export function menuPeers(
   players: Iterable<{ readonly id: string; readonly name: string }>,
   mutedIds: readonly string[],
+  isAway: (id: string) => boolean,
 ): MenuPeer[] {
   const muted = new Set(mutedIds);
   return [...players]
-    .map(({ id, name }) => ({ id, name, muted: muted.has(id) }))
+    .map(({ id, name }) => ({
+      id,
+      name,
+      muted: muted.has(id),
+      away: isAway(id),
+    }))
     .sort((a, b) => a.id.localeCompare(b.id))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function peerLabel(peer: MenuPeer): string {
+  return peer.away ? `${peer.name} (away)` : peer.name;
 }
 
 function peerRow(peer: MenuPeer): HTMLLIElement {
@@ -26,7 +40,7 @@ function peerRow(peer: MenuPeer): HTMLLIElement {
   row.dataset.peerId = peer.id;
   const name = document.createElement("span");
   name.className = "settings-peer-name";
-  name.textContent = peer.name;
+  name.textContent = peerLabel(peer);
   const label = document.createElement("label");
   label.className = "settings-choice";
   const checkbox = document.createElement("input");
@@ -133,7 +147,7 @@ export function createSettingsMenu(
         const peer = peers[index];
         if (peer === undefined) return;
         element(".settings-peer-name", HTMLSpanElement, row).textContent =
-          peer.name;
+          peerLabel(peer);
         element("input", HTMLInputElement, row).checked = peer.muted;
       });
     },

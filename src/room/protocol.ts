@@ -25,3 +25,6 @@ export function parseStateMessage(
 
 /** HELLO and BYE carry only the sender's id. */
 export const PresenceMessage = z.object({ id: PlayerId });
+
+/** A heartbeat carries the sender's id and whether its page is hidden. */
+export const HeartbeatMessage = PresenceMessage.extend({ hidden: z.boolean() });

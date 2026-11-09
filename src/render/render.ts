@@ -66,7 +66,28 @@ function drawTerrain(
   ctx.strokeRect(0, 0, world.W, world.H);
 }
 
+/** How opaque an away player is drawn. */
+const AWAY_ALPHA = 0.4;
+
+/** An away player is drawn faint, with "away" under its name. */
 function drawPlayer(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  isSelf: boolean,
+  away = false,
+): void {
+  ctx.save();
+  if (away) ctx.globalAlpha = AWAY_ALPHA;
+  drawBody(ctx, player, isSelf);
+  if (away) {
+    ctx.font = "10px system-ui";
+    ctx.fillStyle = "#aaa";
+    ctx.fillText("away", player.x, player.y - player.radius - 22);
+  }
+  ctx.restore();
+}
+
+function drawBody(
   ctx: CanvasRenderingContext2D,
   player: Player,
   isSelf: boolean,
@@ -210,7 +231,10 @@ export function interpolatedView(
   return { ...game, local, players, entities };
 }
 
-/** Draws the session as of `alpha` (0..1) through the current fixed step. */
+/**
+ * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
+ * player `isAway` picks out drawn as away.
+ */
 export function draw(
   ctx: CanvasRenderingContext2D,
   simulation: Session,
@@ -218,6 +242,7 @@ export function draw(
   now: number,
   alpha: number,
   mouse: Point,
+  isAway: (id: string) => boolean,
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
@@ -251,7 +276,8 @@ export function draw(
 
   game.players.forEach((player) => {
     if (player === viewer || !inView(player, camera)) return;
-    if (isVisible(map, sources, lights, player)) drawPlayer(ctx, player, false);
+    if (isVisible(map, sources, lights, player))
+      drawPlayer(ctx, player, false, isAway(player.id));
   });
   ctx.restore();
 
