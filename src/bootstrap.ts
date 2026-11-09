@@ -28,7 +28,11 @@ import { trackInputContext } from "./app-context.js";
 import { element } from "./dom.js";
 import type { Transport } from "./engine/transport.js";
 import type { Voice, VoiceSettings } from "./engine/voice.js";
-import { applyVoiceSettings, createNullVoice } from "./engine/voice.js";
+import {
+  applyVoiceSettings,
+  createNullVoice,
+  pushToTalk,
+} from "./engine/voice.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
@@ -151,14 +155,7 @@ const input = createInput(
         debugOverlay.toggle();
       },
     },
-    pushToTalk: {
-      press() {
-        voice.setTalking(true);
-      },
-      release() {
-        voice.setTalking(false);
-      },
-    },
+    pushToTalk: pushToTalk(voice),
   },
   "play",
 );

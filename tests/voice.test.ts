@@ -10,6 +10,7 @@ import {
   isPolite,
   isTransmitting,
   peerGain,
+  pushToTalk,
 } from "../src/engine/voice.js";
 
 const ME = "player-b";
@@ -116,14 +117,7 @@ function talkInput() {
   voice.setTalking = (held) => talk.push(held);
   const state = createActionState();
   const sink = withUiHandlers(state, {
-    pushToTalk: {
-      press: () => {
-        voice.setTalking(true);
-      },
-      release: () => {
-        voice.setTalking(false);
-      },
-    },
+    pushToTalk: pushToTalk(voice),
   });
   return { talk, state, sink };
 }
@@ -147,14 +141,29 @@ describe("push-to-talk action", () => {
     expect(input.talk).toEqual([true, false]);
   });
 
-  test("clear releases it in the state without running the handlers", () => {
+  test("stops talking on clear, and the state releases it", () => {
     const input = talkInput();
     input.sink.press("pushToTalk", 1);
     input.sink.clear(3);
-    expect(input.talk).toEqual([true]);
+    expect(input.talk).toEqual([true, false]);
     const frame = input.state.consume(3);
     expect(frame.released.has("pushToTalk")).toBe(true);
     expect(frame.held.has("pushToTalk")).toBe(false);
+  });
+
+  test("talks again on resume after a clear", () => {
+    const input = talkInput();
+    input.sink.press("pushToTalk", 1);
+    input.sink.clear(2);
+    input.sink.resume("pushToTalk", 3);
+    input.sink.release("pushToTalk", 4);
+    expect(input.talk).toEqual([true, false, true, false]);
+  });
+
+  test("clear while not talking changes nothing", () => {
+    const input = talkInput();
+    input.sink.clear(1);
+    expect(input.talk).toEqual([]);
   });
 });
 

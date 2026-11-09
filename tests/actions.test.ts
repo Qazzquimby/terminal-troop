@@ -184,15 +184,27 @@ test.each<[Action, InputContext[]]>([
     expect(isActiveIn(action, context)).toBe(active.includes(context));
 });
 
-test("UI handlers run on press and release; every event still reaches the state", () => {
+/** A UI-handled action state that records every handler call. */
+function uiInput() {
   const state = createActionState();
-  const seen: [string, number][] = [];
-  const sink = withUiHandlers(state, {
-    toggleInventory: {
-      press: (time) => seen.push(["press", time]),
-      release: (time) => seen.push(["release", time]),
-    },
+  const calls: (
+    ["press", Action, number] | ["held", Action, boolean, number]
+  )[] = [];
+  const record = (action: Action) => ({
+    press: (time: number) => calls.push(["press", action, time]),
+    held: (held: boolean, time: number) =>
+      calls.push(["held", action, held, time]),
   });
+  const sink = withUiHandlers(state, {
+    toggleInventory: { press: record("toggleInventory").press },
+    pushToTalk: { held: record("pushToTalk").held },
+    sprint: record("sprint"),
+  });
+  return { state, sink, calls };
+}
+
+test("every event still reaches the action state", () => {
+  const { state, sink } = uiInput();
   sink.press("toggleInventory", 1);
   sink.press("moveUp", 1);
   sink.resume("sprint", 1);
@@ -202,8 +214,59 @@ test("UI handlers run on press and release; every event still reaches the state"
   expect(first.released).toEqual(actions("toggleInventory"));
   sink.clear(3);
   expect(step(state, 3).frame.released).toEqual(actions("moveUp", "sprint"));
-  expect(seen).toEqual([
-    ["press", 1],
-    ["release", 2],
+});
+
+test("a toggle press handler runs on press, not on resume", () => {
+  const { sink, calls } = uiInput();
+  sink.press("toggleInventory", 1);
+  sink.release("toggleInventory", 2);
+  sink.resume("toggleInventory", 3);
+  sink.clear(4);
+  sink.press("toggleInventory", 5);
+  expect(calls).toEqual([
+    ["press", "toggleInventory", 1],
+    ["press", "toggleInventory", 5],
+  ]);
+});
+
+test("held goes true on press and false on release", () => {
+  const { sink, calls } = uiInput();
+  sink.press("pushToTalk", 1);
+  sink.release("pushToTalk", 2);
+  expect(calls).toEqual([
+    ["held", "pushToTalk", true, 1],
+    ["held", "pushToTalk", false, 2],
+  ]);
+});
+
+test("held goes true on resume without a press call", () => {
+  const { sink, calls } = uiInput();
+  sink.resume("sprint", 1);
+  expect(calls).toEqual([["held", "sprint", true, 1]]);
+});
+
+test("clear ends held only for actions that are held", () => {
+  const { sink, calls } = uiInput();
+  sink.press("sprint", 1);
+  sink.press("pushToTalk", 1);
+  sink.release("pushToTalk", 2);
+  calls.length = 0;
+  sink.clear(3);
+  expect(calls).toEqual([["held", "sprint", false, 3]]);
+});
+
+test("held reports only real transitions", () => {
+  const { sink, calls } = uiInput();
+  sink.release("sprint", 1);
+  sink.press("sprint", 2);
+  sink.press("sprint", 3);
+  sink.resume("sprint", 4);
+  sink.release("sprint", 5);
+  sink.release("sprint", 6);
+  sink.clear(7);
+  expect(calls).toEqual([
+    ["press", "sprint", 2],
+    ["held", "sprint", true, 2],
+    ["held", "sprint", false, 5],
   ]);
 });

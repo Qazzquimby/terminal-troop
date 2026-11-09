@@ -1,3 +1,4 @@
+import type { UiHandlers } from "./actions.js";
 import type { Settings } from "./settings.js";
 import type { Transport } from "./transport.js";
 
@@ -100,6 +101,15 @@ export interface Voice {
    */
   setPeerMuted: (peerId: string, muted: boolean) => void;
   status: () => VoiceStatus;
+}
+
+/** UI handlers that keep `voice` talking exactly while the action is held. */
+export function pushToTalk(voice: Pick<Voice, "setTalking">): UiHandlers {
+  return {
+    held(held) {
+      voice.setTalking(held);
+    },
+  };
 }
 
 /** Sets every voice preference in `settings` on `voice`. */
