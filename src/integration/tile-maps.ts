@@ -1,7 +1,9 @@
 import type { TileMap } from "../sim/index.js";
 
+export const CELL_SIZE = 50;
+
 export function emptyMap(): TileMap {
-  return { cell: 50, cols: 6, rows: 6, solid: new Uint8Array(36) };
+  return { cell: CELL_SIZE, cols: 6, rows: 6, solid: new Uint8Array(36) };
 }
 
 export function mapWithCenterWall(): TileMap {

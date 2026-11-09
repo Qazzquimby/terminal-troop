@@ -75,7 +75,7 @@ type Wander = Extract<ChaserState, { mode: "wander" }>;
 const LEG_ATTEMPTS = 8;
 
 /** Seconds between barks; a fresh gap is drawn after each one. */
-const BARK_GAP = { min: 8, max: 16 } as const;
+const BARK_GAP = { min: 6, max: 12 } as const;
 
 /** How close to its target a chasing chaser must be to attack, in pixels. */
 const ATTACK_RANGE = 30;
