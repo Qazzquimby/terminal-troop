@@ -1,2 +1,8 @@
-export { createCamera, updateCamera } from "./camera.js";
+export {
+  createCamera,
+  setZoomTarget,
+  updateCamera,
+  zoomRange,
+} from "./camera.js";
+export type { Camera, ZoomRange } from "./camera.js";
 export { draw } from "./render.js";

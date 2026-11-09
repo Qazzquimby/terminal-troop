@@ -40,7 +40,7 @@ export const config = {
     recover: STAMINA_MAX * 0.3,
   },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
-  light: { range: CELL * 4 },
+  light: { range: CELL * 6 },
   net: { smoothing: 12 },
   room: {
     sendHz: 15,

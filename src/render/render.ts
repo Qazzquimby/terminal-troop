@@ -25,12 +25,22 @@ interface Circle extends Point {
   readonly radius: number;
 }
 
+/** The width of the world the camera covers, in world units. */
+function viewWidth(camera: Camera): number {
+  return camera.view.width * camera.zoom;
+}
+
+/** The height of the world the camera covers, in world units. */
+function viewHeight(camera: Camera): number {
+  return camera.view.height * camera.zoom;
+}
+
 function inView(body: Circle, camera: Camera): boolean {
   return (
     body.x + body.radius >= camera.x &&
     body.y + body.radius >= camera.y &&
-    body.x - body.radius <= camera.x + camera.view.width &&
-    body.y - body.radius <= camera.y + camera.view.height
+    body.x - body.radius <= camera.x + viewWidth(camera) &&
+    body.y - body.radius <= camera.y + viewHeight(camera)
   );
 }
 
@@ -43,12 +53,12 @@ function drawTerrain(
   const minCol = Math.max(0, Math.floor(camera.x / map.cell));
   const maxCol = Math.min(
     map.cols - 1,
-    Math.floor((camera.x + camera.view.width) / map.cell),
+    Math.floor((camera.x + viewWidth(camera)) / map.cell),
   );
   const minRow = Math.max(0, Math.floor(camera.y / map.cell));
   const maxRow = Math.min(
     map.rows - 1,
-    Math.floor((camera.y + camera.view.height) / map.cell),
+    Math.floor((camera.y + viewHeight(camera)) / map.cell),
   );
 
   ctx.fillStyle = "#181818";
@@ -164,11 +174,11 @@ function tracePolygons(
     const maxDistance = Math.hypot(
       Math.max(
         Math.abs(source.x - camera.x),
-        Math.abs(source.x - camera.x - camera.view.width),
+        Math.abs(source.x - camera.x - viewWidth(camera)),
       ),
       Math.max(
         Math.abs(source.y - camera.y),
-        Math.abs(source.y - camera.y - camera.view.height),
+        Math.abs(source.y - camera.y - viewHeight(camera)),
       ),
     );
     if (!inView({ ...source, radius: source.range ?? maxDistance }, camera))
@@ -256,6 +266,8 @@ export function draw(
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, camera.view.width, camera.view.height);
   ctx.save();
+  const scale = 1 / camera.zoom;
+  ctx.scale(scale, scale);
   ctx.translate(-camera.x, -camera.y);
 
   // Inside the darkness: only what is both seen and lit.
