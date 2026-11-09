@@ -20,13 +20,22 @@ const NO_EXPORT_STAR = [
   },
 ];
 
+// A public file lists its own module's files, so no module re-exports another.
+const NO_OUTSIDE_REEXPORTS = [
+  {
+    selector: "ExportNamedDeclaration[source][source.value!=/^\\.\\//]",
+    message:
+      "A module re-exports only its own files; import the other module where it is used.",
+  },
+];
+
 const NO_REDUCE = ["reduce", "reduceRight"].map((name) => ({
   selector: `CallExpression[callee.property.name='${name}']`,
   message:
     "reduce obscures intent: use map/filter/Object.fromEntries/a loop, or a lodash-es helper (sum, groupBy, keyBy, ...).",
 }));
 
-const TEST_SOURCE = ["tests/**"];
+const TEST_SOURCE = ["src/**/*.test.ts"];
 
 export default tseslint.config(
   { ignores: ["dist/", "node_modules/", ".claude/worktrees/"] },
@@ -66,6 +75,7 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         ...NO_EXPORT_STAR,
+        ...NO_OUTSIDE_REEXPORTS,
         ...NO_PREDICATES,
         ...NO_REDUCE,
       ],
@@ -81,7 +91,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.js"],
+    files: ["**/*.js", "**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
     rules: {
       ...tseslint.configs.disableTypeChecked.rules,
