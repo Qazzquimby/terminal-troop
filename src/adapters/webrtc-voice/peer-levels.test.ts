@@ -36,6 +36,19 @@ describe("per-peer mute", () => {
     expect(levels.mutedPeers()).toEqual(["player-a"]);
   });
 
+  test("a peer without a mix is silent and centred", () => {
+    expect(createPeerLevels().levels("player-a")).toEqual({ gain: 0, pan: 0 });
+  });
+
+  test("forgetting every mix silences all peers but keeps the mutes", () => {
+    const levels = createPeerLevels();
+    levels.setMix("player-a", MIX);
+    levels.setMuted("player-c", true);
+    levels.forgetMixes();
+    expect(levels.levels("player-a")).toEqual({ gain: 0, pan: 0 });
+    expect(levels.mutedPeers()).toEqual(["player-c"]);
+  });
+
   test("muting one peer leaves the others alone", () => {
     const levels = createPeerLevels();
     levels.setMuted("player-a", true);

@@ -1,12 +1,13 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { UiConfig } from "./ui/index.js";
-import type { VoiceFalloff } from "./voice/index.js";
+import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
 interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly voice: VoiceFalloff;
+  readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
 }
@@ -39,6 +40,12 @@ export const config = {
   net: { sendHz: 15, staleS: 15, smoothing: 12 },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },
+  voiceConnections: {
+    levelRampS: 0.05,
+    connectDeadlineMs: 15_000,
+    pending: { cap: 32, ttlMs: 5000 },
+    retry: { firstMs: 2000, maxMs: 60_000 },
+  },
   audio: { full: 0, silent: 1000, pan: 500 },
   ui: { debugRefreshMs: 250 },
 } as const satisfies AppConfig;

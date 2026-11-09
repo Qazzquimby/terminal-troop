@@ -89,21 +89,24 @@ describe("null voice", () => {
   test("satisfies the port and stays inert", () => {
     const voice: Voice = createNullVoice(DEFAULT_SETTINGS.voice);
     const sent: unknown[] = [];
+    const failed: string[] = [];
     voice.requestMic();
-    voice.join(ME, {
-      send: (_event, payload) => {
-        sent.push(payload);
-        return Promise.resolve();
+    const room = voice.join(
+      ME,
+      (signal) => {
+        sent.push(signal);
       },
-    });
-    voice.addPeer("player-a");
-    voice.receive({ from: "player-a", to: ME, description: OFFER });
+      { peerFailed: (id) => failed.push(id) },
+    );
+    room.setPeers(new Set(["player-a"]));
+    room.receive({ from: "player-a", to: ME, description: OFFER });
     voice.setTalking(true);
     voice.configure({ mode: "pushToTalk", muted: false, volume: 0.5 });
-    voice.setPeerMix("player-a", { volume: 0.2, pan: -1 });
-    voice.removePeer("player-a");
-    voice.leave();
+    room.setPeerMix("player-a", { volume: 0.2, pan: -1 });
+    room.setPeers(new Set());
+    room.leave();
     expect(sent).toEqual([]);
+    expect(failed).toEqual([]);
     expect(voice.status()).toEqual({
       mode: "pushToTalk",
       muted: false,
@@ -111,13 +114,13 @@ describe("null voice", () => {
       transmitting: false,
       peers: [],
       mutedPeers: [],
+      connections: [],
     });
   });
 
   test("ignores per-peer mute and reports no muted peers", () => {
     const voice = createNullVoice(DEFAULT_SETTINGS.voice);
     voice.setPeerMuted("player-a", true);
-    voice.setPeerMix("player-a", { volume: 0.5, pan: 0 });
     expect(voice.status().mutedPeers).toEqual([]);
     expect(voice.status().peers).toEqual([]);
   });
