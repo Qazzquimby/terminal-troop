@@ -1,12 +1,21 @@
 import type { Point } from "./map.js";
 
-const MAX_SOUND_DISTANCE = 1000;
-const PAN_DISTANCE = 500;
-
 interface Mix {
   volume: number;
   pan: number;
 }
+
+/** Distances that shape a spatial mix, in pixels. */
+interface Falloff {
+  /** Volume is full up to this distance. */
+  readonly full: number;
+  /** Volume reaches zero at this distance. */
+  readonly silent: number;
+  /** Horizontal offset at which pan saturates. */
+  readonly pan: number;
+}
+
+const SFX_FALLOFF: Falloff = { full: 0, silent: 1000, pan: 500 };
 
 interface PlayOptions {
   volume?: number;
@@ -44,17 +53,24 @@ export interface Sfx {
   output: () => AudioNode;
 }
 
-function spatialMix(origin: Point | null, listener: Point | null): Mix {
+/** Volume falls linearly from `full` to `silent`; horizontal offset becomes stereo pan. */
+export function spatialMix(
+  origin: Point | null,
+  listener: Point | null,
+  falloff: Falloff = SFX_FALLOFF,
+): Mix {
   if (origin === null || listener === null) return { volume: 1, pan: 0 };
 
   const dx = origin.x - listener.x;
   const dy = origin.y - listener.y;
+  const beyond = Math.hypot(dx, dy) - falloff.full;
 
   return {
-    // Simple linear distance attenuation.
-    volume: Math.max(0, 1 - Math.hypot(dx, dy) / MAX_SOUND_DISTANCE),
-    // Horizontal position becomes stereo pan.
-    pan: Math.max(-1, Math.min(1, dx / PAN_DISTANCE)),
+    volume: Math.min(
+      1,
+      Math.max(0, 1 - beyond / (falloff.silent - falloff.full)),
+    ),
+    pan: Math.max(-1, Math.min(1, dx / falloff.pan)),
   };
 }
 

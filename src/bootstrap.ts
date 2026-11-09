@@ -17,6 +17,7 @@ import { draw } from "./engine/render.js";
 import { createCamera, updateCamera } from "./engine/camera.js";
 import { renderPosition, stepAlpha } from "./engine/interpolation.js";
 import { createSfx } from "./engine/audio.js";
+import { applyProximity } from "./engine/voice-proximity.js";
 import { createPerfStats } from "./engine/perf-stats.js";
 import { createCountingTransport } from "./engine/counting-transport.js";
 import type { DebugInfo } from "./engine/debug-overlay.js";
@@ -332,6 +333,7 @@ function frame(): void {
     simTime = advanced.simTime;
     frameStats.steps = advanced.steps;
     frameStats.updateMs = performance.now() - updateStart;
+    applyProximity(session, voice);
 
     const alpha = stepAlpha(now - simTime, STEP_LIMITS.dtMs);
     sendState(session, transport, now);

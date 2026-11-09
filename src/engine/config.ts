@@ -43,3 +43,10 @@ export const STAMINA_REGEN = STAMINA_MAX / 4;
 export const STAMINA_REGEN_DELAY = 0.6;
 /** After hitting 0, sprint stays locked until stamina is back to this. */
 export const STAMINA_RECOVER = STAMINA_MAX * 0.3;
+
+/** Voices are at full volume within this distance, in pixels. */
+export const VOICE_FULL_DISTANCE = 100;
+/** Voices are silent beyond this distance, in pixels. */
+export const VOICE_SILENT_DISTANCE = 600;
+/** Horizontal offset at which a voice is panned fully to one side, in pixels. */
+export const VOICE_PAN_DISTANCE = 300;
