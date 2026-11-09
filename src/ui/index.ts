@@ -1,7 +1,7 @@
 import "./style.css";
 
 export { trackInputContext } from "./app-context.js";
-export { createDebugOverlay } from "./debug-overlay.js";
+export { createDebugOverlay, roomDebugInfo } from "./debug-overlay.js";
 export type { DebugInfo } from "./debug-overlay.js";
 export { element } from "./dom.js";
 export { createInventoryHud } from "./hud.js";

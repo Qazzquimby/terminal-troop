@@ -1,5 +1,7 @@
 import type { MessageRates } from "../net/index.js";
 import type { PerfSnapshot } from "../perf-stats/perf-stats.js";
+import { remotePlayers } from "../sim/index.js";
+import type { Session } from "../sim/index.js";
 
 const REFRESH_MS = 250;
 
@@ -8,6 +10,22 @@ interface RoomDebugInfo {
   readonly playerCount: number;
   /** Remote players and the age of their last state update. */
   readonly remotes: readonly { name: string; ageMs: number }[];
+}
+
+/** The room part of the overlay for `session` at `now`, given the current message rates. */
+export function roomDebugInfo(
+  session: Session,
+  now: number,
+  rates: MessageRates,
+): RoomDebugInfo {
+  return {
+    net: rates,
+    playerCount: session.players.size,
+    remotes: remotePlayers(session).map((player) => ({
+      name: player.name,
+      ageMs: now - player.lastSeen,
+    })),
+  };
 }
 
 export interface DebugInfo {
