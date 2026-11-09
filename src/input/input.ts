@@ -5,9 +5,8 @@ import {
   toControls,
   withUiHandlers,
 } from "./actions.js";
-import { VIEW_H, VIEW_W } from "../sim/index.js";
 import { createKeyboardSource } from "./keyboard.js";
-import type { Point, Controls } from "../sim/index.js";
+import type { Point, Controls, ViewConfig } from "../sim/index.js";
 
 /**
  * Only actions active in the current context respond, and only their keys are kept from
@@ -17,6 +16,7 @@ import type { Point, Controls } from "../sim/index.js";
 export function createInput(
   canvas: HTMLCanvasElement,
   camera: Point,
+  view: ViewConfig,
   uiActions: Partial<Record<Action, UiHandlers>>,
   context: InputContext,
 ): {
@@ -30,7 +30,7 @@ export function createInput(
     ACTIONS,
     context,
   );
-  const mouse = { x: VIEW_W / 2, y: VIEW_H / 2 };
+  const mouse = { x: view.width / 2, y: view.height / 2 };
   /** The mouse in world space, through the camera as it currently stands. */
   const mouseWorld = (): Point => ({
     x: mouse.x + camera.x,

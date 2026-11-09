@@ -1,6 +1,7 @@
 export { micIndicator } from "./mic-indicator.js";
 export type { MicIndicator } from "./mic-indicator.js";
 export { applyProximity } from "./voice-proximity.js";
+export type { VoiceFalloff } from "./voice-proximity.js";
 export { createNullVoice, pushToTalk } from "./voice.js";
 export type {
   MicState,

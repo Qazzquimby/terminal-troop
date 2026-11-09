@@ -1,9 +1,16 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/index.js";
-import { MAP_CELL, VIEW_H, VIEW_W, WORLD_COLS, WORLD_ROWS } from "./config.js";
+import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { TileMap } from "./map.js";
 import { DEV_PILLARS, buildDevWorld, isSolid } from "./map.js";
 import { createSession, roomKey } from "./session.js";
+
+const CELL = 50;
+const VIEW = { width: 900, height: 600 };
+/** The standard world whose layout the fingerprint below pins. */
+const WORLD = { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 };
+const config = { ...testSimConfig, world: WORLD, view: VIEW };
+
+const devWorld = () => buildDevWorld(CELL, VIEW);
 
 function solidCells(map: TileMap): string[] {
   const cells: string[] = [];
@@ -23,10 +30,10 @@ function fingerprint(map: TileMap): number {
 }
 
 test("the dev square is exactly one screen with a solid border", () => {
-  const { W, H, map } = buildDevWorld();
-  expect({ W, H }).toEqual({ W: VIEW_W, H: VIEW_H });
+  const { W, H, map } = devWorld();
+  expect({ W, H }).toEqual({ W: 900, H: 600 });
   expect({ cell: map.cell, cols: map.cols, rows: map.rows }).toEqual({
-    cell: MAP_CELL,
+    cell: CELL,
     cols: 18,
     rows: 12,
   });
@@ -41,7 +48,7 @@ test("the dev square is exactly one screen with a solid border", () => {
 });
 
 test("the dev square's centre rows and columns are open end to end", () => {
-  const { map } = buildDevWorld();
+  const { map } = devWorld();
   for (const row of [5, 6]) {
     for (let col = 0; col < map.cols; col++) {
       expect(isSolid(map, col, row)).toBe(false);
@@ -59,7 +66,7 @@ test("the dev square's only obstacles are its two 2x2 pillars", () => {
     [4, 1],
     [12, 9],
   ]);
-  expect(solidCells(buildDevWorld().map)).toEqual([
+  expect(solidCells(devWorld().map)).toEqual([
     "4,1",
     "5,1",
     "4,2",
@@ -77,11 +84,18 @@ test("the room key keeps the plain code for standard and tags other worlds", () 
 });
 
 test("sessions build the world their kind names", () => {
-  const dev = createSession("a", "A", "ABC", "dev", createSfx());
-  expect(dev.world.map.solid).toEqual(buildDevWorld().map.solid);
+  const dev = createSession("a", "A", "ABC", "dev", testSfx(), config);
+  expect(dev.world.map.solid).toEqual(devWorld().map.solid);
 
-  const standard = createSession("a", "A", "ABC", "standard", createSfx());
-  expect(standard.world.W).toBe(WORLD_COLS * MAP_CELL);
-  expect(standard.world.H).toBe(WORLD_ROWS * MAP_CELL);
+  const standard = createSession(
+    "a",
+    "A",
+    "ABC",
+    "standard",
+    testSfx(),
+    config,
+  );
+  expect(standard.world.W).toBe(160 * CELL);
+  expect(standard.world.H).toBe(120 * CELL);
   expect(fingerprint(standard.world.map)).toBe(968259081);
 });

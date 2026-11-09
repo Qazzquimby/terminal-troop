@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/index.js";
+import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
-import { PLAYER_SURROUNDINGS_RADIUS } from "./config.js";
 import type { TileMap } from "./map.js";
 import { createSession } from "./session.js";
 import type { VisionSource } from "./vision.js";
@@ -221,8 +220,17 @@ test("a wall is lit only where a lit ray and a seeing ray both reach it", () => 
   ]);
 });
 
+const SURROUNDINGS = 70;
+
 function viewerFacingRight(map: TileMap, x: number, y: number) {
-  const game = createSession("me", "ME", "LIGHT", "dev", createSfx());
+  const game = createSession("me", "ME", "LIGHT", "dev", testSfx(), {
+    ...testSimConfig,
+    vision: {
+      coneAngle: Math.PI / 2,
+      rays: 64,
+      surroundingsRadius: SURROUNDINGS,
+    },
+  });
   const viewer = { id: "me", x, y, aim: 0 };
   const sources = visionOrigins(game, viewer);
   const lights = lightSources(game, viewer);
@@ -240,12 +248,8 @@ function viewerFacingRight(map: TileMap, x: number, y: number) {
 test("the circle around the player reveals what is just behind them", () => {
   const { visible } = viewerFacingRight(emptyMap(), 150, 150);
 
-  expect(visible({ x: 150 - PLAYER_SURROUNDINGS_RADIUS + 5, y: 150 })).toBe(
-    true,
-  );
-  expect(visible({ x: 150 - PLAYER_SURROUNDINGS_RADIUS - 5, y: 150 })).toBe(
-    false,
-  );
+  expect(visible({ x: 150 - SURROUNDINGS + 5, y: 150 })).toBe(true);
+  expect(visible({ x: 150 - SURROUNDINGS - 5, y: 150 })).toBe(false);
 });
 
 test("the circle around the player lights a wall behind them", () => {

@@ -1,9 +1,8 @@
 import { expect, test } from "vitest";
-import { VIEW_H, VIEW_W } from "../sim/index.js";
 import { createCamera, updateCamera } from "./camera.js";
 
 test("camera centers its target even at the world boundary", () => {
-  const camera = createCamera();
+  const camera = createCamera({ width: 900, height: 600 });
   updateCamera(camera, { x: 14, y: 14 });
-  expect(camera).toEqual({ x: 14 - VIEW_W / 2, y: 14 - VIEW_H / 2 });
+  expect(camera).toMatchObject({ x: 14 - 450, y: 14 - 300 });
 });

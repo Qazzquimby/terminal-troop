@@ -7,7 +7,7 @@ test("wall movement stops at the collision face", () => {
   const map = mapWithCenterWall();
   const body = { x: 85, y: 125, vx: 220, vy: 0 };
 
-  moveWithCollision(body, 14, 1 / 60, map);
+  moveWithCollision(body, 14, 1 / 60, map, 0);
 
   expect(body.x).toBe(86);
   expect(Math.abs(body.vx)).toBe(0);

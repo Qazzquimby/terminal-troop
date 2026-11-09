@@ -81,7 +81,13 @@ export function updateEntities(game: Session, dt: number): void {
     if (!game.entities.has(entity.id)) return;
 
     if (entity.collides) {
-      moveWithCollision(entity, entity.radius, dt, game.world.map);
+      moveWithCollision(
+        entity,
+        entity.radius,
+        dt,
+        game.world.map,
+        game.config.world.wallBounce,
+      );
     } else {
       entity.x += entity.vx * dt;
       entity.y += entity.vy * dt;

@@ -9,10 +9,6 @@ import type {
   World,
 } from "../sim/index.js";
 import {
-  STAMINA_MAX,
-  VIEW_H,
-  VIEW_W,
-  VISION_RAYS,
   aimAt,
   isVisible,
   lightSources,
@@ -23,35 +19,36 @@ import {
   visionOrigins,
   wallCell,
 } from "../sim/index.js";
+import type { Camera } from "./camera.js";
 
 interface Circle extends Point {
   readonly radius: number;
 }
 
-function inView(body: Circle, camera: Point): boolean {
+function inView(body: Circle, camera: Camera): boolean {
   return (
     body.x + body.radius >= camera.x &&
     body.y + body.radius >= camera.y &&
-    body.x - body.radius <= camera.x + VIEW_W &&
-    body.y - body.radius <= camera.y + VIEW_H
+    body.x - body.radius <= camera.x + camera.view.width &&
+    body.y - body.radius <= camera.y + camera.view.height
   );
 }
 
 function drawTerrain(
   ctx: CanvasRenderingContext2D,
   world: World,
-  camera: Point,
+  camera: Camera,
 ): void {
   const { map } = world;
   const minCol = Math.max(0, Math.floor(camera.x / map.cell));
   const maxCol = Math.min(
     map.cols - 1,
-    Math.floor((camera.x + VIEW_W) / map.cell),
+    Math.floor((camera.x + camera.view.width) / map.cell),
   );
   const minRow = Math.max(0, Math.floor(camera.y / map.cell));
   const maxRow = Math.min(
     map.rows - 1,
-    Math.floor((camera.y + VIEW_H) / map.cell),
+    Math.floor((camera.y + camera.view.height) / map.cell),
   );
 
   ctx.fillStyle = "#181818";
@@ -95,9 +92,13 @@ function drawPlayer(
   ctx.fillText(player.name, player.x, player.y - player.radius - 8);
 }
 
-function drawStamina(ctx: CanvasRenderingContext2D, player: Player): void {
+function drawStamina(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  max: number,
+): void {
   const { value, exhausted } = player.stamina;
-  if (value >= STAMINA_MAX) return;
+  if (value >= max) return;
 
   const width = player.radius * 2;
   const x = player.x - player.radius;
@@ -105,7 +106,7 @@ function drawStamina(ctx: CanvasRenderingContext2D, player: Player): void {
   ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
   ctx.fillRect(x - 1, y - 1, width + 2, 6);
   ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
-  ctx.fillRect(x, y, (width * value) / STAMINA_MAX, 4);
+  ctx.fillRect(x, y, (width * value) / max, 4);
 }
 
 /**
@@ -133,7 +134,8 @@ function drawLitWalls(
 function tracePolygons(
   map: TileMap,
   sources: readonly VisionSource[],
-  camera: Point,
+  camera: Camera,
+  rays: number,
 ): VisibilityPolygon[] {
   const polygons: VisibilityPolygon[] = [];
 
@@ -141,17 +143,17 @@ function tracePolygons(
     const maxDistance = Math.hypot(
       Math.max(
         Math.abs(source.x - camera.x),
-        Math.abs(source.x - camera.x - VIEW_W),
+        Math.abs(source.x - camera.x - camera.view.width),
       ),
       Math.max(
         Math.abs(source.y - camera.y),
-        Math.abs(source.y - camera.y - VIEW_H),
+        Math.abs(source.y - camera.y - camera.view.height),
       ),
     );
     if (!inView({ ...source, radius: source.range ?? maxDistance }, camera))
       continue;
 
-    polygons.push(visibilityPolygon(map, source, VISION_RAYS, maxDistance));
+    polygons.push(visibilityPolygon(map, source, rays, maxDistance));
   }
 
   return polygons;
@@ -212,7 +214,7 @@ export function interpolatedView(
 export function draw(
   ctx: CanvasRenderingContext2D,
   simulation: Session,
-  camera: Point,
+  camera: Camera,
   now: number,
   alpha: number,
   mouse: Point,
@@ -222,11 +224,12 @@ export function draw(
   const sources = visionOrigins(game, viewer);
   const lights = lightSources(game, viewer);
   const { map } = game.world;
-  const seen = tracePolygons(map, sources, camera);
-  const lit = tracePolygons(map, lights, camera);
+  const { rays } = game.config.vision;
+  const seen = tracePolygons(map, sources, camera, rays);
+  const lit = tracePolygons(map, lights, camera, rays);
 
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, camera.view.width, camera.view.height);
   ctx.save();
   ctx.translate(-camera.x, -camera.y);
 
@@ -255,6 +258,6 @@ export function draw(
   // Above the darkness: lit wall faces, then the local player and its HUD.
   drawLitWalls(ctx, map, litWalls(seen, lit));
   drawPlayer(ctx, viewer, true);
-  drawStamina(ctx, viewer);
+  drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();
 }

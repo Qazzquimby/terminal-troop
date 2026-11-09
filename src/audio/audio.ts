@@ -10,7 +10,7 @@ interface Mix {
 }
 
 /** Distances that shape a spatial mix, in pixels. */
-interface Falloff {
+export interface SpatialFalloff {
   /** Volume is full up to this distance. */
   readonly full: number;
   /** Volume reaches zero at this distance. */
@@ -18,8 +18,6 @@ interface Falloff {
   /** Horizontal offset at which pan saturates. */
   readonly pan: number;
 }
-
-const SFX_FALLOFF: Falloff = { full: 0, silent: 1000, pan: 500 };
 
 interface PlayOptions {
   volume?: number;
@@ -61,7 +59,7 @@ export interface Sfx {
 export function spatialMix(
   origin: Point | null,
   listener: Point | null,
-  falloff: Falloff = SFX_FALLOFF,
+  falloff: SpatialFalloff,
 ): Mix {
   if (origin === null || listener === null) return { volume: 1, pan: 0 };
 
@@ -78,7 +76,8 @@ export function spatialMix(
   };
 }
 
-export function createSfx(): Sfx {
+/** Positioned sounds fade and pan by `falloff`. */
+export function createSfx(falloff: SpatialFalloff): Sfx {
   let audioContext: AudioContext | null = null;
   let master: GainNode | null = null;
   let masterVolume = 1;
@@ -139,7 +138,7 @@ export function createSfx(): Sfx {
     // Browsers usually require an AudioContext to be resumed after a user interaction.
     await context.resume();
 
-    let mix = spatialMix(origin, listener);
+    let mix = spatialMix(origin, listener, falloff);
     let baseVolume = volume;
 
     const source = context.createBufferSource();
@@ -192,7 +191,7 @@ export function createSfx(): Sfx {
 
       setPosition(newOrigin, newListener) {
         if (stopped) return;
-        mix = spatialMix(newOrigin, newListener);
+        mix = spatialMix(newOrigin, newListener, falloff);
         gain.gain.value = mix.volume * baseVolume;
         panner.pan.value = mix.pan;
       },
