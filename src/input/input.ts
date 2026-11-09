@@ -6,6 +6,8 @@ import {
   withUiHandlers,
 } from "./actions.js";
 import { createKeyboardSource } from "./keyboard.js";
+import type { Camera } from "../render/index.js";
+import { screenToWorld } from "../render/index.js";
 import type { Point, Controls, ViewConfig } from "../sim/index.js";
 
 /**
@@ -15,7 +17,7 @@ import type { Point, Controls, ViewConfig } from "../sim/index.js";
  */
 export function createInput(
   canvas: HTMLCanvasElement,
-  camera: Point,
+  camera: Camera,
   view: ViewConfig,
   uiActions: Partial<Record<Action, UiHandlers>>,
   context: InputContext,
@@ -32,10 +34,7 @@ export function createInput(
   );
   const mouse = { x: view.width / 2, y: view.height / 2 };
   /** The mouse in world space, through the camera as it currently stands. */
-  const mouseWorld = (): Point => ({
-    x: mouse.x + camera.x,
-    y: mouse.y + camera.y,
-  });
+  const mouseWorld = (): Point => screenToWorld(camera, mouse);
 
   canvas.addEventListener("pointermove", (event) => {
     const rect = canvas.getBoundingClientRect();

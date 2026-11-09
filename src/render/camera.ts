@@ -20,7 +20,7 @@ export interface ZoomRange {
 }
 
 export function createCamera(view: ViewConfig): Camera {
-  return { x: 0, y: 0, view, zoom: 1, targetZoom: 1.25 };
+  return { x: 0, y: 0, view, zoom: 1, targetZoom: 1.25 }; // eg zoom 1.25
 }
 
 /**
@@ -42,6 +42,17 @@ export function setZoomTarget(
   range: ZoomRange,
 ): void {
   camera.targetZoom = Math.min(range.max, Math.max(range.min, zoom));
+}
+
+/**
+ * The world point under `point`, given in view (CSS pixel) space. Inverts the scale/translate
+ * that `draw` applies, so it stays correct at any zoom.
+ */
+export function screenToWorld(camera: Camera, point: Point): Point {
+  return {
+    x: camera.x + point.x * camera.zoom,
+    y: camera.y + point.y * camera.zoom,
+  };
 }
 
 export function updateCamera(camera: Camera, target: Point): void {

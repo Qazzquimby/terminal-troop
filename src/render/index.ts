@@ -1,5 +1,6 @@
 export {
   createCamera,
+  screenToWorld,
   setZoomTarget,
   updateCamera,
   zoomRange,

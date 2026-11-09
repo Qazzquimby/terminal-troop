@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   createCamera,
+  screenToWorld,
   setZoomTarget,
   updateCamera,
   zoomRange,
@@ -34,4 +35,16 @@ test("setZoomTarget clamps to the range", () => {
   expect(camera.targetZoom).toBe(2);
   setZoomTarget(camera, 0.5, range);
   expect(camera.targetZoom).toBe(1);
+});
+
+test("screenToWorld inverts the view transform at any zoom", () => {
+  const camera = createCamera({ width: 900, height: 600 });
+  camera.zoom = 2;
+  updateCamera(camera, { x: 1000, y: 800 });
+
+  expect(screenToWorld(camera, { x: 450, y: 300 })).toEqual({ x: 1000, y: 800 });
+  expect(screenToWorld(camera, { x: 0, y: 0 })).toEqual({
+    x: camera.x,
+    y: camera.y,
+  });
 });

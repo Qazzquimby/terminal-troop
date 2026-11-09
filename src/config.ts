@@ -53,7 +53,7 @@ export const config = {
     },
   },
   monsters: {
-    chaserDensity: 0.3,
+    chaserDensity: 0.6,
     minChasers: 2,
     seed: 1,
     clearance: CELL_SIZE * 10,
