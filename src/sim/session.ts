@@ -115,6 +115,11 @@ export function createSession(
   };
 }
 
+/** Every player in the session except the local one. */
+export function remotePlayers(game: Session): Player[] {
+  return [...game.players.values()].filter((player) => player !== game.local);
+}
+
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
 function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
@@ -129,14 +134,13 @@ export function updateSession(
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
 
-  game.players.forEach((player, id) => {
-    if (id === game.localId) return;
+  for (const player of remotePlayers(game)) {
     if (now - player.lastSeen > game.config.net.staleS * 1000) {
-      removePlayer(game, id);
+      removePlayer(game, player.id);
     } else {
       smoothPlayer(player, dt, game.config.net.smoothing);
     }
-  });
+  }
 
   updateEntities(game, dt);
 }

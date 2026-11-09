@@ -1,5 +1,5 @@
 export { registerEntityType, spawnEntity } from "./entities.js";
-export { renderAim, renderPosition, stepAlpha } from "./interpolation.js";
+export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { Inventory } from "./inventory.js";
 export { randomFreePosition, WORLD_KINDS } from "./map.js";
@@ -9,6 +9,7 @@ export type { Controls, Player } from "./player.js";
 export {
   createSession,
   receiveState,
+  remotePlayers,
   removePlayer,
   roomKey,
   sendState,
