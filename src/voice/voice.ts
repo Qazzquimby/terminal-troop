@@ -1,5 +1,5 @@
 import type { UiHandlers } from "../input/index.js";
-import type { Settings } from "../settings/settings.js";
+import type { Settings } from "../settings/index.js";
 import type { Transport } from "../net/index.js";
 
 /** The player's own voice preferences: transmit mode, mic mute, and incoming volume. */

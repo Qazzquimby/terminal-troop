@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/audio.js";
+import { createSfx } from "../audio/index.js";
 import { MAP_CELL, VIEW_H, VIEW_W, WORLD_COLS, WORLD_ROWS } from "./config.js";
 import type { TileMap } from "./map.js";
 import { DEV_PILLARS, buildDevWorld, isSolid } from "./map.js";

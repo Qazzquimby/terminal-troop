@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/audio.js";
+import { createSfx } from "../audio/index.js";
 import type { Action } from "../input/index.js";
 import { createActionState, toControls } from "../input/index.js";
 import type { Session } from "../sim/index.js";

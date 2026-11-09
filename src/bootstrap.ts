@@ -29,24 +29,24 @@ import {
   element,
 } from "./ui/index.js";
 import { draw, createCamera, updateCamera } from "./render/index.js";
-import { createSfx } from "./audio/audio.js";
+import { createSfx } from "./audio/index.js";
 import {
   applyProximity,
   micIndicator,
   createNullVoice,
   pushToTalk,
 } from "./voice/index.js";
-import { createPerfStats } from "./perf-stats/perf-stats.js";
+import { createPerfStats } from "./perf-stats/index.js";
 import type { DebugInfo } from "./ui/index.js";
-import type { Settings } from "./settings/settings.js";
-import { createSettingsStore } from "./settings/settings.js";
+import type { Settings } from "./settings/index.js";
+import { createSettingsStore } from "./settings/index.js";
 import type { Transport } from "./net/index.js";
 import type { Voice, VoiceSettings } from "./voice/index.js";
 import { loadClientEnv } from "./env.js";
-import { createSupabaseTransport } from "./adapters/supabase-transport/supabase-transport.js";
-import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/broadcast-channel-transport.js";
-import { createWebRtcVoice } from "./adapters/webrtc-voice/webrtc-voice.js";
-import { createScope } from "./scope/scope.js";
+import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
+import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
+import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
+import { createScope } from "./scope/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();

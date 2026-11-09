@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/audio.js";
+import { createSfx } from "../audio/index.js";
 import { FIXED_DT, PLAYER_RADIUS } from "./config.js";
 import {
   lerp,
