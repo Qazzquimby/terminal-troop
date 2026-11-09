@@ -7,7 +7,7 @@ import {
   WORLD_ROWS,
   WORLD_SEED,
 } from "./config.js";
-import type { Sfx } from "../audio/audio.js";
+import type { Sfx } from "../audio/index.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";

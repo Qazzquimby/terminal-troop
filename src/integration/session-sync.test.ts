@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
-import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/broadcast-channel-transport.js";
-import { createSfx } from "../audio/audio.js";
+import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
+import { createSfx } from "../audio/index.js";
 import {
   FIXED_DT,
   PLAYER_RADIUS,

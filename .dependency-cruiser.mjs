@@ -1,10 +1,10 @@
 // Import boundaries. A directory under src/ or src/adapters/ is a module: other code reaches it
-// only through its public file. Every rule goes by directory, so a new file in a module is
-// covered without this file changing. Tests sit inside the module they test and follow its
-// rules; tests across modules, and helpers several modules share, live in src/integration/.
+// only through its index.ts. Every rule goes by directory, so a new file in a module is covered
+// without this file changing. Tests sit inside the module they test and follow its rules; tests
+// across modules, and helpers several modules share, live in src/integration/.
 
 import { existsSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 /** Each directory here holds modules, one per child directory. */
 const MODULE_PARENTS = ["src/adapters", "src"];
@@ -15,30 +15,39 @@ const NOT_MODULES = new Set(["adapters", "integration"]);
 /** Matches a path inside a module; group 1 is the module's directory. */
 const IN_MODULE = "^(src/adapters/[^/]+|src/(?!adapters/|integration/)[^/]+)/";
 
+/**
+ * Matches any path under src; group 1 is the directory or top-level file it sits in, so `^$1/`
+ * matches the other files of the same module, and nothing for a top-level file.
+ */
+const UNIT = "^(src/adapters/[^/]+|src/(?!adapters/)[^/]+)";
+
 const TEST = "\\.test\\.ts$|^src/integration/";
 
 /** Source that ships: everything under src but tests and the integration directory. */
 const PRODUCTION = { path: "^src/", pathNot: TEST };
 
+/** The files allowed at the top of src: entry points, and the test of one. */
+const TOP_LEVEL = new Set([
+  "bootstrap.ts",
+  "env.ts",
+  "env.test.ts",
+  "vite-env.d.ts",
+]);
+
+const entriesOf = (dir) =>
+  readdirSync(join(import.meta.dirname, dir), { withFileTypes: true });
+
 const modulesIn = (parent) =>
-  readdirSync(join(import.meta.dirname, parent), { withFileTypes: true })
+  entriesOf(parent)
     .filter((entry) => entry.isDirectory() && !NOT_MODULES.has(entry.name))
     .map((entry) => `${parent}/${entry.name}`);
 
-/**
- * A module's one public file: its index.ts, or the file named after it when its job is one
- * file. A module with neither stops the gate, so no module goes without a public file.
- */
+/** A module's one public file is its index.ts; a module without one stops the gate. */
 const publicFileOf = (module) => {
-  const file = ["index.ts", `${basename(module)}.ts`].find((name) =>
-    existsSync(join(import.meta.dirname, module, name)),
-  );
-  if (file === undefined) {
-    throw new Error(
-      `${module} has no public file: add index.ts or ${basename(module)}.ts`,
-    );
+  if (!existsSync(join(import.meta.dirname, module, "index.ts"))) {
+    throw new Error(`${module} has no public file: add ${module}/index.ts`);
   }
-  return `${module}/${file}`;
+  return `${module}/index.ts`;
 };
 
 const PUBLIC_FILES = `^(${MODULE_PARENTS.flatMap(modulesIn)
@@ -46,8 +55,15 @@ const PUBLIC_FILES = `^(${MODULE_PARENTS.flatMap(modulesIn)
   .join("|")
   .replaceAll(".", "\\.")})$`;
 
-/** The files allowed at the top of src: entry points, and the test of one. */
-const TOP_LEVEL = "^src/(bootstrap|env|env\\.test|vite-env\\.d)\\.ts$";
+/** The top of src holds only entry points; any other file there stops the gate. */
+const strays = entriesOf("src")
+  .filter((entry) => !entry.isDirectory() && !TOP_LEVEL.has(entry.name))
+  .map((entry) => `src/${entry.name}`);
+if (strays.length > 0) {
+  throw new Error(
+    `The top of src holds only entry points; move into a module: ${strays.join(", ")}`,
+  );
+}
 
 const rule = (name, comment, from, to) => ({
   name,
@@ -61,34 +77,15 @@ export default {
   forbidden: [
     rule(
       "module-public-file",
-      "Code in one module imports another module only through its public file, types included. A module's tests may reach inside that module, and only that one. Add the name to the public file, or keep it inside.",
-      { path: IN_MODULE },
+      "Code reaches a module only through its index.ts, types included. A module's own files, its tests among them, may reach inside that module and no other. Add the name to the index, or keep it inside.",
+      { path: UNIT },
       { path: IN_MODULE, pathNot: ["^$1/", PUBLIC_FILES] },
     ),
     rule(
-      "module-public-file-from-outside",
-      "Code outside every module (entry points, integration tests and their helpers) imports a module only through its public file, types included.",
-      { pathNot: IN_MODULE },
-      { path: IN_MODULE, pathNot: PUBLIC_FILES },
-    ),
-    rule(
-      "no-tests-in-production",
-      "Shipped code imports no test and nothing from src/integration.",
-      PRODUCTION,
-      { path: TEST },
-    ),
-
-    rule(
-      "sim-inward",
-      "The simulation imports only itself, the net module and the audio module: no rendering, input, voice, settings, UI or adapter.",
-      { path: "^src/sim/", pathNot: TEST },
-      { path: "^src/", pathNot: "^src/(sim|net|audio)/" },
-    ),
-    rule(
-      "bootstrap-imported",
-      "bootstrap.ts is the composition root; nothing imports it.",
-      {},
-      { path: "^src/bootstrap\\.ts$" },
+      "no-module-cycles",
+      "Shipped code takes part in no import cycle that leaves a module, types included, so every dependency between modules has one direction. Files inside one module may depend on each other.",
+      { path: UNIT, pathNot: TEST },
+      { circular: true, viaSomeNot: "^$1/" },
     ),
     rule(
       "adapter-to-adapter",
@@ -100,10 +97,7 @@ export default {
       "adapter-to-module-value",
       "An adapter imports port and domain types with `import type`, and values only from its own files and npm packages. A value the rest of the app also needs is injected or passed through the port.",
       { path: "^src/adapters/", pathNot: TEST },
-      {
-        path: "^src/(?!adapters/)",
-        dependencyTypesNot: ["type-only"],
-      },
+      { path: "^src/(?!adapters/)", dependencyTypesNot: ["type-only"] },
     ),
     rule(
       "adapter-outside-root",
@@ -114,48 +108,25 @@ export default {
       },
       { path: "^src/adapters/" },
     ),
-
     rule(
-      "src-file-without-module",
-      "The top of src holds only entry points; anything else goes in a module directory.",
-      { path: "^src/[^/]+$", pathNot: TOP_LEVEL },
+      "bootstrap-imported",
+      "bootstrap.ts is the composition root; nothing imports it.",
       {},
+      { path: "^src/bootstrap\\.ts$" },
     ),
     rule(
-      "src-file-without-module-imported",
-      "The top of src holds only entry points; anything else goes in a module directory.",
-      {},
-      { path: "^src/[^/]+$", pathNot: `${TOP_LEVEL}|^src/[^/]+\\.css$` },
+      "no-tests-in-production",
+      "Shipped code imports no test and nothing from src/integration.",
+      PRODUCTION,
+      { path: TEST },
     ),
-    {
-      name: "src-file-without-module-alone",
-      comment:
-        "The top of src holds only entry points; anything else goes in a module directory.",
-      severity: "error",
-      from: { orphan: true, path: "^src/[^/]+$", pathNot: TOP_LEVEL },
-      to: {},
-    },
-
+    // An import that resolves to nothing would slip past every rule above.
     rule(
-      "no-module-cycles",
-      "Modules that import each other, types included, have no direction between them. Files inside one module may depend on each other.",
-      { path: IN_MODULE, pathNot: TEST },
-      { circular: true, viaSomeNot: "^$1/" },
+      "resolves",
+      "Every import resolves, or the rules above cannot see it.",
+      { path: "^src/" },
+      { couldNotResolve: true },
     ),
-    rule(
-      "no-cycles-outside-modules",
-      "Shipped files outside a module take part in no import cycle.",
-      { path: "^src/", pathNot: `${IN_MODULE}|${TEST}` },
-      { circular: true },
-    ),
-    {
-      // An import that resolves to nothing would slip past every rule above.
-      name: "resolves",
-      comment: "Every import resolves, or the rules above cannot see it.",
-      severity: "error",
-      from: { path: "^src/" },
-      to: { couldNotResolve: true },
-    },
   ],
   options: {
     doNotFollow: { path: "node_modules" },

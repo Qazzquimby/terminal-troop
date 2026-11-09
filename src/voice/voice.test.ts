@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createActionState, withUiHandlers } from "../input/index.js";
-import { DEFAULT_SETTINGS } from "../settings/settings.js";
+import { DEFAULT_SETTINGS } from "../settings/index.js";
 import type { Voice, VoiceMode, VoiceSettings } from "./voice.js";
 import { applyVoiceSettings, createNullVoice, pushToTalk } from "./voice.js";
 

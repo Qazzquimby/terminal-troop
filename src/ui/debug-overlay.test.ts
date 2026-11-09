@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/audio.js";
+import { createSfx } from "../audio/index.js";
 import { createPlayer, createSession } from "../sim/index.js";
 import { roomDebugInfo } from "./debug-overlay.js";
 
