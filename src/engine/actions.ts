@@ -14,6 +14,7 @@ export const ACTIONS = {
   toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
+  pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },
 } as const;
 
 export type Action = keyof typeof ACTIONS;
@@ -45,6 +46,36 @@ export interface ActionSink<A extends string = Action> {
   resume(action: A, time: number): void;
   /** Blur: every held action counts as released and pending presses are dropped. */
   clear(time: number): void;
+}
+
+/** What a UI action does, run at once with the event time. */
+export interface UiHandlers {
+  press?: (time: number) => void;
+  /** Runs on every release, including those caused by blur or a context switch. */
+  release?: (time: number) => void;
+}
+
+/** Passes every event on to `sink`, and runs the action's UI handlers on press and release. */
+export function withUiHandlers<A extends string>(
+  sink: ActionSink<A>,
+  handlers: Partial<Record<A, UiHandlers>>,
+): ActionSink<A> {
+  return {
+    press(action, time) {
+      sink.press(action, time);
+      handlers[action]?.press?.(time);
+    },
+    release(action, time) {
+      sink.release(action, time);
+      handlers[action]?.release?.(time);
+    },
+    resume: (action, time) => {
+      sink.resume(action, time);
+    },
+    clear: (time) => {
+      sink.clear(time);
+    },
+  };
 }
 
 type ActionEvent =

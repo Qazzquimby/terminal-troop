@@ -202,6 +202,29 @@ canvas {
   background: none;
   accent-color: #73cfff;
 }
+.settings-peers {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-peer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.settings-peer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-empty {
+  margin: 0;
+  color: #8795a5;
+  font-size: 14px;
+}
 .settings-close {
   display: block;
   margin-left: auto;

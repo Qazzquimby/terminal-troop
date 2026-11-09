@@ -38,6 +38,10 @@ export interface Sfx {
   stopAll: (fadeTime?: number) => void;
   /** Scales every sound; 0..1. */
   setMasterVolume: (value: number) => void;
+  /** The one shared AudioContext, created on first use. */
+  audioContext: () => AudioContext;
+  /** The master gain: audio connected here plays at the master volume. */
+  output: () => AudioNode;
 }
 
 function spatialMix(origin: Point | null, listener: Point | null): Mix {
@@ -224,5 +228,13 @@ export function createSfx(): Sfx {
     activeLoops.clear();
   }
 
-  return { play, playLoop, stop, stopAll, setMasterVolume };
+  return {
+    play,
+    playLoop,
+    stop,
+    stopAll,
+    setMasterVolume,
+    audioContext: getAudioContext,
+    output: () => getMaster(getAudioContext()),
+  };
 }

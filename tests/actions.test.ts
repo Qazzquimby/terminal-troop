@@ -4,6 +4,7 @@ import {
   ACTIONS,
   createActionState,
   toControls,
+  withUiHandlers,
 } from "../src/engine/actions.js";
 import { createKeyboardSource } from "../src/engine/keyboard.js";
 
@@ -248,4 +249,28 @@ test("held actions active in both contexts stay held across the switch", () => {
   const frame = step(input.state, 10).frame;
   expect(frame.held).toEqual(actions("toggleDebug"));
   expect(frame.released).toEqual(actions("moveUp"));
+});
+
+test("UI handlers run on press and release; every event still reaches the state", () => {
+  const state = createActionState();
+  const seen: [string, number][] = [];
+  const sink = withUiHandlers(state, {
+    toggleInventory: {
+      press: (time) => seen.push(["press", time]),
+      release: (time) => seen.push(["release", time]),
+    },
+  });
+  sink.press("toggleInventory", 1);
+  sink.press("moveUp", 1);
+  sink.resume("sprint", 1);
+  sink.release("toggleInventory", 2);
+  const first = step(state, 2).frame;
+  expect(first.pressed).toEqual(actions("toggleInventory", "moveUp"));
+  expect(first.released).toEqual(actions("toggleInventory"));
+  sink.clear(3);
+  expect(step(state, 3).frame.released).toEqual(actions("moveUp", "sprint"));
+  expect(seen).toEqual([
+    ["press", 1],
+    ["release", 2],
+  ]);
 });

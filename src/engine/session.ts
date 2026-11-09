@@ -24,6 +24,17 @@ import {
 import { StateMessage } from "./protocol.js";
 import type { Transport } from "./transport.js";
 
+/** Hears when a remote player appears or goes away. */
+export interface RosterEvents {
+  playerJoined: (id: string) => void;
+  playerLeft: (id: string) => void;
+}
+
+const NO_ROSTER_EVENTS: RosterEvents = {
+  playerJoined: () => undefined,
+  playerLeft: () => undefined,
+};
+
 export interface Session {
   readonly localId: string;
   /** The local player; also present in `players`. */
@@ -31,6 +42,7 @@ export interface Session {
   readonly world: World;
   readonly sfx: Sfx;
   readonly players: Map<string, Player>;
+  readonly roster: RosterEvents;
   readonly entities: Map<string, WorldEntity>;
   readonly entityTypes: Map<number, EntityDefinition>;
   nextEntityId: number;
@@ -64,6 +76,7 @@ export function createSession(
   roomCode: string,
   worldKind: WorldKind,
   sfx: Sfx,
+  roster: RosterEvents = NO_ROSTER_EVENTS,
 ): Session {
   const world = buildRoomWorld(roomCode, worldKind);
   const local = createPlayer(localId, name, world);
@@ -74,6 +87,7 @@ export function createSession(
     world,
     sfx,
     players: new Map([[localId, local]]),
+    roster,
     entities: new Map(),
     entityTypes: new Map(),
     nextEntityId: 1,
@@ -98,13 +112,19 @@ export function updateSession(
   game.players.forEach((player, id) => {
     if (id === game.localId) return;
     if (now - player.lastSeen > STALE_S * 1000) {
-      game.players.delete(id);
+      removePlayer(game, id);
     } else {
       smoothPlayer(player, dt);
     }
   });
 
   updateEntities(game, dt);
+}
+
+/** Drops a remote player, on BYE or when it goes stale. */
+export function removePlayer(game: Session, id: string): void {
+  if (id === game.localId || !game.players.delete(id)) return;
+  game.roster.playerLeft(id);
 }
 
 export function sendState(
@@ -133,6 +153,7 @@ export function receiveState(game: Session, payload: unknown): void {
     player.aim = state.aim;
     snapPrevious(player);
     game.players.set(state.id, player);
+    game.roster.playerJoined(state.id);
   }
 
   player.name = state.name;

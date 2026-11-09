@@ -61,8 +61,9 @@ export function createKeyboardSource<A extends string, C extends string>(
       for (const action of freed) sink.release(action, time);
       return freed;
     },
-    /** Window blur: forgets every key and clears the sink. */
+    /** Window blur: releases every held action, forgets every key and clears the sink. */
     blur(time: number): void {
+      for (const action of heldActions()) sink.release(action, time);
       keys.clear();
       sink.clear(time);
     },
