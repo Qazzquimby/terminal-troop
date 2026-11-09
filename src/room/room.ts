@@ -10,6 +10,7 @@ import {
 } from "../sim/index.js";
 import type { Session, SimConfig, WorldKind } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
+import type { z } from "zod";
 import { createRoster } from "./presence.js";
 import type {
   Presence,
@@ -18,11 +19,8 @@ import type {
   PresenceTiming,
   Roster,
 } from "./presence.js";
-import {
-  HeartbeatMessage,
-  parseStateMessage,
-  PresenceMessage,
-} from "./protocol.js";
+import { roomMessages } from "./protocol.js";
+import type { Message, MessageInput } from "./protocol.js";
 import { INVALID_ROOM_CODE, parseRoomCode, roomKey } from "./room-code.js";
 import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 
@@ -121,6 +119,18 @@ export function createRoom(deps: RoomDeps): Room {
   /** Settles once the latest join attempt, its own cleanup included, is over. */
   let attempt: Promise<unknown> = Promise.resolve();
   let hidden = false;
+  /** Mapped over each event, so indexing it with a generic event keeps that event's types. */
+  const messages: {
+    [E in NetEvent]: z.ZodType<Message<E>, MessageInput<E>>;
+  } = roomMessages(deps.sim.player.nameMax);
+
+  /** Sends `msg` as `event` to the rest of the room. */
+  function send<E extends NetEvent>(
+    event: E,
+    msg: MessageInput<E>,
+  ): Promise<void> {
+    return transport.send(event, msg);
+  }
 
   function setState(next: RoomState): void {
     state = next;
@@ -131,11 +141,11 @@ export function createRoom(deps: RoomDeps): Room {
     if (!force && now - room.lastSent < 1000 / config.sendHz) return;
     room.lastSent = now;
     room.forceState = false;
-    void transport.send(NetEvent.STATE, playerState(room.session.local));
+    void send(NetEvent.STATE, playerState(room.session.local));
   }
 
   function sendHeartbeat(): void {
-    void transport.send(NetEvent.HEARTBEAT, { id: localId, hidden });
+    void send(NetEvent.HEARTBEAT, { id: localId, hidden });
   }
 
   function syncVoice(room: Link): void {
@@ -164,15 +174,19 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   function handlers(room: Link): Parameters<Transport["join"]>[1] {
-    const live =
-      (handle: (payload: unknown) => void) =>
-      (payload: unknown): void => {
-        if (!room.scope.disposed) handle(payload);
+    /** The transport's handler for `event`: drops payloads that arrive after leaving or do not parse. */
+    function on<E extends NetEvent>(
+      event: E,
+      handle: (msg: Message<E>) => void,
+    ): (payload: unknown) => void {
+      return (payload) => {
+        if (room.scope.disposed) return;
+        const parsed = messages[event].safeParse(payload);
+        if (parsed.success) handle(parsed.data);
       };
+    }
     return {
-      [NetEvent.STATE]: live((payload) => {
-        const message = parseStateMessage(payload, deps.sim.player.nameMax);
-        if (message === null) return;
+      [NetEvent.STATE]: on(NetEvent.STATE, (message) => {
         const change = room.roster.apply(
           message.id,
           { kind: "heard", hidden: false },
@@ -186,31 +200,21 @@ export function createRoom(deps: RoomDeps): Room {
           deps.onChange();
         }
       }),
-      [NetEvent.HEARTBEAT]: live((payload) => {
-        const message = HeartbeatMessage.safeParse(payload);
-        if (message.success)
-          hear(room, message.data.id, {
-            kind: "heard",
-            hidden: message.data.hidden,
-          });
+      [NetEvent.HEARTBEAT]: on(NetEvent.HEARTBEAT, (message) => {
+        hear(room, message.id, { kind: "heard", hidden: message.hidden });
       }),
-      [NetEvent.HELLO]: live((payload) => {
-        const message = PresenceMessage.safeParse(payload);
-        if (!message.success) return;
-        hear(room, message.data.id, { kind: "hello" });
+      [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
+        hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
       }),
-      [NetEvent.BYE]: live((payload) => {
-        const message = PresenceMessage.safeParse(payload);
-        if (!message.success) return;
-        const { id } = message.data;
+      [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
         const change = room.roster.apply(id, { kind: "bye" }, clock.now());
         const removed = removePlayer(room.session, id);
         syncVoice(room);
         if (change !== null || removed) deps.onChange();
       }),
-      [NetEvent.SIGNAL]: live((payload) => {
-        room.voiceRoom?.receive(payload);
+      [NetEvent.SIGNAL]: on(NetEvent.SIGNAL, (signal) => {
+        room.voiceRoom?.receive(signal);
       }),
     };
   }
@@ -261,16 +265,12 @@ export function createRoom(deps: RoomDeps): Room {
     }
     scope.defer(() => transport.leave());
     room.voiceRoom = scope.adopt(
-      deps.voice.join(
-        localId,
-        (signal) => void transport.send(NetEvent.SIGNAL, signal),
-        {
-          peerFailed(id) {
-            if (!scope.disposed) hear(room, id, { kind: "voiceFailed" });
-            deps.onPeerFailed(id);
-          },
+      deps.voice.join(localId, (signal) => void send(NetEvent.SIGNAL, signal), {
+        peerFailed(id) {
+          if (!scope.disposed) hear(room, id, { kind: "voiceFailed" });
+          deps.onPeerFailed(id);
         },
-      ),
+      }),
       (voiceRoom) => {
         voiceRoom.leave();
       },
@@ -283,8 +283,8 @@ export function createRoom(deps: RoomDeps): Room {
         stop();
       },
     );
-    scope.defer(() => transport.send(NetEvent.BYE, { id: localId }));
-    void transport.send(NetEvent.HELLO, { id: localId });
+    scope.defer(() => send(NetEvent.BYE, { id: localId }));
+    void send(NetEvent.HELLO, { id: localId });
     sendState(room, clock.now(), true);
     return room;
   }

@@ -325,7 +325,7 @@ async function withListener() {
     other.send(NetEvent.HEARTBEAT, { id: "x", hidden });
   };
   const hasX = () => session.players.has("x");
-  return { ...ctx, other, session, sendState, beat, hasX };
+  return { ...ctx, other, session, spot, sendState, beat, hasX };
 }
 
 describe("players and voice", () => {
@@ -535,5 +535,43 @@ describe("state sends", () => {
     expect(other.heard.map((message) => message.event)).not.toContain(
       NetEvent.HELLO,
     );
+  });
+});
+
+describe("payloads that do not parse are dropped", () => {
+  const heard = withListener;
+
+  test("a STATE with a bad field adds no player", async () => {
+    const { room, other, session, spot } = await heard();
+    other.send(NetEvent.STATE, { id: "x", name: 5, ...spot, aim: 0 });
+    expect(session.players.has("x")).toBe(false);
+    expect(room.presenceOf("x")).toBeUndefined();
+  });
+
+  test("a BYE without an id drops no one", async () => {
+    const { other, session, spot } = await heard();
+    other.send(NetEvent.STATE, { id: "x", name: "X", ...spot, aim: 0 });
+    other.send(NetEvent.BYE, { who: "x" });
+    expect(session.players.has("x")).toBe(true);
+    other.send(NetEvent.BYE, { id: "x" });
+    expect(session.players.has("x")).toBe(false);
+  });
+
+  test("a heartbeat without its hidden flag changes no presence", async () => {
+    const { room, beat, other } = await heard();
+    other.send(NetEvent.HEARTBEAT, { id: "x" });
+    expect(room.presenceOf("x")).toBeUndefined();
+    beat(true);
+    expect(room.presenceOf("x")?.kind).toBe("away");
+  });
+
+  test("a HELLO without an id forces no state send", async () => {
+    const { other } = await heard();
+    other.send(NetEvent.HELLO, null);
+    expect(other.heard).toEqual([]);
+    other.send(NetEvent.HELLO, { id: "x" });
+    expect(other.heard.map((message) => message.event)).toEqual([
+      NetEvent.STATE,
+    ]);
   });
 });
