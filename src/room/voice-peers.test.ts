@@ -43,7 +43,13 @@ describe("syncVoicePeers", () => {
 
   test("a new player gets its proximity mix before the room hears of it", () => {
     const { session, calls, mixes, room } = setup(["far", 450]);
-    const peers = syncVoicePeers(session, room, new Set(), falloff);
+    const peers = syncVoicePeers(
+      session,
+      session.players.keys(),
+      room,
+      new Set(),
+      falloff,
+    );
     expect(calls).toEqual(["mix far", "peers far"]);
     expect([...peers]).toEqual(["far"]);
     const expected = voiceMix(
@@ -60,44 +66,91 @@ describe("syncVoicePeers", () => {
 
   test("unchanged players call nothing and keep the same set", () => {
     const { session, calls, room } = setup(["a", 0], ["b", 0]);
-    const peers = syncVoicePeers(session, room, new Set(), falloff);
+    const peers = syncVoicePeers(
+      session,
+      session.players.keys(),
+      room,
+      new Set(),
+      falloff,
+    );
     calls.length = 0;
-    expect(syncVoicePeers(session, room, peers, falloff)).toBe(peers);
+    expect(
+      syncVoicePeers(session, session.players.keys(), room, peers, falloff),
+    ).toBe(peers);
     expect(calls).toEqual([]);
   });
 
   test("only players new to the set get a mix", () => {
     const { session, calls, room } = setup(["a", 0]);
-    const peers = syncVoicePeers(session, room, new Set(), falloff);
+    const peers = syncVoicePeers(
+      session,
+      session.players.keys(),
+      room,
+      new Set(),
+      falloff,
+    );
     calls.length = 0;
     addRemote(session, "b", 0);
-    syncVoicePeers(session, room, peers, falloff);
+    syncVoicePeers(session, session.players.keys(), room, peers, falloff);
     expect(calls).toEqual(["mix b", "peers a,b"]);
   });
 
   test("a player gone from the session leaves the set", () => {
     const { session, calls, room } = setup(["a", 0], ["b", 0]);
-    const peers = syncVoicePeers(session, room, new Set(), falloff);
+    const peers = syncVoicePeers(
+      session,
+      session.players.keys(),
+      room,
+      new Set(),
+      falloff,
+    );
     calls.length = 0;
     session.players.delete("a");
-    expect([...syncVoicePeers(session, room, peers, falloff)]).toEqual(["b"]);
+    expect([
+      ...syncVoicePeers(session, session.players.keys(), room, peers, falloff),
+    ]).toEqual(["b"]);
     expect(calls).toEqual(["peers b"]);
   });
 
   test("the same count with a different player still updates", () => {
     const { session, calls, room } = setup(["a", 0]);
-    const peers = syncVoicePeers(session, room, new Set(), falloff);
+    const peers = syncVoicePeers(
+      session,
+      session.players.keys(),
+      room,
+      new Set(),
+      falloff,
+    );
     calls.length = 0;
     session.players.delete("a");
     addRemote(session, "c", 0);
-    syncVoicePeers(session, room, peers, falloff);
+    syncVoicePeers(session, session.players.keys(), room, peers, falloff);
     expect(calls).toEqual(["mix c", "peers c"]);
+  });
+
+  test("an id without a player stays out of the set", () => {
+    const { session, calls, room } = setup(["a", 0]);
+    const peers = syncVoicePeers(
+      session,
+      ["a", "ghost"],
+      room,
+      new Set(),
+      falloff,
+    );
+    expect([...peers]).toEqual(["a"]);
+    expect(calls).toEqual(["mix a", "peers a"]);
   });
 
   test("the local player is never a voice peer", () => {
     const { session, calls, room } = setup();
     expect([
-      ...syncVoicePeers(session, room, new Set(["gone"]), falloff),
+      ...syncVoicePeers(
+        session,
+        session.players.keys(),
+        room,
+        new Set(["gone"]),
+        falloff,
+      ),
     ]).toEqual([]);
     expect(calls).toEqual(["peers "]);
   });

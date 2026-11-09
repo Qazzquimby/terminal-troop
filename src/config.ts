@@ -40,7 +40,15 @@ export const config = {
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 4 },
   net: { smoothing: 12 },
-  room: { sendHz: 15, staleS: 15 },
+  room: {
+    sendHz: 15,
+    heartbeatMs: 1000,
+    presence: {
+      awayAfterMs: 3500,
+      goneSilentMs: 30_000,
+      goneHiddenMs: 180_000,
+    },
+  },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },
   voiceConnections: {

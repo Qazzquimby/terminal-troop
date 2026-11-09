@@ -101,7 +101,7 @@ function selectVoice(initial: VoiceSettings): Voice {
 }
 
 const params = new URLSearchParams(location.search);
-/** `?debug` shows the debug overlay, exposes voice on `window`, and logs voice failures. */
+/** `?debug` shows the debug overlay, exposes voice and the room on `window`, and logs voice failures. */
 const debug = params.has("debug");
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
@@ -124,8 +124,6 @@ const settings = createSettingsStore({
   },
 });
 const voice = selectVoice(settings.get().voice);
-// Debug hook for driving voice from the console or a test browser.
-if (debug) Object.assign(window, { voice });
 
 const talkKey = actionKeyLabel("pushToTalk");
 element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
@@ -152,7 +150,15 @@ const room = createRoom({
   voice,
   sfx,
   scope: app,
-  clock: { now: () => performance.now() },
+  clock: {
+    now: () => performance.now(),
+    every(ms, fn) {
+      const timer = setInterval(fn, ms);
+      return () => {
+        clearInterval(timer);
+      };
+    },
+  },
   config: config.room,
   sim: config,
   falloff: config.voice,
@@ -163,6 +169,8 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
+// Debug hook for driving voice and reading presence from the console or a test browser.
+if (debug) Object.assign(window, { voice, room });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -212,11 +220,16 @@ const settingsMenu = createSettingsMenu(
   },
 );
 
+/** Whether remote player `id` is away. */
+function isAway(id: string): boolean {
+  return room.presenceOf(id)?.kind === "away";
+}
+
 /** Lists the other players in the room, with their voice mutes, in the settings menu. */
 function refreshPeers(state: RoomState): void {
   const session = joinedSession(state);
   const players = session === null ? [] : remotePlayers(session);
-  settingsMenu.setPeers(menuPeers(players, voice.status().mutedPeers));
+  settingsMenu.setPeers(menuPeers(players, voice.status().mutedPeers, isAway));
 }
 refreshPeers(room.state());
 
@@ -257,7 +270,7 @@ function debugInfo(): DebugInfo {
       session === null
         ? null
         : roomDebugInfo(session, now, counted.rates(now), (id) =>
-            room.lastHeard(id),
+            room.presenceOf(id),
           ),
   };
 }
@@ -281,7 +294,7 @@ function frame(): void {
     room.frame(now);
     updateCamera(camera, renderPosition(session.local, alpha));
     const drawStart = performance.now();
-    draw(ctx, session, camera, now, alpha, input.mouseWorld());
+    draw(ctx, session, camera, now, alpha, input.mouseWorld(), isAway);
     frameStats.drawMs = performance.now() - drawStart;
     updateInventory(session.local.inventory, inventoryOpen);
   } else {

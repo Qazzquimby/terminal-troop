@@ -11,6 +11,14 @@ import {
 import type { Session, SimConfig, WorldKind } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 import type { z } from "zod";
+import { createRoster } from "./presence.js";
+import type {
+  Presence,
+  PresenceChange,
+  PresenceEvent,
+  PresenceTiming,
+  Roster,
+} from "./presence.js";
 import { roomMessages } from "./protocol.js";
 import type { Message, MessageInput } from "./protocol.js";
 import { INVALID_ROOM_CODE, parseRoomCode, roomKey } from "./room-code.js";
@@ -20,8 +28,9 @@ import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 export interface RoomConfig {
   /** Most state sends per second. */
   readonly sendHz: number;
-  /** Seconds without a state before a remote player is dropped. */
-  readonly staleS: number;
+  /** Milliseconds between heartbeats, and between presence sweeps. */
+  readonly heartbeatMs: number;
+  readonly presence: PresenceTiming;
 }
 
 /**
@@ -40,6 +49,13 @@ export type RoomState =
 
 type JoinResult = { ok: true } | { ok: false; error: string };
 
+/** Milliseconds, on the timeline `frame(now)` is called with. */
+interface RoomClock {
+  now(): number;
+  /** Calls `fn` every `ms` until the returned function is called. */
+  every(ms: number, fn: () => void): () => void;
+}
+
 export interface RoomDeps {
   readonly localId: string;
   readonly world: WorldKind;
@@ -48,12 +64,11 @@ export interface RoomDeps {
   readonly sfx: Sfx;
   /** Each room joined lives in a child of this scope. */
   readonly scope: Scope;
-  /** Milliseconds, on the timeline `frame(now)` is called with. */
-  readonly clock: { now(): number };
+  readonly clock: RoomClock;
   readonly config: RoomConfig;
   readonly sim: SimConfig;
   readonly falloff: VoiceFalloff;
-  /** The state changed, or a remote player arrived or left. */
+  /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
   /** A voice connection to `id` stayed down past its deadline. */
   onPeerFailed(id: string): void;
@@ -70,24 +85,25 @@ export interface Room {
   join(rawCode: string, name: string): Promise<JoinResult>;
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
-  /** Runs after the simulation steps of a frame: drops stale players, sends state, mixes voice. */
+  /** Runs after the simulation steps of a frame: sends state, then mixes voice. */
   frame(now: number): void;
-  /** Whether the page is hidden; becoming visible says HELLO again. */
+  /** Whether the page is hidden; says so in a heartbeat at once. */
   setHidden(hidden: boolean): void;
-  /** When a STATE last came from remote player `id`. */
-  lastHeard(id: string): number | undefined;
+  /** Undefined for a remote player who is gone, or outside a room. */
+  presenceOf(id: string): Presence | undefined;
 }
 
-/** A joined room's live parts, shared by its message handlers and the frame. */
+/** A joined room's live parts, shared by its message handlers, its pulse and the frame. */
 interface Link {
   readonly scope: Scope;
   readonly session: Session;
-  /** Remote player id to when its last STATE arrived. */
-  readonly heard: Map<string, number>;
+  readonly roster: Roster;
   voiceRoom: VoiceRoom | null;
   /** The remote players `voiceRoom` was last told to connect to. */
   peers: ReadonlySet<string>;
   lastSent: number;
+  /** The next frame sends state whatever the throttle says. */
+  forceState: boolean;
 }
 
 const ALREADY_CONNECTING = "Already connecting.";
@@ -124,29 +140,37 @@ export function createRoom(deps: RoomDeps): Room {
   function sendState(room: Link, now: number, force = false): void {
     if (!force && now - room.lastSent < 1000 / config.sendHz) return;
     room.lastSent = now;
+    room.forceState = false;
     void send(NetEvent.STATE, playerState(room.session.local));
   }
 
-  function sayHello(room: Link): void {
-    void send(NetEvent.HELLO, { id: localId });
-    sendState(room, clock.now(), true);
+  function sendHeartbeat(): void {
+    void send(NetEvent.HEARTBEAT, { id: localId, hidden });
   }
 
   function syncVoice(room: Link): void {
     if (room.voiceRoom !== null)
       room.peers = syncVoicePeers(
         room.session,
+        room.roster.ids(),
         room.voiceRoom,
         room.peers,
         deps.falloff,
       );
   }
 
-  function dropPlayer(room: Link, id: string): void {
-    room.heard.delete(id);
-    if (!removePlayer(room.session, id)) return;
+  /** Drops the players `changes` made gone, then points voice at who is left. */
+  function settle(room: Link, changes: readonly PresenceChange[]): void {
+    for (const change of changes) {
+      if (change.to === "gone") removePlayer(room.session, change.id);
+    }
     syncVoice(room);
-    deps.onChange();
+    if (changes.length > 0) deps.onChange();
+  }
+
+  function hear(room: Link, id: string, event: PresenceEvent): void {
+    const change = room.roster.apply(id, event, clock.now());
+    if (change !== null) settle(room, [change]);
   }
 
   function handlers(room: Link): Parameters<Transport["join"]>[1] {
@@ -163,19 +187,31 @@ export function createRoom(deps: RoomDeps): Room {
     }
     return {
       [NetEvent.STATE]: on(NetEvent.STATE, (message) => {
-        const result = applyRemoteState(room.session, message);
-        if (result === "rejected") return;
-        room.heard.set(message.id, clock.now());
-        if (result === "added") {
+        const change = room.roster.apply(
+          message.id,
+          { kind: "heard", hidden: false },
+          clock.now(),
+        );
+        if (room.roster.get(message.id) === undefined) return;
+        const added = applyRemoteState(room.session, message) === "added";
+        if (change !== null) settle(room, [change]);
+        else if (added) {
           syncVoice(room);
           deps.onChange();
         }
       }),
-      [NetEvent.HELLO]: on(NetEvent.HELLO, () => {
+      [NetEvent.HEARTBEAT]: on(NetEvent.HEARTBEAT, (message) => {
+        hear(room, message.id, { kind: "heard", hidden: message.hidden });
+      }),
+      [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
+        hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
       }),
-      [NetEvent.BYE]: on(NetEvent.BYE, (message) => {
-        dropPlayer(room, message.id);
+      [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
+        const change = room.roster.apply(id, { kind: "bye" }, clock.now());
+        const removed = removePlayer(room.session, id);
+        syncVoice(room);
+        if (change !== null || removed) deps.onChange();
       }),
       [NetEvent.SIGNAL]: on(NetEvent.SIGNAL, (signal) => {
         room.voiceRoom?.receive(signal);
@@ -183,9 +219,20 @@ export function createRoom(deps: RoomDeps): Room {
     };
   }
 
+  /** Says the local player is still here, then moves every remote player along by the time. */
+  function pulse(room: Link): void {
+    if (room.scope.disposed) return;
+    sendHeartbeat();
+    const changes = room.roster.sweep(clock.now());
+    if (room.voiceRoom !== null)
+      applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
+    settle(room, changes);
+  }
+
   /**
-   * Joins `code` inside `scope`. The scope's disposers run in reverse: BYE, then voice hangs
-   * up, then the channel closes, then sound loops stop. Null when the scope is disposed first.
+   * Joins `code` inside `scope`. The scope's disposers run in reverse: BYE, then heartbeats
+   * stop, then voice hangs up, then the channel closes, then sound loops stop. Null when the
+   * scope is disposed first.
    */
   async function connect(
     code: string,
@@ -205,10 +252,11 @@ export function createRoom(deps: RoomDeps): Room {
         deps.sfx,
         deps.sim,
       ),
-      heard: new Map(),
+      roster: createRoster(config.presence),
       voiceRoom: null,
       peers: new Set(),
       lastSent: -Infinity,
+      forceState: false,
     };
     await transport.join(roomKey(code, deps.world), handlers(room));
     if (scope.disposed) {
@@ -219,6 +267,7 @@ export function createRoom(deps: RoomDeps): Room {
     room.voiceRoom = scope.adopt(
       deps.voice.join(localId, (signal) => void send(NetEvent.SIGNAL, signal), {
         peerFailed(id) {
+          if (!scope.disposed) hear(room, id, { kind: "voiceFailed" });
           deps.onPeerFailed(id);
         },
       }),
@@ -226,9 +275,17 @@ export function createRoom(deps: RoomDeps): Room {
         voiceRoom.leave();
       },
     );
+    scope.adopt(
+      clock.every(config.heartbeatMs, () => {
+        pulse(room);
+      }),
+      (stop) => {
+        stop();
+      },
+    );
     scope.defer(() => send(NetEvent.BYE, { id: localId }));
-    syncVoice(room);
-    sayHello(room);
+    void send(NetEvent.HELLO, { id: localId });
+    sendState(room, clock.now(), true);
     return room;
   }
 
@@ -293,21 +350,19 @@ export function createRoom(deps: RoomDeps): Room {
     frame(now) {
       if (link === null) return;
       const room = link;
-      for (const [id, heard] of room.heard) {
-        if (now - heard > config.staleS * 1000) dropPlayer(room, id);
-      }
-      sendState(room, now);
-      syncVoice(room);
+      sendState(room, now, room.forceState);
       if (room.voiceRoom !== null)
-        applyProximity(room.session, room.voiceRoom, deps.falloff);
+        applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     },
 
     setHidden(next) {
       const shown = hidden && !next;
       hidden = next;
-      if (shown && link !== null) sayHello(link);
+      if (link === null) return;
+      sendHeartbeat();
+      if (shown) link.forceState = true;
     },
 
-    lastHeard: (id) => link?.heard.get(id),
+    presenceOf: (id) => link?.roster.get(id),
   };
 }

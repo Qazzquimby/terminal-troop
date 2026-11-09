@@ -17,12 +17,16 @@ function stateMessage(nameMax: number) {
 /** HELLO and BYE carry only the sender's id. */
 const PresenceMessage = z.object({ id: PlayerId });
 
+/** A heartbeat carries the sender's id and whether its page is hidden. */
+const HeartbeatMessage = PresenceMessage.extend({ hidden: z.boolean() });
+
 /** Every event's payload schema; a missing event fails to compile. */
 export function roomMessages(nameMax: number) {
   return {
     [NetEvent.HELLO]: PresenceMessage,
     [NetEvent.STATE]: stateMessage(nameMax),
     [NetEvent.BYE]: PresenceMessage,
+    [NetEvent.HEARTBEAT]: HeartbeatMessage,
     // The voice room parses its own signals.
     [NetEvent.SIGNAL]: z.unknown(),
   } as const satisfies Record<NetEvent, z.ZodType>;

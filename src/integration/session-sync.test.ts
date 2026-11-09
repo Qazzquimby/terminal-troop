@@ -7,16 +7,17 @@ import type { Room } from "../room/index.js";
 import { randomFreePosition, updateSession } from "../sim/index.js";
 import type { Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
+import { createManualClock, testRoomConfig } from "./room-helpers.js";
 import { testSfx, testSimConfig } from "./sim-config.js";
 
 const ROOM = "SYNC1";
 const SEND_GAP = 1000 / 15;
 const open: Room[] = [];
-let time = 0;
+let clock = createManualClock();
 
 afterEach(async () => {
   await Promise.all(open.splice(0).map((room) => room.leave()));
-  time = 0;
+  clock = createManualClock();
 });
 
 async function flush(): Promise<void> {
@@ -32,8 +33,8 @@ function client(id: string): Room {
     voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
     sfx: testSfx(),
     scope: createScope(),
-    clock: { now: () => time },
-    config: { sendHz: 15, staleS: 15 },
+    clock,
+    config: testRoomConfig,
     sim: testSimConfig,
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange: () => undefined,
@@ -112,4 +113,20 @@ test("leaving says BYE and the other side drops the player", async () => {
   await b.leave();
   await flush();
   expect(sessionOf(a).players.has("b")).toBe(false);
+});
+
+test("a hidden player that stops sending state but keeps heartbeating stays, away", async () => {
+  const { a, b } = await pair();
+  b.setHidden(true);
+  for (let second = 1; second <= 60; second++) {
+    clock.advance(second * 1000);
+    a.frame(clock.now());
+    await flush();
+  }
+  expect(a.presenceOf("b")).toMatchObject({ kind: "away", hidden: true });
+  expect(sessionOf(a).players.has("b")).toBe(true);
+
+  b.setHidden(false);
+  await flush();
+  expect(a.presenceOf("b")?.kind).toBe("present");
 });
