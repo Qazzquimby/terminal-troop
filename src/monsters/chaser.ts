@@ -2,6 +2,7 @@ import { z } from "zod";
 import alertUrl from "../assets/sfx/zombie/alert.mp3";
 import attackUrl from "../assets/sfx/zombie/attack.mp3";
 import barkUrl from "../assets/sfx/zombie/bark.mp3";
+import { drawFacing } from "../render/render.js";
 import { canSeeFrom, isAreaFree, mulberry32Next } from "../sim/index.js";
 import type {
   EntityDefinition,
@@ -9,6 +10,7 @@ import type {
   Rng,
   Session,
   TileMap,
+  VisionSource,
 } from "../sim/index.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "./route.js";
 
@@ -17,7 +19,7 @@ export interface ChaserConfig {
   readonly radius: number;
   readonly wanderSpeed: number;
   readonly chaseSpeed: number;
-  /** How far a chaser sees a player it has a clear line to, all round. */
+  /** How far a chaser sees a player it has a clear line to within its sight cone. */
   readonly sightRange: number;
   /** Furthest a wander leg heads from where it starts, as the crow flies. */
   readonly wanderRange: number;
@@ -57,6 +59,7 @@ export const ChaserState = z.discriminatedUnion("mode", [
     seed: Seed,
     route: Route,
     pause: z.number().min(0),
+    facing: z.number(),
   }),
   z.object({
     ...SoundTimers,
@@ -64,6 +67,7 @@ export const ChaserState = z.discriminatedUnion("mode", [
     seed: Seed,
     route: Route,
     target: Waypoint,
+    facing: z.number(),
   }),
 ]);
 
@@ -97,6 +101,7 @@ export function freshChaser(seed: number): ChaserState {
     pause: 0,
     nextBark: result,
     attackCooldown: 0,
+    facing: 0,
   };
 }
 
@@ -114,9 +119,23 @@ function withSeed<T>(
   return { result, seed: state };
 }
 
-/** The nearest player a chaser at `at` sees, or null. */
-function sighting(game: Session, at: Point, range: number): Point | null {
-  const eye = { x: at.x, y: at.y, range };
+/** The nearest player a chaser at `at` sees within its sight cone, or null. */
+function sighting(
+  game: Session,
+  at: Point,
+  range: number,
+  facing: number,
+): Point | null {
+  const eye: VisionSource = {
+    x: at.x,
+    y: at.y,
+    range,
+    shape: {
+      kind: "cone",
+      direction: facing,
+      angle: game.config.vision.coneAngle,
+    },
+  };
   let nearest: Point | null = null;
   let nearestDistance = Infinity;
   for (const player of game.players.values()) {
@@ -198,6 +217,7 @@ function pursue(
     target: seen,
     nextBark: state.nextBark,
     attackCooldown: state.attackCooldown,
+    facing: state.facing,
   };
 }
 
@@ -213,6 +233,7 @@ function giveUp(state: ChaserState, config: ChaserConfig): Wander {
     pause: result,
     nextBark: state.nextBark,
     attackCooldown: state.attackCooldown,
+    facing: state.facing,
   };
 }
 
@@ -228,7 +249,7 @@ function think(
   config: ChaserConfig,
 ): ChaserState {
   const { map } = game.world;
-  const seen = sighting(game, at, config.sightRange);
+  const seen = sighting(game, at, config.sightRange, state.facing);
   if (seen !== null) return pursue(state, at, seen, map, config);
   if (state.mode === "wander") return wander(state, at, dt, map, config);
   return state.route.length > 0 ? state : giveUp(state, config);
@@ -284,7 +305,12 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
       const next = voice(state, thought, entity, dt, game);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
-      return { ...next, route: steer(entity, next.route, speed, dt) };
+      const route = steer(entity, next.route, speed, dt);
+      const facing =
+        entity.vx === 0 && entity.vy === 0
+          ? next.facing
+          : Math.atan2(entity.vy, entity.vx);
+      return { ...next, route, facing };
     },
     draw(ctx, entity, state) {
       ctx.fillStyle = COLOURS[state.mode];
@@ -294,6 +320,7 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
       ctx.strokeStyle = "#1a1d12";
       ctx.lineWidth = 3;
       ctx.stroke();
+      drawFacing(ctx, entity, state.facing, entity.radius * 1.5);
     },
   };
 }

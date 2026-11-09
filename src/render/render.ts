@@ -97,6 +97,24 @@ function drawPlayer(
   ctx.restore();
 }
 
+/** Draws the white facing line from `at` in `direction` (radians) out to `radius`. */
+export function drawFacing(
+  ctx: CanvasRenderingContext2D,
+  at: Point,
+  direction: number,
+  radius: number,
+): void {
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(at.x, at.y);
+  ctx.lineTo(
+    at.x + Math.cos(direction) * radius,
+    at.y + Math.sin(direction) * radius,
+  );
+  ctx.stroke();
+}
+
 function drawBody(
   ctx: CanvasRenderingContext2D,
   player: Player,
@@ -107,15 +125,7 @@ function drawBody(
   ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(player.x, player.y);
-  ctx.lineTo(
-    player.x + Math.cos(player.aim) * player.radius * 1.5,
-    player.y + Math.sin(player.aim) * player.radius * 1.5,
-  );
-  ctx.stroke();
+  drawFacing(ctx, player, player.aim, player.radius * 1.5);
 
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
