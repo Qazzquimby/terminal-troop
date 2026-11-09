@@ -44,7 +44,7 @@ import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
-import { createScope } from "./scope/index.js";
+import { createScope } from "./lib/scope/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();

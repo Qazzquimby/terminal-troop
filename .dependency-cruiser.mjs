@@ -1,5 +1,5 @@
-// Import boundaries. A directory under src/ or src/adapters/ is a module: other code reaches it
-// only through its index.ts. Every rule goes by directory, so a new file in a module is covered
+// Import boundaries. A directory under src/, src/adapters/ or src/lib/ is a module: other code
+// reaches it only through its index.ts. Every rule goes by directory, so a new file in a module is covered
 // without this file changing. Tests sit inside the module they test and follow its rules; tests
 // across modules, and helpers several modules share, live in src/integration/.
 
@@ -7,19 +7,23 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Each directory here holds modules, one per child directory. */
-const MODULE_PARENTS = ["src/adapters", "src"];
+const MODULE_PARENTS = ["src/adapters", "src/lib", "src"];
 
 /** Directories under src that are not modules. */
-const NOT_MODULES = new Set(["adapters", "integration"]);
+const NOT_MODULES = new Set(["adapters", "integration", "lib"]);
 
 /** Matches a path inside a module; group 1 is the module's directory. */
-const IN_MODULE = "^(src/adapters/[^/]+|src/(?!adapters/|integration/)[^/]+)/";
+const IN_MODULE =
+  "^(src/(?:adapters|lib)/[^/]+|src/(?!adapters/|integration/|lib/)[^/]+)/";
 
 /**
  * Matches any path under src; group 1 is the directory or top-level file it sits in, so `^$1/`
  * matches the other files of the same module, and nothing for a top-level file.
  */
-const UNIT = "^(src/adapters/[^/]+|src/(?!adapters/)[^/]+)";
+const UNIT = "^(src/(?:adapters|lib)/[^/]+|src/(?!adapters/|lib/)[^/]+)";
+
+/** A library module's public file; anything in src may import it, adapters included. */
+const LIB_PUBLIC_FILE = "^src/lib/[^/]+/index\\.ts$";
 
 const TEST = "\\.test\\.ts$|^src/integration/";
 
@@ -96,9 +100,19 @@ export default {
     ),
     rule(
       "adapter-to-module-value",
-      "An adapter imports port and domain types with `import type`, and values only from its own files and npm packages. A value the rest of the app also needs is injected or passed through the port.",
+      "An adapter imports port and domain types with `import type`, and values only from its own files, library modules under src/lib, and npm packages. A value the rest of the app also needs is injected or passed through the port.",
       { path: "^src/adapters/", pathNot: TEST },
-      { path: "^src/(?!adapters/)", dependencyTypesNot: ["type-only"] },
+      {
+        path: "^src/(?!adapters/)",
+        pathNot: LIB_PUBLIC_FILE,
+        dependencyTypesNot: ["type-only"],
+      },
+    ),
+    rule(
+      "lib-to-app",
+      "A library module under src/lib is app-agnostic: it imports only other library modules and npm packages, types included.",
+      { path: "^src/lib/" },
+      { path: "^src/", pathNot: "^src/lib/" },
     ),
     rule(
       "adapter-outside-root",
