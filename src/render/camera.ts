@@ -20,7 +20,7 @@ export interface ZoomRange {
 }
 
 export function createCamera(view: ViewConfig): Camera {
-  return { x: 0, y: 0, view, zoom: 1, targetZoom: 1.25 }; // eg zoom 1.25
+  return { x: 0, y: 0, view, zoom: 1, targetZoom: 1.25 };
 }
 
 /**
