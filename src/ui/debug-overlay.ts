@@ -16,18 +16,22 @@ interface RoomDebugInfo {
   readonly remotes: readonly { name: string; ageMs: number }[];
 }
 
-/** The room part of the overlay for `session` at `now`, given the current message rates. */
+/**
+ * The room part of the overlay for `session` at `now`, given the current message rates and
+ * when each remote player was last heard from.
+ */
 export function roomDebugInfo(
   session: Session,
   now: number,
   rates: MessageRates,
+  lastHeard: (id: string) => number | undefined,
 ): RoomDebugInfo {
   return {
     net: rates,
     playerCount: session.players.size,
     remotes: remotePlayers(session).map((player) => ({
       name: player.name,
-      ageMs: now - player.lastSeen,
+      ageMs: now - (lastHeard(player.id) ?? now),
     })),
   };
 }

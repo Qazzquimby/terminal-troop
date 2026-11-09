@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { TileMap } from "./map.js";
 import { DEV_PILLARS, buildDevWorld, isSolid } from "./map.js";
-import { createSession, roomKey } from "./session.js";
+import { createSession } from "./session.js";
 
 const CELL = 50;
 const VIEW = { width: 900, height: 600 };
@@ -76,11 +76,6 @@ test("the dev square's only obstacles are its two 2x2 pillars", () => {
     "12,10",
     "13,10",
   ]);
-});
-
-test("the room key keeps the plain code for standard and tags other worlds", () => {
-  expect(roomKey("ABC", "standard")).toBe("ABC");
-  expect(roomKey("ABC", "dev")).toBe("dev:ABC");
 });
 
 test("sessions build the world their kind names", () => {

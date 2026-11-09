@@ -1,4 +1,3 @@
-import { NetEvent, parseStateMessage } from "../net/index.js";
 import type { Sfx } from "../audio/index.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { updateEntities } from "./entities.js";
@@ -6,22 +5,12 @@ import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
-import type { Controls, Player, PlayerRules } from "./player.js";
-import {
-  createPlayer,
-  playerState,
-  smoothPlayer,
-  updatePlayer,
-} from "./player.js";
-import type { Transport } from "../net/index.js";
+import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
+import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 
-/** How a session shares state with the room. */
+/** How remote players follow the state they report. */
 interface SyncConfig {
-  /** Most state sends per second. */
-  readonly sendHz: number;
-  /** Seconds without a state before a remote player is dropped. */
-  readonly staleS: number;
   /** Rate, per second, at which remote players ease towards their reported state. */
   readonly smoothing: number;
 }
@@ -34,17 +23,6 @@ export interface SimConfig extends PlayerRules {
   readonly net: SyncConfig;
 }
 
-/** Hears when a remote player appears or goes away. */
-export interface RosterEvents {
-  playerJoined: (id: string) => void;
-  playerLeft: (id: string) => void;
-}
-
-const NO_ROSTER_EVENTS: RosterEvents = {
-  playerJoined: () => undefined,
-  playerLeft: () => undefined,
-};
-
 export interface Session {
   readonly localId: string;
   readonly config: SimConfig;
@@ -53,11 +31,9 @@ export interface Session {
   readonly world: World;
   readonly sfx: Sfx;
   readonly players: Map<string, Player>;
-  readonly roster: RosterEvents;
   readonly entities: Map<string, WorldEntity>;
   readonly entityTypes: Map<number, EntityDefinition>;
   nextEntityId: number;
-  lastSent: number;
 }
 
 function roomSeed(code: string, base: number): number {
@@ -66,14 +42,6 @@ function roomSeed(code: string, base: number): number {
     seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
   }
   return seed >>> 0;
-}
-
-/**
- * The channel a room's players meet on. The world kind is part of it, so clients running
- * different worlds land in separate rooms rather than on mismatched maps.
- */
-export function roomKey(code: string, kind: WorldKind): string {
-  return kind === "standard" ? code : `${kind}:${code}`;
 }
 
 function buildRoomWorld(
@@ -95,7 +63,6 @@ export function createSession(
   worldKind: WorldKind,
   sfx: Sfx,
   config: SimConfig,
-  roster: RosterEvents = NO_ROSTER_EVENTS,
 ): Session {
   const world = buildRoomWorld(roomCode, worldKind, config);
   const local = createPlayer(localId, name, world, config);
@@ -107,11 +74,9 @@ export function createSession(
     world,
     sfx,
     players: new Map([[localId, local]]),
-    roster,
     entities: new Map(),
     entityTypes: new Map(),
     nextEntityId: 1,
-    lastSent: -Infinity,
   };
 }
 
@@ -129,60 +94,49 @@ export function updateSession(
   game: Session,
   controls: Controls,
   dt: number,
-  now: number,
 ): void {
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
 
   for (const player of remotePlayers(game)) {
-    if (now - player.lastSeen > game.config.net.staleS * 1000) {
-      removePlayer(game, player.id);
-    } else {
-      smoothPlayer(player, dt, game.config.net.smoothing);
-    }
+    smoothPlayer(player, dt, game.config.net.smoothing);
   }
 
   updateEntities(game, dt);
 }
 
-/** Drops a remote player, on BYE or when it goes stale. */
-export function removePlayer(game: Session, id: string): void {
-  if (id === game.localId || !game.players.delete(id)) return;
-  game.roster.playerLeft(id);
+/** Drops a remote player; false when there is none by that id. */
+export function removePlayer(game: Session, id: string): boolean {
+  if (id === game.localId) return false;
+  return game.players.delete(id);
 }
 
-export function sendState(
+/**
+ * Applies a remote player's reported state: "added" when the player is new to the session,
+ * "rejected" for the local player's own id or a position inside a wall.
+ */
+export function applyRemoteState(
   game: Session,
-  transport: Pick<Transport, "send">,
-  now: number,
-  force = false,
-): void {
-  if (!force && now - game.lastSent < 1000 / game.config.net.sendHz) return;
-  game.lastSent = now;
-  void transport.send(NetEvent.STATE, playerState(game.local));
-}
-
-export function receiveState(game: Session, payload: unknown): void {
-  const state = parseStateMessage(payload, game.config.player.nameMax);
-  if (state === null) return;
-  if (state.id === game.localId) return;
+  state: PlayerState,
+): "added" | "updated" | "rejected" {
+  if (state.id === game.localId) return "rejected";
   if (!isAreaFree(game.world.map, state.x, state.y, game.config.player.radius))
-    return;
+    return "rejected";
 
-  let player = game.players.get(state.id);
-  if (player === undefined) {
-    player = createPlayer(state.id, state.name, game.world, game.config);
+  const known = game.players.get(state.id);
+  const player =
+    known ?? createPlayer(state.id, state.name, game.world, game.config);
+  if (known === undefined) {
     player.x = state.x;
     player.y = state.y;
     player.aim = state.aim;
     snapPrevious(player);
     game.players.set(state.id, player);
-    game.roster.playerJoined(state.id);
   }
 
   player.name = state.name;
   player.tx = state.x;
   player.ty = state.y;
   player.taim = state.aim;
-  player.lastSeen = performance.now();
+  return known === undefined ? "added" : "updated";
 }

@@ -1,26 +1,20 @@
 import {
-  createSession,
   createSimClock,
-  receiveState,
   remotePlayers,
-  removePlayer,
-  roomKey,
-  sendState,
   updateSession,
   renderPosition,
 } from "./sim/index.js";
-import {
-  NetEvent,
-  PresenceMessage,
-  createCountingTransport,
-} from "./net/index.js";
+import { NetEvent, createCountingTransport } from "./net/index.js";
 import type { Session } from "./sim/index.js";
+import { createRoom, playerName, randomRoomCode } from "./room/index.js";
+import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
   createInventoryHud,
   createDebugOverlay,
   createMicIndicatorView,
   createSettingsMenu,
+  createStatusView,
   menuPeers,
   roomDebugInfo,
   trackInputContext,
@@ -28,19 +22,13 @@ import {
 } from "./ui/index.js";
 import { draw, createCamera, updateCamera } from "./render/index.js";
 import { createSfx } from "./audio/index.js";
-import {
-  applyProximity,
-  micIndicator,
-  createNullVoice,
-  pushToTalk,
-  syncVoicePeers,
-} from "./voice/index.js";
+import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
 import type { DebugInfo } from "./ui/index.js";
 import type { Settings } from "./settings/index.js";
 import { createSettingsStore } from "./settings/index.js";
 import type { Transport } from "./net/index.js";
-import type { Voice, VoiceRoom, VoiceSettings } from "./voice/index.js";
+import type { Voice, VoiceSettings } from "./voice/index.js";
 import { config } from "./config.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
@@ -155,19 +143,30 @@ applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
-let game: Session | null = null;
-let roomCode: string | null = null;
-let connecting = false;
 let inventoryOpen = false;
-let errorText = "";
-let voiceRoom: VoiceRoom | null = null;
-/** The remote players `voiceRoom` was last told to connect to. */
-let voicePeers: ReadonlySet<string> = new Set();
 
-/** Points voice at the remote players of `session`; cheap when they are unchanged. */
-function syncVoice(session: Session): void {
-  if (voiceRoom !== null)
-    voicePeers = syncVoicePeers(session, voiceRoom, voicePeers, config.voice);
+const room = createRoom({
+  localId: playerId,
+  world: env.world,
+  transport,
+  voice,
+  sfx,
+  scope: app,
+  clock: { now: () => performance.now() },
+  config: config.room,
+  sim: config,
+  falloff: config.voice,
+  onChange() {
+    refreshPeers(room.state());
+  },
+  onPeerFailed(id) {
+    if (debug) console.info("Voice connection failed", id);
+  },
+});
+
+/** The session being played, or null outside a room. */
+function joinedSession(state: RoomState): Session | null {
+  return state.kind === "joined" ? state.session : null;
 }
 
 function nonEmpty(value: string | null): string | null {
@@ -183,7 +182,7 @@ const input = createInput(
   {
     toggleInventory: {
       press() {
-        if (game !== null) inventoryOpen = !inventoryOpen;
+        if (room.state().kind === "joined") inventoryOpen = !inventoryOpen;
       },
     },
     toggleSettings: {
@@ -205,7 +204,7 @@ const settingsMenu = createSettingsMenu(
   settingsDialog,
   settings,
   (open, time) => {
-    if (open) refreshPeers(game);
+    if (open) refreshPeers(room.state());
     inputContext.set(open ? "menu" : "play", time);
   },
   (id, muted) => {
@@ -213,142 +212,53 @@ const settingsMenu = createSettingsMenu(
   },
 );
 
-/** Lists the other players of `session` in the settings menu, with their voice mutes. */
-function refreshPeers(session: Session | null): void {
+/** Lists the other players in the room, with their voice mutes, in the settings menu. */
+function refreshPeers(state: RoomState): void {
+  const session = joinedSession(state);
   const players = session === null ? [] : remotePlayers(session);
   settingsMenu.setPeers(menuPeers(players, voice.status().mutedPeers));
 }
-refreshPeers(null);
+refreshPeers(room.state());
 
-function updateStatus(): void {
-  createBtn.disabled = connecting;
-  joinBtn.disabled = connecting;
+const status = createStatusView({
+  status: statusEl,
+  create: createBtn,
+  join: joinBtn,
+  copy: copyBtn,
+});
 
-  if (errorText !== "") {
-    statusEl.textContent = errorText;
-  } else if (connecting) {
-    statusEl.textContent = "Connecting…";
-  } else if (game !== null) {
-    const count = game.players.size;
-    statusEl.textContent = `Room ${roomCode ?? "?"} (${transport.label}) · ${String(count)} player${count === 1 ? "" : "s"}`;
-  } else {
-    statusEl.textContent = "Create or join a room to start.";
-  }
-}
-
-function sayHello(session: Session): void {
-  void transport.send(NetEvent.HELLO, { id: playerId });
-  sendState(session, transport, performance.now(), true);
-}
-
-async function leaveRoom(): Promise<void> {
-  if (roomCode !== null) await transport.send(NetEvent.BYE, { id: playerId });
-  roomCode = null;
-  voiceRoom?.leave();
-  voiceRoom = null;
-  voicePeers = new Set();
-  await transport.leave();
-}
-
+/** Joins `rawCode` under the name in the name field, then points the URL and camera at it. */
 async function enterRoom(rawCode: string): Promise<void> {
-  if (connecting) return;
-
-  const code = rawCode.trim().toUpperCase();
-  if (!/^[A-Z0-9]{3,8}$/.test(code)) {
-    errorText = "Room code must be 3–8 letters/numbers.";
+  const name = playerName(nameInput.value, config.player.nameMax, defaultName);
+  const result = await room.join(rawCode, name);
+  const state = room.state();
+  if (!result.ok) {
+    if (state.kind === "joined") status.notice(result.error, state);
     return;
   }
-
-  connecting = true;
-  errorText = "";
-  sfx.stopAll();
-  game = null;
-  refreshPeers(null);
-  copyBtn.hidden = true;
+  if (state.kind !== "joined") return;
+  nameInput.value = name;
+  localStorage.setItem(nameKey, name);
+  roomInput.value = state.code;
   inventoryOpen = false;
-  updateStatus();
-
-  try {
-    await leaveRoom();
-
-    const name =
-      nonEmpty(nameInput.value.trim().slice(0, config.player.nameMax)) ??
-      defaultName;
-    nameInput.value = name;
-    roomInput.value = code;
-    localStorage.setItem(nameKey, name);
-
-    const session = createSession(
-      playerId,
-      name,
-      code,
-      env.world,
-      sfx,
-      config,
-      {
-        playerJoined: () => {
-          syncVoice(session);
-          refreshPeers(session);
-        },
-        playerLeft: () => {
-          syncVoice(session);
-          refreshPeers(session);
-        },
-      },
-    );
-    await transport.join(roomKey(code, env.world), {
-      [NetEvent.STATE]: (payload) => {
-        receiveState(session, payload);
-      },
-      [NetEvent.HELLO]: () => {
-        sendState(session, transport, performance.now(), true);
-      },
-      [NetEvent.BYE]: (payload) => {
-        const parsed = PresenceMessage.safeParse(payload);
-        if (!parsed.success) return;
-        removePlayer(session, parsed.data.id);
-        syncVoice(session);
-      },
-      [NetEvent.SIGNAL]: (payload) => {
-        voiceRoom?.receive(payload);
-      },
-    });
-    voiceRoom = voice.join(
-      playerId,
-      (signal) => void transport.send(NetEvent.SIGNAL, signal),
-      {
-        peerFailed(id) {
-          if (debug) console.info("Voice connection failed", id);
-        },
-      },
-    );
-    syncVoice(session);
-    roomCode = code;
-    sayHello(session);
-
-    const url = new URLSearchParams(location.search);
-    url.set("room", code);
-    history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
-
-    game = session;
-    clock.reset(performance.now());
-    updateCamera(camera, game.local);
-    copyBtn.hidden = false;
-  } catch (error) {
-    errorText = error instanceof Error ? error.message : "Unable to join room.";
-  } finally {
-    connecting = false;
-    updateStatus();
-  }
+  const url = new URLSearchParams(location.search);
+  url.set("room", state.code);
+  history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
+  clock.reset(performance.now());
+  updateCamera(camera, state.session.local);
 }
 
 function debugInfo(): DebugInfo {
   const now = performance.now();
-  const session = game;
+  const session = joinedSession(room.state());
   return {
     perf: perf.snapshot(now),
     room:
-      session === null ? null : roomDebugInfo(session, now, counted.rates(now)),
+      session === null
+        ? null
+        : roomDebugInfo(session, now, counted.rates(now), (id) =>
+            room.lastHeard(id),
+          ),
   };
 }
 
@@ -360,20 +270,15 @@ function frame(): void {
   const now = performance.now();
   const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
-  if (game !== null) {
-    const session = game;
+  const session = joinedSession(room.state());
+  if (session !== null) {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
-      updateSession(session, input.getControls(until), clock.dt, until);
+      updateSession(session, input.getControls(until), clock.dt);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
-    if (voiceRoom !== null) {
-      syncVoice(session);
-      applyProximity(session, voiceRoom, config.voice);
-    }
-
-    sendState(session, transport, now);
+    room.frame(now);
     updateCamera(camera, renderPosition(session.local, alpha));
     const drawStart = performance.now();
     draw(ctx, session, camera, now, alpha, input.mouseWorld());
@@ -385,20 +290,16 @@ function frame(): void {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  updateStatus();
+  status.show(room.state(), transport.label);
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
-  micView.show(game === null ? null : micIndicator(voice.status(), talkKey));
+  micView.show(session === null ? null : micIndicator(voice.status(), talkKey));
   requestAnimationFrame(frame);
 }
 
 on(createBtn, "click", () => {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  const code = Array.from(bytes, (value) => (value % 36).toString(36))
-    .join("")
-    .toUpperCase();
   voice.requestMic();
-  void enterRoom(code);
+  void enterRoom(randomRoomCode(crypto.getRandomValues(new Uint8Array(6))));
 });
 
 on(settingsBtn, "click", (event) => {
@@ -419,17 +320,21 @@ on(copyBtn, "click", () => {
       }, 1200);
     },
     () => {
-      errorText = "Clipboard unavailable. Copy the address from your browser.";
+      status.notice(
+        "Clipboard unavailable. Copy the address from your browser.",
+        room.state(),
+      );
     },
   );
 });
 
 on(document, "visibilitychange", () => {
-  if (!document.hidden && game !== null) sayHello(game);
+  room.setHidden(document.hidden);
 });
 
+// Leaving sends BYE before anything else, while the page can still send.
 on(window, "beforeunload", () => {
-  if (roomCode !== null) void transport.send(NetEvent.BYE, { id: playerId });
+  void room.leave();
 });
 
 requestAnimationFrame(frame);

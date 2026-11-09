@@ -47,7 +47,6 @@ export interface Player extends Body, Interpolated, Facing {
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
   radius: number;
-  lastSeen: number;
   inventory: Inventory;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
@@ -83,7 +82,6 @@ export function createPlayer(
     prevAim: 0,
     taim: 0,
     radius: rules.player.radius,
-    lastSeen: performance.now(),
     inventory: createInventory(rules.player.inventorySlots),
     stamina: createStamina(rules.stamina),
   };

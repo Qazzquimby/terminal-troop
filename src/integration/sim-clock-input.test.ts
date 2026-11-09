@@ -35,7 +35,7 @@ function catchUp(
   for (;;) {
     const { steps, alpha } = clock.advance(target, (until) => {
       const controls = toControls(state.consume(until), { x: 0, y: 0 });
-      updateSession(game, controls, clock.dt, until);
+      updateSession(game, controls, clock.dt);
     });
     if (steps === 0) return alpha;
   }

@@ -1,4 +1,5 @@
 import type { SpatialFalloff } from "./audio/index.js";
+import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
@@ -6,6 +7,7 @@ import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
 interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
+  readonly room: RoomConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
@@ -37,7 +39,8 @@ export const config = {
   },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 4 },
-  net: { sendHz: 15, staleS: 15, smoothing: 12 },
+  net: { smoothing: 12 },
+  room: { sendHz: 15, staleS: 15 },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },
   voiceConnections: {
