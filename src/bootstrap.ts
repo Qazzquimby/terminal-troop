@@ -2,12 +2,12 @@ import {
   createSession,
   createSimClock,
   receiveState,
+  remotePlayers,
   removePlayer,
   roomKey,
   sendState,
   updateSession,
   renderPosition,
-  stepAlpha,
 } from "./sim/index.js";
 import {
   NetEvent,
@@ -22,6 +22,7 @@ import {
   createMicIndicatorView,
   createSettingsMenu,
   menuPeers,
+  roomDebugInfo,
   trackInputContext,
   element,
 } from "./ui/index.js";
@@ -45,7 +46,7 @@ import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
-import { createScope } from "./scope/index.js";
+import { createScope } from "./lib/scope/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -108,11 +109,7 @@ function selectTransport(params: URLSearchParams): Transport {
 /** Incoming voice plays through the sound effects' master gain. */
 function selectVoice(initial: VoiceSettings): Voice {
   if (typeof RTCPeerConnection === "undefined") return createNullVoice(initial);
-  return createWebRtcVoice(
-    { audio: sfx, createScope },
-    initial,
-    config.voiceConnections,
-  );
+  return createWebRtcVoice(sfx, initial, config.voiceConnections);
 }
 
 const params = new URLSearchParams(location.search);
@@ -163,8 +160,6 @@ let roomCode: string | null = null;
 let connecting = false;
 let inventoryOpen = false;
 let errorText = "";
-/** The time (ms, `performance.now()` clock) up to which the simulation has run. */
-let simTime = 0;
 let voiceRoom: VoiceRoom | null = null;
 /** The remote players `voiceRoom` was last told to connect to. */
 let voicePeers: ReadonlySet<string> = new Set();
@@ -220,10 +215,8 @@ const settingsMenu = createSettingsMenu(
 
 /** Lists the other players of `session` in the settings menu, with their voice mutes. */
 function refreshPeers(session: Session | null): void {
-  const players = session === null ? [] : session.players.values();
-  settingsMenu.setPeers(
-    menuPeers(players, playerId, voice.status().mutedPeers),
-  );
+  const players = session === null ? [] : remotePlayers(session);
+  settingsMenu.setPeers(menuPeers(players, voice.status().mutedPeers));
 }
 refreshPeers(null);
 
@@ -338,7 +331,7 @@ async function enterRoom(rawCode: string): Promise<void> {
     history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
 
     game = session;
-    simTime = performance.now();
+    clock.reset(performance.now());
     updateCamera(camera, game.local);
     copyBtn.hidden = false;
   } catch (error) {
@@ -355,18 +348,7 @@ function debugInfo(): DebugInfo {
   return {
     perf: perf.snapshot(now),
     room:
-      session === null
-        ? null
-        : {
-            net: counted.rates(now),
-            playerCount: session.players.size,
-            remotes: [...session.players.values()]
-              .filter((player) => player !== session.local)
-              .map((player) => ({
-                name: player.name,
-                ageMs: now - player.lastSeen,
-              })),
-          },
+      session === null ? null : roomDebugInfo(session, now, counted.rates(now)),
   };
 }
 
@@ -381,18 +363,16 @@ function frame(): void {
   if (game !== null) {
     const session = game;
     const updateStart = performance.now();
-    const advanced = clock.advance(simTime, now, (until) => {
+    const { steps, alpha } = clock.advance(now, (until) => {
       updateSession(session, input.getControls(until), clock.dt, until);
     });
-    simTime = advanced.simTime;
-    frameStats.steps = advanced.steps;
+    frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     if (voiceRoom !== null) {
       syncVoice(session);
       applyProximity(session, voiceRoom, config.voice);
     }
 
-    const alpha = stepAlpha(now - simTime, clock.dtMs);
     sendState(session, transport, now);
     updateCamera(camera, renderPosition(session.local, alpha));
     const drawStart = performance.now();

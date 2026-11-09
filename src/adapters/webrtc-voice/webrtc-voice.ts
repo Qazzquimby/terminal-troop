@@ -12,7 +12,8 @@ import type {
   VoiceRoom,
   VoiceSettings,
 } from "../../voice/index.js";
-import type { Scope } from "../../scope/index.js";
+import { createScope } from "../../lib/scope/index.js";
+import type { Scope } from "../../lib/scope/index.js";
 import { createPeerLevels } from "./peer-levels.js";
 import {
   connDecision,
@@ -26,12 +27,6 @@ import { isTransmitting } from "./transmit.js";
 interface VoiceAudio {
   audioContext: () => AudioContext;
   output: () => AudioNode;
-}
-
-interface VoiceDeps {
-  audio: VoiceAudio;
-  /** Makes the scope each room, peer and connection is cleaned up through. */
-  createScope: () => Scope;
 }
 
 const RTC_CONFIG: RTCConfiguration = {
@@ -108,7 +103,7 @@ function disposeQuietly(scope: Scope): void {
  * The per-peer gain is the mix volume, or 0 while that player is muted.
  */
 export function createWebRtcVoice(
-  { audio, createScope }: VoiceDeps,
+  audio: VoiceAudio,
   initial: VoiceSettings,
   config: VoiceConnectionConfig,
 ): Voice {

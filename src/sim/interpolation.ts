@@ -29,11 +29,6 @@ export function lerpAngle(from: number, to: number, alpha: number): number {
   return wrapAngle(from + wrapAngle(to - from) * alpha);
 }
 
-/** How far into the next fixed step `elapsed` reaches, as a fraction clamped to 0..1. */
-export function stepAlpha(elapsed: number, step: number): number {
-  return Math.min(Math.max(elapsed / step, 0), 1);
-}
-
 /** Records the pre-step position and facing; call once per step before anything moves. */
 export function storePrevious(body: Moving): void {
   body.prevX = body.x;

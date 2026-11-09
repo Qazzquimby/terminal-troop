@@ -1,5 +1,6 @@
 import { spatialMix } from "../audio/index.js";
 import type { SpatialFalloff } from "../audio/index.js";
+import { remotePlayers } from "../sim/index.js";
 import type { Point, Session } from "../sim/index.js";
 import type { PeerMix, VoiceRoom } from "./voice.js";
 
@@ -21,10 +22,9 @@ export function applyProximity(
   room: Pick<VoiceRoom, "setPeerMix">,
   falloff: VoiceFalloff,
 ): void {
-  session.players.forEach((player, id) => {
-    if (id !== session.localId)
-      room.setPeerMix(id, voiceMix(session.local, player, falloff));
-  });
+  for (const player of remotePlayers(session)) {
+    room.setPeerMix(player.id, voiceMix(session.local, player, falloff));
+  }
 }
 
 function sameRemotes(session: Session, peers: ReadonlySet<string>): boolean {
