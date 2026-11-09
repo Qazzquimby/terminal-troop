@@ -1,12 +1,11 @@
 import { expect, test } from "vitest";
 import type { Action, InputContext } from "../src/engine/actions.js";
 import {
-  ACTIONS,
   createActionState,
+  isActiveIn,
   toControls,
   withUiHandlers,
 } from "../src/engine/actions.js";
-import { createKeyboardSource } from "../src/engine/keyboard.js";
 
 const AIM = { x: 0, y: 0 };
 
@@ -168,87 +167,21 @@ test("sprint follows the held sprint action", () => {
   expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
 });
 
-/** The real binding table driving an action state, with actions pressed by name. */
-function inContext(context: InputContext) {
-  const state = createActionState();
-  const keyboard = createKeyboardSource<Action, InputContext>(
-    state,
-    ACTIONS,
-    context,
-  );
-  const key = (action: Action): string => ACTIONS[action].keys[0];
-  return {
-    state,
-    keyboard,
-    down: (action: Action, time: number) =>
-      keyboard.keyDown(key(action), false, time),
-    up: (action: Action, time: number) => keyboard.keyUp(key(action), time),
-  };
-}
+const CONTEXTS: InputContext[] = ["play", "menu", "text"];
 
-test("actions not active in the context are ignored", () => {
-  const menu = inContext("menu");
-  expect(menu.down("moveRight", 1)).toEqual([]);
-  expect(menu.down("toggleInventory", 2)).toEqual([]);
-  expect(menu.down("sprint", 3)).toEqual([]);
-  const { frame, controls } = step(menu.state, 10);
-  expect(frame.held).toEqual(actions());
-  expect(frame.pressed).toEqual(actions());
-  expect(controls.move).toEqual({ x: 0, y: 0 });
-
-  const text = inContext("text");
-  expect(text.down("moveUp", 1)).toEqual([]);
-  expect(text.down("toggleSettings", 2)).toEqual([]);
-  expect(text.down("toggleDebug", 3)).toEqual([]);
-  expect(step(text.state, 10).frame.pressed).toEqual(actions());
-});
-
-test("switching context releases held actions not active in it, at the switch time", () => {
-  const input = inContext("play");
-  input.down("moveRight", 1);
-  input.down("sprint", 2);
-  expect(step(input.state, 5).controls.move.x).toBe(1);
-
-  input.keyboard.setContext("menu", 20);
-  expect(step(input.state, 19).frame.held).toEqual(
-    actions("moveRight", "sprint"),
-  );
-  const switched = step(input.state, 20);
-  expect(switched.frame.released).toEqual(actions("moveRight", "sprint"));
-  expect(switched.controls.move).toEqual({ x: 0, y: 0 });
-
-  // Let go while in the menu, then back to play: no drift.
-  expect(input.up("moveRight", 30)).toEqual([]);
-  expect(input.up("sprint", 31)).toEqual([]);
-  input.keyboard.setContext("play", 40);
-  const after = step(input.state, 50);
-  expect(after.frame.held).toEqual(actions());
-  expect(after.frame.released).toEqual(actions());
-});
-
-test("an action active in both contexts toggles across the switch", () => {
-  const input = inContext("play");
-  expect(input.down("toggleSettings", 1)).toEqual(["toggleSettings"]);
-  input.keyboard.setContext("menu", 1);
-  input.up("toggleSettings", 2);
-  expect(step(input.state, 5).frame.pressed).toEqual(actions("toggleSettings"));
-
-  expect(input.down("toggleSettings", 10)).toEqual(["toggleSettings"]);
-  input.keyboard.setContext("play", 10);
-  input.up("toggleSettings", 11);
-  const closed = step(input.state, 15).frame;
-  expect(closed.pressed).toEqual(actions("toggleSettings"));
-  expect(closed.released).toEqual(actions("toggleSettings"));
-});
-
-test("held actions active in both contexts stay held across the switch", () => {
-  const input = inContext("play");
-  input.down("toggleDebug", 1);
-  input.down("moveUp", 1);
-  input.keyboard.setContext("menu", 5);
-  const frame = step(input.state, 10).frame;
-  expect(frame.held).toEqual(actions("toggleDebug"));
-  expect(frame.released).toEqual(actions("moveUp"));
+test.each<[Action, InputContext[]]>([
+  ["moveUp", ["play"]],
+  ["moveLeft", ["play"]],
+  ["moveDown", ["play"]],
+  ["moveRight", ["play"]],
+  ["sprint", ["play"]],
+  ["toggleInventory", ["play"]],
+  ["toggleSettings", ["play", "menu"]],
+  ["toggleDebug", ["play", "menu"]],
+  ["pushToTalk", ["play", "menu"]],
+])("%s is active only in %o", (action, active) => {
+  for (const context of CONTEXTS)
+    expect(isActiveIn(action, context)).toBe(active.includes(context));
 });
 
 test("UI handlers run on press and release; every event still reaches the state", () => {

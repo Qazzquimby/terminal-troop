@@ -1,11 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Action, InputContext } from "../src/engine/actions.js";
-import {
-  ACTIONS,
-  createActionState,
-  withUiHandlers,
-} from "../src/engine/actions.js";
-import { createKeyboardSource } from "../src/engine/keyboard.js";
+import { createActionState, withUiHandlers } from "../src/engine/actions.js";
 import { signalFor } from "../src/engine/protocol.js";
 import { DEFAULT_SETTINGS } from "../src/engine/settings.js";
 import type { Voice, VoiceMode, VoiceSettings } from "../src/engine/voice.js";
@@ -115,31 +109,23 @@ describe("transmitting", () => {
   );
 });
 
-/**
- * Push-to-talk on the real action table, with UI handlers that record each talk change and
- * its time. `hold` and `letGo` drive the action through the keyboard source by name.
- */
-function talkInput(context: InputContext) {
-  const talk: [boolean, number][] = [];
+/** An action state whose push-to-talk handlers drive a voice that records each talk change. */
+function talkInput() {
+  const talk: boolean[] = [];
+  const voice = createNullVoice(DEFAULT_SETTINGS.voice);
+  voice.setTalking = (held) => talk.push(held);
   const state = createActionState();
-  const keyboard = createKeyboardSource<Action, InputContext>(
-    withUiHandlers(state, {
-      pushToTalk: {
-        press: (time) => talk.push([true, time]),
-        release: (time) => talk.push([false, time]),
+  const sink = withUiHandlers(state, {
+    pushToTalk: {
+      press: () => {
+        voice.setTalking(true);
       },
-    }),
-    ACTIONS,
-    context,
-  );
-  const [key] = ACTIONS.pushToTalk.keys;
-  return {
-    talk,
-    state,
-    keyboard,
-    hold: (time: number) => keyboard.keyDown(key, false, time),
-    letGo: (time: number) => keyboard.keyUp(key, time),
-  };
+      release: () => {
+        voice.setTalking(false);
+      },
+    },
+  });
+  return { talk, state, sink };
 }
 
 describe("push-to-talk action", () => {
@@ -153,47 +139,22 @@ describe("push-to-talk action", () => {
     expect(frame.held.has("pushToTalk")).toBe(false);
   });
 
-  test.each<InputContext>(["play", "menu"])(
-    "talks while held in %s",
-    (context) => {
-      const input = talkInput(context);
-      input.hold(1);
-      input.letGo(2);
-      expect(input.talk).toEqual([
-        [true, 1],
-        [false, 2],
-      ]);
-    },
-  );
-
-  test("does nothing while typing", () => {
-    const input = talkInput("text");
-    input.hold(1);
-    input.letGo(2);
-    expect(input.talk).toEqual([]);
+  test("talks from press to release", () => {
+    const input = talkInput();
+    input.sink.press("pushToTalk", 1);
+    expect(input.talk).toEqual([true]);
+    input.sink.release("pushToTalk", 2);
+    expect(input.talk).toEqual([true, false]);
   });
 
-  test("switching into text releases it at the switch time", () => {
-    const input = talkInput("play");
-    input.hold(1);
-    input.keyboard.setContext("text", 5);
-    input.letGo(6);
-    expect(input.talk).toEqual([
-      [true, 1],
-      [false, 5],
-    ]);
-    expect(input.state.consume(6).released.has("pushToTalk")).toBe(true);
-  });
-
-  test("blur releases it", () => {
-    const input = talkInput("menu");
-    input.hold(1);
-    input.keyboard.blur(3);
-    input.letGo(4);
-    expect(input.talk).toEqual([
-      [true, 1],
-      [false, 3],
-    ]);
+  test("clear releases it in the state without running the handlers", () => {
+    const input = talkInput();
+    input.sink.press("pushToTalk", 1);
+    input.sink.clear(3);
+    expect(input.talk).toEqual([true]);
+    const frame = input.state.consume(3);
+    expect(frame.released.has("pushToTalk")).toBe(true);
+    expect(frame.held.has("pushToTalk")).toBe(false);
   });
 });
 

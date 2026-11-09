@@ -26,6 +26,19 @@ export type Action = keyof typeof ACTIONS;
 export type InputContext =
   (typeof ACTIONS)[Action]["contexts"][number] | "text";
 
+/** Whether a binding with these contexts is active in `context`. */
+export function activeIn<C extends string>(
+  binding: { readonly contexts: readonly C[] },
+  context: C,
+): boolean {
+  return binding.contexts.includes(context);
+}
+
+/** Whether `action` is active in `context`. */
+export function isActiveIn(action: Action, context: InputContext): boolean {
+  return activeIn<InputContext>(ACTIONS[action], context);
+}
+
 /** What one simulation step sees: held actions, and actions pressed or released since the previous step. */
 export interface ActionFrame {
   readonly held: ReadonlySet<Action>;
