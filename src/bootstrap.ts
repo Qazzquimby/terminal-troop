@@ -21,6 +21,10 @@ import { createPerfStats } from "./engine/perf-stats.js";
 import { createCountingTransport } from "./engine/counting-transport.js";
 import type { DebugInfo } from "./engine/debug-overlay.js";
 import { createDebugOverlay } from "./engine/debug-overlay.js";
+import {
+  createMicIndicatorView,
+  micIndicator,
+} from "./engine/mic-indicator.js";
 import type { Settings } from "./engine/settings.js";
 import { createSettingsStore } from "./engine/settings.js";
 import { createSettingsMenu, menuPeers } from "./settings-menu.js";
@@ -48,6 +52,7 @@ const copyBtn = element("#copy", HTMLButtonElement);
 const inventoryEl = element("#inventory", HTMLElement);
 const inventoryList = element("#inventory-slots", HTMLOListElement);
 const debugEl = element("#debug", HTMLPreElement);
+const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
@@ -99,6 +104,7 @@ const counted = createCountingTransport(selectTransport(params), () =>
 const transport = counted.transport;
 const perf = createPerfStats();
 const debugOverlay = createDebugOverlay(debugEl, params.has("debug"));
+const micView = createMicIndicatorView(micEl);
 const sfx = createSfx();
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
@@ -336,6 +342,11 @@ function frame(): void {
   updateStatus();
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
+  micView.show(
+    game === null
+      ? null
+      : micIndicator(voice.status(), settings.get().voice.muted),
+  );
   requestAnimationFrame(frame);
 }
 

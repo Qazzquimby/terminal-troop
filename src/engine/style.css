@@ -111,6 +111,35 @@ canvas {
     monospace;
   pointer-events: none;
 }
+.mic-indicator {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  margin: 0;
+  padding: 3px 10px;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  background: #090b0eb3;
+  font-size: 12px;
+  pointer-events: none;
+}
+.mic-indicator[data-tone="open"] {
+  color: #9fe6a0;
+}
+.mic-indicator[data-tone="idle"] {
+  color: #6b7785;
+}
+.mic-indicator[data-tone="talking"] {
+  color: #ffd166;
+  background: #3a2f0ccc;
+}
+.mic-indicator[data-tone="muted"] {
+  color: #ff6b6b;
+}
+.mic-indicator[data-tone="off"] {
+  color: #6b7785;
+  border-style: dashed;
+}
 .inventory {
   position: absolute;
   top: 12px;
