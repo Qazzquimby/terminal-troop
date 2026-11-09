@@ -23,6 +23,11 @@ describe("the message table", () => {
       y: number;
       aim: number;
     }>();
+    expectTypeOf<Message<"beat">>().toEqualTypeOf<{
+      id: string;
+      hidden: boolean;
+      host: { id: string; term: number; solo: boolean } | null;
+    }>();
     expectTypeOf<Message<"signal">>().toBeUnknown();
   });
 
@@ -42,6 +47,15 @@ describe("the message table", () => {
     [NetEvent.BYE, { id: 7 }],
     [NetEvent.STATE, { id: "x", name: "X", x: Number.NaN, y: 0, aim: 0 }],
     [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0 }],
+    [NetEvent.HEARTBEAT, { id: "x", hidden: false }],
+    [
+      NetEvent.HEARTBEAT,
+      { id: "x", hidden: false, host: { id: "x", term: -1, solo: false } },
+    ],
+    [
+      NetEvent.HEARTBEAT,
+      { id: "x", hidden: false, host: { id: "x", term: 0 } },
+    ],
   ])("a bad %s payload does not parse", (event, payload) => {
     expect(messages[event].safeParse(payload).success).toBe(false);
   });
