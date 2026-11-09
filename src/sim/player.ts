@@ -1,7 +1,7 @@
 import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
-import type { Facing, Interpolated } from "./interpolation.js";
-import { lerpAngle } from "./interpolation.js";
+import type { Facing, Interpolated, Tracked } from "./interpolation.js";
+import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { Inventory } from "./inventory.js";
@@ -37,13 +37,10 @@ export interface Controls {
   readonly sprint: boolean;
 }
 
-export interface Player extends Body, Interpolated, Facing {
+export interface Player extends Body, Interpolated, Facing, Tracked {
   readonly id: string;
   readonly kind: typeof EntityKind.PLAYER;
   name: string;
-  /** Network target position; remote players are smoothed towards it. */
-  tx: number;
-  ty: number;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
   radius: number;
@@ -126,8 +123,7 @@ export function aimAt(from: Point, target: Point): number {
 /** Eases a remote player towards its network target; `rate` is per second. */
 export function smoothPlayer(player: Player, dt: number, rate: number): void {
   const amount = 1 - Math.exp(-rate * dt);
-  player.x += (player.tx - player.x) * amount;
-  player.y += (player.ty - player.y) * amount;
+  easeToTarget(player, amount);
   player.aim = lerpAngle(player.aim, player.taim, amount);
 }
 

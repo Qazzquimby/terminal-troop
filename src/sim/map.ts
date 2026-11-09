@@ -78,14 +78,23 @@ const SHAPES: readonly (readonly Cell[])[] = [
   [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]], // plus
 ];
 
+/** One draw from a mulberry32 generator in `state`: a value in [0, 1), and the state after it. */
+export function mulberry32Next(state: number): {
+  value: number;
+  state: number;
+} {
+  const next = ((state | 0) + 0x6d2b79f5) | 0;
+  let value = Math.imul(next ^ (next >>> 15), 1 | next);
+  value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+  return { value: ((value ^ (value >>> 14)) >>> 0) / 4294967296, state: next };
+}
+
 export function mulberry32(seed: number): Rng {
   let state = seed;
   return function () {
-    state |= 0;
-    state = (state + 0x6d2b79f5) | 0;
-    let value = Math.imul(state ^ (state >>> 15), 1 | state);
-    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    const draw = mulberry32Next(state);
+    state = draw.state;
+    return draw.value;
   };
 }
 
@@ -309,12 +318,16 @@ export function isAreaFree(
   return true;
 }
 
-export function randomFreePosition(world: World, clearance: number): Point {
+export function randomFreePosition(
+  world: World,
+  clearance: number,
+  rng: Rng = Math.random,
+): Point {
   const { W, H, map } = world;
 
   for (;;) {
-    const x = clearance + Math.random() * (W - clearance * 2);
-    const y = clearance + Math.random() * (H - clearance * 2);
+    const x = clearance + rng() * (W - clearance * 2);
+    const y = clearance + rng() * (H - clearance * 2);
     if (isAreaFree(map, x, y, clearance)) return { x, y };
   }
 }

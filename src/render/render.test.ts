@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { Session } from "../sim/index.js";
 import {
@@ -34,9 +35,10 @@ test("entities record their pre-step position", () => {
   registerEntityType(game, 1, {
     radius: 5,
     collides: false,
+    data: z.object({}),
     draw: () => undefined,
   });
-  const entity = spawnEntity(game, 1, 100, 200);
+  const entity = spawnEntity(game, 1, 100, 200, {});
   expect(entity).toMatchObject({ prevX: 100, prevY: 200 });
 
   entity.vx = 10 / FIXED_DT;

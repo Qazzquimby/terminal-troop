@@ -4,6 +4,8 @@ export const NetEvent = {
   BYE: "bye",
   /** Says the sender is still in the room, and whether its page is hidden. */
   HEARTBEAT: "beat",
+  /** The host's full set of entities. */
+  ENTITIES: "entities",
   /** Voice connection setup: addressed to one player, but broadcast to the room. */
   SIGNAL: "signal",
 } as const;

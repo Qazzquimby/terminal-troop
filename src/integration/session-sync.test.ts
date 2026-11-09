@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
 import { createScope } from "../lib/scope/index.js";
+import { createMonsters } from "../monsters/index.js";
 import { NetEvent } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
@@ -8,7 +9,7 @@ import { randomFreePosition, updateSession } from "../sim/index.js";
 import type { Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import { createManualClock, testRoomConfig } from "./room-helpers.js";
-import { testSfx, testSimConfig } from "./sim-config.js";
+import { testMonsterConfig, testSfx, testSimConfig } from "./sim-config.js";
 
 const ROOM = "SYNC1";
 const SEND_GAP = 1000 / 15;
@@ -36,6 +37,7 @@ function client(id: string): Room {
     clock,
     config: testRoomConfig,
     sim: testSimConfig,
+    monsters: createMonsters(testMonsterConfig),
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange: () => undefined,
     onPeerFailed: () => undefined,
@@ -129,4 +131,51 @@ test("a hidden player that stops sending state but keeps heartbeating stays, awa
   b.setHidden(false);
   await flush();
   expect(a.presenceOf("b")?.kind).toBe("present");
+});
+
+const snapshotOf = (room: Room) =>
+  [...sessionOf(room).entities.values()].map(({ id, kind, tx, ty, data }) => ({
+    id,
+    kind,
+    x: tx,
+    y: ty,
+    data,
+  }));
+
+/** A pair, the host elected and the first snapshot sent. */
+async function hosted(): Promise<{ a: Room; b: Room }> {
+  const rooms = await pair();
+  clock.advance(1000);
+  await flush();
+  rooms.a.frame(clock.now());
+  await flush();
+  return rooms;
+}
+
+test("the host's monsters reach the other client, ids, spots and state alike", async () => {
+  const { a, b } = await hosted();
+  expect(a.hostId()).toBe("a");
+  expect(sessionOf(a).entities.size).toBe(3);
+  expect(snapshotOf(b)).toEqual(snapshotOf(a));
+
+  for (let step = 0; step < 60; step++)
+    updateSession(sessionOf(a), idle, 1 / 60);
+  a.frame(clock.now() + 1000);
+  await flush();
+  expect(snapshotOf(b)).toEqual(snapshotOf(a));
+});
+
+test("when the host leaves, the other client runs the same monsters on", async () => {
+  const { a, b } = await hosted();
+  const handed = snapshotOf(b);
+  await a.leave();
+  await flush();
+  clock.advance(2000);
+  expect(b.hostId()).toBe("b");
+  expect(sessionOf(b).entities.size).toBe(3);
+  expect([...sessionOf(b).entities.keys()]).toEqual(handed.map(({ id }) => id));
+
+  for (let step = 0; step < 120; step++)
+    updateSession(sessionOf(b), idle, 1 / 60);
+  expect(snapshotOf(b)).not.toEqual(handed);
 });

@@ -6,6 +6,18 @@ export interface Interpolated extends Point {
   prevY: number;
 }
 
+/** A body that follows a position reported over the network. */
+export interface Tracked extends Point {
+  tx: number;
+  ty: number;
+}
+
+/** Moves `body` the share `amount` (0..1) of the way to its target. */
+export function easeToTarget(body: Tracked, amount: number): void {
+  body.x += (body.tx - body.x) * amount;
+  body.y += (body.ty - body.y) * amount;
+}
+
 /** A body that also turns; its drawn facing blends along the shortest arc. */
 export interface Facing {
   aim: number;

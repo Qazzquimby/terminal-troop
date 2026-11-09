@@ -204,7 +204,7 @@ export function lightSources(game: Session, viewer: Viewer): LightSource[] {
   ];
 
   game.entities.forEach((entity) => {
-    const emission = game.entityTypes.get(entity.kind)?.light?.(entity);
+    const emission = game.entityTypes.get(entity.kind)?.light(entity);
     if (emission === undefined || emission === null) return;
     lights.push({ ...emission, x: entity.x, y: entity.y });
   });

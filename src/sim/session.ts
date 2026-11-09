@@ -1,6 +1,6 @@
 import type { Sfx } from "../audio/index.js";
-import type { EntityDefinition, WorldEntity } from "./entities.js";
-import { updateEntities } from "./entities.js";
+import type { EntityType, WorldEntity } from "./entities.js";
+import { followEntities, updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
@@ -29,11 +29,15 @@ export interface Session {
   /** The local player; also present in `players`. */
   readonly local: Player;
   readonly world: World;
+  /** Seeded by the room code, so the same on every client in the room. */
+  readonly seed: number;
   readonly sfx: Sfx;
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
-  readonly entityTypes: Map<number, EntityDefinition>;
+  readonly entityTypes: Map<number, EntityType>;
   nextEntityId: number;
+  /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
+  hosting: boolean;
 }
 
 function roomSeed(code: string, base: number): number {
@@ -45,15 +49,12 @@ function roomSeed(code: string, base: number): number {
 }
 
 function buildRoomWorld(
-  roomCode: string,
+  seed: number,
   kind: WorldKind,
   config: SimConfig,
 ): World {
   if (kind === "dev") return buildDevWorld(config.world.cell, config.view);
-  return buildWorld(
-    config.world,
-    mulberry32(roomSeed(roomCode, config.world.seed)),
-  );
+  return buildWorld(config.world, mulberry32(seed));
 }
 
 export function createSession(
@@ -64,7 +65,8 @@ export function createSession(
   sfx: Sfx,
   config: SimConfig,
 ): Session {
-  const world = buildRoomWorld(roomCode, worldKind, config);
+  const seed = roomSeed(roomCode, config.world.seed);
+  const world = buildRoomWorld(seed, worldKind, config);
   const local = createPlayer(localId, name, world, config);
 
   return {
@@ -72,11 +74,13 @@ export function createSession(
     config,
     local,
     world,
+    seed,
     sfx,
     players: new Map([[localId, local]]),
     entities: new Map(),
     entityTypes: new Map(),
     nextEntityId: 1,
+    hosting: true,
   };
 }
 
@@ -102,7 +106,8 @@ export function updateSession(
     smoothPlayer(player, dt, game.config.net.smoothing);
   }
 
-  updateEntities(game, dt);
+  if (game.hosting) updateEntities(game, dt);
+  else followEntities(game, dt);
 }
 
 /** Drops a remote player; false when there is none by that id. */

@@ -1,9 +1,29 @@
-export { registerEntityType, spawnEntity } from "./entities.js";
+export { isSweepFree } from "./collision.js";
+export {
+  applyEntitySnapshot,
+  entitySnapshot,
+  registerEntityType,
+  spawnEntity,
+} from "./entities.js";
+export type { EntityDefinition, WorldEntity } from "./entities.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { Inventory } from "./inventory.js";
-export { randomFreePosition, WORLD_KINDS } from "./map.js";
-export type { Point, TileMap, ViewConfig, World, WorldKind } from "./map.js";
+export {
+  isAreaFree,
+  mulberry32,
+  mulberry32Next,
+  randomFreePosition,
+  WORLD_KINDS,
+} from "./map.js";
+export type {
+  Point,
+  Rng,
+  TileMap,
+  ViewConfig,
+  World,
+  WorldKind,
+} from "./map.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";
 export {
@@ -17,6 +37,7 @@ export type { Session, SimConfig } from "./session.js";
 export { createSimClock } from "./sim-clock.js";
 export type { SimClockConfig } from "./sim-clock.js";
 export {
+  canSeeFrom,
   isVisible,
   lightSources,
   litWalls,

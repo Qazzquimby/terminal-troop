@@ -3,8 +3,10 @@ import type { Scope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
+  applyEntitySnapshot,
   applyRemoteState,
   createSession,
+  entitySnapshot,
   playerState,
   removePlayer,
 } from "../sim/index.js";
@@ -30,9 +32,19 @@ import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 export interface RoomConfig {
   /** Most state sends per second. */
   readonly sendHz: number;
+  /** Most entity snapshots per second, while hosting. */
+  readonly entityHz: number;
   /** Milliseconds between heartbeats, and between presence sweeps. */
   readonly heartbeatMs: number;
   readonly presence: PresenceTiming;
+}
+
+/** The monsters a room's world holds. */
+export interface Monsters {
+  /** Registers their kinds with a new session, before any snapshot reaches it. */
+  register(session: Session): void;
+  /** Spawns the ones a new world starts with. */
+  populate(session: Session): void;
 }
 
 /**
@@ -69,6 +81,7 @@ export interface RoomDeps {
   readonly clock: RoomClock;
   readonly config: RoomConfig;
   readonly sim: SimConfig;
+  readonly monsters: Monsters;
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
@@ -94,10 +107,10 @@ export interface Room {
   /** Undefined for a remote player who is gone, or outside a room. */
   presenceOf(id: string): Presence | undefined;
   /**
-   * The one player who runs the shared world. A host keeps the role while it is active; only
-   * when it goes away, leaves or hides does a new one take over, and every client adopts the
-   * latest election it hears. Undefined outside a room, and on joining until the host is
-   * heard or the first heartbeat elects one.
+   * The one player who runs the shared world: it runs the monsters and sends them to everyone
+   * else. A host keeps the role while it is active; only when it goes away, leaves or hides
+   * does a new one take over, and every client adopts the latest election it hears. Undefined
+   * outside a room, and on joining until the host is heard or the first heartbeat elects one.
    */
   hostId(): string | undefined;
 }
@@ -119,6 +132,9 @@ interface Link {
   readonly views: Map<string, HostView | null>;
   /** When the last heartbeat was due to go out. */
   lastPulse: number;
+  lastEntitiesSent: number;
+  /** The world has its monsters: this client spawned them or heard them from a host. */
+  populated: boolean;
 }
 
 const ALREADY_CONNECTING = "Already connecting.";
@@ -157,6 +173,29 @@ export function createRoom(deps: RoomDeps): Room {
     room.lastSent = now;
     room.forceState = false;
     void send(NetEvent.STATE, playerState(room.session.local));
+  }
+
+  function sendEntities(room: Link, now: number, force = false): void {
+    if (!force && now - room.lastEntitiesSent < 1000 / config.entityHz) return;
+    room.lastEntitiesSent = now;
+    void send(NetEvent.ENTITIES, {
+      host: localId,
+      entities: entitySnapshot(room.session),
+    });
+  }
+
+  /**
+   * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
+   * no monsters yet spawns them.
+   */
+  function holdView(room: Link, view: HostView | undefined): void {
+    room.host = view;
+    const hosting = view?.id === localId;
+    room.session.hosting = hosting;
+    if (hosting && !room.populated) {
+      deps.monsters.populate(room.session);
+      room.populated = true;
+    }
   }
 
   function sendHeartbeat(room: Link): void {
@@ -235,13 +274,19 @@ export function createRoom(deps: RoomDeps): Room {
         hear(room, message.id, { kind: "heard", hidden: message.hidden });
         if (room.roster.get(message.id) === undefined) return;
         room.views.set(message.id, message.host);
-        room.host = adopt(room.host, message.host);
+        holdView(room, adopt(room.host, message.host));
+      }),
+      [NetEvent.ENTITIES]: on(NetEvent.ENTITIES, (message) => {
+        if (message.host === localId || message.host !== room.host?.id) return;
+        applyEntitySnapshot(room.session, message.entities);
+        room.populated = true;
       }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
         // The newcomer learns the host view at once, and a hidden page undoes the visible STATE.
         sendHeartbeat(room);
+        if (room.host?.id === localId) sendEntities(room, clock.now(), true);
       }),
       [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
         const change = room.roster.apply(id, { kind: "bye" }, clock.now());
@@ -271,10 +316,9 @@ export function createRoom(deps: RoomDeps): Room {
       applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     settle(room, changes);
     if (!stalled || room.host === undefined)
-      room.host = elect(
-        room.host,
-        { id: localId, active: !hidden },
-        remotes(room),
+      holdView(
+        room,
+        elect(room.host, { id: localId, active: !hidden }, remotes(room)),
       );
     sendHeartbeat(room);
   }
@@ -292,16 +336,19 @@ export function createRoom(deps: RoomDeps): Room {
     scope.defer(() => {
       deps.sfx.stopAll();
     });
+    const session = createSession(
+      localId,
+      name,
+      code,
+      deps.world,
+      deps.sfx,
+      deps.sim,
+    );
+    deps.monsters.register(session);
+    session.hosting = false;
     const room: Link = {
       scope,
-      session: createSession(
-        localId,
-        name,
-        code,
-        deps.world,
-        deps.sfx,
-        deps.sim,
-      ),
+      session,
       roster: createRoster(config.presence),
       voiceRoom: null,
       peers: new Set(),
@@ -310,6 +357,8 @@ export function createRoom(deps: RoomDeps): Room {
       host: undefined,
       views: new Map(),
       lastPulse: clock.now(),
+      lastEntitiesSent: -Infinity,
+      populated: false,
     };
     await transport.join(roomKey(code, deps.world), handlers(room));
     if (scope.disposed) {
@@ -404,6 +453,7 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       const room = link;
       sendState(room, now, room.forceState);
+      if (room.host?.id === localId) sendEntities(room, now);
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     },
