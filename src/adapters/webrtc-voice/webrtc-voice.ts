@@ -302,24 +302,16 @@ export function createWebRtcVoice(
 
     removePeer,
 
-    setMode(next) {
-      mode = next;
+    configure(settings) {
+      ({ mode, muted } = settings);
+      volume = Math.max(0, Math.min(1, settings.volume));
+      if (voiceVolume !== null) voiceVolume.gain.value = volume;
       applyTransmit();
     },
 
     setTalking(held) {
       talking = held;
       applyTransmit();
-    },
-
-    setMuted(next) {
-      muted = next;
-      applyTransmit();
-    },
-
-    setVolume(next) {
-      volume = Math.max(0, Math.min(1, next));
-      if (voiceVolume !== null) voiceVolume.gain.value = volume;
     },
 
     setPeerMix(peerId, mix) {
@@ -339,6 +331,7 @@ export function createWebRtcVoice(
       });
       return {
         mode,
+        muted,
         mic,
         transmitting: transmitting(),
         peers: connected,

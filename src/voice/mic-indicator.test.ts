@@ -15,7 +15,7 @@ describe("micIndicator", () => {
   ] as const)(
     "%s, mic %s, transmitting %s, muted %s gives %s (%s)",
     (mode, mic, transmitting, muted, label, tone) => {
-      expect(micIndicator({ mode, mic, transmitting }, muted, "⌘")).toEqual({
+      expect(micIndicator({ mode, muted, mic, transmitting }, "⌘")).toEqual({
         label,
         tone,
       });
