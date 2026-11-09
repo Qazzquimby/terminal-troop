@@ -8,15 +8,13 @@ export interface MenuPeer {
   readonly muted: boolean;
 }
 
-/** Everyone in `players` except `localId`, ordered by name, each marked muted if listed in `mutedIds`. */
+/** The remote `players`, ordered by name, each marked muted if listed in `mutedIds`. */
 export function menuPeers(
   players: Iterable<{ readonly id: string; readonly name: string }>,
-  localId: string,
   mutedIds: readonly string[],
 ): MenuPeer[] {
   const muted = new Set(mutedIds);
   return [...players]
-    .filter(({ id }) => id !== localId)
     .map(({ id, name }) => ({ id, name, muted: muted.has(id) }))
     .sort((a, b) => a.id.localeCompare(b.id))
     .sort((a, b) => a.name.localeCompare(b.name));

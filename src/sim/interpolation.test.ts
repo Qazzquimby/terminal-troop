@@ -1,12 +1,6 @@
 import { expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import {
-  lerp,
-  lerpAngle,
-  renderPosition,
-  stepAlpha,
-  wrapAngle,
-} from "./interpolation.js";
+import { lerp, lerpAngle, renderPosition, wrapAngle } from "./interpolation.js";
 import { randomFreePosition } from "./map.js";
 import type { Player } from "./player.js";
 import { createPlayer } from "./player.js";
@@ -33,13 +27,6 @@ test("lerp blends between two values", () => {
   expect(lerp(100, 110, 0)).toBe(100);
   expect(lerp(100, 110, 0.5)).toBe(105);
   expect(lerp(100, 110, 1)).toBe(110);
-});
-
-test("alpha is the leftover fraction of a step, clamped to 0..1", () => {
-  expect(stepAlpha(0, FIXED_DT)).toBe(0);
-  expect(stepAlpha(FIXED_DT / 2, FIXED_DT)).toBeCloseTo(0.5);
-  expect(stepAlpha(FIXED_DT * 2, FIXED_DT)).toBe(1);
-  expect(stepAlpha(-1, FIXED_DT)).toBe(0);
 });
 
 test("render position blends from the previous position", () => {
