@@ -85,7 +85,6 @@ const debugOverlay = createDebugOverlay(debugEl, startParams.has("debug"));
 const sfx = createSfx();
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
-// Either call may throw when storage is disabled or full.
 const settings = createSettingsStore({
   get: () => localStorage.getItem(settingsKey),
   set: (value) => {

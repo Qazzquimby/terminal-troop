@@ -37,7 +37,6 @@ export function createSettingsMenu(
     });
   });
 
-  // Escape closes the dialog through its action, so the native cancel is suppressed to keep one press = one toggle.
   dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
   });
