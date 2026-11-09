@@ -1,4 +1,5 @@
 import type { SpatialFalloff } from "./audio/index.js";
+import type { MonsterConfig } from "./monsters/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { UiConfig } from "./ui/index.js";
@@ -8,6 +9,7 @@ import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
+  readonly monsters: MonsterConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
@@ -42,11 +44,27 @@ export const config = {
   net: { smoothing: 12 },
   room: {
     sendHz: 15,
+    entityHz: 10,
     heartbeatMs: 1000,
     presence: {
       awayAfterMs: 3500,
       goneSilentMs: 30_000,
       goneHiddenMs: 180_000,
+    },
+  },
+  monsters: {
+    chasers: 6,
+    seed: 1,
+    clearance: CELL * 10,
+    chaser: {
+      radius: 15,
+      wanderSpeed: 55,
+      // A walking player slowly pulls away.
+      chaseSpeed: 190,
+      sightRange: CELL * 7,
+      wanderRange: CELL * 5,
+      wanderPause: { min: 0.8, max: 3 },
+      repathDistance: CELL / 2,
     },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },

@@ -1,5 +1,6 @@
 import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
+import type { MonsterConfig } from "../monsters/index.js";
 import type { SimConfig } from "../sim/index.js";
 
 /**
@@ -21,6 +22,22 @@ export const testSimConfig: SimConfig = {
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
   net: { smoothing: 12 },
+};
+
+/** Three chasers, which walk at 50px/s, chase at 200px/s and see 300px. */
+export const testMonsterConfig: MonsterConfig = {
+  chasers: 3,
+  seed: 3,
+  clearance: 400,
+  chaser: {
+    radius: 15,
+    wanderSpeed: 50,
+    chaseSpeed: 200,
+    sightRange: 300,
+    wanderRange: 200,
+    wanderPause: { min: 0.5, max: 1 },
+    repathDistance: 25,
+  },
 };
 
 /** Sound effects for sessions under test; nothing plays. */

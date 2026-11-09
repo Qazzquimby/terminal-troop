@@ -33,6 +33,28 @@ const HeartbeatMessage = PresenceMessage.extend({
   host: HostView.nullable(),
 });
 
+/** Most entities a snapshot carries. */
+const MAX_ENTITIES = 256;
+
+/**
+ * Every entity the sender hosts, by the sender's id. Each kind parses its own data, so an
+ * entity whose data its kind rejects is dropped where it is applied.
+ */
+const EntitiesMessage = z.object({
+  host: PlayerId,
+  entities: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(80),
+        kind: z.number().int().min(1),
+        x: z.number(),
+        y: z.number(),
+        data: z.unknown(),
+      }),
+    )
+    .max(MAX_ENTITIES),
+});
+
 /** Every event's payload schema; a missing event fails to compile. */
 export function roomMessages(nameMax: number) {
   return {
@@ -40,6 +62,7 @@ export function roomMessages(nameMax: number) {
     [NetEvent.STATE]: stateMessage(nameMax),
     [NetEvent.BYE]: PresenceMessage,
     [NetEvent.HEARTBEAT]: HeartbeatMessage,
+    [NetEvent.ENTITIES]: EntitiesMessage,
     // The voice room parses its own signals.
     [NetEvent.SIGNAL]: z.unknown(),
   } as const satisfies Record<NetEvent, z.ZodType>;

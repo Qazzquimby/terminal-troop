@@ -28,6 +28,16 @@ describe("the message table", () => {
       hidden: boolean;
       host: { id: string; term: number; solo: boolean } | null;
     }>();
+    expectTypeOf<Message<"entities">>().toEqualTypeOf<{
+      host: string;
+      entities: {
+        id: string;
+        kind: number;
+        x: number;
+        y: number;
+        data: unknown;
+      }[];
+    }>();
     expectTypeOf<Message<"signal">>().toBeUnknown();
   });
 
@@ -55,6 +65,31 @@ describe("the message table", () => {
     [
       NetEvent.HEARTBEAT,
       { id: "x", hidden: false, host: { id: "x", term: 0 } },
+    ],
+    [NetEvent.ENTITIES, { host: "x" }],
+    [
+      NetEvent.ENTITIES,
+      { host: "x", entities: [{ id: "x:1", kind: 0, x: 0, y: 0, data: {} }] },
+    ],
+    [
+      NetEvent.ENTITIES,
+      {
+        host: "x",
+        entities: [{ id: "x:1", kind: 1, x: Infinity, y: 0, data: {} }],
+      },
+    ],
+    [
+      NetEvent.ENTITIES,
+      {
+        host: "x",
+        entities: Array.from({ length: 257 }, (_, i) => ({
+          id: `x:${String(i)}`,
+          kind: 1,
+          x: 0,
+          y: 0,
+          data: {},
+        })),
+      },
     ],
   ])("a bad %s payload does not parse", (event, payload) => {
     expect(messages[event].safeParse(payload).success).toBe(false);

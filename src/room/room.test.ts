@@ -3,11 +3,19 @@ import {
   createManualClock,
   testRoomConfig,
 } from "../integration/room-helpers.js";
-import { testSfx, testSimConfig } from "../integration/sim-config.js";
+import {
+  testMonsterConfig,
+  testSfx,
+  testSimConfig,
+} from "../integration/sim-config.js";
 import { createScope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
-import { playerState, randomFreePosition } from "../sim/index.js";
+import {
+  playerState,
+  randomFreePosition,
+  updateSession,
+} from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { roomMessages } from "./protocol.js";
@@ -17,6 +25,7 @@ import type { Room, RoomState } from "./room.js";
 type Handlers = Parameters<Transport["join"]>[1];
 
 const SEND_GAP = 1000 / 15;
+const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT
 ];
@@ -178,6 +187,7 @@ function setup(hub = createHub(), id = "me", clock = createManualClock()) {
     },
     config: testRoomConfig,
     sim: testSimConfig,
+    monsters: testMonsterConfig,
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange() {
       changes++;
@@ -827,5 +837,146 @@ describe("host", () => {
     expect(d.room.hostId()).toBe("b");
     clock.advance(5000);
     expect(hosts()).toEqual(["b", "b", "b", "b"]);
+  });
+
+  describe("monsters", () => {
+    const sessionOf = (player: Player) => joined(player.room).session;
+    const ids = (player: Player) => [...sessionOf(player).entities.keys()];
+    const placed = (player: Player) =>
+      [...sessionOf(player).entities.values()].map(({ id, x, y }) => ({
+        id,
+        x,
+        y,
+      }));
+    /** Where `player` is easing each entity to. */
+    const targets = (player: Player) =>
+      [...sessionOf(player).entities.values()].map(({ id, tx, ty }) => ({
+        id,
+        x: tx,
+        y: ty,
+      }));
+    /** Runs `seconds` of simulation on `player`, then lets it send. */
+    const play = (player: Player, seconds: number) => {
+      for (let step = 0; step < seconds * 60; step++)
+        updateSession(sessionOf(player), idle, 1 / 60);
+      player.room.frame(player.clock.now());
+    };
+
+    test("the first host spawns them once, and a newcomer takes them from it", async () => {
+      const { clock, get, add } = await gather(["a"]);
+      expect(ids(get("a"))).toEqual([]);
+      clock.advance(1000);
+      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
+
+      const b = await add("b");
+      expect(placed(b)).toEqual(placed(get("a")));
+      clock.advance(10_000);
+      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(b)).toEqual(["a:1", "a:2", "a:3"]);
+    });
+
+    test("players that join together see only the host's", async () => {
+      const { clock, get } = await gather(["b", "a"]);
+      clock.advance(1000);
+      expect(ids(get("b"))).toEqual([]);
+      play(get("a"), 0.5);
+      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+    });
+
+    test("only the host runs them; the others follow its snapshots", async () => {
+      const { clock, get } = await gather(["a", "b"]);
+      clock.advance(1000);
+      play(get("a"), 0);
+      const before = placed(get("b"));
+      play(get("b"), 2);
+      expect(placed(get("b"))).toEqual(before);
+
+      clock.advance(2000);
+      play(get("a"), 2);
+      play(get("b"), 1);
+      expect(placed(get("b"))).not.toEqual(before);
+      for (const [index, entity] of placed(get("b")).entries()) {
+        const host = placed(get("a"))[index];
+        expect(entity.id).toBe(host?.id);
+        expect(entity.x).toBeCloseTo(host?.x ?? NaN, 1);
+        expect(entity.y).toBeCloseTo(host?.y ?? NaN, 1);
+      }
+    });
+
+    test("snapshots from a player not taken for host are ignored", async () => {
+      const { hub, clock, get } = await gather(["a", "b"]);
+      const listener = hub.listener("dev:ABC");
+      clock.advance(1000);
+      play(get("a"), 0);
+      const entity = { id: "z:1", kind: 1, x: 450, y: 300 };
+      const data = { mode: "wander", seed: 1, route: [], pause: 0 };
+      listener.send(NetEvent.ENTITIES, {
+        host: "b",
+        entities: [{ ...entity, data }],
+      });
+      listener.send(NetEvent.ENTITIES, {
+        host: "z",
+        entities: [{ ...entity, data }],
+      });
+      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+
+      listener.send(NetEvent.ENTITIES, {
+        host: "a",
+        entities: [{ ...entity, data }],
+      });
+      expect(ids(get("b"))).toEqual(["z:1"]);
+    });
+
+    test("a new host runs on from its last snapshot, every id kept", async () => {
+      const { clock, get } = await gather(["a", "b", "c"]);
+      clock.advance(1000);
+      play(get("a"), 1);
+      const handed = placed(get("b"));
+      await get("a").room.leave();
+      clock.advance(2000);
+      expect(get("b").room.hostId()).toBe("b");
+      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+
+      play(get("b"), 2);
+      expect(placed(get("b"))).not.toEqual(handed);
+      expect(ids(get("c"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(targets(get("c"))).toEqual(placed(get("b")));
+    });
+
+    test("a player cut off before it heard them spawns its own, and drops them on rejoining", async () => {
+      const { hub, clock, get, add } = await gather(["a", "b"]);
+      clock.advance(1000);
+      hub.partition(["a", "b"], ["c"]);
+      const c = await add("c");
+      clock.advance(2000);
+      expect(c.room.hostId()).toBe("c");
+      expect(ids(c)).toEqual(["c:1", "c:2", "c:3"]);
+
+      hub.heal();
+      clock.advance(4000);
+      play(get("a"), 0);
+      expect(c.room.hostId()).toBe("a");
+      expect(ids(c)).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+    });
+
+    test("after a split, the side that keeps the host keeps its monsters", async () => {
+      const { hub, clock, get } = await gather(["a", "b"]);
+      clock.advance(1000);
+      play(get("a"), 0);
+      hub.partition(["a"], ["b"]);
+      clock.advance(6000);
+      expect(get("b").room.hostId()).toBe("b");
+      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+      play(get("b"), 1);
+
+      hub.heal();
+      clock.advance(8000);
+      play(get("a"), 1);
+      expect(get("b").room.hostId()).toBe("a");
+      expect(targets(get("b"))).toEqual(placed(get("a")));
+    });
   });
 });

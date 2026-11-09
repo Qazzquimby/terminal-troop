@@ -161,6 +161,7 @@ const room = createRoom({
   },
   config: config.room,
   sim: config,
+  monsters: config.monsters,
   falloff: config.voice,
   onChange() {
     refreshPeers(room.state());

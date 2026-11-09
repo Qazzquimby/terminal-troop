@@ -94,6 +94,21 @@ export function lastFreePointAlong(
   return { x: to.x, y: to.y };
 }
 
+/** Whether a body of half-size `half` fits all along the segment from `from` to `to`. */
+export function isSweepFree(
+  map: TileMap,
+  half: number,
+  from: Point,
+  to: Point,
+): boolean {
+  const { steps, at } = sampleSegment(from, to);
+  for (let i = 0; i <= steps; i++) {
+    const point = at(steps === 0 ? 0 : i / steps);
+    if (!isAreaFree(map, point.x, point.y, half)) return false;
+  }
+  return true;
+}
+
 /** @public */
 export function nearestFreePoint(
   map: TileMap,

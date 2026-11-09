@@ -1,6 +1,7 @@
 /** Room tuning for tests, in real milliseconds. */
 export const testRoomConfig = {
   sendHz: 15,
+  entityHz: 10,
   heartbeatMs: 1000,
   presence: { awayAfterMs: 3500, goneSilentMs: 30_000, goneHiddenMs: 180_000 },
 } as const;
