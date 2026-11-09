@@ -33,7 +33,6 @@ import { createSfx } from "./audio/audio.js";
 import {
   applyProximity,
   micIndicator,
-  applyVoiceSettings,
   createNullVoice,
   pushToTalk,
 } from "./voice/index.js";
@@ -47,6 +46,19 @@ import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/supabase-transport.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/broadcast-channel-transport.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/webrtc-voice.js";
+import { createScope } from "./scope/scope.js";
+
+/** Owns everything that lives as long as the page. */
+const app = createScope();
+
+/** Listens on `target` until the app scope is disposed. */
+function on(
+  target: EventTarget,
+  type: string,
+  listener: (event: Event) => void,
+): void {
+  target.addEventListener(type, listener, { signal: app.signal });
+}
 
 const canvas = element("#game", HTMLCanvasElement);
 const statusEl = element("#status", HTMLParagraphElement);
@@ -130,14 +142,14 @@ element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
 
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
-  applyVoiceSettings(voice, current.voice);
+  voice.configure(current.voice);
   controlsHint.textContent =
     current.voice.mode === "pushToTalk"
       ? `${baseHint} · ${talkKey} to talk`
       : baseHint;
 }
 applySettings(settings.get());
-settings.subscribe(applySettings);
+app.defer(settings.subscribe(applySettings));
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
 let game: Session | null = null;
@@ -355,15 +367,11 @@ function frame(): void {
   updateStatus();
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
-  micView.show(
-    game === null
-      ? null
-      : micIndicator(voice.status(), settings.get().voice.muted, talkKey),
-  );
+  micView.show(game === null ? null : micIndicator(voice.status(), talkKey));
   requestAnimationFrame(frame);
 }
 
-createBtn.addEventListener("click", () => {
+on(createBtn, "click", () => {
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   const code = Array.from(bytes, (value) => (value % 36).toString(36))
     .join("")
@@ -372,16 +380,16 @@ createBtn.addEventListener("click", () => {
   void enterRoom(code);
 });
 
-settingsBtn.addEventListener("click", (event) => {
+on(settingsBtn, "click", (event) => {
   settingsMenu.open(event.timeStamp);
 });
 
-joinBtn.addEventListener("click", () => {
+on(joinBtn, "click", () => {
   voice.requestMic();
   void enterRoom(roomInput.value);
 });
 
-copyBtn.addEventListener("click", () => {
+on(copyBtn, "click", () => {
   navigator.clipboard.writeText(location.href).then(
     () => {
       copyBtn.textContent = "Copied!";
@@ -395,11 +403,11 @@ copyBtn.addEventListener("click", () => {
   );
 });
 
-document.addEventListener("visibilitychange", () => {
+on(document, "visibilitychange", () => {
   if (!document.hidden && game !== null) sayHello(game);
 });
 
-window.addEventListener("beforeunload", () => {
+on(window, "beforeunload", () => {
   if (roomCode !== null) void transport.send(NetEvent.BYE, { id: playerId });
 });
 

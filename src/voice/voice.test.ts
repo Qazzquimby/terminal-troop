@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { createActionState, withUiHandlers } from "../input/index.js";
 import { DEFAULT_SETTINGS } from "../settings/settings.js";
-import type { Voice, VoiceMode, VoiceSettings } from "./voice.js";
-import { applyVoiceSettings, createNullVoice, pushToTalk } from "./voice.js";
+import type { Voice, VoiceSettings } from "./voice.js";
+import { createNullVoice, pushToTalk } from "./voice.js";
 
 const ME = "player-b";
 const OFFER = { type: "offer", sdp: "v=0\r\n" };
@@ -67,23 +67,13 @@ describe("settings", () => {
   test.each<VoiceSettings>([
     DEFAULT_SETTINGS.voice,
     { mode: "pushToTalk", muted: true, volume: 0.25 },
-  ])("%o reaches the voice", (settings) => {
-    const applied: { mode?: VoiceMode; muted?: boolean; volume?: number } = {};
-    applyVoiceSettings(
-      {
-        setMode: (mode) => {
-          applied.mode = mode;
-        },
-        setMuted: (muted) => {
-          applied.muted = muted;
-        },
-        setVolume: (volume) => {
-          applied.volume = volume;
-        },
-      },
-      settings,
-    );
-    expect(applied).toEqual(settings);
+  ])("%o reaches the status", (settings) => {
+    const voice = createNullVoice(DEFAULT_SETTINGS.voice);
+    voice.configure(settings);
+    expect(voice.status()).toMatchObject({
+      mode: settings.mode,
+      muted: settings.muted,
+    });
   });
 
   test("a voice starts in the mode it is given", () => {
@@ -109,14 +99,14 @@ describe("null voice", () => {
     voice.addPeer("player-a");
     voice.receive({ from: "player-a", to: ME, description: OFFER });
     voice.setTalking(true);
-    voice.setMuted(false);
-    voice.setVolume(0.5);
+    voice.configure({ mode: "pushToTalk", muted: false, volume: 0.5 });
     voice.setPeerMix("player-a", { volume: 0.2, pan: -1 });
     voice.removePeer("player-a");
     voice.leave();
     expect(sent).toEqual([]);
     expect(voice.status()).toEqual({
       mode: "pushToTalk",
+      muted: false,
       mic: "unavailable",
       transmitting: false,
       peers: [],
@@ -130,11 +120,5 @@ describe("null voice", () => {
     voice.setPeerMix("player-a", { volume: 0.5, pan: 0 });
     expect(voice.status().mutedPeers).toEqual([]);
     expect(voice.status().peers).toEqual([]);
-  });
-
-  test("reports the mode it was given", () => {
-    const voice = createNullVoice(DEFAULT_SETTINGS.voice);
-    voice.setMode("pushToTalk");
-    expect(voice.status().mode).toBe("pushToTalk");
   });
 });

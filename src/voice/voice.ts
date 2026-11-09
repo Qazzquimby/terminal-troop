@@ -24,6 +24,8 @@ export interface PeerMix {
 
 interface VoiceStatus {
   mode: VoiceMode;
+  /** Hard mute of the outgoing mic, in either mode. */
+  muted: boolean;
   mic: MicState;
   /** Whether our mic is currently going out to the other players. */
   transmitting: boolean;
@@ -50,13 +52,10 @@ export interface Voice {
   addPeer: (peerId: string) => void;
   /** A remote player left: hang up on them. */
   removePeer: (peerId: string) => void;
-  setMode: (mode: VoiceMode) => void;
+  /** Applies the player's transmit mode, mic mute, and incoming volume (0..1). */
+  configure: (settings: VoiceSettings) => void;
   /** Whether push-to-talk is held. Ignored in open-mic mode. */
   setTalking: (held: boolean) => void;
-  /** Hard mute of the outgoing mic, in either mode. */
-  setMuted: (muted: boolean) => void;
-  /** Volume for every incoming voice, 0..1. */
-  setVolume: (volume: number) => void;
   /** Volume and pan for one remote player; full volume and centred until set. */
   setPeerMix: (peerId: string, mix: PeerMix) => void;
   /**
@@ -76,19 +75,9 @@ export function pushToTalk(voice: Pick<Voice, "setTalking">): UiHandlers {
   };
 }
 
-/** Sets every voice preference in `settings` on `voice`. */
-export function applyVoiceSettings(
-  voice: Pick<Voice, "setMode" | "setMuted" | "setVolume">,
-  settings: VoiceSettings,
-): void {
-  voice.setMode(settings.mode);
-  voice.setMuted(settings.muted);
-  voice.setVolume(settings.volume);
-}
-
 /** Voice that does nothing: for tests, and browsers without WebRTC. */
 export function createNullVoice(initial: VoiceSettings): Voice {
-  let { mode } = initial;
+  let { mode, muted } = initial;
   const noop = (): void => undefined;
   return {
     requestMic: noop,
@@ -97,16 +86,15 @@ export function createNullVoice(initial: VoiceSettings): Voice {
     receive: noop,
     addPeer: noop,
     removePeer: noop,
-    setMode(next) {
-      mode = next;
+    configure(settings) {
+      ({ mode, muted } = settings);
     },
     setTalking: noop,
-    setMuted: noop,
-    setVolume: noop,
     setPeerMix: noop,
     setPeerMuted: noop,
     status: () => ({
       mode,
+      muted,
       mic: "unavailable",
       transmitting: false,
       peers: [],
