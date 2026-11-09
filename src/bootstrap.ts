@@ -10,6 +10,7 @@ import {
   stepAlpha,
 } from "./sim/index.js";
 import {
+  NET_EVENTS,
   NetEvent,
   PresenceMessage,
   createCountingTransport,
@@ -87,7 +88,7 @@ const env = envResult.data;
  */
 function selectTransport(params: URLSearchParams): Transport {
   if (params.has("local") || env.supabase === null) {
-    return createBroadcastChannelTransport();
+    return createBroadcastChannelTransport(NET_EVENTS);
   }
   return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
 }
@@ -95,7 +96,7 @@ function selectTransport(params: URLSearchParams): Transport {
 /** Incoming voice plays through the sound effects' master gain. */
 function selectVoice(initial: VoiceSettings): Voice {
   if (typeof RTCPeerConnection === "undefined") return createNullVoice(initial);
-  return createWebRtcVoice(sfx, initial);
+  return createWebRtcVoice(sfx, initial, NetEvent.SIGNAL);
 }
 
 const params = new URLSearchParams(location.search);

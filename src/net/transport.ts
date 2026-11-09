@@ -7,6 +7,14 @@ export const NetEvent = {
 } as const;
 export type NetEvent = (typeof NetEvent)[keyof typeof NetEvent];
 
+/** Every NetEvent value, for adapters that validate incoming event names. */
+export const NET_EVENTS = [
+  NetEvent.HELLO,
+  NetEvent.STATE,
+  NetEvent.BYE,
+  NetEvent.SIGNAL,
+] as const satisfies readonly [NetEvent, ...NetEvent[]];
+
 type NetHandlers = Partial<Record<NetEvent, (payload: unknown) => void>>;
 
 /**

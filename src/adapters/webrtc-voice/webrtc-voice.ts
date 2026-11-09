@@ -1,6 +1,6 @@
 import type { SignalMessage } from "./signal.js";
-import { SIGNAL, isPolite, signalFor } from "./signal.js";
-import type { Transport } from "../../net/index.js";
+import { isPolite, signalFor } from "./signal.js";
+import type { NetEvent, Transport } from "../../net/index.js";
 import type { MicState, Voice, VoiceSettings } from "../../voice/index.js";
 import { createPeerLevels } from "./peer-levels.js";
 import { isTransmitting } from "./transmit.js";
@@ -44,7 +44,7 @@ type Signal =
 
 /**
  * Voice over WebRTC: a mesh with one RTCPeerConnection per remote player, set up through
- * SIGNAL messages on the room transport using the "perfect negotiation" pattern.
+ * `signalEvent` messages on the room transport using the "perfect negotiation" pattern.
  *
  * Playback: remote stream -> source -> per-peer gain -> panner -> voice volume -> `output`.
  * The per-peer gain is the mix volume, or 0 while that player is muted.
@@ -52,6 +52,7 @@ type Signal =
 export function createWebRtcVoice(
   audio: VoiceAudio,
   initial: VoiceSettings,
+  signalEvent: NetEvent,
 ): Voice {
   const { audioContext } = audio;
   const peers = new Map<string, Peer>();
@@ -140,7 +141,7 @@ export function createWebRtcVoice(
 
   function send(to: string, signal: Signal): void {
     if (room === null) return;
-    void room.transport.send(SIGNAL, {
+    void room.transport.send(signalEvent, {
       from: room.localId,
       to,
       ...signal,

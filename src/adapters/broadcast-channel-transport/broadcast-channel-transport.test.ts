@@ -1,12 +1,12 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, expectTypeOf, test, vi } from "vitest";
 import { createBroadcastChannelTransport } from "./broadcast-channel-transport.js";
-import { NetEvent } from "../../net/index.js";
+import { NET_EVENTS, NetEvent } from "../../net/index.js";
 import type { Transport } from "../../net/index.js";
 
 const open: Transport[] = [];
 
 function transport(): Transport {
-  const created = createBroadcastChannelTransport();
+  const created = createBroadcastChannelTransport(NET_EVENTS);
   open.push(created);
   return created;
 }
@@ -90,4 +90,29 @@ test("ignores messages that are not transport envelopes", async () => {
   stray.close();
 
   expect(bobGot).not.toHaveBeenCalled();
+});
+
+test("drops event names outside the given list and dispatches listed ones", async () => {
+  const bob = createBroadcastChannelTransport([NetEvent.STATE]);
+  open.push(bob);
+  const state = vi.fn();
+  const hello = vi.fn();
+  await bob.join("ROOM1", { [NetEvent.STATE]: state, [NetEvent.HELLO]: hello });
+
+  const sender = new BroadcastChannel("terminal-troop:ROOM1");
+  sender.postMessage({ event: NetEvent.HELLO, payload: { id: "a" } });
+  sender.postMessage({ event: "unknown", payload: { id: "a" } });
+  sender.postMessage({ event: NetEvent.STATE, payload: { id: "a" } });
+  await flush();
+  sender.close();
+
+  expect(hello).not.toHaveBeenCalled();
+  expect(state).toHaveBeenCalledOnce();
+  expect(state).toHaveBeenCalledWith({ id: "a" });
+});
+
+test("accepts only NetEvent names as its event list", () => {
+  expectTypeOf(createBroadcastChannelTransport)
+    .parameter(0)
+    .toEqualTypeOf<readonly [NetEvent, ...NetEvent[]]>();
 });

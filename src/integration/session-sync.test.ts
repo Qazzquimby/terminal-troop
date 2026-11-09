@@ -7,7 +7,7 @@ import {
   sendState,
   updateSession,
 } from "../sim/index.js";
-import { NetEvent } from "../net/index.js";
+import { NET_EVENTS, NetEvent } from "../net/index.js";
 import type { Session } from "../sim/index.js";
 import type { Transport } from "../net/index.js";
 import { testSfx, testSimConfig } from "./sim-config.js";
@@ -27,7 +27,7 @@ async function flush(): Promise<void> {
 async function client(
   id: string,
 ): Promise<{ session: Session; transport: Transport }> {
-  const transport = createBroadcastChannelTransport();
+  const transport = createBroadcastChannelTransport(NET_EVENTS);
   open.push(transport);
   const session = createSession(
     id,
