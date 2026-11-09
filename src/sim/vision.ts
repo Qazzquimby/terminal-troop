@@ -1,12 +1,22 @@
-import {
-  PLAYER_LIGHT_RANGE,
-  PLAYER_SURROUNDINGS_RADIUS,
-  PLAYER_VISION_ANGLE,
-  VISION_RAYS,
-} from "./config.js";
 import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
+
+/** How a player sees. */
+export interface VisionConfig {
+  /** Width of the view cone, in radians. */
+  readonly coneAngle: number;
+  /** Rays cast around a full circle when tracing what a source reaches. */
+  readonly rays: number;
+  /** Radius of the circle around the player that is always seen and lit, behind them too. */
+  readonly surroundingsRadius: number;
+}
+
+/** The light a player carries. */
+export interface LightConfig {
+  /** How far the light reaches along the view cone, in pixels. */
+  readonly range: number;
+}
 
 type VisionShape =
   | { readonly kind: "omnidirectional" }
@@ -159,27 +169,27 @@ export function hasLineOfSight(map: TileMap, from: Point, to: Point): boolean {
   return hit.distance >= distance;
 }
 
-function playerVision(viewer: Viewer): VisionSource {
+function playerVision(viewer: Viewer, vision: VisionConfig): VisionSource {
   return {
     x: viewer.x,
     y: viewer.y,
     shape: {
       kind: "cone",
       direction: viewer.aim,
-      angle: PLAYER_VISION_ANGLE,
+      angle: vision.coneAngle,
     },
   };
 }
 
 /** The small circle around the viewer that is both seen and lit, behind them included. */
-function playerSurroundings(viewer: Viewer): LightSource {
-  return { x: viewer.x, y: viewer.y, range: PLAYER_SURROUNDINGS_RADIUS };
+function playerSurroundings(viewer: Viewer, vision: VisionConfig): LightSource {
+  return { x: viewer.x, y: viewer.y, range: vision.surroundingsRadius };
 }
 
 export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   return [
-    playerVision(viewer),
-    playerSurroundings(viewer),
+    playerVision(viewer, game.config.vision),
+    playerSurroundings(viewer, game.config.vision),
     ...[...game.entities.values()].filter(
       (entity) => entity.ownerId === viewer.id && entity.grantsVision,
     ),
@@ -187,9 +197,10 @@ export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
 }
 
 export function lightSources(game: Session, viewer: Viewer): LightSource[] {
+  const { vision } = game.config;
   const lights: LightSource[] = [
-    { ...playerVision(viewer), range: PLAYER_LIGHT_RANGE },
-    playerSurroundings(viewer),
+    { ...playerVision(viewer, vision), range: game.config.light.range },
+    playerSurroundings(viewer, vision),
   ];
 
   game.entities.forEach((entity) => {
@@ -285,7 +296,7 @@ export function litWalls(
 export function visibilityPolygon(
   map: TileMap,
   origin: VisionSource,
-  rayCount: number = VISION_RAYS,
+  rayCount: number,
   maxDist: number = Math.hypot(map.cols * map.cell, map.rows * map.cell),
 ): VisibilityPolygon {
   const cone = origin.shape?.kind === "cone" ? origin.shape : undefined;

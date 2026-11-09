@@ -1,4 +1,3 @@
-import { WALL_BOUNCE } from "./config.js";
 import type { Point, TileMap } from "./map.js";
 import { isAreaFree, isSolid } from "./map.js";
 
@@ -122,7 +121,7 @@ export function moveWithCollision(
   half: number,
   dt: number,
   map: TileMap,
-  bounce: number = WALL_BOUNCE,
+  bounce: number,
 ): void {
   body.x += body.vx * dt;
   resolveAxis(body, half, map, bounce, "x");

@@ -26,9 +26,10 @@ const TEST = "\\.test\\.ts$|^src/integration/";
 /** Source that ships: everything under src but tests and the integration directory. */
 const PRODUCTION = { path: "^src/", pathNot: TEST };
 
-/** The files allowed at the top of src: entry points, and the test of one. */
+/** The files allowed at the top of src: entry points, the app config, and the test of one. */
 const TOP_LEVEL = new Set([
   "bootstrap.ts",
+  "config.ts",
   "env.ts",
   "env.test.ts",
   "vite-env.d.ts",
@@ -55,13 +56,13 @@ const PUBLIC_FILES = `^(${MODULE_PARENTS.flatMap(modulesIn)
   .join("|")
   .replaceAll(".", "\\.")})$`;
 
-/** The top of src holds only entry points; any other file there stops the gate. */
+/** The top of src holds only the files above; any other file there stops the gate. */
 const strays = entriesOf("src")
   .filter((entry) => !entry.isDirectory() && !TOP_LEVEL.has(entry.name))
   .map((entry) => `src/${entry.name}`);
 if (strays.length > 0) {
   throw new Error(
-    `The top of src holds only entry points; move into a module: ${strays.join(", ")}`,
+    `The top of src holds only entry points and config.ts; move into a module: ${strays.join(", ")}`,
   );
 }
 
@@ -107,6 +108,12 @@ export default {
         pathNot: "^src/(bootstrap\\.ts$|adapters/|integration/)",
       },
       { path: "^src/adapters/" },
+    ),
+    rule(
+      "config-outside-root",
+      "Only bootstrap.ts, the composition root, imports config.ts. A module declares the type of the config it needs and takes it as a parameter; a test builds its own values.",
+      { path: "^src/", pathNot: "^src/bootstrap\\.ts$" },
+      { path: "^src/config\\.ts$" },
     ),
     rule(
       "bootstrap-imported",

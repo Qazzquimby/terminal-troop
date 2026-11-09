@@ -1,7 +1,15 @@
-import { FIXED_DT, MAX_CATCH_UP_S, MAX_STEPS_PER_FRAME } from "./config.js";
+/** The fixed-step clock's tuning, in seconds. */
+export interface SimClockConfig {
+  /** Length of one fixed step. */
+  readonly fixedDt: number;
+  /** The simulation falls at most this far behind the clock; older time is dropped. */
+  readonly maxCatchUpS: number;
+  /** Most fixed steps one frame runs; a longer backlog spreads over the next frames. */
+  readonly maxStepsPerFrame: number;
+}
 
 /** Times in ms on the `performance.now()` clock. */
-export interface StepLimits {
+interface StepLimits {
   /** Length of one fixed step. */
   readonly dtMs: number;
   /** Most simulation time the clock may be ahead by; the excess is dropped. */
@@ -9,12 +17,6 @@ export interface StepLimits {
   /** Most steps run in one frame; the rest wait for later frames. */
   readonly maxStepsPerFrame: number;
 }
-
-export const STEP_LIMITS: StepLimits = {
-  dtMs: FIXED_DT * 1000,
-  maxCatchUpMs: MAX_CATCH_UP_S * 1000,
-  maxStepsPerFrame: MAX_STEPS_PER_FRAME,
-};
 
 export interface StepPlan {
   /** Where the simulation starts this frame, after dropping time past the cap. */
@@ -42,12 +44,30 @@ export function advanceSim(
   simTime: number,
   target: number,
   step: (until: number) => void,
-  limits: StepLimits = STEP_LIMITS,
+  limits: StepLimits,
 ): StepPlan {
   const plan = planSteps(simTime, target, limits);
   for (let i = 1; i <= plan.steps; i++) step(plan.simTime + i * limits.dtMs);
   return {
     simTime: plan.simTime + plan.steps * limits.dtMs,
     steps: plan.steps,
+  };
+}
+
+/** A fixed-step clock: the step length in seconds and ms, and `advance` under its limits. */
+export function createSimClock(config: SimClockConfig) {
+  const limits: StepLimits = {
+    dtMs: config.fixedDt * 1000,
+    maxCatchUpMs: config.maxCatchUpS * 1000,
+    maxStepsPerFrame: config.maxStepsPerFrame,
+  };
+  return {
+    dt: config.fixedDt,
+    dtMs: limits.dtMs,
+    advance: (
+      simTime: number,
+      target: number,
+      step: (until: number) => void,
+    ): StepPlan => advanceSim(simTime, target, step, limits),
   };
 }

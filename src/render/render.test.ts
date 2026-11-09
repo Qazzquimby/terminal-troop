@@ -1,8 +1,7 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/index.js";
+import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { Session } from "../sim/index.js";
 import {
-  FIXED_DT,
   createPlayer,
   createSession,
   registerEntityType,
@@ -11,10 +10,19 @@ import {
 } from "../sim/index.js";
 import { interpolatedView } from "./render.js";
 
+const FIXED_DT = 1 / 60;
+
 const walkRight = { move: { x: 1, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
 
 function session(): Session {
-  return createSession("me", "ME", "LERP1", "standard", createSfx());
+  return createSession(
+    "me",
+    "ME",
+    "LERP1",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
 }
 
 const degrees = (value: number): number => (value * Math.PI) / 180;
@@ -42,7 +50,7 @@ test("entities record their pre-step position", () => {
 
 test("the render view draws bodies between steps without touching the simulation", () => {
   const game = session();
-  const remote = createPlayer("them", "THEM", game.world);
+  const remote = createPlayer("them", "THEM", game.world, game.config);
   game.players.set("them", remote);
   Object.assign(remote, { prevX: 100, x: 110, prevY: 50, y: 50 });
   Object.assign(game.local, { prevX: 300, x: 320 });
@@ -63,7 +71,7 @@ test("the render view draws bodies between steps without touching the simulation
 
 test("the view's remote aim is interpolated by alpha along the shortest arc", () => {
   const game = session();
-  const remote = createPlayer("them", "THEM", game.world);
+  const remote = createPlayer("them", "THEM", game.world, game.config);
   game.players.set("them", remote);
   Object.assign(remote, { prevAim: degrees(160), aim: degrees(-160) });
 

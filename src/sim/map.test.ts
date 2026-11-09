@@ -3,8 +3,8 @@ import { mapWithCenterWall } from "../integration/tile-maps.js";
 import { createMap, isAreaFree, mulberry32 } from "./map.js";
 
 test("map generation is reproducible from a seed", () => {
-  const first = createMap(40, 30, mulberry32(123));
-  const second = createMap(40, 30, mulberry32(123));
+  const first = createMap(40, 30, 50, mulberry32(123));
+  const second = createMap(40, 30, 50, mulberry32(123));
   expect(first.solid).toEqual(second.solid);
 });
 
