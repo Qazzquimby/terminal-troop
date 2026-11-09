@@ -1,8 +1,26 @@
 import type { SignalMessage } from "./signal.js";
-import { isPolite, signalFor } from "./signal.js";
-import type { NetEvent, Transport } from "../../net/index.js";
-import type { MicState, Voice, VoiceSettings } from "../../voice/index.js";
+import {
+  isPolite,
+  opensNegotiation,
+  sameDescription,
+  signalFor,
+} from "./signal.js";
+import type {
+  MicState,
+  Voice,
+  VoiceConnectionConfig,
+  VoiceRoom,
+  VoiceSettings,
+} from "../../voice/index.js";
+import { createScope } from "../../lib/scope/index.js";
+import type { Scope } from "../../lib/scope/index.js";
 import { createPeerLevels } from "./peer-levels.js";
+import {
+  connDecision,
+  createPendingSignals,
+  diffPeers,
+  nextBackoff,
+} from "./reconcile.js";
 import { isTransmitting } from "./transmit.js";
 
 /** Where voice plays: the shared AudioContext, and the node incoming voice connects to. */
@@ -10,9 +28,6 @@ interface VoiceAudio {
   audioContext: () => AudioContext;
   output: () => AudioNode;
 }
-
-/** Time constant, in seconds, of the ramp a peer's gain and pan follow to a new level. */
-const LEVEL_RAMP_S = 0.05;
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -26,7 +41,13 @@ const MIC_CONSTRAINTS: MediaStreamConstraints = {
   },
 };
 
-interface Peer {
+/** One RTCPeerConnection to a peer, and the playback nodes fed by it. */
+interface Connection {
+  /** Our name for this connection, sent with every signal from it. */
+  readonly conn: string;
+  /** The other side's name for its end, once a signal carried it. */
+  remoteConn: string | null;
+  readonly scope: Scope;
   readonly pc: RTCPeerConnection;
   readonly polite: boolean;
   readonly gain: GainNode;
@@ -38,13 +59,45 @@ interface Peer {
   ignoreOffer: boolean;
 }
 
+/** A peer voice wants a connection with; between attempts it has none. */
+interface Peer {
+  readonly scope: Scope;
+  connection: Connection | null;
+  /** The wait before the latest retry, or null since the last success. */
+  backoffMs: number | null;
+}
+
+/** Why a connection opens: on our own, or to take up an offer or a ready from the peer. */
+type Opener = "self" | "offer" | "ready";
+
 type Signal =
   | { description: RTCSessionDescriptionInit }
-  | { candidate: RTCIceCandidateInit };
+  | { candidate: RTCIceCandidateInit }
+  | { ready: true };
+
+/** Runs `fn` after `ms` unless `scope` is disposed first. */
+function later(scope: Scope, ms: number, fn: () => void): () => void {
+  const stop = (): void => {
+    clearTimeout(timer);
+    scope.signal.removeEventListener("abort", stop);
+  };
+  const timer = setTimeout(() => {
+    stop();
+    fn();
+  }, ms);
+  scope.signal.addEventListener("abort", stop);
+  return stop;
+}
+
+function disposeQuietly(scope: Scope): void {
+  scope.dispose().catch((error: unknown) => {
+    console.warn("Voice cleanup failed", error);
+  });
+}
 
 /**
- * Voice over WebRTC: a mesh with one RTCPeerConnection per remote player, set up through
- * `signalEvent` messages on the room transport using the "perfect negotiation" pattern.
+ * Voice over WebRTC: a mesh with one RTCPeerConnection per wanted remote player, set up
+ * through SIGNAL messages using the "perfect negotiation" pattern.
  *
  * Playback: remote stream -> source -> per-peer gain -> panner -> voice volume -> `output`.
  * The per-peer gain is the mix volume, or 0 while that player is muted.
@@ -52,21 +105,19 @@ type Signal =
 export function createWebRtcVoice(
   audio: VoiceAudio,
   initial: VoiceSettings,
-  signalEvent: NetEvent,
+  config: VoiceConnectionConfig,
 ): Voice {
   const { audioContext } = audio;
-  const peers = new Map<string, Peer>();
   const levels = createPeerLevels();
-  let room: {
-    localId: string;
-    transport: Pick<Transport, "send">;
-  } | null = null;
+  /** The peers of the room joined now, by id. */
+  let peers = new Map<string, Peer>();
   let mic: MicState = "pending";
   let micTrack: MediaStreamTrack | null = null;
   let micRequested = false;
   let talking = false;
   let { mode, muted, volume } = initial;
   let voiceVolume: GainNode | null = null;
+  let room: VoiceRoom | null = null;
 
   function volumeGain(): GainNode {
     if (voiceVolume === null) {
@@ -94,21 +145,27 @@ export function createWebRtcVoice(
     }
   }
 
+  function connections(): Connection[] {
+    const all: Connection[] = [];
+    peers.forEach((peer) => {
+      if (peer.connection !== null) all.push(peer.connection);
+    });
+    return all;
+  }
+
   function applyTransmit(): void {
     if (micTrack !== null) micTrack.enabled = transmitting();
-    peers.forEach((peer) => {
-      attachMic(peer.pc);
-    });
+    for (const connection of connections()) attachMic(connection.pc);
   }
 
   /** Sets a peer's playback nodes from its levels; does nothing for a peer without nodes. */
   function applyLevels(peerId: string): void {
-    const peer = peers.get(peerId);
-    if (peer === undefined) return;
+    const connection = peers.get(peerId)?.connection;
+    if (connection === undefined || connection === null) return;
     const { gain, pan } = levels.levels(peerId);
-    const now = peer.gain.context.currentTime;
-    peer.gain.gain.setTargetAtTime(gain, now, LEVEL_RAMP_S);
-    peer.panner.pan.setTargetAtTime(pan, now, LEVEL_RAMP_S);
+    const now = connection.gain.context.currentTime;
+    connection.gain.gain.setTargetAtTime(gain, now, config.levelRampS);
+    connection.panner.pan.setTargetAtTime(pan, now, config.levelRampS);
   }
 
   function requestMic(): void {
@@ -139,168 +196,338 @@ export function createWebRtcVoice(
     );
   }
 
-  function send(to: string, signal: Signal): void {
-    if (room === null) return;
-    void room.transport.send(signalEvent, {
-      from: room.localId,
-      to,
-      ...signal,
-    });
-  }
-
-  function play(peer: Peer, event: RTCTrackEvent): void {
+  function play(connection: Connection, event: RTCTrackEvent): void {
     const stream = event.streams[0] ?? new MediaStream([event.track]);
-    peer.sink.srcObject = stream;
-    void peer.sink.play().catch(() => undefined);
-    peer.source?.disconnect();
-    peer.source = audioContext().createMediaStreamSource(stream);
-    peer.source.connect(peer.gain);
+    connection.sink.srcObject = stream;
+    void connection.sink.play().catch(() => undefined);
+    connection.source?.disconnect();
+    connection.source = audioContext().createMediaStreamSource(stream);
+    connection.source.connect(connection.gain);
   }
 
-  function connect(localId: string, peerId: string): Peer {
-    const context = audioContext();
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    const gain = context.createGain();
-    const panner = context.createStereoPanner();
-    gain.connect(panner);
-    panner.connect(volumeGain());
-    const sink = new Audio();
-    sink.muted = true;
+  function join(
+    localId: string,
+    sendSignal: (signal: unknown) => void,
+    events: { peerFailed(id: string): void },
+  ): VoiceRoom {
+    const scope = createScope();
+    const own = new Map<string, Peer>();
+    const pending = createPendingSignals(config.pending);
+    peers = own;
 
-    const peer: Peer = {
-      pc,
-      polite: isPolite(localId, peerId),
-      gain,
-      panner,
-      sink,
-      source: null,
-      makingOffer: false,
-      ignoreOffer: false,
-    };
-    peers.set(peerId, peer);
-    applyLevels(peerId);
+    function send(to: string, connection: Connection, signal: Signal): void {
+      if (connection.scope.disposed) return;
+      sendSignal({ from: localId, to, conn: connection.conn, ...signal });
+    }
 
-    pc.ontrack = (event) => {
-      play(peer, event);
-    };
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate === null) return;
-      send(peerId, {
-        candidate: {
-          candidate: candidate.candidate,
-          sdpMid: candidate.sdpMid,
-          sdpMLineIndex: candidate.sdpMLineIndex,
-        },
+    function drop(peer: Peer): void {
+      const { connection } = peer;
+      if (connection === null) return;
+      peer.connection = null;
+      disposeQuietly(connection.scope);
+    }
+
+    /** Gives up on the peer's connection, and tries again after a growing wait. */
+    function fail(peerId: string, peer: Peer): void {
+      events.peerFailed(peerId);
+      drop(peer);
+      if (peer.scope.disposed) return;
+      const wait = nextBackoff(peer.backoffMs, config.retry);
+      peer.backoffMs = wait;
+      later(peer.scope, wait, () => {
+        if (peer.connection === null) connect(peerId, peer, "self", null);
       });
-    };
-    pc.onnegotiationneeded = async () => {
-      try {
-        peer.makingOffer = true;
-        await pc.setLocalDescription();
-        if (pc.localDescription !== null) {
-          send(peerId, { description: pc.localDescription.toJSON() });
+    }
+
+    function connect(
+      peerId: string,
+      peer: Peer,
+      opener: Opener,
+      remoteConn: string | null,
+    ): Connection {
+      const context = audioContext();
+      const connectionScope = peer.scope.child();
+      const { signal } = connectionScope;
+      const gain = context.createGain();
+      const panner = context.createStereoPanner();
+      gain.gain.value = levels.levels(peerId).gain;
+      panner.pan.value = levels.levels(peerId).pan;
+      gain.connect(panner);
+      panner.connect(volumeGain());
+      const sink = new Audio();
+      sink.muted = true;
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+
+      const connection: Connection = {
+        conn: crypto.randomUUID(),
+        remoteConn,
+        scope: connectionScope,
+        pc,
+        polite: isPolite(localId, peerId),
+        gain,
+        panner,
+        sink,
+        source: null,
+        makingOffer: false,
+        ignoreOffer: false,
+      };
+      connectionScope.defer(() => {
+        connection.source?.disconnect();
+        gain.disconnect();
+        panner.disconnect();
+        sink.srcObject = null;
+      });
+      connectionScope.adopt(pc, (closing) => {
+        closing.close();
+      });
+      peer.connection = connection;
+
+      let cancelDeadline: (() => void) | null = null;
+      const startDeadline = (): void => {
+        cancelDeadline ??= later(
+          connectionScope,
+          config.connectDeadlineMs,
+          () => {
+            fail(peerId, peer);
+          },
+        );
+      };
+      let restarted = false;
+      startDeadline();
+
+      pc.addEventListener(
+        "track",
+        (event) => {
+          play(connection, event);
+        },
+        { signal },
+      );
+      pc.addEventListener(
+        "icecandidate",
+        ({ candidate }) => {
+          if (candidate === null) return;
+          send(peerId, connection, {
+            candidate: {
+              candidate: candidate.candidate,
+              sdpMid: candidate.sdpMid,
+              sdpMLineIndex: candidate.sdpMLineIndex,
+            },
+          });
+        },
+        { signal },
+      );
+      pc.addEventListener(
+        "negotiationneeded",
+        () => {
+          connection.makingOffer = true;
+          pc.setLocalDescription()
+            .then(() => {
+              if (pc.localDescription !== null) {
+                send(peerId, connection, {
+                  description: pc.localDescription.toJSON(),
+                });
+              }
+            })
+            .catch((error: unknown) => {
+              console.warn("Voice offer failed", error);
+            })
+            .finally(() => {
+              connection.makingOffer = false;
+            });
+        },
+        { signal },
+      );
+      pc.addEventListener(
+        "connectionstatechange",
+        () => {
+          switch (pc.connectionState) {
+            case "connected":
+              cancelDeadline?.();
+              cancelDeadline = null;
+              peer.backoffMs = null;
+              break;
+            case "disconnected":
+              startDeadline();
+              break;
+            case "failed":
+              startDeadline();
+              // A connection never negotiated has nothing to restart.
+              if (!restarted && pc.remoteDescription !== null) {
+                restarted = true;
+                pc.restartIce();
+              }
+              break;
+            case "new":
+            case "connecting":
+            case "closed":
+              break;
+          }
+        },
+        { signal },
+      );
+
+      // The impolite side opens the audio line, and the polite side says it is ready for
+      // it. A connection made to take up an offer answers on the line the offer brings. The
+      // line carries both directions, so the mic can be swapped in without renegotiating.
+      if (opener !== "offer" && !connection.polite) {
+        pc.addTransceiver("audio", { direction: "sendrecv" });
+        attachMic(pc);
+      } else if (opener === "self") {
+        send(peerId, connection, { ready: true });
+      }
+      return connection;
+    }
+
+    async function negotiate(
+      connection: Connection,
+      message: SignalMessage,
+    ): Promise<void> {
+      const { pc } = connection;
+      if ("ready" in message) {
+        // The other side may have dropped our offer while it was not connecting to us, so it
+        // goes again, carrying the candidates gathered since.
+        const unanswered =
+          pc.signalingState === "have-local-offer" && !connection.makingOffer;
+        if (unanswered && pc.localDescription !== null) {
+          send(message.from, connection, {
+            description: pc.localDescription.toJSON(),
+          });
         }
-      } catch (error) {
-        console.warn("Voice offer failed", error);
-      } finally {
-        peer.makingOffer = false;
+        return;
       }
-    };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed") pc.restartIce();
-    };
+      if ("candidate" in message) {
+        try {
+          await pc.addIceCandidate(message.candidate);
+        } catch (error) {
+          if (!connection.ignoreOffer) throw error;
+        }
+        return;
+      }
 
-    // One side opens the audio line; the other answers on it. Either way the line carries
-    // both directions, so the mic can be swapped in later without renegotiating.
-    if (!peer.polite) {
-      pc.addTransceiver("audio", { direction: "sendrecv" });
+      const { description } = message;
+      const current = pc.remoteDescription;
+      if (current !== null && sameDescription(current.sdp, description.sdp))
+        return;
+      const collision =
+        description.type === "offer" &&
+        (connection.makingOffer || pc.signalingState !== "stable");
+      connection.ignoreOffer = !connection.polite && collision;
+      if (connection.ignoreOffer) return;
+
+      await pc.setRemoteDescription(description);
+      if (description.type !== "offer") return;
+      for (const transceiver of pc.getTransceivers()) {
+        if (transceiver.direction === "recvonly") {
+          transceiver.direction = "sendrecv";
+        }
+      }
       attachMic(pc);
-    }
-    return peer;
-  }
-
-  async function negotiate(peer: Peer, message: SignalMessage): Promise<void> {
-    const { pc } = peer;
-    if ("candidate" in message) {
-      try {
-        await pc.addIceCandidate(message.candidate);
-      } catch (error) {
-        if (!peer.ignoreOffer) throw error;
-      }
-      return;
-    }
-
-    const { description } = message;
-    const collision =
-      description.type === "offer" &&
-      (peer.makingOffer || pc.signalingState !== "stable");
-    peer.ignoreOffer = !peer.polite && collision;
-    if (peer.ignoreOffer) return;
-
-    await pc.setRemoteDescription(description);
-    if (description.type !== "offer") return;
-    for (const transceiver of pc.getTransceivers()) {
-      if (transceiver.direction === "recvonly") {
-        transceiver.direction = "sendrecv";
+      await pc.setLocalDescription();
+      if (pc.localDescription !== null) {
+        send(message.from, connection, {
+          description: pc.localDescription.toJSON(),
+        });
       }
     }
-    attachMic(pc);
-    await pc.setLocalDescription();
-    if (pc.localDescription !== null) {
-      send(message.from, { description: pc.localDescription.toJSON() });
+
+    function opener(message: SignalMessage): Opener {
+      return "ready" in message ? "ready" : "offer";
     }
-  }
 
-  function removePeer(peerId: string): void {
-    levels.forget(peerId);
-    const peer = peers.get(peerId);
-    if (peer === undefined) return;
-    peers.delete(peerId);
-    peer.pc.close();
-    peer.source?.disconnect();
-    peer.gain.disconnect();
-    peer.panner.disconnect();
-    peer.sink.srcObject = null;
-  }
+    /** Hands a message from a wanted peer to the connection it belongs to. */
+    function deliver(peerId: string, peer: Peer, message: SignalMessage): void {
+      let connection = peer.connection;
+      if (connection === null) {
+        if (!opensNegotiation(message)) return;
+        connection = connect(
+          peerId,
+          peer,
+          opener(message),
+          message.conn ?? null,
+        );
+      } else {
+        const decision = connDecision(connection.remoteConn, message);
+        if (decision.kind === "drop") return;
+        if (decision.kind === "replace") {
+          drop(peer);
+          connection = connect(
+            peerId,
+            peer,
+            opener(message),
+            decision.remoteConn,
+          );
+        } else {
+          connection.remoteConn = decision.remoteConn;
+        }
+      }
+      negotiate(connection, message).catch((error: unknown) => {
+        console.warn("Voice negotiation failed", error);
+      });
+    }
 
-  function leave(): void {
-    for (const peerId of [...peers.keys()]) removePeer(peerId);
-    room = null;
+    function addPeer(peerId: string): void {
+      const peer: Peer = {
+        scope: scope.child(),
+        connection: null,
+        backoffMs: null,
+      };
+      own.set(peerId, peer);
+      for (const message of pending.take(peerId, performance.now())) {
+        deliver(peerId, peer, message);
+      }
+      if (peer.connection === null) connect(peerId, peer, "self", null);
+    }
+
+    function removePeer(peerId: string): void {
+      const peer = own.get(peerId);
+      own.delete(peerId);
+      levels.forget(peerId);
+      if (peer !== undefined) disposeQuietly(peer.scope);
+    }
+
+    const voiceRoom: VoiceRoom = {
+      receive(payload) {
+        if (scope.disposed) return;
+        const message = signalFor(payload, localId);
+        if (message === null) return;
+        const peer = own.get(message.from);
+        if (peer === undefined) pending.hold(message, performance.now());
+        else deliver(message.from, peer, message);
+      },
+
+      setPeers(ids) {
+        if (scope.disposed) return;
+        const { added, removed } = diffPeers(own.keys(), ids);
+        removed.forEach(removePeer);
+        added.forEach(addPeer);
+      },
+
+      setPeerMix(peerId, mix) {
+        if (scope.disposed) return;
+        levels.setMix(peerId, mix);
+        applyLevels(peerId);
+      },
+
+      leave() {
+        if (scope.disposed) return;
+        own.clear();
+        levels.forgetMixes();
+        if (room === voiceRoom) room = null;
+        disposeQuietly(scope);
+      },
+    };
+    return voiceRoom;
   }
 
   return {
     requestMic,
 
-    join(localId, transport) {
-      leave();
-      room = { localId, transport };
+    join(localId, send, events) {
+      room?.leave();
       requestMic();
+      room = join(localId, send, events);
+      return room;
     },
-
-    leave,
-
-    receive(payload) {
-      if (room === null) return;
-      const message = signalFor(payload, room.localId);
-      if (message === null) return;
-      let peer = peers.get(message.from);
-      if (peer === undefined) {
-        // An offer can beat the STATE that would have introduced its sender.
-        if (!("description" in message) || message.description.type !== "offer")
-          return;
-        peer = connect(room.localId, message.from);
-      }
-      negotiate(peer, message).catch((error: unknown) => {
-        console.warn("Voice negotiation failed", error);
-      });
-    },
-
-    addPeer(peerId) {
-      if (room === null || peers.has(peerId)) return;
-      connect(room.localId, peerId);
-    },
-
-    removePeer,
 
     configure(settings) {
       ({ mode, muted } = settings);
@@ -314,11 +541,6 @@ export function createWebRtcVoice(
       applyTransmit();
     },
 
-    setPeerMix(peerId, mix) {
-      levels.setMix(peerId, mix);
-      applyLevels(peerId);
-    },
-
     setPeerMuted(peerId, mute) {
       levels.setMuted(peerId, mute);
       applyLevels(peerId);
@@ -326,8 +548,16 @@ export function createWebRtcVoice(
 
     status() {
       const connected: string[] = [];
-      peers.forEach((peer, peerId) => {
-        if (peer.pc.connectionState === "connected") connected.push(peerId);
+      const all: ReturnType<Voice["status"]>["connections"] = [];
+      peers.forEach((peer, id) => {
+        const { connection } = peer;
+        if (connection === null) {
+          all.push({ id, state: "pending", gain: 0 });
+          return;
+        }
+        const state = connection.pc.connectionState;
+        if (state === "connected") connected.push(id);
+        all.push({ id, state, gain: connection.gain.gain.value });
       });
       return {
         mode,
@@ -336,6 +566,7 @@ export function createWebRtcVoice(
         transmitting: transmitting(),
         peers: connected,
         mutedPeers: levels.mutedPeers(),
+        connections: all,
       };
     },
   };

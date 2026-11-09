@@ -1,6 +1,5 @@
 import type { UiHandlers } from "../input/index.js";
 import type { Settings } from "../settings/index.js";
-import type { Transport } from "../net/index.js";
 
 /** The player's own voice preferences: transmit mode, mic mute, and incoming volume. */
 export type VoiceSettings = Settings["voice"];
@@ -22,6 +21,26 @@ export interface PeerMix {
   pan: number;
 }
 
+/** Timings and limits a voice implementation holds its connections to. */
+export interface VoiceConnectionConfig {
+  /** Time constant, in seconds, of the ramp a peer's gain and pan follow to a new level. */
+  levelRampS: number;
+  /** How long a connection may stay down, from its start or from dropping, before it fails. */
+  connectDeadlineMs: number;
+  /** Signals held from players not wanted yet: at most `cap` per player, for `ttlMs`. */
+  pending: { cap: number; ttlMs: number };
+  /** Waits between attempts to reconnect a peer whose connection failed. */
+  retry: { firstMs: number; maxMs: number };
+}
+
+/** One wanted peer. Its state is "pending" while it waits for its next connection attempt. */
+interface VoiceConnection {
+  id: string;
+  state: RTCPeerConnectionState | "pending";
+  /** The gain this peer's voice plays at right now. */
+  gain: number;
+}
+
 interface VoiceStatus {
   mode: VoiceMode;
   /** Hard mute of the outgoing mic, in either mode. */
@@ -33,37 +52,57 @@ interface VoiceStatus {
   peers: string[];
   /** Remote players we muted locally, connected or not. */
   mutedPeers: string[];
+  /** Every peer the current room holds a connection for, in any state. */
+  connections: VoiceConnection[];
+}
+
+/** Hears about voice connections that do not come up. */
+interface VoiceRoomEvents {
+  /** The connection to `id` stayed down past its deadline. Voice retries while it is wanted. */
+  peerFailed(id: string): void;
+}
+
+/** Voice in one room. Inert after `leave()`. */
+export interface VoiceRoom {
+  /** Feeds in a SIGNAL payload received from the room, unparsed. */
+  receive(payload: unknown): void;
+  /**
+   * The remote players to hold voice connections with. Players added get a connection and
+   * players dropped are hung up on. Signals from anyone else never open a connection.
+   */
+  setPeers(ids: ReadonlySet<string>): void;
+  /** Volume and pan for one remote player, kept even before it connects; silent until set. */
+  setPeerMix(id: string, mix: PeerMix): void;
+  /** Hangs up on everyone in the room. */
+  leave(): void;
 }
 
 /**
  * Port for voice chat between the players of a room. The adapter owns the media and the
- * connections; game code only reports who is in the room and turns knobs.
+ * connections; game code only says who to talk to and turns knobs.
  */
 export interface Voice {
   /** Asks for the mic. Call from a user gesture (a click), since browsers require one. */
-  requestMic: () => void;
-  /** Starts voice in a room. Setup messages go out through `transport` as SIGNAL events. */
-  join: (localId: string, transport: Pick<Transport, "send">) => void;
-  /** Hangs up on everyone. The mic stays captured for the next room. */
-  leave: () => void;
-  /** Feeds in a SIGNAL payload received from the room, unparsed. */
-  receive: (payload: unknown) => void;
-  /** A remote player is in the room: connect to them. */
-  addPeer: (peerId: string) => void;
-  /** A remote player left: hang up on them. */
-  removePeer: (peerId: string) => void;
+  requestMic(): void;
   /** Applies the player's transmit mode, mic mute, and incoming volume (0..1). */
-  configure: (settings: VoiceSettings) => void;
+  configure(settings: VoiceSettings): void;
   /** Whether push-to-talk is held. Ignored in open-mic mode. */
-  setTalking: (held: boolean) => void;
-  /** Volume and pan for one remote player; full volume and centred until set. */
-  setPeerMix: (peerId: string, mix: PeerMix) => void;
+  setTalking(held: boolean): void;
   /**
    * Local mute of one remote player's voice, on top of their mix: later setPeerMix calls
-   * keep it. Remembered by peer id for the session, so it outlasts a reconnect.
+   * keep it. Remembered by peer id across rooms, so it outlasts a reconnect.
    */
-  setPeerMuted: (peerId: string, muted: boolean) => void;
-  status: () => VoiceStatus;
+  setPeerMuted(id: string, muted: boolean): void;
+  status(): VoiceStatus;
+  /**
+   * Starts voice in a room, leaving the room joined before. Setup messages go out through
+   * `send`, for the room to deliver as SIGNAL events. The mic stays captured across rooms.
+   */
+  join(
+    localId: string,
+    send: (signal: unknown) => void,
+    events: VoiceRoomEvents,
+  ): VoiceRoom;
 }
 
 /** UI handlers that keep `voice` talking exactly while the action is held. */
@@ -79,18 +118,18 @@ export function pushToTalk(voice: Pick<Voice, "setTalking">): UiHandlers {
 export function createNullVoice(initial: VoiceSettings): Voice {
   let { mode, muted } = initial;
   const noop = (): void => undefined;
+  const room: VoiceRoom = {
+    receive: noop,
+    setPeers: noop,
+    setPeerMix: noop,
+    leave: noop,
+  };
   return {
     requestMic: noop,
-    join: noop,
-    leave: noop,
-    receive: noop,
-    addPeer: noop,
-    removePeer: noop,
     configure(settings) {
       ({ mode, muted } = settings);
     },
     setTalking: noop,
-    setPeerMix: noop,
     setPeerMuted: noop,
     status: () => ({
       mode,
@@ -99,6 +138,8 @@ export function createNullVoice(initial: VoiceSettings): Voice {
       transmitting: false,
       peers: [],
       mutedPeers: [],
+      connections: [],
     }),
+    join: () => room,
   };
 }

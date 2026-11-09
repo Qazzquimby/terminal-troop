@@ -33,13 +33,14 @@ import {
   micIndicator,
   createNullVoice,
   pushToTalk,
+  syncVoicePeers,
 } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
 import type { DebugInfo } from "./ui/index.js";
 import type { Settings } from "./settings/index.js";
 import { createSettingsStore } from "./settings/index.js";
 import type { Transport } from "./net/index.js";
-import type { Voice, VoiceSettings } from "./voice/index.js";
+import type { Voice, VoiceRoom, VoiceSettings } from "./voice/index.js";
 import { config } from "./config.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
@@ -108,10 +109,12 @@ function selectTransport(params: URLSearchParams): Transport {
 /** Incoming voice plays through the sound effects' master gain. */
 function selectVoice(initial: VoiceSettings): Voice {
   if (typeof RTCPeerConnection === "undefined") return createNullVoice(initial);
-  return createWebRtcVoice(sfx, initial, NetEvent.SIGNAL);
+  return createWebRtcVoice(sfx, initial, config.voiceConnections);
 }
 
 const params = new URLSearchParams(location.search);
+/** `?debug` shows the debug overlay, exposes voice on `window`, and logs voice failures. */
+const debug = params.has("debug");
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera(config.view);
@@ -121,11 +124,7 @@ const counted = createCountingTransport(selectTransport(params), () =>
 );
 const transport = counted.transport;
 const perf = createPerfStats();
-const debugOverlay = createDebugOverlay(
-  debugEl,
-  params.has("debug"),
-  config.ui,
-);
+const debugOverlay = createDebugOverlay(debugEl, debug, config.ui);
 const micView = createMicIndicatorView(micEl);
 const sfx = createSfx(config.audio);
 const nameKey = "world:name";
@@ -138,7 +137,7 @@ const settings = createSettingsStore({
 });
 const voice = selectVoice(settings.get().voice);
 // Debug hook for driving voice from the console or a test browser.
-if (params.has("debug")) Object.assign(window, { voice });
+if (debug) Object.assign(window, { voice });
 
 const talkKey = actionKeyLabel("pushToTalk");
 element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
@@ -161,6 +160,15 @@ let roomCode: string | null = null;
 let connecting = false;
 let inventoryOpen = false;
 let errorText = "";
+let voiceRoom: VoiceRoom | null = null;
+/** The remote players `voiceRoom` was last told to connect to. */
+let voicePeers: ReadonlySet<string> = new Set();
+
+/** Points voice at the remote players of `session`; cheap when they are unchanged. */
+function syncVoice(session: Session): void {
+  if (voiceRoom !== null)
+    voicePeers = syncVoicePeers(session, voiceRoom, voicePeers, config.voice);
+}
 
 function nonEmpty(value: string | null): string | null {
   return value === null || value === "" ? null : value;
@@ -236,7 +244,9 @@ function sayHello(session: Session): void {
 async function leaveRoom(): Promise<void> {
   if (roomCode !== null) await transport.send(NetEvent.BYE, { id: playerId });
   roomCode = null;
-  voice.leave();
+  voiceRoom?.leave();
+  voiceRoom = null;
+  voicePeers = new Set();
   await transport.leave();
 }
 
@@ -276,12 +286,12 @@ async function enterRoom(rawCode: string): Promise<void> {
       sfx,
       config,
       {
-        playerJoined: (id) => {
-          voice.addPeer(id);
+        playerJoined: () => {
+          syncVoice(session);
           refreshPeers(session);
         },
-        playerLeft: (id) => {
-          voice.removePeer(id);
+        playerLeft: () => {
+          syncVoice(session);
           refreshPeers(session);
         },
       },
@@ -295,13 +305,24 @@ async function enterRoom(rawCode: string): Promise<void> {
       },
       [NetEvent.BYE]: (payload) => {
         const parsed = PresenceMessage.safeParse(payload);
-        if (parsed.success) removePlayer(session, parsed.data.id);
+        if (!parsed.success) return;
+        removePlayer(session, parsed.data.id);
+        syncVoice(session);
       },
       [NetEvent.SIGNAL]: (payload) => {
-        voice.receive(payload);
+        voiceRoom?.receive(payload);
       },
     });
-    voice.join(playerId, transport);
+    voiceRoom = voice.join(
+      playerId,
+      (signal) => void transport.send(NetEvent.SIGNAL, signal),
+      {
+        peerFailed(id) {
+          if (debug) console.info("Voice connection failed", id);
+        },
+      },
+    );
+    syncVoice(session);
     roomCode = code;
     sayHello(session);
 
@@ -347,7 +368,10 @@ function frame(): void {
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
-    applyProximity(session, voice, config.voice);
+    if (voiceRoom !== null) {
+      syncVoice(session);
+      applyProximity(session, voiceRoom, config.voice);
+    }
 
     sendState(session, transport, now);
     updateCamera(camera, renderPosition(session.local, alpha));
