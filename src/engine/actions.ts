@@ -14,6 +14,7 @@ export const ACTIONS = {
   toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
+  pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },
 } as const;
 
 export type Action = keyof typeof ACTIONS;
@@ -24,6 +25,19 @@ export type Action = keyof typeof ACTIONS;
  */
 export type InputContext =
   (typeof ACTIONS)[Action]["contexts"][number] | "text";
+
+/** Whether a binding with these contexts is active in `context`. */
+export function activeIn<C extends string>(
+  binding: { readonly contexts: readonly C[] },
+  context: C,
+): boolean {
+  return binding.contexts.includes(context);
+}
+
+/** Whether `action` is active in `context`. */
+export function isActiveIn(action: Action, context: InputContext): boolean {
+  return activeIn<InputContext>(ACTIONS[action], context);
+}
 
 /** What one simulation step sees: held actions, and actions pressed or released since the previous step. */
 export interface ActionFrame {
@@ -45,6 +59,54 @@ export interface ActionSink<A extends string = Action> {
   resume(action: A, time: number): void;
   /** Blur: every held action counts as released and pending presses are dropped. */
   clear(time: number): void;
+}
+
+/** What a UI action does, run at once with the event time. */
+export interface UiHandlers {
+  /** Runs on a press of an action that is not held; never on resume. */
+  press?: (time: number) => void;
+  /** Runs whenever the action starts or stops being held, whatever the cause. */
+  held?: (held: boolean, time: number) => void;
+}
+
+/**
+ * Passes every event on to `sink`, runs `press` handlers on presses, and runs
+ * `held` handlers on each change of an action's held state.
+ */
+export function withUiHandlers<A extends string>(
+  sink: ActionSink<A>,
+  handlers: Partial<Record<A, UiHandlers>>,
+): ActionSink<A> {
+  const held = new Set<A>();
+  const hold = (action: A, time: number): void => {
+    if (held.has(action)) return;
+    held.add(action);
+    handlers[action]?.held?.(true, time);
+  };
+  const letGo = (action: A, time: number): void => {
+    if (!held.delete(action)) return;
+    handlers[action]?.held?.(false, time);
+  };
+  return {
+    press(action, time) {
+      sink.press(action, time);
+      if (held.has(action)) return;
+      handlers[action]?.press?.(time);
+      hold(action, time);
+    },
+    release(action, time) {
+      sink.release(action, time);
+      letGo(action, time);
+    },
+    resume(action, time) {
+      sink.resume(action, time);
+      hold(action, time);
+    },
+    clear(time) {
+      sink.clear(time);
+      for (const action of [...held]) letGo(action, time);
+    },
+  };
 }
 
 type ActionEvent =

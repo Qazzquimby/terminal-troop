@@ -1,21 +1,24 @@
-import type { Action, InputContext } from "./actions.js";
-import { ACTIONS, createActionState, toControls } from "./actions.js";
+import type { Action, InputContext, UiHandlers } from "./actions.js";
+import {
+  ACTIONS,
+  createActionState,
+  toControls,
+  withUiHandlers,
+} from "./actions.js";
 import { VIEW_H, VIEW_W } from "./config.js";
 import { createKeyboardSource } from "./keyboard.js";
 import type { Point } from "./map.js";
 import type { Controls } from "./player.js";
 
-/** UI actions fire immediately on press, outside the simulation step, with the press time. */
-type UiActions = Partial<Record<Action, (time: number) => void>>;
-
 /**
  * Only actions active in the current context respond, and only their keys are kept from
- * the page; every other key keeps its default (focus moves, sliders, typing).
+ * the page; every other key keeps its default (focus moves, sliders, typing). UI actions
+ * run immediately, outside the simulation step.
  */
 export function createInput(
   canvas: HTMLCanvasElement,
   camera: Point,
-  uiActions: UiActions,
+  uiActions: Partial<Record<Action, UiHandlers>>,
   context: InputContext,
 ): {
   getControls: (until: number) => Controls;
@@ -24,7 +27,7 @@ export function createInput(
 } {
   const state = createActionState();
   const keyboard = createKeyboardSource<Action, InputContext>(
-    state,
+    withUiHandlers(state, uiActions),
     ACTIONS,
     context,
   );
@@ -43,13 +46,7 @@ export function createInput(
 
   window.addEventListener("keydown", (event) => {
     if (keyboard.actionsFor(event.code).length > 0) event.preventDefault();
-    for (const action of keyboard.keyDown(
-      event.code,
-      event.repeat,
-      event.timeStamp,
-    )) {
-      uiActions[action]?.(event.timeStamp);
-    }
+    keyboard.keyDown(event.code, event.repeat, event.timeStamp);
   });
 
   window.addEventListener("keyup", (event) => {

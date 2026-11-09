@@ -1,4 +1,5 @@
 import type { ActionSink } from "./actions.js";
+import { activeIn } from "./actions.js";
 
 /** An action's keys, and the contexts in which it is active. */
 interface Binding<C extends string> {
@@ -25,8 +26,7 @@ export function createKeyboardSource<A extends string, C extends string>(
   const keys = new Set<string>();
   let context = initialContext;
   const all = keysOf(bindings);
-  const isActive = (action: A): boolean =>
-    bindings[action].contexts.includes(context);
+  const isActive = (action: A): boolean => activeIn(bindings[action], context);
   const isHeld = (action: A): boolean =>
     isActive(action) && bindings[action].keys.some((code) => keys.has(code));
   const heldActions = (): Set<A> => new Set(all.filter(isHeld));
@@ -61,8 +61,9 @@ export function createKeyboardSource<A extends string, C extends string>(
       for (const action of freed) sink.release(action, time);
       return freed;
     },
-    /** Window blur: forgets every key and clears the sink. */
+    /** Window blur: releases every held action, forgets every key and clears the sink. */
     blur(time: number): void {
+      for (const action of heldActions()) sink.release(action, time);
       keys.clear();
       sink.clear(time);
     },

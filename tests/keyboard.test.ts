@@ -74,6 +74,7 @@ test("a key still held after blur is restored by auto-repeat without a press", (
   expect(keyboard.keyDown("right-key", true, 3)).toEqual([]);
   expect(calls).toEqual([
     ["press", "right", 1],
+    ["release", "right", 2],
     ["clear", 2],
     ["resume", "right", 3],
   ]);
@@ -95,7 +96,7 @@ test("a key up without a key down releases nothing", () => {
   expect(calls).toEqual([]);
 });
 
-test("blur forgets held keys and forwards to the sink", () => {
+test("blur releases held actions, forgets held keys and clears the sink", () => {
   const { calls, keyboard } = recorder();
   keyboard.keyDown("up-key", false, 1);
   keyboard.blur(2);
@@ -103,6 +104,7 @@ test("blur forgets held keys and forwards to the sink", () => {
   expect(keyboard.keyDown("up-key", false, 4)).toEqual(["up"]);
   expect(calls).toEqual([
     ["press", "up", 1],
+    ["release", "up", 2],
     ["clear", 2],
     ["press", "up", 4],
   ]);

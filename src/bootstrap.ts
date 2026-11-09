@@ -5,6 +5,7 @@ import type { Session } from "./engine/session.js";
 import {
   createSession,
   receiveState,
+  removePlayer,
   roomKey,
   sendState,
   updateSession,
@@ -20,14 +21,22 @@ import { createPerfStats } from "./engine/perf-stats.js";
 import { createCountingTransport } from "./engine/counting-transport.js";
 import type { DebugInfo } from "./engine/debug-overlay.js";
 import { createDebugOverlay } from "./engine/debug-overlay.js";
+import type { Settings } from "./engine/settings.js";
 import { createSettingsStore } from "./engine/settings.js";
-import { createSettingsMenu } from "./settings-menu.js";
+import { createSettingsMenu, menuPeers } from "./settings-menu.js";
 import { trackInputContext } from "./app-context.js";
 import { element } from "./dom.js";
 import type { Transport } from "./engine/transport.js";
+import type { Voice, VoiceSettings } from "./engine/voice.js";
+import {
+  applyVoiceSettings,
+  createNullVoice,
+  pushToTalk,
+} from "./engine/voice.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
+import { createWebRtcVoice } from "./adapters/webrtc-voice.js";
 
 const canvas = element("#game", HTMLCanvasElement);
 const statusEl = element("#status", HTMLParagraphElement);
@@ -41,6 +50,8 @@ const inventoryList = element("#inventory-slots", HTMLOListElement);
 const debugEl = element("#debug", HTMLPreElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
+const controlsHint = element(".controls-hint", HTMLParagraphElement);
+const baseHint = controlsHint.textContent.trim();
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -72,16 +83,22 @@ function selectTransport(params: URLSearchParams): Transport {
   return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
 }
 
+/** Incoming voice plays through the sound effects' master gain. */
+function selectVoice(initial: VoiceSettings): Voice {
+  if (typeof RTCPeerConnection === "undefined") return createNullVoice(initial);
+  return createWebRtcVoice(sfx, initial);
+}
+
+const params = new URLSearchParams(location.search);
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera();
-const startParams = new URLSearchParams(location.search);
-const counted = createCountingTransport(selectTransport(startParams), () =>
+const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
 );
 const transport = counted.transport;
 const perf = createPerfStats();
-const debugOverlay = createDebugOverlay(debugEl, startParams.has("debug"));
+const debugOverlay = createDebugOverlay(debugEl, params.has("debug"));
 const sfx = createSfx();
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
@@ -91,10 +108,18 @@ const settings = createSettingsStore({
     localStorage.setItem(settingsKey, value);
   },
 });
-sfx.setMasterVolume(settings.get().audio.masterVolume);
-settings.subscribe((current) => {
+const voice = selectVoice(settings.get().voice);
+// Debug hook for driving voice from the console or a test browser.
+if (params.has("debug")) Object.assign(window, { voice });
+
+function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
-});
+  applyVoiceSettings(voice, current.voice);
+  controlsHint.textContent =
+    current.voice.mode === "pushToTalk" ? `${baseHint} · V to talk` : baseHint;
+}
+applySettings(settings.get());
+settings.subscribe(applySettings);
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
 let game: Session | null = null;
@@ -115,15 +140,22 @@ const input = createInput(
   canvas,
   camera,
   {
-    toggleInventory() {
-      if (game !== null) inventoryOpen = !inventoryOpen;
+    toggleInventory: {
+      press() {
+        if (game !== null) inventoryOpen = !inventoryOpen;
+      },
     },
-    toggleSettings(time) {
-      settingsMenu.toggle(time);
+    toggleSettings: {
+      press(time) {
+        settingsMenu.toggle(time);
+      },
     },
-    toggleDebug() {
-      debugOverlay.toggle();
+    toggleDebug: {
+      press() {
+        debugOverlay.toggle();
+      },
     },
+    pushToTalk: pushToTalk(voice),
   },
   "play",
 );
@@ -132,9 +164,22 @@ const settingsMenu = createSettingsMenu(
   settingsDialog,
   settings,
   (open, time) => {
+    if (open) refreshPeers(game);
     inputContext.set(open ? "menu" : "play", time);
   },
+  (id, muted) => {
+    voice.setPeerMuted(id, muted);
+  },
 );
+
+/** Lists the other players of `session` in the settings menu, with their voice mutes. */
+function refreshPeers(session: Session | null): void {
+  const players = session === null ? [] : session.players.values();
+  settingsMenu.setPeers(
+    menuPeers(players, playerId, voice.status().mutedPeers),
+  );
+}
+refreshPeers(null);
 
 function updateStatus(): void {
   createBtn.disabled = connecting;
@@ -160,6 +205,7 @@ function sayHello(session: Session): void {
 async function leaveRoom(): Promise<void> {
   if (roomCode !== null) await transport.send(NetEvent.BYE, { id: playerId });
   roomCode = null;
+  voice.leave();
   await transport.leave();
 }
 
@@ -176,6 +222,7 @@ async function enterRoom(rawCode: string): Promise<void> {
   errorText = "";
   sfx.stopAll();
   game = null;
+  refreshPeers(null);
   copyBtn.hidden = true;
   inventoryOpen = false;
   updateStatus();
@@ -189,7 +236,16 @@ async function enterRoom(rawCode: string): Promise<void> {
     roomInput.value = code;
     localStorage.setItem(nameKey, name);
 
-    const session = createSession(playerId, name, code, env.world, sfx);
+    const session = createSession(playerId, name, code, env.world, sfx, {
+      playerJoined: (id) => {
+        voice.addPeer(id);
+        refreshPeers(session);
+      },
+      playerLeft: (id) => {
+        voice.removePeer(id);
+        refreshPeers(session);
+      },
+    });
     await transport.join(roomKey(code, env.world), {
       [NetEvent.STATE]: (payload) => {
         receiveState(session, payload);
@@ -199,16 +255,19 @@ async function enterRoom(rawCode: string): Promise<void> {
       },
       [NetEvent.BYE]: (payload) => {
         const parsed = PresenceMessage.safeParse(payload);
-        if (parsed.success && parsed.data.id !== playerId)
-          session.players.delete(parsed.data.id);
+        if (parsed.success) removePlayer(session, parsed.data.id);
+      },
+      [NetEvent.SIGNAL]: (payload) => {
+        voice.receive(payload);
       },
     });
+    voice.join(playerId, transport);
     roomCode = code;
     sayHello(session);
 
-    const params = new URLSearchParams(location.search);
-    params.set("room", code);
-    history.replaceState({}, "", `${location.pathname}?${params.toString()}`);
+    const url = new URLSearchParams(location.search);
+    url.set("room", code);
+    history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
 
     game = session;
     simTime = performance.now();
@@ -285,6 +344,7 @@ createBtn.addEventListener("click", () => {
   const code = Array.from(bytes, (value) => (value % 36).toString(36))
     .join("")
     .toUpperCase();
+  voice.requestMic();
   void enterRoom(code);
 });
 
@@ -293,6 +353,7 @@ settingsBtn.addEventListener("click", (event) => {
 });
 
 joinBtn.addEventListener("click", () => {
+  voice.requestMic();
   void enterRoom(roomInput.value);
 });
 
@@ -320,5 +381,5 @@ window.addEventListener("beforeunload", () => {
 
 requestAnimationFrame(frame);
 
-const initialRoom = new URLSearchParams(location.search).get("room");
+const initialRoom = params.get("room");
 if (initialRoom !== null) void enterRoom(initialRoom);

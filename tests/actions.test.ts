@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
 import type { Action, InputContext } from "../src/engine/actions.js";
 import {
-  ACTIONS,
   createActionState,
+  isActiveIn,
   toControls,
+  withUiHandlers,
 } from "../src/engine/actions.js";
-import { createKeyboardSource } from "../src/engine/keyboard.js";
 
 const AIM = { x: 0, y: 0 };
 
@@ -167,85 +167,106 @@ test("sprint follows the held sprint action", () => {
   expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
 });
 
-/** The real binding table driving an action state, with actions pressed by name. */
-function inContext(context: InputContext) {
+const CONTEXTS: InputContext[] = ["play", "menu", "text"];
+
+test.each<[Action, InputContext[]]>([
+  ["moveUp", ["play"]],
+  ["moveLeft", ["play"]],
+  ["moveDown", ["play"]],
+  ["moveRight", ["play"]],
+  ["sprint", ["play"]],
+  ["toggleInventory", ["play"]],
+  ["toggleSettings", ["play", "menu"]],
+  ["toggleDebug", ["play", "menu"]],
+  ["pushToTalk", ["play", "menu"]],
+])("%s is active only in %o", (action, active) => {
+  for (const context of CONTEXTS)
+    expect(isActiveIn(action, context)).toBe(active.includes(context));
+});
+
+/** A UI-handled action state that records every handler call. */
+function uiInput() {
   const state = createActionState();
-  const keyboard = createKeyboardSource<Action, InputContext>(
-    state,
-    ACTIONS,
-    context,
-  );
-  const key = (action: Action): string => ACTIONS[action].keys[0];
-  return {
-    state,
-    keyboard,
-    down: (action: Action, time: number) =>
-      keyboard.keyDown(key(action), false, time),
-    up: (action: Action, time: number) => keyboard.keyUp(key(action), time),
-  };
+  const calls: (
+    ["press", Action, number] | ["held", Action, boolean, number]
+  )[] = [];
+  const record = (action: Action) => ({
+    press: (time: number) => calls.push(["press", action, time]),
+    held: (held: boolean, time: number) =>
+      calls.push(["held", action, held, time]),
+  });
+  const sink = withUiHandlers(state, {
+    toggleInventory: { press: record("toggleInventory").press },
+    pushToTalk: { held: record("pushToTalk").held },
+    sprint: record("sprint"),
+  });
+  return { state, sink, calls };
 }
 
-test("actions not active in the context are ignored", () => {
-  const menu = inContext("menu");
-  expect(menu.down("moveRight", 1)).toEqual([]);
-  expect(menu.down("toggleInventory", 2)).toEqual([]);
-  expect(menu.down("sprint", 3)).toEqual([]);
-  const { frame, controls } = step(menu.state, 10);
-  expect(frame.held).toEqual(actions());
-  expect(frame.pressed).toEqual(actions());
-  expect(controls.move).toEqual({ x: 0, y: 0 });
-
-  const text = inContext("text");
-  expect(text.down("moveUp", 1)).toEqual([]);
-  expect(text.down("toggleSettings", 2)).toEqual([]);
-  expect(text.down("toggleDebug", 3)).toEqual([]);
-  expect(step(text.state, 10).frame.pressed).toEqual(actions());
+test("every event still reaches the action state", () => {
+  const { state, sink } = uiInput();
+  sink.press("toggleInventory", 1);
+  sink.press("moveUp", 1);
+  sink.resume("sprint", 1);
+  sink.release("toggleInventory", 2);
+  const first = step(state, 2).frame;
+  expect(first.pressed).toEqual(actions("toggleInventory", "moveUp"));
+  expect(first.released).toEqual(actions("toggleInventory"));
+  sink.clear(3);
+  expect(step(state, 3).frame.released).toEqual(actions("moveUp", "sprint"));
 });
 
-test("switching context releases held actions not active in it, at the switch time", () => {
-  const input = inContext("play");
-  input.down("moveRight", 1);
-  input.down("sprint", 2);
-  expect(step(input.state, 5).controls.move.x).toBe(1);
-
-  input.keyboard.setContext("menu", 20);
-  expect(step(input.state, 19).frame.held).toEqual(
-    actions("moveRight", "sprint"),
-  );
-  const switched = step(input.state, 20);
-  expect(switched.frame.released).toEqual(actions("moveRight", "sprint"));
-  expect(switched.controls.move).toEqual({ x: 0, y: 0 });
-
-  // Let go while in the menu, then back to play: no drift.
-  expect(input.up("moveRight", 30)).toEqual([]);
-  expect(input.up("sprint", 31)).toEqual([]);
-  input.keyboard.setContext("play", 40);
-  const after = step(input.state, 50);
-  expect(after.frame.held).toEqual(actions());
-  expect(after.frame.released).toEqual(actions());
+test("a toggle press handler runs on press, not on resume", () => {
+  const { sink, calls } = uiInput();
+  sink.press("toggleInventory", 1);
+  sink.release("toggleInventory", 2);
+  sink.resume("toggleInventory", 3);
+  sink.clear(4);
+  sink.press("toggleInventory", 5);
+  expect(calls).toEqual([
+    ["press", "toggleInventory", 1],
+    ["press", "toggleInventory", 5],
+  ]);
 });
 
-test("an action active in both contexts toggles across the switch", () => {
-  const input = inContext("play");
-  expect(input.down("toggleSettings", 1)).toEqual(["toggleSettings"]);
-  input.keyboard.setContext("menu", 1);
-  input.up("toggleSettings", 2);
-  expect(step(input.state, 5).frame.pressed).toEqual(actions("toggleSettings"));
-
-  expect(input.down("toggleSettings", 10)).toEqual(["toggleSettings"]);
-  input.keyboard.setContext("play", 10);
-  input.up("toggleSettings", 11);
-  const closed = step(input.state, 15).frame;
-  expect(closed.pressed).toEqual(actions("toggleSettings"));
-  expect(closed.released).toEqual(actions("toggleSettings"));
+test("held goes true on press and false on release", () => {
+  const { sink, calls } = uiInput();
+  sink.press("pushToTalk", 1);
+  sink.release("pushToTalk", 2);
+  expect(calls).toEqual([
+    ["held", "pushToTalk", true, 1],
+    ["held", "pushToTalk", false, 2],
+  ]);
 });
 
-test("held actions active in both contexts stay held across the switch", () => {
-  const input = inContext("play");
-  input.down("toggleDebug", 1);
-  input.down("moveUp", 1);
-  input.keyboard.setContext("menu", 5);
-  const frame = step(input.state, 10).frame;
-  expect(frame.held).toEqual(actions("toggleDebug"));
-  expect(frame.released).toEqual(actions("moveUp"));
+test("held goes true on resume without a press call", () => {
+  const { sink, calls } = uiInput();
+  sink.resume("sprint", 1);
+  expect(calls).toEqual([["held", "sprint", true, 1]]);
+});
+
+test("clear ends held only for actions that are held", () => {
+  const { sink, calls } = uiInput();
+  sink.press("sprint", 1);
+  sink.press("pushToTalk", 1);
+  sink.release("pushToTalk", 2);
+  calls.length = 0;
+  sink.clear(3);
+  expect(calls).toEqual([["held", "sprint", false, 3]]);
+});
+
+test("held reports only real transitions", () => {
+  const { sink, calls } = uiInput();
+  sink.release("sprint", 1);
+  sink.press("sprint", 2);
+  sink.press("sprint", 3);
+  sink.resume("sprint", 4);
+  sink.release("sprint", 5);
+  sink.release("sprint", 6);
+  sink.clear(7);
+  expect(calls).toEqual([
+    ["press", "sprint", 2],
+    ["held", "sprint", true, 2],
+    ["held", "sprint", false, 5],
+  ]);
 });

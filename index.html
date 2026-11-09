@@ -62,6 +62,15 @@
               Voice volume
             </label>
             <input id="voice-volume" type="range" min="0" max="1" step="0.05" />
+            <span id="voice-peers-title" class="settings-range">Players</span>
+            <ul
+              id="voice-peers"
+              class="settings-peers"
+              aria-labelledby="voice-peers-title"
+            ></ul>
+            <p id="voice-peers-empty" class="settings-empty">
+              No one else here
+            </p>
           </fieldset>
           <fieldset>
             <legend>Audio</legend>
