@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { NetEvent } from "../engine/config.js";
-import type { Transport } from "../engine/transport.js";
+import type { Transport } from "../../net/index.js";
 
-const Envelope = z.object({ event: z.enum(NetEvent), payload: z.unknown() });
+const Envelope = z.object({ event: z.string(), payload: z.unknown() });
 
 /**
  * Same-machine transport over the browser's BroadcastChannel: every tab or window of this
@@ -25,7 +24,11 @@ export function createBroadcastChannelTransport(): Transport {
       const joined = new BroadcastChannel(`terminal-troop:${room}`);
       joined.addEventListener("message", (message: MessageEvent<unknown>) => {
         const parsed = Envelope.safeParse(message.data);
-        if (parsed.success) handlers[parsed.data.event]?.(parsed.data.payload);
+        if (!parsed.success) return;
+        const { event, payload } = parsed.data;
+        for (const [name, handle] of Object.entries(handlers)) {
+          if (name === event) handle(payload);
+        }
       });
       channel = joined;
     },

@@ -1,5 +1,4 @@
-import type { Point } from "./map.js";
-import type { Controls } from "./player.js";
+import type { Point, Controls } from "../sim/index.js";
 
 /**
  * The only place key codes and context permissions are named: each action's keys,

@@ -1,14 +1,5 @@
 export const EntityKind = { PLAYER: 0 } as const;
 
-export const NetEvent = {
-  HELLO: "hello",
-  STATE: "state",
-  BYE: "bye",
-  /** Voice connection setup: addressed to one player, but broadcast to the room. */
-  SIGNAL: "signal",
-} as const;
-export type NetEvent = (typeof NetEvent)[keyof typeof NetEvent];
-
 export const MAP_CELL = 50;
 export const WORLD_COLS = 160;
 export const WORLD_ROWS = 120;
@@ -26,7 +17,6 @@ export const PLAYER_RADIUS = 14;
 export const PLAYER_SPEED = 220;
 export const SPRINT_MULTIPLIER = 1.8;
 export const PLAYER_ACCELERATION = 1100;
-export const PLAYER_NAME_MAX = 8;
 export const INVENTORY_SLOTS = 12;
 
 export const WALL_BOUNCE = 0;
@@ -47,10 +37,3 @@ export const STAMINA_REGEN = STAMINA_MAX / 4;
 export const STAMINA_REGEN_DELAY = 0.6;
 /** After hitting 0, sprint stays locked until stamina is back to this. */
 export const STAMINA_RECOVER = STAMINA_MAX * 0.3;
-
-/** Voices are at full volume within this distance, in pixels. */
-export const VOICE_FULL_DISTANCE = 100;
-/** Voices are silent beyond this distance, in pixels. */
-export const VOICE_SILENT_DISTANCE = 600;
-/** Horizontal offset at which a voice is panned fully to one side, in pixels. */
-export const VOICE_PAN_DISTANCE = 300;

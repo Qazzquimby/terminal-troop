@@ -1,5 +1,5 @@
 import { element } from "./dom.js";
-import type { Settings, SettingsStore } from "./engine/settings.js";
+import type { Settings, SettingsStore } from "../settings/settings.js";
 
 /** Another player in the room, as the voice section lists them. */
 export interface MenuPeer {

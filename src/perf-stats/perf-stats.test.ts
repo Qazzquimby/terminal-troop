@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createPerfStats } from "../src/engine/perf-stats.js";
+import { createPerfStats } from "./perf-stats.js";
 
 function frame(now: number, steps = 1, updateMs = 0, drawMs = 0) {
   return { now, steps, updateMs, drawMs };

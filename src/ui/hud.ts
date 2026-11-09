@@ -1,4 +1,4 @@
-import type { Inventory } from "./inventory.js";
+import type { Inventory } from "../sim/index.js";
 
 export function createInventoryHud(
   container: HTMLElement,

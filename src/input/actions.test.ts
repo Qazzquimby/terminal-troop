@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
-import type { Action, InputContext } from "../src/engine/actions.js";
+import type { Action, InputContext } from "./actions.js";
 import {
   createActionState,
   isActiveIn,
   toControls,
   withUiHandlers,
-} from "../src/engine/actions.js";
+} from "./actions.js";
 
 const AIM = { x: 0, y: 0 };
 

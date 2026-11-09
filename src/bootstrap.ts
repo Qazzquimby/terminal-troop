@@ -1,48 +1,52 @@
-import "./engine/style.css";
-import { FIXED_DT, NetEvent, PLAYER_NAME_MAX } from "./engine/config.js";
-import { STEP_LIMITS, advanceSim } from "./engine/sim-clock.js";
-import type { Session } from "./engine/session.js";
 import {
+  FIXED_DT,
+  STEP_LIMITS,
+  advanceSim,
   createSession,
   receiveState,
   removePlayer,
   roomKey,
   sendState,
   updateSession,
-} from "./engine/session.js";
-import { PresenceMessage } from "./engine/protocol.js";
-import { createInput } from "./engine/input.js";
-import { createInventoryHud } from "./engine/hud.js";
-import { draw } from "./engine/render.js";
-import { createCamera, updateCamera } from "./engine/camera.js";
-import { renderPosition, stepAlpha } from "./engine/interpolation.js";
-import { createSfx } from "./engine/audio.js";
-import { applyProximity } from "./engine/voice-proximity.js";
-import { createPerfStats } from "./engine/perf-stats.js";
-import { createCountingTransport } from "./engine/counting-transport.js";
-import type { DebugInfo } from "./engine/debug-overlay.js";
-import { createDebugOverlay } from "./engine/debug-overlay.js";
+  renderPosition,
+  stepAlpha,
+} from "./sim/index.js";
 import {
+  NetEvent,
+  PLAYER_NAME_MAX,
+  PresenceMessage,
+  createCountingTransport,
+} from "./net/index.js";
+import type { Session } from "./sim/index.js";
+import { createInput, actionKeyLabel } from "./input/index.js";
+import {
+  createInventoryHud,
+  createDebugOverlay,
   createMicIndicatorView,
-  micIndicator,
-} from "./engine/mic-indicator.js";
-import type { Settings } from "./engine/settings.js";
-import { createSettingsStore } from "./engine/settings.js";
-import { createSettingsMenu, menuPeers } from "./settings-menu.js";
-import { trackInputContext } from "./app-context.js";
-import { element } from "./dom.js";
-import { actionKeyLabel } from "./engine/actions.js";
-import type { Transport } from "./engine/transport.js";
-import type { Voice, VoiceSettings } from "./engine/voice.js";
+  createSettingsMenu,
+  menuPeers,
+  trackInputContext,
+  element,
+} from "./ui/index.js";
+import { draw, createCamera, updateCamera } from "./render/index.js";
+import { createSfx } from "./audio/audio.js";
 import {
+  applyProximity,
+  micIndicator,
   applyVoiceSettings,
   createNullVoice,
   pushToTalk,
-} from "./engine/voice.js";
+} from "./voice/index.js";
+import { createPerfStats } from "./perf-stats/perf-stats.js";
+import type { DebugInfo } from "./ui/index.js";
+import type { Settings } from "./settings/settings.js";
+import { createSettingsStore } from "./settings/settings.js";
+import type { Transport } from "./net/index.js";
+import type { Voice, VoiceSettings } from "./voice/index.js";
 import { loadClientEnv } from "./env.js";
-import { createSupabaseTransport } from "./adapters/supabase-transport.js";
-import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
-import { createWebRtcVoice } from "./adapters/webrtc-voice.js";
+import { createSupabaseTransport } from "./adapters/supabase-transport/supabase-transport.js";
+import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/broadcast-channel-transport.js";
+import { createWebRtcVoice } from "./adapters/webrtc-voice/webrtc-voice.js";
 
 const canvas = element("#game", HTMLCanvasElement);
 const statusEl = element("#status", HTMLParagraphElement);

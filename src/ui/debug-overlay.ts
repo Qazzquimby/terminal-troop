@@ -1,5 +1,5 @@
-import type { MessageRates } from "./counting-transport.js";
-import type { PerfSnapshot } from "./perf-stats.js";
+import type { MessageRates } from "../net/index.js";
+import type { PerfSnapshot } from "../perf-stats/perf-stats.js";
 
 const REFRESH_MS = 250;
 

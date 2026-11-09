@@ -1,19 +1,28 @@
-import { STAMINA_MAX, VIEW_H, VIEW_W, VISION_RAYS } from "./config.js";
-import type { Interpolated } from "./interpolation.js";
-import { renderAim, renderPosition } from "./interpolation.js";
-import type { Point, TileMap, World } from "./map.js";
-import type { Player } from "./player.js";
-import { aimAt } from "./player.js";
-import type { Session } from "./session.js";
-import type { VisibilityPolygon, VisionSource } from "./vision.js";
+import type {
+  Interpolated,
+  Player,
+  Point,
+  Session,
+  TileMap,
+  VisibilityPolygon,
+  VisionSource,
+  World,
+} from "../sim/index.js";
 import {
+  STAMINA_MAX,
+  VIEW_H,
+  VIEW_W,
+  VISION_RAYS,
+  aimAt,
   isVisible,
   lightSources,
   litWalls,
-  wallCell,
+  renderAim,
+  renderPosition,
   visibilityPolygon,
   visionOrigins,
-} from "./vision.js";
+  wallCell,
+} from "../sim/index.js";
 
 interface Circle extends Point {
   readonly radius: number;

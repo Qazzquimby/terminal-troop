@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ACTIONS, actionKeyLabel, keyLabel } from "../src/engine/actions.js";
+import { ACTIONS, actionKeyLabel, keyLabel } from "./actions.js";
 
 test.each([
   ["KeyX", "X"],

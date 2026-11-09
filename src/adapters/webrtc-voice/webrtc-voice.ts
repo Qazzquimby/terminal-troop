@@ -1,9 +1,9 @@
-import { NetEvent } from "../engine/config.js";
-import type { SignalMessage } from "../engine/protocol.js";
-import { signalFor } from "../engine/protocol.js";
-import type { Transport } from "../engine/transport.js";
-import type { MicState, Voice, VoiceSettings } from "../engine/voice.js";
-import { createPeerLevels, isPolite, isTransmitting } from "../engine/voice.js";
+import type { SignalMessage } from "./signal.js";
+import { SIGNAL, isPolite, signalFor } from "./signal.js";
+import type { Transport } from "../../net/index.js";
+import type { MicState, Voice, VoiceSettings } from "../../voice/index.js";
+import { createPeerLevels } from "./peer-levels.js";
+import { isTransmitting } from "./transmit.js";
 
 /** Where voice plays: the shared AudioContext, and the node incoming voice connects to. */
 interface VoiceAudio {
@@ -140,7 +140,7 @@ export function createWebRtcVoice(
 
   function send(to: string, signal: Signal): void {
     if (room === null) return;
-    void room.transport.send(NetEvent.SIGNAL, {
+    void room.transport.send(SIGNAL, {
       from: room.localId,
       to,
       ...signal,

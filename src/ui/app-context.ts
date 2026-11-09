@@ -1,4 +1,4 @@
-import type { InputContext } from "./engine/actions.js";
+import type { InputContext } from "../input/index.js";
 
 /** The contexts the app itself is in; `text` is layered on top while a text field has focus. */
 type AppContext = Exclude<InputContext, "text">;

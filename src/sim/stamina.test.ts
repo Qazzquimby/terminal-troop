@@ -5,13 +5,9 @@ import {
   STAMINA_RECOVER,
   STAMINA_REGEN,
   STAMINA_REGEN_DELAY,
-} from "../src/engine/config.js";
-import type { Stamina } from "../src/engine/stamina.js";
-import {
-  canSprint,
-  createStamina,
-  updateStamina,
-} from "../src/engine/stamina.js";
+} from "./config.js";
+import type { Stamina } from "./stamina.js";
+import { canSprint, createStamina, updateStamina } from "./stamina.js";
 
 const STEP = 1 / 60;
 

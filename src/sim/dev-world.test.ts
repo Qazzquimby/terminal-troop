@@ -1,15 +1,9 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../src/engine/audio.js";
-import {
-  MAP_CELL,
-  VIEW_H,
-  VIEW_W,
-  WORLD_COLS,
-  WORLD_ROWS,
-} from "../src/engine/config.js";
-import type { TileMap } from "../src/engine/map.js";
-import { DEV_PILLARS, buildDevWorld, isSolid } from "../src/engine/map.js";
-import { createSession, roomKey } from "../src/engine/session.js";
+import { createSfx } from "../audio/audio.js";
+import { MAP_CELL, VIEW_H, VIEW_W, WORLD_COLS, WORLD_ROWS } from "./config.js";
+import type { TileMap } from "./map.js";
+import { DEV_PILLARS, buildDevWorld, isSolid } from "./map.js";
+import { createSession, roomKey } from "./session.js";
 
 function solidCells(map: TileMap): string[] {
   const cells: string[] = [];

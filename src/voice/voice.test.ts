@@ -1,115 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { createActionState, withUiHandlers } from "../src/engine/actions.js";
-import { signalFor } from "../src/engine/protocol.js";
-import { DEFAULT_SETTINGS } from "../src/engine/settings.js";
-import type { Voice, VoiceMode, VoiceSettings } from "../src/engine/voice.js";
-import {
-  applyVoiceSettings,
-  createNullVoice,
-  createPeerLevels,
-  isPolite,
-  isTransmitting,
-  peerGain,
-  pushToTalk,
-} from "../src/engine/voice.js";
+import { createActionState, withUiHandlers } from "../input/index.js";
+import { DEFAULT_SETTINGS } from "../settings/settings.js";
+import type { Voice, VoiceMode, VoiceSettings } from "./voice.js";
+import { applyVoiceSettings, createNullVoice, pushToTalk } from "./voice.js";
 
 const ME = "player-b";
 const OFFER = { type: "offer", sdp: "v=0\r\n" };
-const CANDIDATE = {
-  candidate: "candidate:1 1 udp 2122260223 192.0.2.1 54400 typ host",
-  sdpMid: "0",
-  sdpMLineIndex: 0,
-};
-
-describe("signal messages", () => {
-  test("a description addressed to us parses", () => {
-    const message = { from: "player-a", to: ME, description: OFFER };
-    expect(signalFor(message, ME)).toEqual(message);
-  });
-
-  test("a candidate addressed to us parses, with null mid and index", () => {
-    const candidate = { ...CANDIDATE, sdpMid: null, sdpMLineIndex: null };
-    const message = { from: "player-a", to: ME, candidate };
-    expect(signalFor(message, ME)).toEqual(message);
-  });
-
-  test("messages addressed to someone else are ignored", () => {
-    expect(
-      signalFor({ from: "player-a", to: "player-c", description: OFFER }, ME),
-    ).toBeNull();
-    expect(
-      signalFor({ from: "player-a", to: "player-c", candidate: CANDIDATE }, ME),
-    ).toBeNull();
-  });
-
-  test("messages from ourselves are ignored", () => {
-    expect(signalFor({ from: ME, to: ME, description: OFFER }, ME)).toBeNull();
-  });
-
-  test.each([
-    ["no payload", null],
-    ["missing body", { from: "player-a", to: ME }],
-    ["missing sender", { to: ME, description: OFFER }],
-    [
-      "unknown description type",
-      { from: "player-a", to: ME, description: { type: "hack", sdp: "" } },
-    ],
-    [
-      "description without sdp",
-      { from: "player-a", to: ME, description: { type: "offer" } },
-    ],
-    [
-      "candidate with a bad index",
-      {
-        from: "player-a",
-        to: ME,
-        candidate: { ...CANDIDATE, sdpMLineIndex: -1 },
-      },
-    ],
-    ["empty sender id", { from: "", to: ME, description: OFFER }],
-  ])("rejects %s", (_name, payload) => {
-    expect(signalFor(payload, ME)).toBeNull();
-  });
-});
-
-describe("negotiation roles", () => {
-  test("exactly one side of a pair is polite", () => {
-    const pairs = [
-      ["a", "b"],
-      ["0f3c", "0f3b"],
-      ["4d6e1a2b-0000", "4d6e1a2b-0001"],
-    ] as const;
-    for (const [one, other] of pairs) {
-      expect(isPolite(one, other)).not.toBe(isPolite(other, one));
-    }
-  });
-
-  test("the lower id is polite", () => {
-    expect(isPolite("a", "b")).toBe(true);
-    expect(isPolite("b", "a")).toBe(false);
-  });
-});
-
-describe("transmitting", () => {
-  const cases: [VoiceMode, boolean, boolean, boolean][] = [
-    // mode, talking, muted, transmitting
-    ["open", false, false, true],
-    ["open", true, false, true],
-    ["open", false, true, false],
-    ["open", true, true, false],
-    ["pushToTalk", false, false, false],
-    ["pushToTalk", true, false, true],
-    ["pushToTalk", false, true, false],
-    ["pushToTalk", true, true, false],
-  ];
-  test.each(cases)(
-    "%s, talking %s, muted %s -> %s",
-    (mode, talking, muted, expected) => {
-      expect(isTransmitting(mode, talking, muted)).toBe(expected);
-    },
-  );
-});
-
 /** An action state whose push-to-talk handlers drive a voice that records each talk change. */
 function talkInput() {
   const talk: boolean[] = [];
@@ -196,50 +92,6 @@ describe("settings", () => {
       mode: "pushToTalk",
     });
     expect(voice.status().mode).toBe("pushToTalk");
-  });
-});
-
-describe("per-peer mute", () => {
-  const MIX = { volume: 0.5, pan: -0.25 };
-
-  test.each([
-    [false, 0.5],
-    [true, 0],
-  ])("muted %s plays at gain %s", (muted, gain) => {
-    expect(peerGain(MIX, muted)).toBe(gain);
-  });
-
-  test("a mix update after muting keeps the gain at 0, and keeps the pan", () => {
-    const levels = createPeerLevels();
-    levels.setMuted("player-a", true);
-    levels.setMix("player-a", { volume: 0.5, pan: 0.75 });
-    expect(levels.levels("player-a")).toEqual({ gain: 0, pan: 0.75 });
-  });
-
-  test("unmuting restores the latest mix volume", () => {
-    const levels = createPeerLevels();
-    levels.setMuted("player-a", true);
-    levels.setMix("player-a", MIX);
-    levels.setMuted("player-a", false);
-    expect(levels.levels("player-a")).toEqual({ gain: 0.5, pan: -0.25 });
-  });
-
-  test("a mute set before the peer has a mix applies, and outlasts the peer leaving", () => {
-    const levels = createPeerLevels();
-    levels.setMuted("player-a", true);
-    expect(levels.levels("player-a").gain).toBe(0);
-    levels.setMix("player-a", MIX);
-    levels.forget("player-a");
-    expect(levels.levels("player-a")).toEqual({ gain: 0, pan: 0 });
-    expect(levels.mutedPeers()).toEqual(["player-a"]);
-  });
-
-  test("muting one peer leaves the others alone", () => {
-    const levels = createPeerLevels();
-    levels.setMuted("player-a", true);
-    levels.setMix("player-c", MIX);
-    expect(levels.levels("player-c").gain).toBe(0.5);
-    expect(levels.mutedPeers()).toEqual(["player-a"]);
   });
 });
 

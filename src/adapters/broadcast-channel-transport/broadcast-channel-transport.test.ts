@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { createBroadcastChannelTransport } from "../src/adapters/broadcast-channel-transport.js";
-import { NetEvent } from "../src/engine/config.js";
-import type { Transport } from "../src/engine/transport.js";
+import { createBroadcastChannelTransport } from "./broadcast-channel-transport.js";
+import { NetEvent } from "../../net/index.js";
+import type { Transport } from "../../net/index.js";
 
 const open: Transport[] = [];
 

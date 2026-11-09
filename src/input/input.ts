@@ -5,10 +5,9 @@ import {
   toControls,
   withUiHandlers,
 } from "./actions.js";
-import { VIEW_H, VIEW_W } from "./config.js";
+import { VIEW_H, VIEW_W } from "../sim/index.js";
 import { createKeyboardSource } from "./keyboard.js";
-import type { Point } from "./map.js";
-import type { Controls } from "./player.js";
+import type { Point, Controls } from "../sim/index.js";
 
 /**
  * Only actions active in the current context respond, and only their keys are kept from

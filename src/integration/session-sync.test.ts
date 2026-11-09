@@ -1,16 +1,18 @@
 import { afterEach, expect, test } from "vitest";
-import { createBroadcastChannelTransport } from "../src/adapters/broadcast-channel-transport.js";
-import { createSfx } from "../src/engine/audio.js";
-import { FIXED_DT, NetEvent, PLAYER_RADIUS } from "../src/engine/config.js";
-import { randomFreePosition } from "../src/engine/map.js";
-import type { Session } from "../src/engine/session.js";
+import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/broadcast-channel-transport.js";
+import { createSfx } from "../audio/audio.js";
 import {
+  FIXED_DT,
+  PLAYER_RADIUS,
+  randomFreePosition,
   createSession,
   receiveState,
   sendState,
   updateSession,
-} from "../src/engine/session.js";
-import type { Transport } from "../src/engine/transport.js";
+} from "../sim/index.js";
+import { NetEvent } from "../net/index.js";
+import type { Session } from "../sim/index.js";
+import type { Transport } from "../net/index.js";
 
 const ROOM = "SYNC1";
 const open: Transport[] = [];

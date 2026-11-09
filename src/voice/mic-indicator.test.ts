@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { micIndicator } from "../src/engine/mic-indicator.js";
+import { micIndicator } from "./mic-indicator.js";
 
 describe("micIndicator", () => {
   test.each([

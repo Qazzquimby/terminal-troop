@@ -1,6 +1,6 @@
-import type { UiHandlers } from "./actions.js";
-import type { Settings } from "./settings.js";
-import type { Transport } from "./transport.js";
+import type { UiHandlers } from "../input/index.js";
+import type { Settings } from "../settings/settings.js";
+import type { Transport } from "../net/index.js";
 
 /** The player's own voice preferences: transmit mode, mic mute, and incoming volume. */
 export type VoiceSettings = Settings["voice"];
@@ -20,42 +20,6 @@ export type MicState = "pending" | "live" | "denied" | "unavailable";
 export interface PeerMix {
   volume: number;
   pan: number;
-}
-
-const DEFAULT_PEER_MIX: PeerMix = { volume: 1, pan: 0 };
-
-/** The gain one remote player is played at: silent while muted, otherwise the mix volume. */
-export function peerGain(mix: PeerMix, muted: boolean): number {
-  return muted ? 0 : mix.volume;
-}
-
-/**
- * Per-peer mix and mute, kept apart so the mix can be rewritten every frame without
- * clobbering a mute. Mutes are remembered by peer id for the whole session: they apply
- * before a peer connects and survive the peer leaving and rejoining.
- */
-export function createPeerLevels() {
-  const mixes = new Map<string, PeerMix>();
-  const muted = new Set<string>();
-  return {
-    setMix(peerId: string, mix: PeerMix): void {
-      mixes.set(peerId, mix);
-    },
-    setMuted(peerId: string, mute: boolean): void {
-      if (mute) muted.add(peerId);
-      else muted.delete(peerId);
-    },
-    /** A peer left: drop its mix, but keep its mute. */
-    forget(peerId: string): void {
-      mixes.delete(peerId);
-    },
-    /** Gain and pan to apply to this peer's playback nodes now. */
-    levels(peerId: string): { gain: number; pan: number } {
-      const mix = mixes.get(peerId) ?? DEFAULT_PEER_MIX;
-      return { gain: peerGain(mix, muted.has(peerId)), pan: mix.pan };
-    },
-    mutedPeers: (): string[] => [...muted],
-  };
 }
 
 interface VoiceStatus {
@@ -93,7 +57,7 @@ export interface Voice {
   setMuted: (muted: boolean) => void;
   /** Volume for every incoming voice, 0..1. */
   setVolume: (volume: number) => void;
-  /** Volume and pan for one remote player; defaults to DEFAULT_PEER_MIX. */
+  /** Volume and pan for one remote player; full volume and centred until set. */
   setPeerMix: (peerId: string, mix: PeerMix) => void;
   /**
    * Local mute of one remote player's voice, on top of their mix: later setPeerMix calls
@@ -120,23 +84,6 @@ export function applyVoiceSettings(
   voice.setMode(settings.mode);
   voice.setMuted(settings.muted);
   voice.setVolume(settings.volume);
-}
-
-export function isTransmitting(
-  mode: VoiceMode,
-  talking: boolean,
-  muted: boolean,
-): boolean {
-  if (muted) return false;
-  return mode === "open" || talking;
-}
-
-/**
- * Which side of a pair yields when both start negotiating at once. Both players compute it
- * from the two ids, so exactly one of them is polite.
- */
-export function isPolite(localId: string, remoteId: string): boolean {
-  return localId < remoteId;
 }
 
 /** Voice that does nothing: for tests, and browsers without WebRTC. */

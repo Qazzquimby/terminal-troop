@@ -1,5 +1,5 @@
+import { NetEvent, StateMessage } from "../net/index.js";
 import {
-  NetEvent,
   PLAYER_RADIUS,
   SEND_HZ,
   STALE_S,
@@ -7,7 +7,7 @@ import {
   WORLD_ROWS,
   WORLD_SEED,
 } from "./config.js";
-import type { Sfx } from "./audio.js";
+import type { Sfx } from "../audio/audio.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
@@ -21,8 +21,7 @@ import {
   smoothPlayer,
   updatePlayer,
 } from "./player.js";
-import { StateMessage } from "./protocol.js";
-import type { Transport } from "./transport.js";
+import type { Transport } from "../net/index.js";
 
 /** Hears when a remote player appears or goes away. */
 export interface RosterEvents {

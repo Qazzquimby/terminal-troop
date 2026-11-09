@@ -1,4 +1,11 @@
-import type { NetEvent } from "./config.js";
+export const NetEvent = {
+  HELLO: "hello",
+  STATE: "state",
+  BYE: "bye",
+  /** Voice connection setup: addressed to one player, but broadcast to the room. */
+  SIGNAL: "signal",
+} as const;
+export type NetEvent = (typeof NetEvent)[keyof typeof NetEvent];
 
 type NetHandlers = Partial<Record<NetEvent, (payload: unknown) => void>>;
 

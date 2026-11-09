@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { menuPeers } from "../src/settings-menu.js";
+import { menuPeers } from "./settings-menu.js";
 
 const player = (id: string, name: string) => ({ id, name });
 

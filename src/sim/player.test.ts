@@ -1,12 +1,8 @@
 import { expect, test } from "vitest";
-import {
-  PLAYER_SPEED,
-  SPRINT_MULTIPLIER,
-  STAMINA_MAX,
-} from "../src/engine/config.js";
-import type { World } from "../src/engine/map.js";
-import type { Player } from "../src/engine/player.js";
-import { createPlayer, updatePlayer } from "../src/engine/player.js";
+import { PLAYER_SPEED, SPRINT_MULTIPLIER, STAMINA_MAX } from "./config.js";
+import type { World } from "./map.js";
+import type { Player } from "./player.js";
+import { createPlayer, updatePlayer } from "./player.js";
 
 const STEP = 1 / 60;
 

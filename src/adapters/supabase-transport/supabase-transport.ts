@@ -1,6 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { createClient, REALTIME_SUBSCRIBE_STATES } from "@supabase/supabase-js";
-import type { Transport } from "../engine/transport.js";
+import type { Transport } from "../../net/index.js";
 
 /** Transport over Supabase Realtime broadcast channels. */
 export function createSupabaseTransport(

@@ -1,5 +1,5 @@
 import { mapValues } from "lodash-es";
-import { createRollingWindow } from "./perf-stats.js";
+import { createRollingWindow } from "../perf-stats/perf-stats.js";
 import type { Transport } from "./transport.js";
 
 export interface MessageRates {

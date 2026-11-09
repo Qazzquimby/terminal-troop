@@ -1,9 +1,6 @@
 import { expect, test, vi } from "vitest";
-import type { Settings, SettingsStorage } from "../src/engine/settings.js";
-import {
-  DEFAULT_SETTINGS,
-  createSettingsStore,
-} from "../src/engine/settings.js";
+import type { Settings, SettingsStorage } from "./settings.js";
+import { DEFAULT_SETTINGS, createSettingsStore } from "./settings.js";
 
 function memoryStorage(initial: string | null = null) {
   const storage = {

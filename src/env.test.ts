@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { loadClientEnv } from "../src/env.js";
+import { loadClientEnv } from "./env.js";
 
 const URL = "https://example.supabase.co";
 

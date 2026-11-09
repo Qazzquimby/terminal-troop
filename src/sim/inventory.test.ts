@@ -1,10 +1,6 @@
 import { expect, test } from "vitest";
-import type { ItemDefinition } from "../src/engine/inventory.js";
-import {
-  addItem,
-  createInventory,
-  removeItem,
-} from "../src/engine/inventory.js";
+import type { ItemDefinition } from "./inventory.js";
+import { addItem, createInventory, removeItem } from "./inventory.js";
 
 const material: ItemDefinition = {
   id: "material",

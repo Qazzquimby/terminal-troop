@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { voiceMix } from "../src/engine/voice-proximity.js";
 import {
+  voiceMix,
   VOICE_FULL_DISTANCE,
   VOICE_PAN_DISTANCE,
   VOICE_SILENT_DISTANCE,
-} from "../src/engine/config.js";
+} from "./voice-proximity.js";
 
 const listener = { x: 1000, y: 1000 };
 const at = (dx: number, dy = 0) => ({ x: listener.x + dx, y: listener.y + dy });

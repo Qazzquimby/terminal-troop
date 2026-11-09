@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import type { ActionSink } from "../src/engine/actions.js";
-import { createKeyboardSource } from "../src/engine/keyboard.js";
+import type { ActionSink } from "./actions.js";
+import { createKeyboardSource } from "./keyboard.js";
 
 /** Made-up actions, keys and contexts: `pause` works in both contexts, the rest only in `field`. */
 const TEST_BINDINGS = {

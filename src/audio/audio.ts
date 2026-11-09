@@ -1,4 +1,8 @@
-import type { Point } from "./map.js";
+/** A position in world pixels. */
+interface Point {
+  readonly x: number;
+  readonly y: number;
+}
 
 interface Mix {
   volume: number;

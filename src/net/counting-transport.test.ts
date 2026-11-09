@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
-import { NetEvent } from "../src/engine/config.js";
-import { createCountingTransport } from "../src/engine/counting-transport.js";
-import type { Transport } from "../src/engine/transport.js";
+import { NetEvent } from "./transport.js";
+import { createCountingTransport } from "./counting-transport.js";
+import type { Transport } from "./transport.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
