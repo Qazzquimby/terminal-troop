@@ -63,12 +63,17 @@ knip:
 dupes:
     pnpm dupes
 
+# Import boundaries between modules (dependency-cruiser)
+[group('check')]
+boundaries:
+    pnpm boundaries
+
 # Check formatting without writing
 [group('check')]
 format-check:
     pnpm format-check
 
-# The gate: typecheck, lint, test, knip, dupes, format-check
+# The gate: typecheck, lint, test, knip, dupes, boundaries, format-check
 [group('check')]
 check:
     pnpm check

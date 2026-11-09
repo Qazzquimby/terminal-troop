@@ -1,7 +1,7 @@
 import type { EnvResult } from "jimkit-env/client";
 import { defineEnv, defineVars } from "jimkit-env/client";
 import { z } from "zod";
-import { WORLD_KINDS } from "./engine/map.js";
+import { WORLD_KINDS } from "./sim/index.js";
 
 const env = defineEnv({
   vars: defineVars({

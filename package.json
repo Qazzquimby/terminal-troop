@@ -14,9 +14,10 @@
     "lint": "eslint .",
     "knip": "knip",
     "dupes": "jscpd",
+    "boundaries": "node scripts/boundaries.mjs",
     "format": "prettier --write .",
     "format-check": "prettier --check .",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm knip && pnpm dupes && pnpm format-check"
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm knip && pnpm dupes && pnpm boundaries && pnpm format-check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
@@ -28,6 +29,7 @@
     "@eslint/js": "^10.0.1",
     "@types/lodash-es": "^4.17.12",
     "@vitest/eslint-plugin": "^1.6.28",
+    "dependency-cruiser": "^18.7.1",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "jscpd": "^5.4.2",

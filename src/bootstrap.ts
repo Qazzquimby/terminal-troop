@@ -1,48 +1,50 @@
-import "./engine/style.css";
-import { FIXED_DT, NetEvent, PLAYER_NAME_MAX } from "./engine/config.js";
-import { STEP_LIMITS, advanceSim } from "./engine/sim-clock.js";
-import type { Session } from "./engine/session.js";
 import {
   createSession,
+  createSimClock,
   receiveState,
   removePlayer,
   roomKey,
   sendState,
   updateSession,
-} from "./engine/session.js";
-import { PresenceMessage } from "./engine/protocol.js";
-import { createInput } from "./engine/input.js";
-import { createInventoryHud } from "./engine/hud.js";
-import { draw } from "./engine/render.js";
-import { createCamera, updateCamera } from "./engine/camera.js";
-import { renderPosition, stepAlpha } from "./engine/interpolation.js";
-import { createSfx } from "./engine/audio.js";
-import { applyProximity } from "./engine/voice-proximity.js";
-import { createPerfStats } from "./engine/perf-stats.js";
-import { createCountingTransport } from "./engine/counting-transport.js";
-import type { DebugInfo } from "./engine/debug-overlay.js";
-import { createDebugOverlay } from "./engine/debug-overlay.js";
+  renderPosition,
+  stepAlpha,
+} from "./sim/index.js";
 import {
+  NetEvent,
+  PresenceMessage,
+  createCountingTransport,
+} from "./net/index.js";
+import type { Session } from "./sim/index.js";
+import { createInput, actionKeyLabel } from "./input/index.js";
+import {
+  createInventoryHud,
+  createDebugOverlay,
   createMicIndicatorView,
-  micIndicator,
-} from "./engine/mic-indicator.js";
-import type { Settings } from "./engine/settings.js";
-import { createSettingsStore } from "./engine/settings.js";
-import { createSettingsMenu, menuPeers } from "./settings-menu.js";
-import { trackInputContext } from "./app-context.js";
-import { element } from "./dom.js";
-import { actionKeyLabel } from "./engine/actions.js";
-import type { Transport } from "./engine/transport.js";
-import type { Voice, VoiceSettings } from "./engine/voice.js";
+  createSettingsMenu,
+  menuPeers,
+  trackInputContext,
+  element,
+} from "./ui/index.js";
+import { draw, createCamera, updateCamera } from "./render/index.js";
+import { createSfx } from "./audio/index.js";
 import {
+  applyProximity,
+  micIndicator,
   applyVoiceSettings,
   createNullVoice,
   pushToTalk,
-} from "./engine/voice.js";
+} from "./voice/index.js";
+import { createPerfStats } from "./perf-stats/index.js";
+import type { DebugInfo } from "./ui/index.js";
+import type { Settings } from "./settings/index.js";
+import { createSettingsStore } from "./settings/index.js";
+import type { Transport } from "./net/index.js";
+import type { Voice, VoiceSettings } from "./voice/index.js";
+import { config } from "./config.js";
 import { loadClientEnv } from "./env.js";
-import { createSupabaseTransport } from "./adapters/supabase-transport.js";
-import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport.js";
-import { createWebRtcVoice } from "./adapters/webrtc-voice.js";
+import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
+import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
+import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 
 const canvas = element("#game", HTMLCanvasElement);
 const statusEl = element("#status", HTMLParagraphElement);
@@ -85,7 +87,7 @@ const env = envResult.data;
  */
 function selectTransport(params: URLSearchParams): Transport {
   if (params.has("local") || env.supabase === null) {
-    return createBroadcastChannelTransport();
+    return createBroadcastChannelTransport(NetEvent);
   }
   return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
 }
@@ -93,21 +95,26 @@ function selectTransport(params: URLSearchParams): Transport {
 /** Incoming voice plays through the sound effects' master gain. */
 function selectVoice(initial: VoiceSettings): Voice {
   if (typeof RTCPeerConnection === "undefined") return createNullVoice(initial);
-  return createWebRtcVoice(sfx, initial);
+  return createWebRtcVoice(sfx, initial, NetEvent.SIGNAL);
 }
 
 const params = new URLSearchParams(location.search);
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
-const camera = createCamera();
+const camera = createCamera(config.view);
+const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
 );
 const transport = counted.transport;
 const perf = createPerfStats();
-const debugOverlay = createDebugOverlay(debugEl, params.has("debug"));
+const debugOverlay = createDebugOverlay(
+  debugEl,
+  params.has("debug"),
+  config.ui,
+);
 const micView = createMicIndicatorView(micEl);
-const sfx = createSfx();
+const sfx = createSfx(config.audio);
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
 const settings = createSettingsStore({
@@ -153,6 +160,7 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 const input = createInput(
   canvas,
   camera,
+  config.view,
   {
     toggleInventory: {
       press() {
@@ -245,21 +253,30 @@ async function enterRoom(rawCode: string): Promise<void> {
     await leaveRoom();
 
     const name =
-      nonEmpty(nameInput.value.trim().slice(0, PLAYER_NAME_MAX)) ?? defaultName;
+      nonEmpty(nameInput.value.trim().slice(0, config.player.nameMax)) ??
+      defaultName;
     nameInput.value = name;
     roomInput.value = code;
     localStorage.setItem(nameKey, name);
 
-    const session = createSession(playerId, name, code, env.world, sfx, {
-      playerJoined: (id) => {
-        voice.addPeer(id);
-        refreshPeers(session);
+    const session = createSession(
+      playerId,
+      name,
+      code,
+      env.world,
+      sfx,
+      config,
+      {
+        playerJoined: (id) => {
+          voice.addPeer(id);
+          refreshPeers(session);
+        },
+        playerLeft: (id) => {
+          voice.removePeer(id);
+          refreshPeers(session);
+        },
       },
-      playerLeft: (id) => {
-        voice.removePeer(id);
-        refreshPeers(session);
-      },
-    });
+    );
     await transport.join(roomKey(code, env.world), {
       [NetEvent.STATE]: (payload) => {
         receiveState(session, payload);
@@ -327,15 +344,15 @@ function frame(): void {
   if (game !== null) {
     const session = game;
     const updateStart = performance.now();
-    const advanced = advanceSim(simTime, now, (until) => {
-      updateSession(session, input.getControls(until), FIXED_DT, until);
+    const advanced = clock.advance(simTime, now, (until) => {
+      updateSession(session, input.getControls(until), clock.dt, until);
     });
     simTime = advanced.simTime;
     frameStats.steps = advanced.steps;
     frameStats.updateMs = performance.now() - updateStart;
-    applyProximity(session, voice);
+    applyProximity(session, voice, config.voice);
 
-    const alpha = stepAlpha(now - simTime, STEP_LIMITS.dtMs);
+    const alpha = stepAlpha(now - simTime, clock.dtMs);
     sendState(session, transport, now);
     updateCamera(camera, renderPosition(session.local, alpha));
     const drawStart = performance.now();
