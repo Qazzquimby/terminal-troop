@@ -1,106 +1,115 @@
 import { afterEach, expect, test } from "vitest";
 import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
-import {
-  randomFreePosition,
-  createSession,
-  receiveState,
-  sendState,
-  updateSession,
-} from "../sim/index.js";
+import { createScope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
+import { createRoom } from "../room/index.js";
+import type { Room } from "../room/index.js";
+import { randomFreePosition, updateSession } from "../sim/index.js";
 import type { Session } from "../sim/index.js";
-import type { Transport } from "../net/index.js";
+import { createNullVoice } from "../voice/index.js";
 import { testSfx, testSimConfig } from "./sim-config.js";
 
 const ROOM = "SYNC1";
-const open: Transport[] = [];
+const SEND_GAP = 1000 / 15;
+const open: Room[] = [];
+let time = 0;
 
 afterEach(async () => {
-  await Promise.all(open.splice(0).map((t) => t.leave()));
+  await Promise.all(open.splice(0).map((room) => room.leave()));
+  time = 0;
 });
 
 async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
-/** A session wired to the room the way bootstrap.ts wires it. */
-async function client(
-  id: string,
-): Promise<{ session: Session; transport: Transport }> {
-  const transport = createBroadcastChannelTransport(NetEvent);
-  open.push(transport);
-  const session = createSession(
-    id,
-    id.toUpperCase(),
-    ROOM,
-    "standard",
-    testSfx(),
-    testSimConfig,
-  );
-  await transport.join(ROOM, {
-    [NetEvent.STATE]: (payload) => {
-      receiveState(session, payload);
-    },
-    [NetEvent.HELLO]: () => {
-      sendState(session, transport, performance.now(), true);
-    },
+/** A room over BroadcastChannel, with no voice. */
+function client(id: string): Room {
+  const room = createRoom({
+    localId: id,
+    world: "standard",
+    transport: createBroadcastChannelTransport(NetEvent),
+    voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
+    sfx: testSfx(),
+    scope: createScope(),
+    clock: { now: () => time },
+    config: { sendHz: 15, staleS: 15 },
+    sim: testSimConfig,
+    falloff: { full: 100, silent: 600, pan: 300 },
+    onChange: () => undefined,
+    onPeerFailed: () => undefined,
   });
-  return { session, transport };
+  open.push(room);
+  return room;
+}
+
+function sessionOf(room: Room): Session {
+  const state = room.state();
+  if (state.kind !== "joined") throw new Error(`not joined: ${state.kind}`);
+  return state.session;
+}
+
+/** Two rooms joined to the same code, each having heard the other's HELLO round. */
+async function pair(): Promise<{ a: Room; b: Room }> {
+  const a = client("a");
+  const b = client("b");
+  await a.join(ROOM, "A");
+  await b.join(ROOM, "B");
+  await flush();
+  return { a, b };
 }
 
 const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
 
 test("clients in the same room build the same world", async () => {
-  const a = await client("a");
-  const b = await client("b");
-  expect(a.session.world.map.solid).toEqual(b.session.world.map.solid);
+  const { a, b } = await pair();
+  expect(sessionOf(a).world.map.solid).toEqual(sessionOf(b).world.map.solid);
 });
 
 test("a joining client learns about existing players through HELLO", async () => {
-  const a = await client("a");
-  const b = await client("b");
-
-  await b.transport.send(NetEvent.HELLO, { id: "b" });
-  await flush();
-
-  const seen = b.session.players.get("a");
+  const { a, b } = await pair();
+  const seen = sessionOf(b).players.get("a");
   expect(seen?.name).toBe("A");
-  expect(seen?.x).toBe(a.session.local.x);
-  expect(seen?.y).toBe(a.session.local.y);
+  expect(seen?.x).toBe(sessionOf(a).local.x);
+  expect(seen?.y).toBe(sessionOf(a).local.y);
+  expect(sessionOf(a).players.get("b")?.name).toBe("B");
 });
 
 test("remote players are smoothed toward their latest reported position", async () => {
-  const a = await client("a");
-  const b = await client("b");
-  sendState(a.session, a.transport, 0, true);
-  await flush();
-
+  const { a, b } = await pair();
+  const local = sessionOf(a).local;
   // Reports inside a wall are rejected, so move to another known-free spot.
-  const target = randomFreePosition(a.session.world, a.session.local.radius);
-  a.session.local.x = target.x;
-  a.session.local.y = target.y;
-  sendState(a.session, a.transport, 1000, true);
+  const target = randomFreePosition(sessionOf(a).world, local.radius);
+  local.x = target.x;
+  local.y = target.y;
+  a.frame(SEND_GAP + 1);
   await flush();
 
-  const remote = b.session.players.get("a");
+  const remote = sessionOf(b).players.get("a");
   if (remote === undefined) throw new Error("b never saw a");
   expect({ x: remote.tx, y: remote.ty }).toEqual(target);
   const gapBefore = Math.hypot(target.x - remote.x, target.y - remote.y);
 
-  updateSession(b.session, idle, 1 / 60, performance.now());
+  updateSession(sessionOf(b), idle, 1 / 60);
   const gapAfter = Math.hypot(target.x - remote.x, target.y - remote.y);
   expect(gapAfter).toBeLessThan(gapBefore);
   expect(gapAfter).toBeGreaterThan(0);
 });
 
-test("state sends are throttled unless forced", async () => {
-  const a = await client("a");
-  const b = await client("b");
-  const sentX = a.session.local.x;
-  sendState(a.session, a.transport, 1000, true);
-  a.session.local.x += 5;
-  sendState(a.session, a.transport, 1001);
+test("state sends are throttled to the send rate", async () => {
+  const { a, b } = await pair();
+  const local = sessionOf(a).local;
+  const sentX = local.x;
+  local.x += 5;
+  a.frame(1);
   await flush();
 
-  expect(b.session.players.get("a")?.tx).toBe(sentX);
+  expect(sessionOf(b).players.get("a")?.tx).toBe(sentX);
+});
+
+test("leaving says BYE and the other side drops the player", async () => {
+  const { a, b } = await pair();
+  await b.leave();
+  await flush();
+  expect(sessionOf(a).players.has("b")).toBe(false);
 });

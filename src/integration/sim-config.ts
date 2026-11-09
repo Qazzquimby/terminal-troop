@@ -20,7 +20,7 @@ export const testSimConfig: SimConfig = {
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
-  net: { sendHz: 15, staleS: 15, smoothing: 12 },
+  net: { smoothing: 12 },
 };
 
 /** Sound effects for sessions under test; nothing plays. */

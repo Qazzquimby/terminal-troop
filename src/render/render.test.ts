@@ -40,7 +40,7 @@ test("entities record their pre-step position", () => {
   expect(entity).toMatchObject({ prevX: 100, prevY: 200 });
 
   entity.vx = 10 / FIXED_DT;
-  updateSession(game, walkRight, FIXED_DT, performance.now());
+  updateSession(game, walkRight, FIXED_DT);
 
   expect(entity).toMatchObject({ x: 110, prevX: 100 });
   expect(interpolatedView(game, 0.5, origin).entities.get(entity.id)?.x).toBe(
