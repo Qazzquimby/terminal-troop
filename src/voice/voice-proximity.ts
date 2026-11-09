@@ -1,4 +1,4 @@
-import { spatialMix } from "../audio/audio.js";
+import { spatialMix } from "../audio/index.js";
 import type { Point, Session } from "../sim/index.js";
 import type { PeerMix, Voice } from "./voice.js";
 

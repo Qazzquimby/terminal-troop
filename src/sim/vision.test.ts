@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createSfx } from "../audio/audio.js";
+import { createSfx } from "../audio/index.js";
 import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
 import { PLAYER_SURROUNDINGS_RADIUS } from "./config.js";
 import type { TileMap } from "./map.js";
