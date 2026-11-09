@@ -1,8 +1,4 @@
 import { z } from "zod";
-import type { NetEvent } from "../../net/index.js";
-
-/** The room event that carries signals. */
-export const SIGNAL = "signal" satisfies NetEvent;
 
 const PlayerId = z.string().min(1).max(64);
 
