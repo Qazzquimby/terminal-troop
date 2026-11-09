@@ -12,7 +12,7 @@ import type { Session, SimConfig, WorldKind } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 import type { z } from "zod";
 import { adopt, elect } from "./host.js";
-import type { Candidate, HostView } from "./host.js";
+import type { HostView, RemoteCandidate } from "./host.js";
 import { createRoster } from "./presence.js";
 import type {
   Presence,
@@ -115,6 +115,8 @@ interface Link {
   forceState: boolean;
   /** Undefined until the first view is heard or the first heartbeat elects one. */
   host: HostView | undefined;
+  /** The host view each remote player last sent; null before it sent one. */
+  readonly views: Map<string, HostView | null>;
   /** When the last heartbeat was due to go out. */
   lastPulse: number;
 }
@@ -165,16 +167,14 @@ export function createRoom(deps: RoomDeps): Room {
     });
   }
 
-  /** The local player first, then every remote player present or away. */
-  function candidates(room: Link): [Candidate, ...Candidate[]] {
-    const { roster } = room;
-    return [
-      { id: localId, active: !hidden },
-      ...[...roster.ids()].map((id) => ({
-        id,
-        active: roster.get(id)?.kind === "present",
-      })),
-    ];
+  /** Every remote player present or away, with the view it last sent. */
+  function remotes(room: Link): RemoteCandidate[] {
+    const { roster, views } = room;
+    return [...roster.ids()].map((id) => ({
+      id,
+      active: roster.get(id)?.kind === "present",
+      view: views.get(id) ?? null,
+    }));
   }
 
   function syncVoice(room: Link): void {
@@ -191,7 +191,9 @@ export function createRoom(deps: RoomDeps): Room {
   /** Drops the players `changes` made gone, then points voice at who is left. */
   function settle(room: Link, changes: readonly PresenceChange[]): void {
     for (const change of changes) {
-      if (change.to === "gone") removePlayer(room.session, change.id);
+      if (change.to !== "gone") continue;
+      removePlayer(room.session, change.id);
+      room.views.delete(change.id);
     }
     syncVoice(room);
     if (changes.length > 0) deps.onChange();
@@ -231,8 +233,9 @@ export function createRoom(deps: RoomDeps): Room {
       }),
       [NetEvent.HEARTBEAT]: on(NetEvent.HEARTBEAT, (message) => {
         hear(room, message.id, { kind: "heard", hidden: message.hidden });
-        if (room.roster.get(message.id) !== undefined)
-          room.host = adopt(room.host, message.host);
+        if (room.roster.get(message.id) === undefined) return;
+        room.views.set(message.id, message.host);
+        room.host = adopt(room.host, message.host);
       }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
@@ -243,6 +246,7 @@ export function createRoom(deps: RoomDeps): Room {
       [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
         const change = room.roster.apply(id, { kind: "bye" }, clock.now());
         const removed = removePlayer(room.session, id);
+        room.views.delete(id);
         syncVoice(room);
         if (change !== null || removed) deps.onChange();
       }),
@@ -267,7 +271,11 @@ export function createRoom(deps: RoomDeps): Room {
       applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     settle(room, changes);
     if (!stalled || room.host === undefined)
-      room.host = elect(room.host, candidates(room));
+      room.host = elect(
+        room.host,
+        { id: localId, active: !hidden },
+        remotes(room),
+      );
     sendHeartbeat(room);
   }
 
@@ -300,6 +308,7 @@ export function createRoom(deps: RoomDeps): Room {
       lastSent: -Infinity,
       forceState: false,
       host: undefined,
+      views: new Map(),
       lastPulse: clock.now(),
     };
     await transport.join(roomKey(code, deps.world), handlers(room));

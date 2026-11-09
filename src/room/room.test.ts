@@ -10,12 +10,16 @@ import type { Transport } from "../net/index.js";
 import { playerState, randomFreePosition } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
+import { roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
 import type { Room, RoomState } from "./room.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
 const SEND_GAP = 1000 / 15;
+const heartbeat = roomMessages(testSimConfig.player.nameMax)[
+  NetEvent.HEARTBEAT
+];
 
 /** Lets pending promise callbacks run, so a held join is waiting on its gate. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -404,7 +408,7 @@ describe("players and voice", () => {
 
 describe("presence", () => {
   /** The view a player alone in the room elects on its first heartbeat. */
-  const alone = { id: "me", term: 0 };
+  const alone = { id: "me", term: 0, solo: true };
 
   test("a peer sending only hidden heartbeats for 60s stays a voice peer", async () => {
     const { room, log, clock, sendState, beat, hasX } = await withListener();
@@ -695,16 +699,80 @@ describe("host", () => {
   });
 
   test("players that elected apart agree within a heartbeat of hearing each other", async () => {
-    const { hub, clock, hosts } = await gather(["a", "b", "c", "d"]);
+    const { hub, clock, hosts } = await gather(["a", "b", "c", "d", "e"]);
     clock.advance(1000);
-    hub.partition(["a"], ["b"], ["c", "d"]);
+    hub.partition(["a"], ["b", "c"], ["d", "e"]);
     clock.advance(6000);
-    expect(hosts()).toEqual(["a", "b", "c", "c"]);
+    expect(hosts()).toEqual(["a", "b", "b", "d", "d"]);
     hub.heal();
     clock.advance(7000);
-    expect(hosts()).toEqual(["b", "b", "b", "b"]);
+    expect(hosts()).toEqual(["b", "b", "b", "b", "b"]);
     clock.advance(20_000);
-    expect(hosts()).toEqual(["b", "b", "b", "b"]);
+    expect(hosts()).toEqual(["b", "b", "b", "b", "b"]);
+  });
+
+  /** The host view in the last heartbeat `id` sent, as heard by a bare listener. */
+  function lastView(
+    listener: ReturnType<ReturnType<typeof createHub>["listener"]>,
+    id: string,
+  ) {
+    const beats = listener.heard.flatMap(({ event, payload }) => {
+      const parsed = heartbeat.safeParse(payload);
+      return event === NetEvent.HEARTBEAT && parsed.data?.id === id
+        ? [parsed.data.host]
+        : [];
+    });
+    return beats.at(-1);
+  }
+
+  test("a player cut off from the room elects itself solo, then steps down when it returns", async () => {
+    const { hub, clock, get, hosts } = await gather(["c", "a", "b"]);
+    clock.advance(1000);
+    expect(hosts()).toEqual(["a", "a", "a"]);
+    hub.partition(["c"], ["a", "b"]);
+    clock.advance(6000);
+    expect(hosts()).toEqual(["c", "a", "a"]);
+
+    hub.heal();
+    // States reach c before any heartbeat, so it sees the others active while still solo.
+    get("a").room.frame(clock.now());
+    get("b").room.frame(clock.now());
+    expect(get("c").room.presenceOf("a")?.kind).toBe("present");
+    clock.advance(8000);
+    expect(hosts()).toEqual(["a", "a", "a"]);
+    clock.advance(20_000);
+    expect(hosts()).toEqual(["a", "a", "a"]);
+  });
+
+  test("the last player left hosts solo, and keeps the role when a newcomer joins", async () => {
+    const { hub, clock, get, add, hosts } = await gather(["a", "b", "c"]);
+    const listener = hub.listener("dev:ABC");
+    clock.advance(1000);
+    await get("a").room.leave();
+    await get("b").room.leave();
+    clock.advance(2000);
+    expect(get("c").room.hostId()).toBe("c");
+    expect(lastView(listener, "c")).toEqual({ id: "c", term: 1, solo: true });
+
+    const newcomer = await add("b2");
+    expect(newcomer.room.hostId()).toBe("c");
+    clock.advance(4000);
+    expect(lastView(listener, "c")).toEqual({ id: "c", term: 1, solo: false });
+    expect(lastView(listener, "b2")).toEqual({ id: "c", term: 1, solo: false });
+    clock.advance(20_000);
+    expect(hosts().slice(2)).toEqual(["c", "c"]);
+  });
+
+  test("two solo islands agree by term, then id, once they hear each other", async () => {
+    const { hub, clock, get, hosts } = await gather(["a", "b", "c"]);
+    clock.advance(1000);
+    hub.partition(["a"], ["b"], ["c"]);
+    clock.advance(6000);
+    expect(hosts()).toEqual(["a", "b", "c"]);
+    await get("a").room.leave();
+    hub.heal();
+    clock.advance(8000);
+    expect(hosts().slice(1)).toEqual(["b", "b"]);
   });
 
   test("hands over at the next heartbeat when the host leaves", async () => {

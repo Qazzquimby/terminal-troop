@@ -18,7 +18,11 @@ function stateMessage(nameMax: number) {
 const PresenceMessage = z.object({ id: PlayerId });
 
 /** Who the sender takes for the host, and the election that chose it. */
-const HostView = z.object({ id: PlayerId, term: z.number().int().min(0) });
+const HostView = z.object({
+  id: PlayerId,
+  term: z.number().int().min(0),
+  solo: z.boolean(),
+});
 
 /**
  * A heartbeat carries the sender's id, whether its page is hidden, and its host view; null
