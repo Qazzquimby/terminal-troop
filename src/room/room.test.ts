@@ -390,3 +390,40 @@ describe("state sends", () => {
     expect(states()).toBe(1);
   });
 });
+
+describe("payloads that do not parse are dropped", () => {
+  async function heard() {
+    const ctx = setup();
+    await ctx.room.join("ABC", "ME");
+    const other = ctx.hub.listener("dev:ABC");
+    const session = joined(ctx.room).session;
+    const spot = randomFreePosition(session.world, session.local.radius);
+    return { ...ctx, other, session, spot };
+  }
+
+  test("a STATE with a bad field adds no player", async () => {
+    const { room, other, session, spot } = await heard();
+    other.send(NetEvent.STATE, { id: "x", name: 5, ...spot, aim: 0 });
+    expect(session.players.has("x")).toBe(false);
+    expect(room.lastHeard("x")).toBeUndefined();
+  });
+
+  test("a BYE without an id drops no one", async () => {
+    const { other, session, spot } = await heard();
+    other.send(NetEvent.STATE, { id: "x", name: "X", ...spot, aim: 0 });
+    other.send(NetEvent.BYE, { who: "x" });
+    expect(session.players.has("x")).toBe(true);
+    other.send(NetEvent.BYE, { id: "x" });
+    expect(session.players.has("x")).toBe(false);
+  });
+
+  test("a HELLO without an id forces no state send", async () => {
+    const { other } = await heard();
+    other.send(NetEvent.HELLO, null);
+    expect(other.heard).toEqual([]);
+    other.send(NetEvent.HELLO, { id: "x" });
+    expect(other.heard.map((message) => message.event)).toEqual([
+      NetEvent.STATE,
+    ]);
+  });
+});

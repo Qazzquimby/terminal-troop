@@ -10,7 +10,9 @@ import {
 } from "../sim/index.js";
 import type { Session, SimConfig, WorldKind } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
-import { parseStateMessage, PresenceMessage } from "./protocol.js";
+import type { z } from "zod";
+import { roomMessages } from "./protocol.js";
+import type { Message, MessageInput } from "./protocol.js";
 import { INVALID_ROOM_CODE, parseRoomCode, roomKey } from "./room-code.js";
 import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 
@@ -101,6 +103,18 @@ export function createRoom(deps: RoomDeps): Room {
   /** Settles once the latest join attempt, its own cleanup included, is over. */
   let attempt: Promise<unknown> = Promise.resolve();
   let hidden = false;
+  /** Mapped over each event, so indexing it with a generic event keeps that event's types. */
+  const messages: {
+    [E in NetEvent]: z.ZodType<Message<E>, MessageInput<E>>;
+  } = roomMessages(deps.sim.player.nameMax);
+
+  /** Sends `msg` as `event` to the rest of the room. */
+  function send<E extends NetEvent>(
+    event: E,
+    msg: MessageInput<E>,
+  ): Promise<void> {
+    return transport.send(event, msg);
+  }
 
   function setState(next: RoomState): void {
     state = next;
@@ -110,11 +124,11 @@ export function createRoom(deps: RoomDeps): Room {
   function sendState(room: Link, now: number, force = false): void {
     if (!force && now - room.lastSent < 1000 / config.sendHz) return;
     room.lastSent = now;
-    void transport.send(NetEvent.STATE, playerState(room.session.local));
+    void send(NetEvent.STATE, playerState(room.session.local));
   }
 
   function sayHello(room: Link): void {
-    void transport.send(NetEvent.HELLO, { id: localId });
+    void send(NetEvent.HELLO, { id: localId });
     sendState(room, clock.now(), true);
   }
 
@@ -136,15 +150,19 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   function handlers(room: Link): Parameters<Transport["join"]>[1] {
-    const live =
-      (handle: (payload: unknown) => void) =>
-      (payload: unknown): void => {
-        if (!room.scope.disposed) handle(payload);
+    /** The transport's handler for `event`: drops payloads that arrive after leaving or do not parse. */
+    function on<E extends NetEvent>(
+      event: E,
+      handle: (msg: Message<E>) => void,
+    ): (payload: unknown) => void {
+      return (payload) => {
+        if (room.scope.disposed) return;
+        const parsed = messages[event].safeParse(payload);
+        if (parsed.success) handle(parsed.data);
       };
+    }
     return {
-      [NetEvent.STATE]: live((payload) => {
-        const message = parseStateMessage(payload, deps.sim.player.nameMax);
-        if (message === null) return;
+      [NetEvent.STATE]: on(NetEvent.STATE, (message) => {
         const result = applyRemoteState(room.session, message);
         if (result === "rejected") return;
         room.heard.set(message.id, clock.now());
@@ -153,15 +171,14 @@ export function createRoom(deps: RoomDeps): Room {
           deps.onChange();
         }
       }),
-      [NetEvent.HELLO]: live(() => {
+      [NetEvent.HELLO]: on(NetEvent.HELLO, () => {
         sendState(room, clock.now(), true);
       }),
-      [NetEvent.BYE]: live((payload) => {
-        const message = PresenceMessage.safeParse(payload);
-        if (message.success) dropPlayer(room, message.data.id);
+      [NetEvent.BYE]: on(NetEvent.BYE, (message) => {
+        dropPlayer(room, message.id);
       }),
-      [NetEvent.SIGNAL]: live((payload) => {
-        room.voiceRoom?.receive(payload);
+      [NetEvent.SIGNAL]: on(NetEvent.SIGNAL, (signal) => {
+        room.voiceRoom?.receive(signal);
       }),
     };
   }
@@ -200,20 +217,16 @@ export function createRoom(deps: RoomDeps): Room {
     }
     scope.defer(() => transport.leave());
     room.voiceRoom = scope.adopt(
-      deps.voice.join(
-        localId,
-        (signal) => void transport.send(NetEvent.SIGNAL, signal),
-        {
-          peerFailed(id) {
-            deps.onPeerFailed(id);
-          },
+      deps.voice.join(localId, (signal) => void send(NetEvent.SIGNAL, signal), {
+        peerFailed(id) {
+          deps.onPeerFailed(id);
         },
-      ),
+      }),
       (voiceRoom) => {
         voiceRoom.leave();
       },
     );
-    scope.defer(() => transport.send(NetEvent.BYE, { id: localId }));
+    scope.defer(() => send(NetEvent.BYE, { id: localId }));
     syncVoice(room);
     sayHello(room);
     return room;

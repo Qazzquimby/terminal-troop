@@ -1,27 +1,37 @@
 import { z } from "zod";
+import { NetEvent } from "../net/index.js";
 
 const PlayerId = z.string().min(1).max(64);
 
-// z.number() rejects NaN and ±Infinity.
-const StateMessage = z.object({
-  id: PlayerId,
-  name: z.string(),
-  x: z.number(),
-  y: z.number(),
-  aim: z.number(),
-});
-
-type StateMessage = z.infer<typeof StateMessage>;
-
-/** Reads a STATE payload with its name cut to `nameMax` characters; null when it does not parse. */
-export function parseStateMessage(
-  payload: unknown,
-  nameMax: number,
-): StateMessage | null {
-  const parsed = StateMessage.safeParse(payload);
-  if (!parsed.success) return null;
-  return { ...parsed.data, name: parsed.data.name.slice(0, nameMax) };
+/** A STATE payload, its name cut to `nameMax` characters. z.number() rejects NaN and ±Infinity. */
+function stateMessage(nameMax: number) {
+  return z.object({
+    id: PlayerId,
+    name: z.string().transform((name) => name.slice(0, nameMax)),
+    x: z.number(),
+    y: z.number(),
+    aim: z.number(),
+  });
 }
 
 /** HELLO and BYE carry only the sender's id. */
-export const PresenceMessage = z.object({ id: PlayerId });
+const PresenceMessage = z.object({ id: PlayerId });
+
+/** Every event's payload schema; a missing event fails to compile. */
+export function roomMessages(nameMax: number) {
+  return {
+    [NetEvent.HELLO]: PresenceMessage,
+    [NetEvent.STATE]: stateMessage(nameMax),
+    [NetEvent.BYE]: PresenceMessage,
+    // The voice room parses its own signals.
+    [NetEvent.SIGNAL]: z.unknown(),
+  } as const satisfies Record<NetEvent, z.ZodType>;
+}
+
+export type RoomMessages = ReturnType<typeof roomMessages>;
+
+/** The payload a handler of `E` receives. */
+export type Message<E extends NetEvent> = z.output<RoomMessages[E]>;
+
+/** The payload a send of `E` takes. */
+export type MessageInput<E extends NetEvent> = z.input<RoomMessages[E]>;
