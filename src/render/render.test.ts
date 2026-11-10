@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { Session } from "../sim/index.js";
@@ -9,7 +9,51 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import { interpolatedView } from "./render.js";
+import { drawLitWalls, interpolatedView } from "./render.js";
+
+test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+  };
+  const walls = new Map([
+    [
+      0,
+      [
+        {
+          from: { x: 100, y: 100 },
+          to: { x: 100, y: 150 },
+          normal: { x: -1, y: 0 },
+        },
+      ],
+    ],
+  ]);
+
+  drawLitWalls(ctx, walls);
+
+  expect(ctx.fillStyle).toBe("#4b525a");
+  expect(ctx.strokeStyle).toBe("#5f6871");
+  expect(ctx.fill).toHaveBeenCalledOnce();
+  expect(ctx.stroke).toHaveBeenCalledOnce();
+  expect(ctx.moveTo.mock.calls).toEqual([
+    [100, 100],
+    [100, 100],
+  ]);
+  expect(ctx.lineTo.mock.calls).toEqual([
+    [100, 150],
+    [104, 150],
+    [104, 100],
+    [100, 150],
+  ]);
+  expect(ctx.closePath).toHaveBeenCalledOnce();
+});
 
 const FIXED_DT = 1 / 60;
 

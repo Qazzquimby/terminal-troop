@@ -17,7 +17,7 @@
     "boundaries": "node scripts/boundaries.mjs",
     "format": "prettier --write .",
     "format-check": "prettier --check .",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm knip && pnpm dupes && pnpm boundaries && pnpm format-check"
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm knip && pnpm dupes && pnpm format-check && pnpm boundaries"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",

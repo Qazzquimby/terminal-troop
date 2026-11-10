@@ -3,7 +3,7 @@ import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
 import type { TileMap } from "./map.js";
 import { createSession } from "./session.js";
-import type { VisionSource } from "./vision.js";
+import type { VisibilityPolygon, VisionSource } from "./vision.js";
 import {
   canSeeFrom,
   directionalVision,
@@ -250,8 +250,8 @@ test("visibility polygons sample obstacle corners between regular rays", () => {
   expect(nearCorner.length).toBeGreaterThanOrEqual(3);
 });
 
-function cellsOf(map: TileMap, walls: Iterable<number>) {
-  return [...walls]
+function cellsOf(map: TileMap, walls: VisibilityPolygon["walls"]) {
+  return [...walls.keys()]
     .map((key) => wallCell(map, key))
     .sort((a, b) => (a.row === b.row ? a.col - b.col : a.row - b.row));
 }
@@ -279,9 +279,121 @@ test("a wall is lit only where a lit ray and a seeing ray both reach it", () => 
   expect(cellsOf(map, litWalls(seen, [near]))).toEqual([{ col: 2, row: 2 }]);
   expect(litWalls(seen, [short]).size).toBe(0);
   expect(litWalls([], [near]).size).toBe(0);
-  expect(cellsOf(map, litWalls(seen, [short, above]))).toEqual([
-    { col: 2, row: 2 },
-  ]);
+  expect(litWalls(seen, [short, above]).size).toBe(0);
+  expect(
+    cellsOf(
+      map,
+      litWalls(seen, [
+        visibilityPolygon(map, { x: 75, y: 25, range: 150 }, 32),
+      ]),
+    ),
+  ).toEqual([{ col: 2, row: 2 }]);
+});
+
+test("visible walls contain only their facing edge", () => {
+  const map = mapWithCenterWall();
+  const polygon = visibilityPolygon(map, { x: 75, y: 125, range: 60 }, 4);
+  const faces = [...litWalls([polygon], [polygon]).values()].flat();
+
+  expect(faces).toHaveLength(1);
+  expect(faces[0]?.normal).toEqual({ x: -1, y: 0 });
+  expect(faces[0]?.from.x).toBe(100);
+  expect(faces[0]?.from.y).toBeCloseTo(100);
+  expect(faces[0]?.to.x).toBe(100);
+  expect(faces[0]?.to.y).toBeCloseTo(150);
+});
+
+test("lighting the opposite face does not reveal a wall", () => {
+  const map = mapWithCenterWall();
+  const seen = visibilityPolygon(map, { x: 75, y: 125, range: 60 }, 4);
+  const lit = visibilityPolygon(map, { x: 175, y: 125, range: 60 }, 4);
+
+  expect(litWalls([seen], [lit]).size).toBe(0);
+});
+
+test("only the illuminated portion of a visible wall face is revealed", () => {
+  const map = mapWithCenterWall();
+  const seen = visibilityPolygon(map, { x: 75, y: 125, range: 60 }, 4);
+  const lit = visibilityPolygon(map, { x: 75, y: 100, range: 30 }, 4);
+  const faces = [...litWalls([seen], [lit]).values()].flat();
+
+  expect(faces).toHaveLength(1);
+  expect(faces[0]?.from.x).toBe(100);
+  expect(faces[0]?.from.y).toBeCloseTo(100);
+  expect(faces[0]?.to.x).toBe(100);
+  expect(faces[0]?.to.y).toBeCloseTo(100 + Math.sqrt(30 ** 2 - 25 ** 2));
+});
+
+test("a short range reveals an edge even when neither tile corner is in range", () => {
+  const map = mapWithCenterWall();
+  const polygon = visibilityPolygon(map, { x: 99, y: 125, range: 2 }, 4);
+  const faces = [...litWalls([polygon], [polygon]).values()].flat();
+
+  expect(faces).toHaveLength(1);
+  expect(faces[0]?.from.x).toBe(100);
+  expect(faces[0]?.from.y).toBeCloseTo(125 - Math.sqrt(3));
+  expect(faces[0]?.to.x).toBe(100);
+  expect(faces[0]?.to.y).toBeCloseTo(125 + Math.sqrt(3));
+});
+
+function longWallMap(): TileMap {
+  const cols = 8;
+  const rows = 10;
+  const solid = new Uint8Array(cols * rows);
+  for (let row = 1; row <= 8; row++) solid[row * cols + 4] = 1;
+  return { cell: 50, cols, rows, solid };
+}
+
+test("long wall edges stay continuous as the viewer turns with few regular rays", () => {
+  const map = longWallMap();
+
+  for (const direction of [-0.02, 0, 0.02]) {
+    const polygon = visibilityPolygon(
+      map,
+      {
+        x: 75,
+        y: 225,
+        range: 400,
+        shape: { kind: "cone", direction, angle: Math.PI },
+      },
+      4,
+    );
+    const walls = litWalls([polygon], [polygon]);
+    const cells = cellsOf(map, walls).filter(
+      ({ col, row }) => col === 4 && row >= 0 && row < map.rows,
+    );
+    expect(cells.map(({ row }) => row)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+
+    for (const [key, faces] of walls) {
+      const { col, row } = wallCell(map, key);
+      if (col !== 4 || row < 1 || row > 8) continue;
+
+      expect(faces).toHaveLength(1);
+      expect(faces[0]?.normal).toEqual({ x: -1, y: 0 });
+      expect(faces[0]?.from.x).toBe(200);
+      expect(faces[0]?.from.y).toBeCloseTo(row * map.cell);
+      expect(faces[0]?.to.x).toBe(200);
+      expect(faces[0]?.to.y).toBeCloseTo((row + 1) * map.cell);
+    }
+  }
+});
+
+test("continuous wall edges do not bridge an occluding obstacle", () => {
+  const map = longWallMap();
+  map.solid[4 * map.cols + 2] = 1;
+  const polygon = visibilityPolygon(
+    map,
+    { x: 75, y: 225, range: 400 },
+    4,
+  );
+  const walls = litWalls([polygon], [polygon]);
+  const hidden = cellsOf(map, walls).filter(
+    ({ col, row }) => col === 4 && row >= 2 && row <= 6,
+  );
+
+  expect(hidden).toEqual([]);
+  expect(cellsOf(map, walls)).toContainEqual({ col: 4, row: 1 });
+  expect(cellsOf(map, walls)).toContainEqual({ col: 4, row: 8 });
 });
 
 const SURROUNDINGS = 70;

@@ -17,7 +17,6 @@ import {
   renderPosition,
   visibilityPolygon,
   visionOrigins,
-  wallCell,
 } from "../sim/index.js";
 import type { Camera } from "./camera.js";
 
@@ -151,24 +150,48 @@ function drawStamina(
 }
 
 /**
- * Lit wall tiles, drawn outside the darkness clip: rays stop at wall faces, so walls are never
- * inside a visibility polygon. Fully drawn so a wall reads apart from both floor and darkness.
+ * Lit wall faces, drawn outside the darkness clip: rays stop at wall faces, so walls are never
+ * inside a visibility polygon. Shallow bands distinguish walls from both floor and darkness.
  */
-function drawLitWalls(
-  ctx: CanvasRenderingContext2D,
-  map: TileMap,
-  walls: ReadonlySet<number>,
+export function drawLitWalls(
+  ctx: Pick<
+    CanvasRenderingContext2D,
+    | "fillStyle"
+    | "strokeStyle"
+    | "lineWidth"
+    | "beginPath"
+    | "moveTo"
+    | "lineTo"
+    | "closePath"
+    | "fill"
+    | "stroke"
+  >,
+  walls: VisibilityPolygon["walls"],
 ): void {
+  const depth = 4;
   ctx.fillStyle = "#4b525a";
+  ctx.beginPath();
+  for (const faces of walls.values()) {
+    for (const { from, to, normal } of faces) {
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.lineTo(to.x - normal.x * depth, to.y - normal.y * depth);
+      ctx.lineTo(from.x - normal.x * depth, from.y - normal.y * depth);
+      ctx.closePath();
+    }
+  }
+  ctx.fill();
+
   ctx.strokeStyle = "#5f6871";
   ctx.lineWidth = 1;
-  walls.forEach((wall) => {
-    const { col, row } = wallCell(map, wall);
-    const x = col * map.cell;
-    const y = row * map.cell;
-    ctx.fillRect(x, y, map.cell, map.cell);
-    ctx.strokeRect(x + 0.5, y + 0.5, map.cell - 1, map.cell - 1);
-  });
+  ctx.beginPath();
+  for (const faces of walls.values()) {
+    for (const { from, to } of faces) {
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+    }
+  }
+  ctx.stroke();
 }
 
 /** Visibility polygons for the sources that can reach the view, cut off at its far corner. */
@@ -304,7 +327,7 @@ export function draw(
   ctx.restore();
 
   // Above the darkness: lit wall faces, then the local player and its HUD.
-  drawLitWalls(ctx, map, litWalls(seen, lit));
+  drawLitWalls(ctx, litWalls(seen, lit));
   drawPlayer(ctx, viewer, true);
   drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();

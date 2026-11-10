@@ -80,7 +80,9 @@ export function wallCell(
 interface RayHit {
   readonly distance: number;
   /** The wall cell that stopped the ray, if one did before `maxDist`. */
-  readonly wall: WallKey | undefined;
+  readonly wall:
+    | { readonly key: WallKey; readonly normal: Point }
+    | undefined;
 }
 
 function hitAt(
@@ -88,9 +90,13 @@ function hitAt(
   distance: number,
   col: number,
   row: number,
+  normal: Point = { x: 0, y: 0 },
 ): RayHit | undefined {
   if (!isSolid(map, col, row)) return undefined;
-  return { distance, wall: (row + 1) * (map.cols + 2) + col + 1 };
+  return {
+    distance,
+    wall: { key: (row + 1) * (map.cols + 2) + col + 1, normal },
+  };
 }
 
 function castRay(
@@ -130,9 +136,12 @@ function castRay(
 
     if (Math.abs(maxX - maxY) <= 1e-9) {
       const corner =
-        hitAt(map, distance, col + stepCol, row) ??
-        hitAt(map, distance, col, row + stepRow) ??
-        hitAt(map, distance, col + stepCol, row + stepRow);
+        hitAt(map, distance, col + stepCol, row, { x: -stepCol, y: 0 }) ??
+        hitAt(map, distance, col, row + stepRow, { x: 0, y: -stepRow }) ??
+        hitAt(map, distance, col + stepCol, row + stepRow, {
+          x: -stepCol,
+          y: 0,
+        });
       if (corner !== undefined) return corner;
       col += stepCol;
       row += stepRow;
@@ -140,12 +149,12 @@ function castRay(
       maxY += deltaY;
     } else if (maxX < maxY) {
       col += stepCol;
-      const hit = hitAt(map, maxX, col, row);
+      const hit = hitAt(map, maxX, col, row, { x: -stepCol, y: 0 });
       if (hit !== undefined) return hit;
       maxX += deltaX;
     } else {
       row += stepRow;
-      const hit = hitAt(map, maxY, col, row);
+      const hit = hitAt(map, maxY, col, row, { x: 0, y: -stepRow });
       if (hit !== undefined) return hit;
       maxY += deltaY;
     }
@@ -252,18 +261,17 @@ function cornerRayOffsets(
   limit: number,
 ): number[] {
   const offsets: number[] = [];
-  const minCol = Math.max(0, Math.ceil((origin.x - limit) / map.cell));
-  const maxCol = Math.min(map.cols, Math.floor((origin.x + limit) / map.cell));
-  const minRow = Math.max(0, Math.ceil((origin.y - limit) / map.cell));
-  const maxRow = Math.min(map.rows, Math.floor((origin.y + limit) / map.cell));
+  const minCol = Math.max(0, Math.floor((origin.x - limit) / map.cell));
+  const maxCol = Math.min(map.cols, Math.ceil((origin.x + limit) / map.cell));
+  const minRow = Math.max(0, Math.floor((origin.y - limit) / map.cell));
+  const maxRow = Math.min(map.rows, Math.ceil((origin.y + limit) / map.cell));
   const turn = Math.PI * 2;
 
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
       const dx = col * map.cell - origin.x;
       const dy = row * map.cell - origin.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance === 0 || distance > limit) continue;
+      if (dx === 0 && dy === 0) continue;
 
       const topLeft = isSolid(map, col - 1, row - 1);
       const topRight = isSolid(map, col, row - 1);
@@ -276,7 +284,6 @@ function cornerRayOffsets(
         Number(bottomRight);
 
       if (solidCount === 0 || solidCount === 4) continue;
-      if (solidCount === 2 && topLeft !== bottomRight) continue;
 
       const direction = Math.atan2(dy, dx);
       for (const adjustment of [-1e-7, 0, 1e-7]) {
@@ -290,10 +297,157 @@ function cornerRayOffsets(
   return offsets;
 }
 
+interface WallFace {
+  readonly from: Point;
+  readonly to: Point;
+  readonly normal: Point;
+}
+
 export interface VisibilityPolygon {
   readonly points: readonly Point[];
   /** The wall cells whose faces the polygon's rays end on. */
-  readonly walls: ReadonlySet<WallKey>;
+  readonly walls: ReadonlyMap<WallKey, readonly WallFace[]>;
+}
+
+const FACE_EPSILON = 1e-7;
+
+function addWallFace(
+  walls: Map<WallKey, WallFace[]>,
+  key: WallKey,
+  face: WallFace,
+): void {
+  const faces = walls.get(key) ?? [];
+  let merged = face;
+
+  for (let i = faces.length - 1; i >= 0; i--) {
+    const other = faces[i];
+    if (other === undefined) continue;
+    if (
+      other.normal.x !== merged.normal.x ||
+      other.normal.y !== merged.normal.y ||
+      other.to.x < merged.from.x - FACE_EPSILON ||
+      other.to.y < merged.from.y - FACE_EPSILON ||
+      merged.to.x < other.from.x - FACE_EPSILON ||
+      merged.to.y < other.from.y - FACE_EPSILON
+    )
+      continue;
+
+    merged = {
+      from: {
+        x: Math.min(merged.from.x, other.from.x),
+        y: Math.min(merged.from.y, other.from.y),
+      },
+      to: {
+        x: Math.max(merged.to.x, other.to.x),
+        y: Math.max(merged.to.y, other.to.y),
+      },
+      normal: merged.normal,
+    };
+    faces.splice(i, 1);
+  }
+
+  faces.push(merged);
+  walls.set(key, faces);
+}
+
+function wallFaceBetween(
+  map: TileMap,
+  origin: Point,
+  wall: NonNullable<RayHit["wall"]>,
+  firstAngle: number,
+  lastAngle: number,
+  limit: number,
+): WallFace | undefined {
+  const { normal } = wall;
+  if (normal.x === 0 && normal.y === 0) return undefined;
+
+  const { col, row } = wallCell(map, wall.key);
+  const vertical = normal.x !== 0;
+  const fixed = vertical
+    ? (col + Number(normal.x > 0)) * map.cell
+    : (row + Number(normal.y > 0)) * map.cell;
+  const distance = fixed - (vertical ? origin.x : origin.y);
+  if (distance === 0 || Math.abs(distance) >= limit) return undefined;
+
+  const project = (angle: number): number =>
+    vertical
+      ? origin.y + (distance * Math.sin(angle)) / Math.cos(angle)
+      : origin.x + (distance * Math.cos(angle)) / Math.sin(angle);
+  const first = project(firstAngle);
+  const last = project(lastAngle);
+  const center = vertical ? origin.y : origin.x;
+  const reach = Math.sqrt(limit * limit - distance * distance);
+  const cellStart = (vertical ? row : col) * map.cell;
+  const from = Math.max(cellStart, center - reach, Math.min(first, last));
+  const to = Math.min(
+    cellStart + map.cell,
+    center + reach,
+    Math.max(first, last),
+  );
+  if (to - from <= FACE_EPSILON) return undefined;
+
+  return {
+    from: vertical ? { x: fixed, y: from } : { x: from, y: fixed },
+    to: vertical ? { x: fixed, y: to } : { x: to, y: fixed },
+    normal,
+  };
+}
+
+function traceWallFaces(
+  map: TileMap,
+  origin: Point,
+  angles: readonly number[],
+  closed: boolean,
+  limit: number,
+): Map<WallKey, WallFace[]> {
+  const walls = new Map<WallKey, WallFace[]>();
+
+  for (const [index, first] of angles.entries()) {
+    const last =
+      angles[index + 1] ??
+      (closed ? first + Math.PI * 2 - (first - (angles[0] ?? first)) : undefined);
+    if (last === undefined || last <= first) continue;
+
+    const middle = (first + last) / 2;
+    const { wall } = castRay(
+      map,
+      origin.x,
+      origin.y,
+      Math.cos(middle),
+      Math.sin(middle),
+      limit + Math.SQRT2 * map.cell,
+    );
+    if (wall === undefined) continue;
+
+    const face = wallFaceBetween(map, origin, wall, first, last, limit);
+    if (face !== undefined) addWallFace(walls, wall.key, face);
+  }
+
+  return walls;
+}
+
+function intersectWallFaces(
+  seen: WallFace,
+  lit: WallFace,
+): WallFace | undefined {
+  if (
+    seen.normal.x !== lit.normal.x ||
+    seen.normal.y !== lit.normal.y
+  )
+    return undefined;
+
+  const from = {
+    x: Math.max(seen.from.x, lit.from.x),
+    y: Math.max(seen.from.y, lit.from.y),
+  };
+  const to = {
+    x: Math.min(seen.to.x, lit.to.x),
+    y: Math.min(seen.to.y, lit.to.y),
+  };
+  const length = seen.normal.x === 0 ? to.x - from.x : to.y - from.y;
+  if (length <= FACE_EPSILON) return undefined;
+
+  return { from, to, normal: seen.normal };
 }
 
 /**
@@ -303,11 +457,18 @@ export interface VisibilityPolygon {
 export function litWalls(
   seen: readonly VisibilityPolygon[],
   lit: readonly VisibilityPolygon[],
-): Set<WallKey> {
-  const result = new Set<WallKey>();
+): Map<WallKey, WallFace[]> {
+  const result = new Map<WallKey, WallFace[]>();
   for (const polygon of seen) {
-    for (const wall of polygon.walls) {
-      if (lit.some((light) => light.walls.has(wall))) result.add(wall);
+    for (const [wall, faces] of polygon.walls) {
+      for (const light of lit) {
+        for (const illuminated of light.walls.get(wall) ?? []) {
+          for (const face of faces) {
+            const overlap = intersectWallFaces(face, illuminated);
+            if (overlap !== undefined) addWallFace(result, wall, overlap);
+          }
+        }
+      }
     }
   }
   return result;
@@ -329,21 +490,22 @@ export function visibilityPolygon(
       ? rayCount
       : Math.max(2, Math.ceil((rayCount * sweep) / (Math.PI * 2)) + 1);
   const limit = Math.min(maxDist, origin.range ?? Infinity);
-  const walls = new Set<WallKey>();
 
   const offsets = new Set(cornerRayOffsets(map, origin, start, sweep, limit));
   for (let i = 0; i < count; i++) {
     offsets.add((i / (cone === undefined ? count : count - 1)) * sweep);
   }
 
-  for (const offset of [...offsets].sort((a, b) => a - b)) {
-    const angle = start + offset;
+  const angles = [...offsets].sort((a, b) => a - b).map((offset) => start + offset);
+  for (const angle of angles) {
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
-    const { distance, wall } = castRay(map, origin.x, origin.y, dx, dy, limit);
+    const { distance } = castRay(map, origin.x, origin.y, dx, dy, limit);
     points.push({ x: origin.x + dx * distance, y: origin.y + dy * distance });
-    if (wall !== undefined) walls.add(wall);
   }
 
-  return { points, walls };
+  return {
+    points,
+    walls: traceWallFaces(map, origin, angles, cone === undefined, limit),
+  };
 }

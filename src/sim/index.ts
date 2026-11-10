@@ -44,6 +44,5 @@ export {
   litWalls,
   visibilityPolygon,
   visionOrigins,
-  wallCell,
 } from "./vision.js";
 export type { VisibilityPolygon, VisionSource } from "./vision.js";
