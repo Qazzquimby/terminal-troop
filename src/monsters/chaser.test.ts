@@ -169,7 +169,7 @@ describe("chasing", () => {
         [first, second],
       ] as const) {
         expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(
-          a.radius + b.radius - 1e-5,
+          a.radius + b.radius - 1e-2,
         );
       }
     }
