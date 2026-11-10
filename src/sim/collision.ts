@@ -6,11 +6,16 @@ export interface Body extends Point {
   vy: number;
 }
 
+export interface CollisionBody extends Body {
+  readonly radius: number;
+}
+
 type Axis = "x" | "y";
 
 const VELOCITY = { x: "vx", y: "vy" } as const;
 const EPSILON = 1e-6;
 const FREE_POINT_STEP = 4;
+const SEPARATION_PASSES = 16;
 
 function cellRange(min: number, max: number, cell: number): [number, number] {
   return [Math.floor(min / cell + EPSILON), Math.floor(max / cell - EPSILON)];
@@ -142,4 +147,107 @@ export function moveWithCollision(
   resolveAxis(body, half, map, bounce, "x");
   body.y += body.vy * dt;
   resolveAxis(body, half, map, bounce, "y");
+}
+
+function pushBody(
+  body: CollisionBody,
+  nx: number,
+  ny: number,
+  distance: number,
+  map: TileMap,
+): number {
+  const pushed: Body = {
+    x: body.x,
+    y: body.y,
+    vx: nx * distance,
+    vy: ny * distance,
+  };
+  moveWithCollision(pushed, body.radius, 1, map, 0);
+
+  const moved = (pushed.x - body.x) * nx + (pushed.y - body.y) * ny;
+  body.x = pushed.x;
+  body.y = pushed.y;
+  return Math.max(0, moved);
+}
+
+function stopTowards(body: Body, nx: number, ny: number): void {
+  const speed = body.vx * nx + body.vy * ny;
+  if (speed <= 0) return;
+  body.vx -= speed * nx;
+  body.vy -= speed * ny;
+}
+
+function separatePair(
+  first: CollisionBody,
+  second: CollisionBody,
+  map: TileMap,
+  movable: ReadonlySet<CollisionBody>,
+): boolean {
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const distance = Math.hypot(dx, dy);
+  const overlap = first.radius + second.radius - distance;
+  if (overlap <= EPSILON) return false;
+
+  const moveFirst = movable.has(first);
+  const moveSecond = movable.has(second);
+  if (!moveFirst && !moveSecond) return false;
+
+  const directions =
+    distance === 0
+      ? [
+          { x: 1, y: 0 },
+          { x: -1, y: 0 },
+          { x: 0, y: 1 },
+          { x: 0, y: -1 },
+        ]
+      : [{ x: dx / distance, y: dy / distance }];
+
+  for (const { x: nx, y: ny } of directions) {
+    let remaining = overlap + EPSILON;
+    let moved = 0;
+
+    if (moveFirst) {
+      const shift = pushBody(
+        first,
+        -nx,
+        -ny,
+        moveSecond ? remaining / 2 : remaining,
+        map,
+      );
+      remaining = Math.max(0, remaining - shift);
+      moved += shift;
+    }
+    if (moveSecond) {
+      const shift = pushBody(second, nx, ny, remaining, map);
+      remaining = Math.max(0, remaining - shift);
+      moved += shift;
+    }
+    if (moveFirst && remaining > EPSILON) {
+      moved += pushBody(first, -nx, -ny, remaining, map);
+    }
+
+    if (moved <= EPSILON) continue;
+    if (moveFirst) stopTowards(first, nx, ny);
+    if (moveSecond) stopTowards(second, -nx, -ny);
+    return true;
+  }
+
+  return false;
+}
+
+export function separateBodies(
+  bodies: readonly CollisionBody[],
+  map: TileMap,
+  movable: ReadonlySet<CollisionBody> = new Set(bodies),
+): void {
+  for (let pass = 0; pass < SEPARATION_PASSES; pass++) {
+    let moved = false;
+    for (const [index, first] of bodies.entries()) {
+      for (const second of bodies.slice(index + 1)) {
+        if (separatePair(first, second, map, movable)) moved = true;
+      }
+    }
+    if (!moved) return;
+  }
 }

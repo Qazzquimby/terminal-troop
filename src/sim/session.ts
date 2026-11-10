@@ -1,4 +1,6 @@
 import type { Sfx } from "../audio/index.js";
+import type { CollisionBody } from "./collision.js";
+import { separateBodies } from "./collision.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
@@ -94,6 +96,26 @@ function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
 }
 
+function separateSessionBodies(game: Session): void {
+  const entities = [...game.entities.values()].filter(
+    (entity) => entity.collides,
+  );
+  const bodies = [...game.players.values(), ...entities];
+  const movable = new Set<CollisionBody>([game.local]);
+  if (game.hosting) {
+    entities.forEach((entity) => movable.add(entity));
+  }
+
+  separateBodies(bodies, game.world.map, movable);
+
+  if (game.hosting) {
+    entities.forEach((entity) => {
+      entity.tx = entity.x;
+      entity.ty = entity.y;
+    });
+  }
+}
+
 export function updateSession(
   game: Session,
   controls: Controls,
@@ -108,6 +130,8 @@ export function updateSession(
 
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
+
+  separateSessionBodies(game);
 }
 
 /** Drops a remote player; false when there is none by that id. */

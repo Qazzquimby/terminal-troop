@@ -6,6 +6,7 @@ import { createSession } from "./session.js";
 import type { VisionSource } from "./vision.js";
 import {
   canSeeFrom,
+  directionalVision,
   hasLineOfSight,
   isVisible,
   lightSources,
@@ -68,6 +69,69 @@ test("omnidirectional vision supports an independent range", () => {
   expect(canSeeFrom(emptyMap(), { x: 150, y: 150 }, { x: 25, y: 150 })).toBe(
     true,
   );
+});
+
+test("directional vision combines a cone with short omnidirectional sight", () => {
+  const map = emptyMap();
+  const sources = directionalVision(
+    { x: 150, y: 150 },
+    0,
+    {
+      coneAngle: Math.PI / 2,
+      rays: 64,
+      surroundingsRadius: 40,
+    },
+    100,
+  );
+  const visible = (x: number, y: number) =>
+    sources.some((source) => canSeeFrom(map, source, { x, y }));
+
+  expect(visible(110, 150)).toBe(true);
+  expect(visible(109, 150)).toBe(false);
+  expect(visible(250, 150)).toBe(true);
+  expect(visible(251, 150)).toBe(false);
+});
+
+test("surroundings never exceed the viewer's sight range", () => {
+  const sources = directionalVision(
+    { x: 150, y: 150 },
+    0,
+    {
+      coneAngle: Math.PI / 2,
+      rays: 64,
+      surroundingsRadius: 70,
+    },
+    20,
+  );
+
+  expect(
+    sources.some((source) =>
+      canSeeFrom(emptyMap(), source, { x: 130, y: 150 }),
+    ),
+  ).toBe(true);
+  expect(
+    sources.some((source) =>
+      canSeeFrom(emptyMap(), source, { x: 129, y: 150 }),
+    ),
+  ).toBe(false);
+});
+
+test("walls block the omnidirectional part of directional vision", () => {
+  const sources = directionalVision(
+    { x: 175, y: 125 },
+    0,
+    {
+      coneAngle: Math.PI / 2,
+      rays: 64,
+      surroundingsRadius: 150,
+    },
+  );
+
+  expect(
+    sources.some((source) =>
+      canSeeFrom(mapWithCenterWall(), source, { x: 75, y: 125 }),
+    ),
+  ).toBe(false);
 });
 
 test("cone polygons include the origin and both boundary rays", () => {

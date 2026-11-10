@@ -3,14 +3,18 @@ import alertUrl from "../assets/sfx/zombie/alert.mp3";
 import attackUrl from "../assets/sfx/zombie/attack.mp3";
 import barkUrl from "../assets/sfx/zombie/bark.mp3";
 import { drawFacing } from "../render/render.js";
-import { canSeeFrom, isAreaFree, mulberry32Next } from "../sim/index.js";
+import {
+  canSeeFrom,
+  directionalVision,
+  isAreaFree,
+  mulberry32Next,
+} from "../sim/index.js";
 import type {
   EntityDefinition,
   Point,
   Rng,
   Session,
   TileMap,
-  VisionSource,
 } from "../sim/index.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "./route.js";
 
@@ -119,28 +123,22 @@ function withSeed<T>(
   return { result, seed: state };
 }
 
-/** The nearest player a chaser at `at` sees within its sight cone, or null. */
+/** The nearest player a chaser at `at` sees within its cone or surroundings, or null. */
 function sighting(
   game: Session,
   at: Point,
   range: number,
   facing: number,
 ): Point | null {
-  const eye: VisionSource = {
-    x: at.x,
-    y: at.y,
-    range,
-    shape: {
-      kind: "cone",
-      direction: facing,
-      angle: game.config.vision.coneAngle,
-    },
-  };
+  const sources = directionalVision(at, facing, game.config.vision, range);
   let nearest: Point | null = null;
   let nearestDistance = Infinity;
   for (const player of game.players.values()) {
     const distance = Math.hypot(player.x - at.x, player.y - at.y);
-    if (distance < nearestDistance && canSeeFrom(game.world.map, eye, player)) {
+    if (
+      distance < nearestDistance &&
+      sources.some((source) => canSeeFrom(game.world.map, source, player))
+    ) {
       nearest = { x: player.x, y: player.y };
       nearestDistance = distance;
     }
@@ -262,7 +260,7 @@ function think(
 function voice(
   previous: ChaserState,
   next: ChaserState,
-  at: Point,
+  at: Point & { readonly radius: number },
   dt: number,
   game: Session,
 ): ChaserState {
@@ -273,13 +271,18 @@ function voice(
 
   if (previous.mode !== "chase" && next.mode === "chase") play(SOUNDS.alert);
 
+  const attackRange = Math.max(
+    ATTACK_RANGE,
+    at.radius + game.config.player.radius + 1,
+  );
   let attackCooldown = Math.max(0, next.attackCooldown - dt);
   if (
     attackCooldown === 0 &&
     next.mode === "chase" &&
-    Math.hypot(next.target.x - at.x, next.target.y - at.y) <= ATTACK_RANGE
+    Math.hypot(next.target.x - at.x, next.target.y - at.y) <= attackRange
   ) {
     play(SOUNDS.attack);
+    // doesnt actually attack yet
     attackCooldown = ATTACK_COOLDOWN;
   }
 

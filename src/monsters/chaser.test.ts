@@ -28,14 +28,20 @@ function played(game: Session): string[] {
 }
 
 /** The dev square, its pillars at x 200-300, y 50-150 and x 600-700, y 450-550. */
-function world(chaser: ChaserConfig = config): Session {
+function world(
+  chaser: ChaserConfig = config,
+  surroundingsRadius = testSimConfig.vision.surroundingsRadius,
+): Session {
   const game = createSession(
     "me",
     "ME",
     "CHASE",
     "dev",
     testSfx(),
-    testSimConfig,
+    {
+      ...testSimConfig,
+      vision: { ...testSimConfig.vision, surroundingsRadius },
+    },
   );
   vi.spyOn(game.sfx, "play").mockResolvedValue({
     stop: () => undefined,
@@ -87,6 +93,46 @@ describe("sighting", () => {
     expect(zombie.vy).toBeCloseTo(0);
   });
 
+  test("a nearby player behind the chaser is seen", () => {
+    const game = world(config, 70);
+    standAt(game, 250, 300);
+    const zombie = chaserAt(game, 300, 300);
+    run(game, DT);
+
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "chase",
+      target: { x: 250, y: 300 },
+    });
+    expect(zombie.vx).toBeLessThan(0);
+  });
+
+  test("a player behind the chaser beyond its surroundings is not seen", () => {
+    const game = world(config, 70);
+    standAt(game, 200, 300);
+    const zombie = chaserAt(game, 300, 300);
+    run(game, DT);
+
+    expect(stateOf(zombie).mode).toBe("wander");
+  });
+
+  test("a wall blocks nearby sight behind the chaser", () => {
+    const game = world(config, 200);
+    standAt(game, 175, 100);
+    const zombie = chaserAt(game, 325, 100);
+    run(game, DT);
+
+    expect(stateOf(zombie).mode).toBe("wander");
+  });
+
+  test("zero sight range also disables nearby sight", () => {
+    const game = world({ ...config, sightRange: 0 }, 70);
+    standAt(game, 250, 300);
+    const zombie = chaserAt(game, 300, 300);
+    run(game, DT);
+
+    expect(stateOf(zombie).mode).toBe("wander");
+  });
+
   test("a player out of range is not seen", () => {
     const game = world();
     standAt(game, 650, 300);
@@ -107,6 +153,26 @@ describe("sighting", () => {
 describe("chasing", () => {
   test("runs a bit slower than a walking player", () => {
     expect(config.chaseSpeed).toBeLessThan(testSimConfig.player.speed);
+  });
+
+  test("chasers remain separated from players and one another", () => {
+    const game = world();
+    standAt(game, 500, 300);
+    const first = chaserAt(game, 300, 300);
+    const second = chaserAt(game, 300, 300);
+
+    for (let step = 0; step < 240; step++) {
+      updateSession(game, idle, DT);
+      for (const [a, b] of [
+        [game.local, first],
+        [game.local, second],
+        [first, second],
+      ] as const) {
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(
+          a.radius + b.radius - 1e-5,
+        );
+      }
+    }
   });
 
   test("plans anew only once the player moves meaningfully from the target", () => {
@@ -212,6 +278,22 @@ describe("sounds", () => {
     chaserAt(game, 300, 300);
     run(game, DT);
     expect(played(game)).toEqual([alertUrl]);
+  });
+
+  test("a large chaser can attack without overlapping its target", () => {
+    const game = world({
+      ...config,
+      radius: Math.max(config.radius, testSimConfig.player.radius + 40),
+    });
+    standAt(game, 500, 300);
+    const zombie = chaserAt(game, 300, 300);
+
+    expect(
+      runUntil(game, 3, () => played(game).includes(attackUrl)),
+    ).toBe(true);
+    expect(
+      Math.hypot(zombie.x - game.local.x, zombie.y - game.local.y),
+    ).toBeGreaterThanOrEqual(zombie.radius + game.local.radius - 1e-5);
   });
 
   test("attacks on reaching its target, at most every 2 seconds", () => {

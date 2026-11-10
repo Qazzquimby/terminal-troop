@@ -169,27 +169,43 @@ export function hasLineOfSight(map: TileMap, from: Point, to: Point): boolean {
   return hit.distance >= distance;
 }
 
-function playerVision(viewer: Viewer, vision: VisionConfig): VisionSource {
-  return {
-    x: viewer.x,
-    y: viewer.y,
-    shape: {
-      kind: "cone",
-      direction: viewer.aim,
-      angle: vision.coneAngle,
+export function directionalVision(
+  origin: Point,
+  direction: number,
+  vision: VisionConfig,
+  range = Infinity,
+): [VisionSource, LightSource] {
+  return [
+    {
+      x: origin.x,
+      y: origin.y,
+      range,
+      shape: {
+        kind: "cone",
+        direction,
+        angle: vision.coneAngle,
+      },
     },
-  };
+    surroundingsVision(origin, vision, range),
+  ];
 }
 
 /** The small circle around the viewer that is both seen and lit, behind them included. */
-function playerSurroundings(viewer: Viewer, vision: VisionConfig): LightSource {
-  return { x: viewer.x, y: viewer.y, range: vision.surroundingsRadius };
+function surroundingsVision(
+  viewer: Point,
+  vision: VisionConfig,
+  range: number,
+): LightSource {
+  return {
+    x: viewer.x,
+    y: viewer.y,
+    range: Math.min(range, vision.surroundingsRadius),
+  };
 }
 
 export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   return [
-    playerVision(viewer, game.config.vision),
-    playerSurroundings(viewer, game.config.vision),
+    ...directionalVision(viewer, viewer.aim, game.config.vision),
     ...[...game.entities.values()].filter(
       (entity) => entity.ownerId === viewer.id && entity.grantsVision,
     ),
@@ -197,10 +213,14 @@ export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
 }
 
 export function lightSources(game: Session, viewer: Viewer): LightSource[] {
-  const { vision } = game.config;
+  const [cone, surroundings] = directionalVision(
+    viewer,
+    viewer.aim,
+    game.config.vision,
+  );
   const lights: LightSource[] = [
-    { ...playerVision(viewer, vision), range: game.config.light.range },
-    playerSurroundings(viewer, vision),
+    { ...cone, range: game.config.light.range },
+    surroundings,
   ];
 
   game.entities.forEach((entity) => {

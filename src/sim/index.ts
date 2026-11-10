@@ -38,6 +38,7 @@ export { createSimClock } from "./sim-clock.js";
 export type { SimClockConfig } from "./sim-clock.js";
 export {
   canSeeFrom,
+  directionalVision,
   isVisible,
   lightSources,
   litWalls,
