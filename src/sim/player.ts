@@ -4,8 +4,8 @@ import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
-import type { Inventory } from "./inventory.js";
-import { createInventory } from "./inventory.js";
+import type { HeldSlot, Inventory } from "./inventory.js";
+import { startingInventory } from "./items.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
 
@@ -45,6 +45,8 @@ export interface Player extends Body, Interpolated, Facing, Tracked {
   taim: number;
   radius: number;
   inventory: Inventory;
+  /** The selected inventory slot, or null for holding nothing; never sent over the network. */
+  held: HeldSlot;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
 }
@@ -79,7 +81,8 @@ export function createPlayer(
     prevAim: 0,
     taim: 0,
     radius: rules.player.radius,
-    inventory: createInventory(rules.player.inventorySlots),
+    inventory: startingInventory(),
+    held: 0,
     stamina: createStamina(rules.stamina),
   };
 }

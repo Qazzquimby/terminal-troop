@@ -1,11 +1,19 @@
 import { expect, test } from "vitest";
 import type { ItemDefinition } from "./inventory.js";
-import { addItem, createInventory, removeItem } from "./inventory.js";
+import {
+  addItem,
+  createInventory,
+  heldEmoji,
+  heldItem,
+  removeItem,
+  selectSlot,
+} from "./inventory.js";
 
 const material: ItemDefinition = {
   id: "material",
   name: "Material",
   maxStack: 5,
+  emoji: "🪨",
 };
 
 const quantities = (inventory: ReturnType<typeof createInventory>): number[] =>
@@ -47,9 +55,34 @@ test("rejects invalid inventory operations", () => {
 
 test("keeps different item types separate", () => {
   const inventory = createInventory(2);
-  const tool: ItemDefinition = { id: "tool", name: "Tool", maxStack: 1 };
+  const tool: ItemDefinition = {
+    id: "tool",
+    name: "Tool",
+    maxStack: 1,
+    emoji: "🔧",
+  };
   addItem(inventory, material, 2);
   expect(addItem(inventory, tool, 2)).toBe(1);
   expect(inventory[0]?.item.id).toBe("material");
   expect(inventory[1]?.item.id).toBe("tool");
+});
+
+test("selects slots by number, including empty ones", () => {
+  const inventory = createInventory(3);
+  addItem(inventory, material, 1);
+  expect(heldItem(inventory, selectSlot(inventory, 0))?.item.id).toBe(
+    "material",
+  );
+  expect(heldItem(inventory, selectSlot(inventory, 2))).toBeNull();
+  expect(heldItem(inventory, selectSlot(inventory, null))).toBeNull();
+  expect(() => selectSlot(inventory, 3)).toThrow(RangeError);
+  expect(() => selectSlot(inventory, -1)).toThrow(RangeError);
+});
+
+test("reports the glyph of the held item", () => {
+  const inventory = createInventory(2);
+  addItem(inventory, material, 1);
+  expect(heldEmoji(inventory, 0)).toBe(material.emoji);
+  expect(heldEmoji(inventory, 1)).toBeNull();
+  expect(heldEmoji(inventory, null)).toBeNull();
 });

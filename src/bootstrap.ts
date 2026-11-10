@@ -1,8 +1,10 @@
 import {
   createSimClock,
+  heldEmoji,
   remotePlayers,
-  updateSession,
   renderPosition,
+  selectSlot,
+  updateSession,
 } from "./sim/index.js";
 import { NetEvent, createCountingTransport } from "./net/index.js";
 import type { Session } from "./sim/index.js";
@@ -287,16 +289,33 @@ function frame(): void {
   if (session !== null) {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
-      updateSession(session, input.getControls(until), clock.dt);
+      const { controls, slot } = input.getStep(until);
+      if (slot !== undefined) {
+        session.local.held = selectSlot(session.local.inventory, slot);
+      }
+      updateSession(session, controls, clock.dt);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
     updateCamera(camera, renderPosition(session.local, alpha));
     const drawStart = performance.now();
-    draw(ctx, session, camera, now, alpha, input.mouseWorld(), isAway);
+    draw(
+      ctx,
+      session,
+      camera,
+      now,
+      alpha,
+      input.mouseWorld(),
+      isAway,
+      heldEmoji(session.local.inventory, session.local.held),
+    );
     frameStats.drawMs = performance.now() - drawStart;
-    updateInventory(session.local.inventory, inventoryOpen);
+    updateInventory(
+      session.local.inventory,
+      session.local.held,
+      inventoryOpen,
+    );
   } else {
     inventoryEl.hidden = true;
     ctx.fillStyle = "#090b0e";

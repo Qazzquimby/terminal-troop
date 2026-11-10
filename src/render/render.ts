@@ -149,6 +149,25 @@ function drawStamina(
   ctx.fillRect(x, y, (width * value) / max, 4);
 }
 
+/** The held item is a small glyph floating in front of the player, not a world body. */
+function drawHeldItem(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  emoji: string,
+): void {
+  const distance = player.radius + 4;
+  ctx.save();
+  ctx.font = "12px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(
+    emoji,
+    player.x + Math.cos(player.aim) * distance,
+    player.y + Math.sin(player.aim) * distance,
+  );
+  ctx.restore();
+}
+
 /**
  * Lit wall faces, drawn outside the darkness clip: rays stop at wall faces, so walls are never
  * inside a visibility polygon. Shallow bands distinguish walls from both floor and darkness.
@@ -276,7 +295,7 @@ export function interpolatedView(
 
 /**
  * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
- * player `isAway` picks out drawn as away.
+ * player `isAway` picks out drawn as away and `held` (an item glyph) in front of the local one.
  */
 export function draw(
   ctx: CanvasRenderingContext2D,
@@ -286,6 +305,7 @@ export function draw(
   alpha: number,
   mouse: Point,
   isAway: (id: string) => boolean,
+  held: string | null,
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
@@ -329,6 +349,7 @@ export function draw(
   // Above the darkness: lit wall faces, then the local player and its HUD.
   drawLitWalls(ctx, litWalls(seen, lit));
   drawPlayer(ctx, viewer, true);
+  if (held !== null) drawHeldItem(ctx, viewer, held);
   drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();
 }

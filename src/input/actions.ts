@@ -14,9 +14,31 @@ export const ACTIONS = {
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
   pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },
+  select1: { keys: ["Digit1"], contexts: ["play"] },
+  select2: { keys: ["Digit2"], contexts: ["play"] },
+  select3: { keys: ["Digit3"], contexts: ["play"] },
+  select4: { keys: ["Digit4"], contexts: ["play"] },
+  select5: { keys: ["Digit5"], contexts: ["play"] },
+  select6: { keys: ["Digit6"], contexts: ["play"] },
+  select7: { keys: ["Digit7"], contexts: ["play"] },
+  select8: { keys: ["Digit8"], contexts: ["play"] },
+  select9: { keys: ["Digit9"], contexts: ["play"] },
 } as const;
 
 export type Action = keyof typeof ACTIONS;
+
+/** The number keys select inventory slots; a key's position here is its slot index. */
+const SLOT_ACTIONS = [
+  "select1",
+  "select2",
+  "select3",
+  "select4",
+  "select5",
+  "select6",
+  "select7",
+  "select8",
+  "select9",
+] as const;
 
 const NAMED_KEYS: Readonly<Record<string, string>> = {
   ShiftLeft: "Shift",
@@ -66,6 +88,18 @@ export interface ActionFrame {
   readonly held: ReadonlySet<Action>;
   readonly pressed: ReadonlySet<Action>;
   readonly released: ReadonlySet<Action>;
+}
+
+/**
+ * The slot a number key pressed this frame selects, or undefined if none was pressed; the last
+ * key pressed wins. Selecting an empty slot holds nothing.
+ */
+export function pressedSlot(frame: ActionFrame): number | undefined {
+  let selected: number | undefined;
+  SLOT_ACTIONS.forEach((action, slot) => {
+    if (frame.pressed.has(action)) selected = slot;
+  });
+  return selected;
 }
 
 /**

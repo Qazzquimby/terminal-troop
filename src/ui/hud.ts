@@ -1,16 +1,16 @@
-import type { Inventory } from "../sim/index.js";
+import type { HeldSlot, Inventory } from "../sim/index.js";
 
 export function createInventoryHud(
   container: HTMLElement,
   list: HTMLElement,
-): (inventory: Inventory, visible: boolean) => void {
+): (inventory: Inventory, selected: HeldSlot, visible: boolean) => void {
   let previous = "";
 
-  return function updateInventory(inventory, visible) {
+  return function updateInventory(inventory, selected, visible) {
     container.hidden = !visible;
     if (!visible) return;
 
-    const signature = JSON.stringify(inventory);
+    const signature = JSON.stringify([inventory, selected]);
     if (signature === previous) return;
     previous = signature;
 
@@ -20,12 +20,13 @@ export function createInventoryHud(
         const number = document.createElement("span");
         const contents = document.createElement("span");
 
+        if (index === selected) slot.className = "selected";
         number.className = "slot-number";
         number.textContent = String(index + 1);
         contents.textContent =
           stack === null
             ? "Empty"
-            : `${stack.item.name} × ${String(stack.quantity)}`;
+            : `${stack.item.emoji} ${stack.item.name} × ${String(stack.quantity)}`;
 
         slot.append(number, contents);
         return slot;

@@ -2,6 +2,7 @@ import type { Action, InputContext, UiHandlers } from "./actions.js";
 import {
   ACTIONS,
   createActionState,
+  pressedSlot,
   toControls,
   withUiHandlers,
 } from "./actions.js";
@@ -9,6 +10,12 @@ import { createKeyboardSource } from "./keyboard.js";
 import type { Camera } from "../render/index.js";
 import { screenToWorld } from "../render/index.js";
 import type { Point, Controls, ViewConfig } from "../sim/index.js";
+
+/** One simulation step's input: what to steer with, and the slot a number key selected. */
+export interface StepInput {
+  readonly controls: Controls;
+  readonly slot: number | undefined;
+}
 
 /**
  * Only actions active in the current context respond, and only their keys are kept from
@@ -22,6 +29,7 @@ export function createInput(
   uiActions: Partial<Record<Action, UiHandlers>>,
   context: InputContext,
 ): {
+  getStep: (until: number) => StepInput;
   getControls: (until: number) => Controls;
   mouseWorld: () => Point;
   setContext: (context: InputContext, time: number) => void;
@@ -54,14 +62,22 @@ export function createInput(
     keyboard.blur(event.timeStamp);
   });
 
+  const getStep = (until: number): StepInput => {
+    const frame = state.consume(until);
+    return {
+      controls: toControls(frame, mouseWorld()),
+      slot: pressedSlot(frame),
+    };
+  };
+
   return {
     /**
      * Call once per simulation step with the step's end time (`performance.now()` clock):
      * input up to that time applies, and each press is delivered to exactly one step.
      */
-    getControls(until) {
-      return toControls(state.consume(until), mouseWorld());
-    },
+    getStep,
+    /** The controls alone, for callers that ignore slot selection. */
+    getControls: (until) => getStep(until).controls,
     /** Reads the mouse without consuming input; safe to call from render. */
     mouseWorld,
     /**

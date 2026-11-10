@@ -8,7 +8,16 @@ export {
 export type { EntityDefinition, WorldEntity } from "./entities.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export type { Inventory } from "./inventory.js";
+export {
+  addItem,
+  createInventory,
+  heldEmoji,
+  heldItem,
+  removeItem,
+  selectSlot,
+} from "./inventory.js";
+export type { HeldSlot, Inventory } from "./inventory.js";
+export { SHOVEL, SLOT_COUNT, startingInventory } from "./items.js";
 export {
   isAreaFree,
   mulberry32,

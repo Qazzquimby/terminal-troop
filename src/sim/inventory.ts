@@ -2,6 +2,8 @@ export interface ItemDefinition {
   readonly id: string;
   readonly name: string;
   readonly maxStack: number;
+  /** The glyph the item is drawn with. */
+  readonly emoji: string;
 }
 
 /** @public */
@@ -71,4 +73,33 @@ export function removeItem(
   stack.quantity -= removed;
   if (stack.quantity === 0) inventory[slot] = null;
   return removed;
+}
+
+/** The slot whose item is held; null holds nothing. */
+export type HeldSlot = number | null;
+
+/** Pressing a slot number selects it, even when the slot is empty. */
+export function selectSlot(inventory: Inventory, slot: HeldSlot): HeldSlot {
+  if (slot === null) return null;
+  if (!Number.isInteger(slot) || slot < 0 || slot >= inventory.length) {
+    throw new RangeError("Invalid inventory slot.");
+  }
+  return slot;
+}
+
+/** The stack in the selected slot, or null when holding nothing. */
+export function heldItem(
+  inventory: Inventory,
+  selected: HeldSlot,
+): InventoryStack | null {
+  if (selected === null) return null;
+  return inventory[selected] ?? null;
+}
+
+/** The glyph drawn for the held item, or null when holding nothing. */
+export function heldEmoji(
+  inventory: Inventory,
+  selected: HeldSlot,
+): string | null {
+  return heldItem(inventory, selected)?.item.emoji ?? null;
 }
