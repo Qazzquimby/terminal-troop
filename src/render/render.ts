@@ -15,6 +15,7 @@ import {
   isVisible,
   lightSources,
   litWalls,
+  movement,
   renderAim,
   renderPosition,
   visibilityPolygon,
@@ -139,14 +140,25 @@ export function drawEmoji(
   ctx.restore();
 }
 
+/** How large a crouching player's body is drawn, as a fraction of its radius. */
+const CROUCHED_SCALE = 0.7;
+
+/** A player's body, drawn smaller while it crouches, its facing line, and its name. */
 function drawBody(
   ctx: CanvasRenderingContext2D,
   player: Player,
   isSelf: boolean,
 ): void {
+  const crouched = movement.get(player).mode === "crouch";
   ctx.fillStyle = isSelf ? "#73cfff" : "#e1bd83";
   ctx.beginPath();
-  ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+  ctx.arc(
+    player.x,
+    player.y,
+    player.radius * (crouched ? CROUCHED_SCALE : 1),
+    0,
+    Math.PI * 2,
+  );
   ctx.fill();
 
   drawFacing(ctx, player, player.aim, player.radius * 1.5);

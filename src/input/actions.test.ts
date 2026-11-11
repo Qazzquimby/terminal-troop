@@ -97,6 +97,7 @@ test("blur releases held actions and drops pending presses", () => {
     move: { x: 0, y: 0 },
     aim: AIM,
     sprint: false,
+    crouch: false,
     select: null,
     use: false,
   });
@@ -173,6 +174,14 @@ test("sprint follows the held sprint action", () => {
   expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
 });
 
+test("crouch follows the held crouch action, until released", () => {
+  const state = holding("moveRight", "crouch");
+  expect(step(state).controls.crouch).toBe(true);
+  expect(step(state).controls.crouch).toBe(true);
+  state.release("crouch", 1500);
+  expect(step(state, 2000).controls.crouch).toBe(false);
+});
+
 test("a press of useItem uses the held item in that step only, even while held", () => {
   const state = holding("useItem");
   expect(step(state).controls.use).toBe(true);
@@ -196,6 +205,7 @@ test.each<[Action, InputContext[]]>([
   ["moveDown", ["play"]],
   ["moveRight", ["play"]],
   ["sprint", ["play"]],
+  ["crouch", ["play"]],
   ["useItem", ["play"]],
   ["select1", ["play"]],
   ["toggleInventory", ["play"]],

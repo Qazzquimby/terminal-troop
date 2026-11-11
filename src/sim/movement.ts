@@ -2,7 +2,7 @@ import { z } from "zod";
 import { playerData } from "./player-data.js";
 
 /** A player's gait. */
-const MovementMode = z.enum(["walk", "sprint"]);
+const MovementMode = z.enum(["walk", "sprint", "crouch"]);
 
 export type MovementMode = z.output<typeof MovementMode>;
 

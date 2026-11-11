@@ -33,6 +33,7 @@ export const config = {
     speed: 120,
     acceleration: 1100,
     sprintMultiplier: 1.8,
+    crouchMultiplier: 0.5,
     maxHealth: 100,
     inventorySlots: 9,
     nameMax: 8,
@@ -55,6 +56,7 @@ export const config = {
   footsteps: {
     walk: { interval: 0.5, loudness: 0.5 },
     sprint: { interval: 0.3, loudness: 1.6 },
+    crouch: { interval: 0.7, loudness: 0.15 },
   },
   room: {
     sendHz: 15,
