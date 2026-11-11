@@ -55,13 +55,13 @@ export const config = {
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
   },
-  // A kick's flash: 60% of its size at first, swelling to full as it fades over 0.15s.
+  // A kick's flash: three quarters of its size at first, swelling to full as it fades over 0.3s.
   flashes: {
-    duration: 0.15,
-    start: 0.6,
-    fill: 0.35,
-    width: 3,
-    colour: { hit: "#f0a35e", miss: "#cfd6dd" },
+    duration: 0.3,
+    start: 0.75,
+    fill: 0.55,
+    width: 4,
+    colour: { hit: "#ffb04a", miss: "#e6edf3" },
   },
   player: {
     radius: 14,

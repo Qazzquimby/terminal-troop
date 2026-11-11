@@ -21,7 +21,12 @@ import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
-import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
+import {
+  createPlayer,
+  smoothPlayer,
+  stepDash,
+  updatePlayer,
+} from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
 import { applyContentState, contentState } from "./player-data.js";
@@ -171,6 +176,17 @@ function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
 }
 
+/** Every body in the session that others collide with, but `body` itself. */
+export function solidBodiesBut(
+  game: Session,
+  body: CollisionBody,
+): CollisionBody[] {
+  return [
+    ...game.players.values(),
+    ...[...game.entities.values()].filter((entity) => entity.collides),
+  ].filter((other) => other !== body);
+}
+
 function separateSessionBodies(game: Session): void {
   const entities = [...game.entities.values()].filter(
     (entity) => entity.collides,
@@ -201,6 +217,7 @@ export function updateSession(
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
+  stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
   for (const content of game.contents) content.act?.(game, controls);

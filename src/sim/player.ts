@@ -1,4 +1,9 @@
-import { lastFreePointAlong, moveWithCollision } from "./collision.js";
+import type { CollisionBody } from "./collision.js";
+import {
+  distanceToContact,
+  lastFreePointAlong,
+  moveWithCollision,
+} from "./collision.js";
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
@@ -204,12 +209,11 @@ export function updatePlayer(
 
   player.aim = aimAt(player, controls.aim);
   moveWithCollision(player, player.radius, dt, map, rules.world.wallBounce);
-  stepDash(player, dt, map);
 }
 
 /**
  * Starts `player` dashing `distance` pixels towards `aim` (radians) over `seconds`, and returns
- * where it stops if nothing but walls is in its way.
+ * where it stops if `others` and the walls stay where they are.
  */
 export function startDash(
   player: Player,
@@ -217,25 +221,43 @@ export function startDash(
   distance: number,
   seconds: number,
   map: TileMap,
+  others: readonly CollisionBody[],
 ): Point {
+  const direction = { x: Math.cos(aim), y: Math.sin(aim) };
   const speed = distance / seconds;
-  player.dash = {
-    vx: Math.cos(aim) * speed,
-    vy: Math.sin(aim) * speed,
-    seconds,
-  };
+  player.dash = { vx: direction.x * speed, vy: direction.y * speed, seconds };
+  const free = Math.min(distance, distanceToContact(player, direction, others));
   return lastFreePointAlong(map, player.radius, player, {
-    x: player.x + Math.cos(aim) * distance,
-    y: player.y + Math.sin(aim) * distance,
+    x: player.x + direction.x * free,
+    y: player.y + direction.y * free,
   });
 }
 
-/** Moves `player` along its dash for `dt`, stopping at walls, and ends the dash once it has run. */
-function stepDash(player: Player, dt: number, map: TileMap): void {
+/**
+ * Moves `player` along its dash for `dt`, stopping at walls and short of touching any of
+ * `others`, and ends the dash once its time has run.
+ */
+export function stepDash(
+  player: Player,
+  dt: number,
+  map: TileMap,
+  others: readonly CollisionBody[],
+): void {
   const { dash } = player;
   if (dash === null) return;
-  const body = { x: player.x, y: player.y, vx: dash.vx, vy: dash.vy };
-  moveWithCollision(body, player.radius, Math.min(dt, dash.seconds), map, 0);
+  const speed = Math.hypot(dash.vx, dash.vy);
+  const direction = { x: dash.vx / speed, y: dash.vy / speed };
+  const travel = Math.min(
+    speed * Math.min(dt, dash.seconds),
+    distanceToContact(player, direction, others),
+  );
+  const body = {
+    x: player.x,
+    y: player.y,
+    vx: direction.x * travel,
+    vy: direction.y * travel,
+  };
+  moveWithCollision(body, player.radius, 1, map, 0);
   player.x = body.x;
   player.y = body.y;
   const seconds = dash.seconds - dt;

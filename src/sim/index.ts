@@ -64,6 +64,7 @@ export {
   playerState,
   remotePlayers,
   removePlayer,
+  solidBodiesBut,
   updateSession,
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";

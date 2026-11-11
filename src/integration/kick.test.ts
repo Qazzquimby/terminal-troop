@@ -7,6 +7,7 @@ import { createFlashes } from "../render/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
+  applyRemoteState,
   createSession,
   isAreaFree,
   receiveEvent,
@@ -163,6 +164,49 @@ test("without the stamina for it, there is no kick: no lunge, nothing sent", () 
   expect(game.flashes).toEqual([]);
   expect(game.local.dash).toBeNull();
   expect(game.local.stamina.value).toBe(kick.stamina - 1);
+});
+
+test("kicking something close by, the lunge stops at it and the kick lands on it", () => {
+  const game = session();
+  standAt(game, { x: 300, y: 300 });
+  const touching = testSimConfig.player.radius + DUMMY_LENGTH / 2;
+  const target = spawnEntity(game, DUMMY, 300 + touching + 2, 300, {});
+  updateSession(game, kickRight(game), DT);
+  expect(game.flashes).toHaveLength(1);
+  expect(game.flashes[0]?.at.x).toBeCloseTo(300 + 2 + kick.reach);
+  expect(Math.abs((game.flashes[0]?.at.x ?? 0) - target.x)).toBeLessThan(5);
+  expect(game.outbox[0]?.payload).toMatchObject({ x: 302, y: 300 });
+});
+
+test("the lunge never runs into a player in the way", () => {
+  const game = session();
+  standAt(game, { x: 300, y: 300 });
+  applyRemoteState(game, {
+    id: "them",
+    name: "THEM",
+    x: 340,
+    y: 300,
+    aim: 0,
+    health: 100,
+    content: {},
+  });
+  updateSession(game, kickRight(game), DT);
+  const reached: number[] = [];
+  for (let step = 0; step < 10; step++) {
+    updateSession(game, idle, DT);
+    reached.push(game.local.x);
+  }
+  expect(Math.max(...reached)).toBeCloseTo(340 - PLAYER_LENGTH);
+});
+
+test("kicking something close by, the lunge carries on once it is knocked away", () => {
+  const game = session();
+  standAt(game, { x: 300, y: 300 });
+  const touching = testSimConfig.player.radius + DUMMY_LENGTH / 2;
+  spawnEntity(game, DUMMY, 300 + touching + 1, 300, {});
+  kickOnce(game);
+  wait(game, kick.lunge.seconds);
+  expect(game.local.x - 300).toBeGreaterThan(PLAYER_LENGTH * 0.6);
 });
 
 test("a kick hurts what it hits and knocks it its configured body lengths from the kicker", () => {

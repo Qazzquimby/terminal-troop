@@ -323,9 +323,21 @@ export function drawLitWalls(
  * seemed to come from.
  */
 /** Draws each flash as of `time` in ms: a filled disc and its ring, fading out. */
-function drawFlashes(
-  ctx: CanvasRenderingContext2D,
-  flashes: Flashes,
+export function drawFlashes(
+  ctx: Pick<
+    CanvasRenderingContext2D,
+    | "save"
+    | "restore"
+    | "beginPath"
+    | "arc"
+    | "fill"
+    | "stroke"
+    | "fillStyle"
+    | "strokeStyle"
+    | "lineWidth"
+    | "globalAlpha"
+  >,
+  flashes: Pick<Flashes, "config" | "list">,
   time: number,
 ): void {
   const { config } = flashes;

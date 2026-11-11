@@ -9,6 +9,7 @@ import {
   knockBack,
   showFlash,
   spendStamina,
+  solidBodiesBut,
   startDash,
 } from "../../sim/index.js";
 import type { Circle, Content, Point, Session } from "../../sim/index.js";
@@ -56,8 +57,8 @@ const Shown = z.object({
 });
 
 /**
- * The kick: what every player can do empty-handed, whatever it holds, on the secondary action. The kicker lunges a little
- * and spends stamina on its own client; the host checks the kick, then hurts and knocks back
+ * The kick: what every player can do empty-handed, whatever it holds, on the secondary action.
+ * The kicker lunges a little, up to whatever is in its way, and spends stamina on its own client; the host checks the kick, then hurts and knocks back
  * every world entity in front of the kicker, never a player, and makes a noise.
  */
 export const kick: Content<"kick", KickConfig> = {
@@ -121,6 +122,7 @@ export const kick: Content<"kick", KickConfig> = {
           bodyLength(local) * lengths,
           seconds,
           game.world.map,
+          solidBodiesBut(game, local),
         );
         const area = hitbox(at, local.aim);
         show(game, area, entitiesIn(game, area).length > 0);
