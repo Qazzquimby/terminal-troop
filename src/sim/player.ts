@@ -6,7 +6,6 @@ import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
 import { selectSlot } from "./inventory.js";
-import { startingInventory } from "./items.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
@@ -51,6 +50,7 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   name: string;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
+  /** Empty until the room's items stock the local player's; never sent over the network. */
   inventory: Inventory;
   /** The selected inventory slot, or null for holding nothing; never sent over the network. */
   held: HeldSlot;
@@ -91,7 +91,7 @@ export function createPlayer(
     prevAim: 0,
     taim: 0,
     radius: rules.player.radius,
-    inventory: startingInventory(),
+    inventory: [],
     held: 0,
     stamina: createStamina(rules.stamina),
     use: null,

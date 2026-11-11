@@ -2,6 +2,7 @@ import { applyDamage, isAreaFree } from "../sim/index.js";
 import type {
   Entity,
   ItemBehaviour,
+  ItemDefinition,
   ItemUse,
   Point,
   Session,
@@ -27,6 +28,13 @@ export interface ShovelConfig {
   /** Volume of a swing's sound, 0..1. */
   readonly volume: number;
 }
+
+export const SHOVEL = {
+  id: "shovel",
+  name: "Shovel",
+  maxStack: 1,
+  emoji: "🪏",
+} as const satisfies ItemDefinition;
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
 

@@ -58,7 +58,7 @@ export interface Monsters {
 
 /** The usable items a room's players hold. */
 export interface Items {
-  /** Registers what each one does with a new session. */
+  /** Registers what each one does with a new session, and stocks its local player's inventory. */
   register(session: Session): void;
 }
 
