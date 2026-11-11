@@ -38,11 +38,11 @@ export function removeItem(
 /** The slot whose item is held; null holds nothing. */
 export type HeldSlot = number | null;
 
-/** Pressing a slot number selects it, even when the slot is empty. */
+/** Pressing a slot number selects it, even when the slot is empty; other slots select nothing. */
 export function selectSlot(inventory: Inventory, slot: HeldSlot): HeldSlot {
   if (slot === null) return null;
   if (!Number.isInteger(slot) || slot < 0 || slot >= inventory.length) {
-    throw new RangeError("Invalid inventory slot.");
+    return null;
   }
   return slot;
 }

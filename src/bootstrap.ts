@@ -11,8 +11,8 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
-  createInventoryHud,
   createDebugOverlay,
+  createHud,
   createMicIndicatorView,
   createSettingsMenu,
   createStatusView,
@@ -64,8 +64,6 @@ const roomInput = element("#room", HTMLInputElement);
 const createBtn = element("#create", HTMLButtonElement);
 const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
-const inventoryEl = element("#inventory", HTMLElement);
-const inventoryList = element("#inventory-slots", HTMLOListElement);
 const debugEl = element("#debug", HTMLPreElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
@@ -148,9 +146,7 @@ function applySettings(current: Settings): void {
 }
 applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
-const updateInventory = createInventoryHud(inventoryEl, inventoryList);
-
-let inventoryOpen = false;
+const hud = createHud();
 
 const room = createRoom({
   localId: playerId,
@@ -200,11 +196,6 @@ const input = createInput(
   (point) => screenToWorld(camera, point),
   config.view,
   {
-    toggleInventory: {
-      press() {
-        if (room.state().kind === "joined") inventoryOpen = !inventoryOpen;
-      },
-    },
     toggleSettings: {
       press(time) {
         settingsMenu.toggle(time);
@@ -265,7 +256,6 @@ async function enterRoom(rawCode: string): Promise<void> {
   nameInput.value = name;
   localStorage.setItem(nameKey, name);
   roomInput.value = state.code;
-  inventoryOpen = false;
   const url = new URLSearchParams(location.search);
   url.set("room", state.code);
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
@@ -315,9 +305,9 @@ function frame(): void {
       heldEmoji(session.local.inventory, session.local.held),
     );
     frameStats.drawMs = performance.now() - drawStart;
-    updateInventory(session.local.inventory, session.local.held, inventoryOpen);
+    hud.inventory(session.local.inventory, session.local.held);
+    hud.credit(session.local.credit);
   } else {
-    inventoryEl.hidden = true;
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }

@@ -1,48 +1,64 @@
 import type { HeldSlot, Inventory } from "../sim/index.js";
 
-export function createInventoryHud(
-  container: HTMLElement,
-  list: HTMLElement,
-): (inventory: Inventory, selected: HeldSlot, visible: boolean) => void {
-  let previous = "";
+export interface Hud {
+  inventory(inventory: Inventory, selected: HeldSlot): void;
+  credit(credit: number): void;
+}
 
-  return function updateInventory(inventory, selected, visible) {
-    container.hidden = !visible;
-    if (!visible) return;
+/**
+ * The bottom toolbar: every inventory slot with the selected one highlighted, and the credit
+ * count beside it. Built here rather than looked up so it is always on screen.
+ */
+export function createHud(): Hud {
+  const bar = document.createElement("div");
+  bar.className = "hud-bar";
 
-    const signature = JSON.stringify([inventory, selected]);
-    if (signature === previous) return;
-    previous = signature;
+  const list = document.createElement("ol");
+  list.className = "hud-slots";
 
-    list.replaceChildren(
-      ...inventory.map((item, index) => {
-        const slot = document.createElement("li");
-        const number = document.createElement("span");
-        const contents = document.createElement("span");
+  const credit = document.createElement("span");
+  credit.className = "hud-credit";
 
-        if (index === selected) slot.className = "selected";
-        number.className = "slot-number";
-        number.textContent = String(index + 1);
-        contents.textContent =
-          item === null
-            ? "Empty"
-            : `${item.emoji} ${item.name}       `;
+  bar.append(list, credit);
+  document.body.append(bar);
 
-        slot.append(number, contents);
-        return slot;
-      }),
-    );
+  let inventoryShown = "";
+  let creditShown = -1;
+
+  return {
+    inventory(inventory, selected) {
+      const signature = JSON.stringify([inventory, selected]);
+      if (signature === inventoryShown) return;
+      inventoryShown = signature;
+
+      list.replaceChildren(
+        ...inventory.map((item, index) => {
+          const slot = document.createElement("li");
+          slot.className = "hud-slot";
+          slot.classList.toggle("selected", index === selected);
+
+          const number = document.createElement("span");
+          number.className = "slot-number";
+          number.textContent = String(index + 1);
+
+          const glyph = document.createElement("span");
+          glyph.className = "hud-slot-glyph";
+          if (item !== null) glyph.textContent = item.emoji;
+
+          const name = document.createElement("span");
+          name.className = "hud-slot-name";
+          if (item !== null) name.textContent = item.name;
+
+          slot.append(number, glyph, name);
+          return slot;
+        }),
+      );
+    },
+    credit(value) {
+      if (value === creditShown) return;
+      creditShown = value;
+      credit.textContent = `${String(value)}$`;
+    },
   };
 }
 
-export function createCreditHud(
-  output: HTMLElement,
-): (credit: number) => void {
-  let previous = -1;
-
-  return function updateCredit(credit) {
-    if (credit === previous) return;
-    previous = credit;
-    output.textContent = `Credits: ${String(credit)}`;
-  };
-}
