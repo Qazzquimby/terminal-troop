@@ -49,12 +49,6 @@ export interface RoomConfig {
   readonly presence: PresenceTiming;
 }
 
-/** The usable items a room's players hold. */
-export interface Items {
-  /** Registers what each one does with a new session, and stocks its local player's inventory. */
-  register(session: Session): void;
-}
-
 /**
  * - lobby: in no room; `error` says why the last attempt to join failed
  * - connecting: joining the room `code`
@@ -91,7 +85,6 @@ export interface RoomDeps {
   readonly sim: SimConfig;
   /** What the world holds. Every client registers it in this order, which numbers its kinds. */
   readonly content: readonly WorldContent[];
-  readonly items: Items;
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
@@ -384,7 +377,6 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sim,
     );
     for (const content of deps.content) content.register(session);
-    deps.items.register(session);
     session.hosting = false;
     const room: Link = {
       scope,

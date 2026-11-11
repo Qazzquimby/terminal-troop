@@ -1,13 +1,23 @@
 import { nearestFreePoint } from "./collision.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
+import { placeItem } from "./inventory.js";
+import type { ItemDefinition } from "./inventory.js";
 import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
+import { registerItem } from "./use.js";
+import type { ItemBehaviour } from "./use.js";
 
-/** What a room's world holds: kinds of entity, and the ones a new world starts with. */
+/**
+ * What a room's world holds: kinds of entity and item, the entities a new world starts with,
+ * and the items each player starts with.
+ */
 export interface WorldContent {
-  /** Registers its kinds with a new session, before any snapshot reaches it. */
+  /**
+   * Registers its kinds and items with a new session, and stocks its local player's inventory,
+   * before any snapshot reaches it.
+   */
   register(game: Session): void;
   /** Spawns what a new world starts with. Runs once a world, on the first client to host it. */
   populate(game: Session): void;
@@ -163,7 +173,7 @@ function spawnByRule<S>(
 
 /**
  * A content entry of one kind, registered under `name` and configured by the slice under the
- * same name. `define` builds the kind from that slice once per session.
+ * same name. `define` builds the kind from that slice when the entry is created.
  */
 export function defineEntity<N extends string, C, S>(
   name: N,
@@ -184,6 +194,52 @@ export function defineEntity<N extends string, C, S>(
             kind.spawn(game, at, data),
           );
         },
+      };
+    },
+  };
+}
+
+/** A stack each player starts with, in a slot of its own. */
+interface StartingStack {
+  readonly slot: number;
+  readonly quantity: number;
+}
+
+/**
+ * An item's definition, less its id, which is its content name; what using it does; and where
+ * each player starts with it, if anywhere.
+ */
+export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
+  readonly starting?: StartingStack;
+}
+
+/**
+ * A content entry of one item, registered under `name` and configured by the slice under the
+ * same name. `define` builds the item from that slice when the entry is created.
+ */
+export function defineItem<N extends string, C>(
+  name: N,
+  define: (config: C) => ItemSpec,
+): Content<N, C> {
+  return {
+    name,
+    create(config) {
+      const spec = define(config[name]);
+      const item: ItemDefinition & { readonly id: N } = {
+        id: name,
+        name: spec.name,
+        maxStack: spec.maxStack,
+        emoji: spec.emoji,
+      };
+      return {
+        register(game) {
+          registerItem(game, item, spec);
+          if (spec.starting !== undefined) {
+            const { slot, quantity } = spec.starting;
+            placeItem(game.local.inventory, slot, item, quantity);
+          }
+        },
+        populate: () => undefined,
       };
     },
   };

@@ -3,7 +3,7 @@ import type { EntitiesConfig } from "./entities/index.js";
 import type { CameraConfig } from "./render/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
-import type { ShovelConfig } from "./items/index.js";
+import type { ItemsConfig } from "./items/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
@@ -13,7 +13,7 @@ interface AppConfig extends SimConfig {
   readonly room: RoomConfig;
   readonly camera: CameraConfig;
   readonly entities: EntitiesConfig;
-  readonly shovel: ShovelConfig;
+  readonly items: ItemsConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
@@ -84,14 +84,16 @@ export const config = {
       offset: CELL,
     },
   },
-  shovel: {
-    radius: 20,
-    reach: 45,
-    damage: 15,
-    knockback: 20,
-    cooldown: 1,
-    duration: 0.18,
-    volume: 0.8,
+  items: {
+    shovel: {
+      radius: 20,
+      reach: 45,
+      damage: 15,
+      knockback: 20,
+      cooldown: 1,
+      duration: 0.18,
+      volume: 0.8,
+    },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },

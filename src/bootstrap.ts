@@ -40,8 +40,8 @@ import { createSupabaseTransport } from "./adapters/supabase-transport/index.js"
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
-import { worldContent } from "./entities/index.js";
-import { createItems } from "./items/index.js";
+import { entityContent } from "./entities/index.js";
+import { itemContent } from "./items/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -168,8 +168,7 @@ const room = createRoom({
   },
   config: config.room,
   sim: config,
-  content: worldContent(config.entities),
-  items: createItems(config),
+  content: [...entityContent(config.entities), ...itemContent(config.items)],
   falloff: config.voice,
   onChange() {
     refreshPeers(room.state());

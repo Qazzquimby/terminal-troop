@@ -13,7 +13,7 @@ import {
   playerState,
   randomFreePosition,
   registerEntityType,
-  registerItem,
+  defineItem,
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
@@ -23,7 +23,7 @@ import type { Voice } from "../voice/index.js";
 import { z } from "zod";
 import { roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
-import type { Items, Room, RoomState } from "./room.js";
+import type { Room, RoomState } from "./room.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
@@ -192,29 +192,29 @@ const biters: WorldContent = {
   populate: () => undefined,
 };
 
-const POKE = { id: "poke", name: "Poke", maxStack: 1, emoji: "👉" };
-
-/** A poke: 4 damage to every entity within 30px of a point 20px ahead, at most twice a second. */
-const poke: Items = {
-  register(session) {
-    registerItem(session, POKE, {
-      cooldown: 0.5,
-      apply(game, at, aim) {
-        const x = at.x + Math.cos(aim) * 20;
-        const y = at.y + Math.sin(aim) * 20;
-        for (const entity of game.entities.values()) {
-          if (Math.hypot(entity.x - x, entity.y - y) <= 30)
-            applyDamage(entity, 4);
-        }
-      },
-      show(game, at) {
-        void game.sfx.play("poke", at, game.local);
-        return { center: { x: at.x, y: at.y }, hit: false };
-      },
-      draw: () => undefined,
-    });
+/**
+ * A poke, in every player's second slot from the start: 4 damage to every entity within 30px of
+ * a point 20px ahead, at most once per configured cooldown.
+ */
+const poke = defineItem("poke", (cooldown: number) => ({
+  name: "Poke",
+  maxStack: 1,
+  emoji: "👉",
+  starting: { slot: 1, quantity: 1 },
+  cooldown,
+  apply(game, at, aim) {
+    const x = at.x + Math.cos(aim) * 20;
+    const y = at.y + Math.sin(aim) * 20;
+    for (const entity of game.entities.values()) {
+      if (Math.hypot(entity.x - x, entity.y - y) <= 30) applyDamage(entity, 4);
+    }
   },
-};
+  show(game, at) {
+    void game.sfx.play("poke", at, game.local);
+    return { center: { x: at.x, y: at.y }, hit: false };
+  },
+  draw: () => undefined,
+})).create({ poke: 0.5 });
 
 /**
  * Voice whose rooms record each call into `log`, and hand their failure callback to
@@ -256,7 +256,7 @@ function setup(
   hub = createHub(),
   id = "me",
   clock = createManualClock(),
-  content: readonly WorldContent[] = [blobs, biters],
+  content: readonly WorldContent[] = [blobs, biters, poke],
 ) {
   const log: string[] = [];
   const failures: { peerFailed: (id: string) => void }[] = [];
@@ -300,7 +300,6 @@ function setup(
     config: testRoomConfig,
     sim: testSimConfig,
     content,
-    items: poke,
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange() {
       changes++;
@@ -541,7 +540,6 @@ describe("players and voice", () => {
   test("a held item change on one client shows on the other", async () => {
     const { a, b, clock } = await pair();
     const session = joined(b.room).session;
-    session.local.inventory[1] = { item: POKE, quantity: 1 };
     const select = (slot: number) => {
       updateSession(session, { ...idle, select: slot }, 1 / 60);
       clock.advance(clock.now() + SEND_GAP);
@@ -555,7 +553,12 @@ describe("players and voice", () => {
 
     expect(seen()).toBeNull();
     select(1);
-    expect(seen()).toBe(POKE);
+    expect(seen()).toEqual({
+      id: "poke",
+      name: "Poke",
+      maxStack: 1,
+      emoji: "👉",
+    });
     expect(joined(a.room).session.players.get("b")?.inventory).toEqual(
       Array(testSimConfig.player.inventorySlots).fill(null),
     );
@@ -1329,20 +1332,31 @@ describe("host", () => {
         expect(ids(b)).toEqual(["a:1", "a:3"]);
       });
 
-      test("a player selects and uses its held item through its controls", async () => {
+      test("an item defined as content starts in its slot, and is selected, used, applied by the host and shown to the others", async () => {
         const { clock, a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 20, y: blob.y });
         const local = sessionOf(b).local;
-        local.inventory[1] = { item: POKE, quantity: 1 };
+        expect(local.inventory.map((stack) => stack?.item.id ?? null)).toEqual([
+          null,
+          "poke",
+          null,
+          null,
+        ]);
         const use = { ...idle, aim: blob, select: 1, use: true };
         updateSession(sessionOf(b), use, 1 / 60);
         b.room.frame(b.clock.now());
         expect(local.held).toBe(1);
         expect(local.use?.item).toBe("poke");
+        const seen = sessionOf(a).players.get("b");
+        expect(seen?.use).toMatchObject({ item: "poke", hit: false });
+        expect(a.sounds.filter(({ url }) => url === "poke")).toHaveLength(1);
         clock.advance(clock.now() + 200);
+        b.room.frame(clock.now());
+        expect(seen?.reportedHeld).toBe("poke");
         play(a, 1 / 60);
         expect(healthOf(a, "a:2")).toBe(6);
+        expect(healthOf(b, "a:2")).toBe(6);
       });
 
       test("every client hears a use once, from where it was made", async () => {
@@ -1355,7 +1369,6 @@ describe("host", () => {
           player.sounds.filter(({ url }) => url === "poke");
         const swing = (player: Player) => {
           const { local } = sessionOf(player);
-          local.inventory[1] = { item: POKE, quantity: 1 };
           updateSession(
             sessionOf(player),
             { ...idle, select: 1, use: true },

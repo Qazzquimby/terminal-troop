@@ -1,8 +1,14 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import { defineEntity, entityKind } from "./index.js";
-import type { Content, EntitySpec, SpawnRule, WorldContent } from "./index.js";
+import { defineEntity, defineItem, entityKind } from "./index.js";
+import type {
+  Content,
+  ContentConfig,
+  EntitySpec,
+  SpawnRule,
+  WorldContent,
+} from "./index.js";
 import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, WorldKind } from "./map.js";
 import type { Session } from "./session.js";
@@ -190,4 +196,75 @@ test("content of several kinds registers them all and spawns them together", () 
     { id: "me:3", kind: 1, x: 400, data: {} },
     { id: "me:4", kind: 2, x: 440, data: { coffin: "me:3" } },
   ]);
+});
+
+describe("defineItem", () => {
+  /** An item named `name` that does nothing, used at most every `cooldown` seconds. */
+  const inert = <N extends string>(
+    name: N,
+    starting?: { slot: number; quantity: number },
+  ) =>
+    defineItem(name, (cooldown: number) => ({
+      name: name.toUpperCase(),
+      maxStack: 5,
+      emoji: "🧪",
+      ...(starting === undefined ? {} : { starting }),
+      cooldown,
+      apply: () => undefined,
+      show: (_game, at) => ({ center: { x: at.x, y: at.y }, hit: false }),
+      draw: () => undefined,
+    }));
+
+  const stocked = (game: Session) =>
+    game.local.inventory.map((stack) =>
+      stack === null ? null : `${stack.item.id} ${String(stack.quantity)}`,
+    );
+
+  test("registers the item under its name, configured by the slice under that name", () => {
+    const game = populated(inert("flask").create({ flask: 2 }));
+    expect(game.itemDefinitions.get("flask")).toEqual({
+      id: "flask",
+      name: "FLASK",
+      maxStack: 5,
+      emoji: "🧪",
+    });
+    expect(game.items.get("flask")?.cooldown).toBe(2);
+    expect(game.entities.size).toBe(0);
+    expect(stocked(game)).toEqual([null, null, null, null]);
+  });
+
+  test("puts each starting stack in its own slot, whatever order the items register in", () => {
+    const flask = inert("flask", { slot: 2, quantity: 3 });
+    const vial = inert("vial", { slot: 0, quantity: 1 });
+    const config = { flask: 1, vial: 1 };
+    for (const list of [
+      [flask, vial],
+      [vial, flask],
+    ]) {
+      const game = session();
+      for (const entry of list) entry.create(config).register(game);
+      expect(stocked(game)).toEqual(["vial 1", null, "flask 3", null]);
+    }
+  });
+
+  test("two items starting in one slot are refused", () => {
+    const game = session();
+    inert("flask", { slot: 1, quantity: 1 })
+      .create({ flask: 1 })
+      .register(game);
+    const vial = inert("vial", { slot: 1, quantity: 1 }).create({ vial: 1 });
+    expect(() => {
+      vial.register(game);
+    }).toThrow(RangeError);
+  });
+
+  test("a list of entities and items takes every entry's slice, typed by the entry", () => {
+    const flask = inert("flask");
+    type Config = ContentConfig<typeof rocks | typeof flask>;
+    expectTypeOf({ rock: undefined, flask: 1 }).toExtend<Config>();
+    expectTypeOf({ rock: undefined }).not.toExtend<Config>();
+    expectTypeOf({ rock: undefined, flask: "1" }).not.toExtend<Config>();
+    const config: Config = { rock: undefined, flask: 1 };
+    expect(populated(flask.create(config)).items.has("flask")).toBe(true);
+  });
 });
