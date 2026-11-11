@@ -10,6 +10,8 @@ export const NetEvent = {
   USE: "use",
   /** Damage the host deals to one player, for that player to apply. */
   DAMAGE: "damage",
+  /** A player's scrap cashout: the credits it is worth, for the room to add to its total. */
+  CREDIT: "credit",
 
   /** Voice connection setup: addressed to one player, but broadcast to the room. */
   SIGNAL: "signal",

@@ -34,3 +34,15 @@ export function createInventoryHud(
     );
   };
 }
+
+export function createCreditHud(
+  output: HTMLElement,
+): (credit: number) => void {
+  let previous = -1;
+
+  return function updateCredit(credit) {
+    if (credit === previous) return;
+    previous = credit;
+    output.textContent = `Credits: ${String(credit)}`;
+  };
+}

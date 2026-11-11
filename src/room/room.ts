@@ -334,6 +334,10 @@ export function createRoom(deps: RoomDeps): Room {
         applyDamage(room.session.local, message.amount);
         room.forceState = true;
       }),
+      [NetEvent.CREDIT]: on(NetEvent.CREDIT, (message) => {
+        if (message.by === localId) return;
+        room.session.credit += message.amount;
+      }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
@@ -511,6 +515,8 @@ export function createRoom(deps: RoomDeps): Room {
       for (const request of room.session.localUses.splice(0))
         handUse(room, request);
       sendStrikes(room);
+      for (const amount of room.session.cashOuts.splice(0))
+        void send(NetEvent.CREDIT, { by: localId, amount });
       if (room.host?.id === localId) sendEntities(room, now);
       cueEntities(room.session);
       if (room.voiceRoom !== null)

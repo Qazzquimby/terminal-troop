@@ -3,6 +3,8 @@ import type { Inventory, ItemBehaviour, Session } from "../sim/index.js";
 import type { ShovelConfig } from "./shovel.js";
 import { createShovel, SHOVEL } from "./shovel.js";
 
+export type { ScrapConfig } from "./scrap.js";
+export { SCRAP } from "./scrap.js";
 export type { ShovelConfig } from "./shovel.js";
 
 /** Number keys 1-9 select these slots. */

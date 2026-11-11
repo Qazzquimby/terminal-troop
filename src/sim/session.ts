@@ -1,10 +1,14 @@
 import type { Sfx } from "../audio/index.js";
+import type { ScrapConfig } from "../items/scrap.js";
+import { SCRAP, SCRAP_SOUNDS } from "../items/scrap.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies } from "./collision.js";
 import type { EntityType, Strike, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
+import { CruiserKind } from "./cruiser.js";
+import { heldItem, removeItem } from "./inventory.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
@@ -26,6 +30,7 @@ export interface SimConfig extends PlayerRules {
   readonly vision: VisionConfig;
   readonly light: LightConfig;
   readonly net: SyncConfig;
+  readonly scrap: ScrapConfig;
 }
 
 export interface Session {
@@ -55,6 +60,10 @@ export interface Session {
   readonly readyAt: Map<string, number>;
   /** Damage the host has dealt to remote players, waiting to be sent to them. */
   readonly strikes: Strike[];
+  /** The room's shared credit total. */
+  credit: number;
+  /** Credits the local player cashed out, waiting for the room to send them. */
+  readonly cashOuts: number[];
 }
 
 function roomSeed(code: string, base: number): number {
@@ -104,6 +113,8 @@ export function createSession(
     localUses: [],
     readyAt: new Map(),
     strikes: [],
+    credit: 0,
+    cashOuts: [],
   };
 }
 
@@ -137,6 +148,39 @@ function separateSessionBodies(game: Session): void {
   }
 }
 
+/** Whether the local player is close enough to the cruiser to cash out. */
+function nearCruiser(game: Session, radius: number): boolean {
+  for (const entity of game.entities.values()) {
+    if (entity.kind !== CruiserKind) continue;
+    const distance = Math.hypot(
+      entity.x - game.local.x,
+      entity.y - game.local.y,
+    );
+    if (distance <= radius + entity.radius) return true;
+  }
+  return false;
+}
+
+/**
+ * Cashes out the scrap the local player holds beside the cruiser: adds to this client's credit
+ * and queues the amount for the room to send. Consumes one scrap.
+ */
+function cashOut(game: Session): void {
+  const slot = game.local.held;
+  if (slot === null) return;
+  const stack = heldItem(game.local.inventory, slot);
+  if (stack?.item.id !== SCRAP.id) return;
+  if (!nearCruiser(game, game.config.scrap.cashoutRadius)) return;
+
+  removeItem(game.local.inventory, slot, 1);
+  void game.sfx.play(SCRAP_SOUNDS.cashout, game.local, game.local, {
+    volume: game.config.scrap.volume,
+  });
+  const value = game.config.scrap.value;
+  game.credit += value;
+  game.cashOuts.push(value);
+}
+
 export function updateSession(
   game: Session,
   controls: Controls,
@@ -146,6 +190,7 @@ export function updateSession(
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
   if (controls.use) useHeldItem(game);
+  cashOut(game);
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);

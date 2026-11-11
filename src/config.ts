@@ -3,7 +3,7 @@ import type { MonsterConfig } from "./monsters/index.js";
 import type { CruiserConfig } from "./sim/cruiser.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
-import type { ShovelConfig } from "./items/index.js";
+import type { ScrapConfig, ShovelConfig } from "./items/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 import {CELL_SIZE} from "./integration/tile-maps";
@@ -19,6 +19,7 @@ interface AppConfig extends SimConfig {
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
+  readonly scrap: ScrapConfig;
 }
 
 const STAMINA_MAX = 100;
@@ -85,6 +86,11 @@ export const config = {
     knockback: 20,
     cooldown: 1,
     duration: 0.18,
+    volume: 0.8,
+  },
+  scrap: {
+    cashoutRadius: CELL_SIZE * 3,
+    value: 1,
     volume: 0.8,
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },

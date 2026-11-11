@@ -76,6 +76,12 @@ const DamageMessage = z.object({
   amount: z.number().positive(),
 });
 
+/** A player's scrap cashout: the credits it is worth, for the room to add to its total. */
+const CreditMessage = z.object({
+  by: PlayerId,
+  amount: z.number().positive(),
+});
+
 /** Every event's payload schema; a missing event fails to compile. */
 export function roomMessages(nameMax: number) {
   return {
@@ -86,6 +92,7 @@ export function roomMessages(nameMax: number) {
     [NetEvent.ENTITIES]: EntitiesMessage,
     [NetEvent.USE]: UseMessage,
     [NetEvent.DAMAGE]: DamageMessage,
+    [NetEvent.CREDIT]: CreditMessage,
 
     // The voice room parses its own signals.
     [NetEvent.SIGNAL]: z.unknown(),
