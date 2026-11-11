@@ -1,4 +1,5 @@
 import type { Sfx } from "../audio/index.js";
+import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies } from "./collision.js";
 import type { EntityType, Strike, WorldEntity } from "./entities.js";
@@ -10,8 +11,10 @@ import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
+import type { PlayerData } from "./player-data.js";
+import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseRequest, UseSlack } from "./use.js";
-import { applyUses, useHeldItem } from "./use.js";
+import { applyUses, reportHeld, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 
 /** How remote players follow the state they report. */
@@ -52,6 +55,8 @@ export interface Session {
   readonly items: Map<string, ItemBehaviour>;
   /** Every item this client knows, by item id. */
   readonly itemDefinitions: Map<string, ItemDefinition>;
+  /** The state each content entry keeps on every player, by the entry's name. */
+  readonly playerData: Map<string, PlayerData<unknown>>;
   /** Uses waiting for the host's next step. */
   readonly uses: UseRequest[];
   /** The local player's uses, waiting for the room to hand them to the host. */
@@ -79,6 +84,7 @@ function buildRoomWorld(
   return buildWorld(config.world, mulberry32(seed));
 }
 
+/** A new session, holding the engine's own player state but no content yet. */
 export function createSession(
   localId: string,
   name: string,
@@ -91,7 +97,7 @@ export function createSession(
   const world = buildRoomWorld(seed, worldKind, config);
   const local = createPlayer(localId, name, world, config);
 
-  return {
+  const game: Session = {
     localId,
     config,
     local,
@@ -107,11 +113,14 @@ export function createSession(
     time: 0,
     items: new Map(),
     itemDefinitions: new Map(),
+    playerData: new Map(),
     uses: [],
     localUses: [],
     readyAt: new Map(),
     strikes: [],
   };
+  registerBuiltIns(game);
+  return game;
 }
 
 /** Every player in the session except the local one. */
@@ -152,6 +161,7 @@ export function updateSession(
   game.time += dt;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
+  reportHeld(game.local);
   if (controls.use) useHeldItem(game);
 
   for (const player of remotePlayers(game)) {
@@ -163,6 +173,20 @@ export function updateSession(
   else followEntities(game, dt);
 
   separateSessionBodies(game);
+}
+
+/** The local player's state, as its STATE reports it. */
+export function playerState(game: Session): PlayerState {
+  const { local } = game;
+  return {
+    id: local.id,
+    name: local.name,
+    x: local.x,
+    y: local.y,
+    aim: local.aim,
+    health: local.health,
+    content: contentState(game),
+  };
 }
 
 /** Drops a remote player; false when there is none by that id. */
@@ -196,7 +220,7 @@ export function applyRemoteState(
 
   player.name = state.name;
   player.health = Math.min(state.health, player.maxHealth);
-  player.reportedHeld = state.held;
+  applyContentState(game, player, state.content);
 
   player.tx = state.x;
   player.ty = state.y;

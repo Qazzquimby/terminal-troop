@@ -5,7 +5,8 @@ import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
-import { createInventory, heldItem, selectSlot } from "./inventory.js";
+import { createInventory, selectSlot } from "./inventory.js";
+import type { PlayerData } from "./player-data.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
@@ -53,16 +54,16 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   taim: number;
   /**
    * The local player's items, every slot empty until the room's items stock it; never sent
-   * over the network. A remote player's stays empty: what it holds is `reportedHeld`.
+   * over the network. A remote player's stays empty: what it holds is in its content state.
    */
   inventory: Inventory;
   /** The local player's selected slot, or null for holding nothing; unused for remote players. */
   held: HeldSlot;
   /**
-   * The id of the item a remote player last reported holding, or null for nothing. It may name
-   * an item this client does not know. Unused for the local player.
+   * Each content entry's state for this player, in its wire form, read and written through the
+   * entry's `PlayerData`. An entry with nothing here reads as its initial value.
    */
-  reportedHeld: string | null;
+  readonly content: Map<PlayerData<unknown>, unknown>;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
   /** The player's latest item use, as this client saw it; never sent over the network. */
@@ -76,8 +77,8 @@ export interface PlayerState {
   readonly y: number;
   readonly aim: number;
   readonly health: number;
-  /** The id of the held item, or null for holding nothing. */
-  readonly held: string | null;
+  /** Each content entry's state, encoded by the entry's schema, by the entry's name. */
+  readonly content: Readonly<Record<string, unknown>>;
 }
 
 export function createPlayer(
@@ -104,7 +105,7 @@ export function createPlayer(
     radius: rules.player.radius,
     inventory: createInventory(rules.player.inventorySlots),
     held: 0,
-    reportedHeld: null,
+    content: new Map(),
     stamina: createStamina(rules.stamina),
     use: null,
     health: rules.player.maxHealth,
@@ -155,16 +156,4 @@ export function smoothPlayer(player: Player, dt: number, rate: number): void {
   const amount = 1 - Math.exp(-rate * dt);
   easeToTarget(player, amount);
   player.aim = lerpAngle(player.aim, player.taim, amount);
-}
-
-export function playerState(player: Player): PlayerState {
-  return {
-    id: player.id,
-    name: player.name,
-    x: player.x,
-    y: player.y,
-    aim: player.aim,
-    health: player.health,
-    held: heldItem(player.inventory, player.held)?.item.id ?? null,
-  };
 }

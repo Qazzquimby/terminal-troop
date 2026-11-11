@@ -10,6 +10,7 @@ import {
   entitySnapshot,
   applyDamage,
   playerState,
+  registerContent,
   removePlayer,
   requestUse,
   showUse,
@@ -175,7 +176,7 @@ export function createRoom(deps: RoomDeps): Room {
     if (!force && now - room.lastSent < 1000 / config.sendHz) return;
     room.lastSent = now;
     room.forceState = false;
-    void send(NetEvent.STATE, playerState(room.session.local));
+    void send(NetEvent.STATE, playerState(room.session));
   }
 
   /**
@@ -376,7 +377,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sfx,
       deps.sim,
     );
-    for (const content of deps.content) content.register(session);
+    registerContent(session, deps.content);
     session.hosting = false;
     const room: Link = {
       scope,

@@ -14,7 +14,7 @@ const state = {
   y: 2,
   aim: 0,
   health: 100,
-  held: null,
+  content: {},
 };
 
 describe("health", () => {
@@ -74,9 +74,12 @@ describe("the message table", () => {
       y: number;
       aim: number;
       health: number | "Infinity";
-      held: string | null;
+      content: Record<string, unknown>;
     }>();
     expectTypeOf<Message<"state">["health"]>().toEqualTypeOf<number>();
+    expectTypeOf<Message<"state">["content"]>().toEqualTypeOf<
+      Record<string, unknown>
+    >();
     expectTypeOf<Message<"beat">>().toEqualTypeOf<{
       id: string;
       hidden: boolean;
@@ -113,14 +116,16 @@ describe("the message table", () => {
     expect(parsed.data?.name).toBe("ABC");
   });
 
-  test.each([null, "shovel", "an-item-this-build-lacks"])(
-    "a STATE holding %s parses as is",
-    (held) => {
-      expect(messages.state.safeParse({ ...state, held }).data?.held).toBe(
-        held,
-      );
-    },
-  );
+  test.each([
+    {},
+    { "core/items": "shovel" },
+    { "core/items": null, "item/lamp": { on: true, fuel: "Infinity" } },
+    { "an-entry-this-build-lacks": [1, 2] },
+  ])("a STATE's content %o parses as is, left to each entry", (content) => {
+    expect(
+      messages.state.safeParse({ ...state, content }).data?.content,
+    ).toEqual(content);
+  });
 
   test.each([
     [NetEvent.HELLO, { id: "" }],
@@ -129,10 +134,10 @@ describe("the message table", () => {
     [NetEvent.STATE, omit(state, "aim")],
     [NetEvent.STATE, omit(state, "health")],
     [NetEvent.STATE, { ...state, health: -1 }],
-    [NetEvent.STATE, omit(state, "held")],
-    [NetEvent.STATE, { ...state, held: "" }],
-    [NetEvent.STATE, { ...state, held: 3 }],
-    [NetEvent.STATE, { ...state, held: "x".repeat(33) }],
+    [NetEvent.STATE, omit(state, "content")],
+    [NetEvent.STATE, { ...state, content: null }],
+    [NetEvent.STATE, { ...state, content: "shovel" }],
+    [NetEvent.STATE, { ...state, content: ["shovel"] }],
     [NetEvent.USE, { by: "x", item: "", x: 0, y: 0, aim: 0 }],
     [NetEvent.USE, { by: "x", item: "shovel", x: 0, y: Infinity, aim: 0 }],
     [NetEvent.DAMAGE, { host: "x", target: "y", amount: 0 }],

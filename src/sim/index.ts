@@ -7,10 +7,16 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
-export { defineEntity, defineItem, entityKind } from "./content.js";
+export {
+  defineEntity,
+  defineItem,
+  entityKind,
+  registerContent,
+} from "./content.js";
 export type {
   Content,
   ContentConfig,
+  ContentName,
   EntitySpec,
   Scatter,
   SpawnRule,
@@ -36,14 +42,22 @@ export type {
 } from "./map.js";
 export { applyDamage } from "./entity.js";
 export type { Entity } from "./entity.js";
-export { aimAt, createPlayer, playerState } from "./player.js";
+export { aimAt, createPlayer } from "./player.js";
+export { playerData } from "./player-data.js";
 export type { Controls, Player } from "./player.js";
-export { heldItemOf, registerItem, requestUse, showUse } from "./use.js";
+export {
+  heldItemId,
+  heldItemOf,
+  registerItem,
+  requestUse,
+  showUse,
+} from "./use.js";
 export type { ItemUse, UseRequest } from "./use.js";
 
 export {
   applyRemoteState,
   createSession,
+  playerState,
   remotePlayers,
   removePlayer,
   updateSession,

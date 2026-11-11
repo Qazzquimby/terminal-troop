@@ -9,10 +9,13 @@ import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
   applyDamage,
+  heldItemId,
   heldItemOf,
+  playerData,
   playerState,
   randomFreePosition,
   registerEntityType,
+  defineEntity,
   defineItem,
   spawnEntity,
   updateSession,
@@ -21,7 +24,7 @@ import type { Point, UseRequest, WorldContent } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
-import { roomMessages } from "./protocol.js";
+import { Health, roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
 import type { Room, RoomState } from "./room.js";
 
@@ -147,6 +150,7 @@ function createHub() {
 
 /** Three blobs start across the dev square, each drifting right at 20px/s with 10 health, and heard stepping. */
 const blobs: WorldContent = {
+  name: "entity/blob",
   register(session) {
     registerEntityType(session, "blob", {
       radius: 10,
@@ -173,6 +177,7 @@ const blobs: WorldContent = {
 const BITER = "biter";
 
 const biters: WorldContent = {
+  name: "entity/biter",
   register(session) {
     registerEntityType(session, BITER, {
       radius: 10,
@@ -468,7 +473,7 @@ async function withListener() {
       ...spot,
       aim: 0,
       health: 100,
-      held: null,
+      content: {},
     });
   };
   const beat = (hidden: boolean) => {
@@ -531,7 +536,7 @@ describe("players and voice", () => {
       y: 0,
       aim: 0,
       health: 100,
-      held: null,
+      content: {},
     });
     expect(hasX()).toBe(false);
     expect(log).not.toContain("peers x");
@@ -574,10 +579,12 @@ describe("players and voice", () => {
       ...spot,
       aim: 0,
       health: 100,
-      held: "laser",
+      content: { "core/items": "laser" },
     });
     const remote = session.players.get("x");
-    expect(remote?.reportedHeld).toBe("laser");
+    expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
+      "laser",
+    );
     expect(
       remote === undefined ? undefined : heldItemOf(session, remote),
     ).toBeNull();
@@ -588,6 +595,154 @@ describe("players and voice", () => {
     clock.advance(500);
     sendState();
     expect(room.presenceOf("x")).toEqual({ kind: "present", lastHeard: 500 });
+  });
+});
+
+describe("content's player state", () => {
+  /** A lamp every player carries, lit or not, its fuel possibly endless. */
+  const lampState = playerData({
+    schema: z.object({ lit: z.boolean(), fuel: Health }),
+    initial: () => ({ lit: false, fuel: 10 }),
+  });
+  const lamp: WorldContent = {
+    name: "item/lamp",
+    player: lampState,
+    register: () => undefined,
+    populate: () => undefined,
+  };
+  const content = [poke, lamp];
+
+  test("a value set on one client shows on the other", async () => {
+    const clock = createManualClock();
+    const a = setup(createHub(), "a", clock, content);
+    const b = setup(a.hub, "b", clock, content);
+    await a.room.join("ABC", "A");
+    await b.room.join("ABC", "B");
+    const seen = () => {
+      const remote = joined(a.room).session.players.get("b");
+      return remote === undefined ? undefined : lampState.get(remote);
+    };
+    expect(seen()).toEqual({ lit: false, fuel: 10 });
+
+    lampState.set(joined(b.room).session.local, { lit: true, fuel: Infinity });
+    clock.advance(clock.now() + SEND_GAP);
+    b.room.frame(clock.now());
+    expect(seen()).toEqual({ lit: true, fuel: Infinity });
+  });
+
+  test("the held item reaches the others with no content listed", async () => {
+    const clock = createManualClock();
+    const a = setup(createHub(), "a", clock, []);
+    const b = setup(a.hub, "b", clock, []);
+    await a.room.join("ABC", "A");
+    await b.room.join("ABC", "B");
+    heldItemId.set(joined(b.room).session.local, "poke");
+    clock.advance(clock.now() + SEND_GAP);
+    b.room.frame(clock.now());
+    const remote = joined(a.room).session.players.get("b");
+    expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
+      "poke",
+    );
+  });
+
+  test("an entity and an item of the same name sync their own state, each under its namespace", async () => {
+    const glow = playerData({ schema: z.number(), initial: () => 1 });
+    const fuel = playerData({ schema: z.number(), initial: () => 2 });
+    const lamps = [
+      defineEntity("lamp", () => ({
+        radius: 10,
+        maxHealth: 10,
+        data: z.object({}),
+        player: glow,
+        draw: () => undefined,
+      })).create({ lamp: undefined }),
+      defineItem("lamp", () => ({
+        name: "Lamp",
+        maxStack: 1,
+        emoji: "🪔",
+        player: fuel,
+        cooldown: 1,
+        apply: () => undefined,
+        show: (_game, at) => ({ center: at, hit: false }),
+        draw: () => undefined,
+      })).create({ lamp: undefined }),
+    ];
+    const clock = createManualClock();
+    const a = setup(createHub(), "a", clock, lamps);
+    const b = setup(a.hub, "b", clock, lamps);
+    await a.room.join("ABC", "A");
+    await b.room.join("ABC", "B");
+    const listener = a.hub.listener("dev:ABC");
+    const local = joined(b.room).session.local;
+    glow.set(local, 5);
+    fuel.set(local, 7);
+    clock.advance(clock.now() + SEND_GAP);
+    b.room.frame(clock.now());
+
+    const remote = joined(a.room).session.players.get("b");
+    expect(
+      remote === undefined ? undefined : [glow.get(remote), fuel.get(remote)],
+    ).toEqual([5, 7]);
+    const sent = listener.heard.filter(({ event }) => event === NetEvent.STATE);
+    expect(sent.at(-1)?.payload).toMatchObject({
+      content: { "core/items": null, "entity/lamp": 5, "item/lamp": 7 },
+    });
+  });
+
+  /** A room joined as "me" with the lamp, and a report from a bare listener "x" of its content. */
+  async function reported() {
+    const ctx = setup(createHub(), "me", createManualClock(), content);
+    await ctx.room.join("ABC", "ME");
+    const other = ctx.hub.listener("dev:ABC");
+    const session = joined(ctx.room).session;
+    const spot = randomFreePosition(session.world, session.local.radius);
+    const report = (entries: Record<string, unknown>, name = "X") => {
+      other.send(NetEvent.STATE, {
+        id: "x",
+        name,
+        ...spot,
+        aim: 0,
+        health: 100,
+        content: entries,
+      });
+      const remote = session.players.get("x");
+      return remote === undefined
+        ? undefined
+        : { lamp: lampState.get(remote), held: heldItemId.get(remote) };
+    };
+    return { session, report };
+  }
+
+  test("a new remote player that reports nothing for an entry has its initial value", async () => {
+    const { report } = await reported();
+    expect(report({})).toEqual({ lamp: { lit: false, fuel: 10 }, held: null });
+  });
+
+  test("an unknown entry or a value its entry rejects is dropped, and the rest of the STATE applies", async () => {
+    const { session, report } = await reported();
+    expect(
+      report(
+        {
+          "item/lamp": { lit: "yes", fuel: 1 },
+          "core/items": "poke",
+          ghost: 1,
+        },
+        "XY",
+      ),
+    ).toEqual({ lamp: { lit: false, fuel: 10 }, held: "poke" });
+    expect(session.players.get("x")?.name).toBe("XY");
+    expect(
+      report({ "item/lamp": { lit: true, fuel: "Infinity" }, "core/items": 7 }),
+    ).toEqual({
+      lamp: { lit: true, fuel: Infinity },
+      held: "poke",
+    });
+  });
+
+  test("an entry missing from a STATE keeps its last value", async () => {
+    const { report } = await reported();
+    report({ "item/lamp": { lit: true, fuel: 3 }, "core/items": "poke" });
+    expect(report({})).toEqual({ lamp: { lit: true, fuel: 3 }, held: "poke" });
   });
 });
 
@@ -719,7 +874,7 @@ describe("state sends", () => {
     const last = other.heard
       .filter((message) => message.event === NetEvent.STATE)
       .at(-1);
-    expect(last?.payload).toEqual(playerState(joined(room).session.local));
+    expect(last?.payload).toEqual(playerState(joined(room).session));
   });
 
   test("hiding sends a hidden heartbeat at once", async () => {
@@ -764,7 +919,7 @@ describe("payloads that do not parse are dropped", () => {
       ...spot,
       aim: 0,
       health: 100,
-      held: null,
+      content: {},
     });
     expect(session.players.has("x")).toBe(false);
     expect(room.presenceOf("x")).toBeUndefined();
@@ -778,7 +933,7 @@ describe("payloads that do not parse are dropped", () => {
       ...spot,
       aim: 0,
       health: 100,
-      held: null,
+      content: {},
     });
     other.send(NetEvent.BYE, { who: "x" });
     expect(session.players.has("x")).toBe(true);
@@ -1074,6 +1229,7 @@ describe("host", () => {
 
     test("an unbreakable entity reaches the other players whole", async () => {
       const rocks: WorldContent = {
+        name: "entity/rock",
         register(session) {
           registerEntityType(session, "rock", {
             radius: 10,
@@ -1105,6 +1261,7 @@ describe("host", () => {
     test("each world is populated once, by its first host, and not again on a handover", async () => {
       const populated: string[] = [];
       const counted: WorldContent = {
+        name: "entity/counted",
         register: () => undefined,
         populate(session) {
           populated.push(session.localId);
@@ -1353,7 +1510,9 @@ describe("host", () => {
         expect(a.sounds.filter(({ url }) => url === "poke")).toHaveLength(1);
         clock.advance(clock.now() + 200);
         b.room.frame(clock.now());
-        expect(seen?.reportedHeld).toBe("poke");
+        expect(seen === undefined ? undefined : heldItemId.get(seen)).toBe(
+          "poke",
+        );
         play(a, 1 / 60);
         expect(healthOf(a, "a:2")).toBe(6);
         expect(healthOf(b, "a:2")).toBe(6);
