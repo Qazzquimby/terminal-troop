@@ -306,7 +306,7 @@ function frame(): void {
     );
     frameStats.drawMs = performance.now() - drawStart;
     hud.inventory(session.local.inventory, session.local.held);
-    hud.credit(session.local.credit);
+    hud.credit(session.credit);
   } else {
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
