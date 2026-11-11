@@ -95,6 +95,10 @@ export interface RoomDeps {
   readonly config: RoomConfig;
   readonly sim: SimConfig;
   readonly monsters: Monsters;
+  readonly cruiser?: {
+    register(session: Session): void;
+    populate(session: Session): void;
+  };
   readonly items: Items;
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
@@ -152,7 +156,7 @@ interface Link {
   /** When the last heartbeat was due to go out. */
   lastPulse: number;
   lastEntitiesSent: number;
-  /** The world has its monsters: this client spawned them or heard them from a host. */
+  /** The world has its starting entities: this client spawned them or heard them from a host. */
   populated: boolean;
 }
 
@@ -211,7 +215,7 @@ export function createRoom(deps: RoomDeps): Room {
 
   /**
    * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
-   * no monsters yet spawns them.
+   * no starting entities yet spawns them.
    */
   function holdView(room: Link, view: HostView | undefined): void {
     room.host = view;
@@ -219,6 +223,7 @@ export function createRoom(deps: RoomDeps): Room {
     room.session.hosting = hosting;
     if (hosting && !room.populated) {
       deps.monsters.populate(room.session);
+      deps.cruiser?.populate(room.session);
       room.populated = true;
     }
   }
@@ -381,6 +386,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sim,
     );
     deps.monsters.register(session);
+    deps.cruiser?.register(session);
     deps.items.register(session);
     session.hosting = false;
     const room: Link = {

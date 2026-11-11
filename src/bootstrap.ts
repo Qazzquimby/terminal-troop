@@ -38,6 +38,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { createMonsters } from "./monsters/index.js";
+import { createCruiser } from "./sim/cruiser.js";
 import { createItems } from "./items/index.js";
 
 /** Owns everything that lives as long as the page. */
@@ -167,6 +168,7 @@ const room = createRoom({
   config: config.room,
   sim: config,
   monsters: createMonsters(config.monsters),
+  cruiser: createCruiser(config.cruiser),
   items,
   falloff: config.voice,
   onChange() {
