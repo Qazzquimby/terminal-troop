@@ -22,7 +22,7 @@ import {
   testSimConfig,
 } from "./sim-config.js";
 
-/** No chasers, so nothing moves; the cruiser beside the first host. */
+/** No chasers, so nothing moves; the cruiser beside the first host, and three scrap about. */
 const entities = {
   ...testEntitiesConfig,
   chaser: {
@@ -112,14 +112,14 @@ test("after a full snapshot the host sends only what changed, and what is gone",
   tick(a);
   const first = sentBy("a").at(-1);
   expect(first?.full).toBe(true);
-  expect(first?.ids).toHaveLength(1);
+  expect(first?.ids).toHaveLength(4);
   expect(ids(b)).toEqual(ids(a));
 
   tick(a);
   expect(sentBy("a").at(-1)).toEqual({ full: false, ids: [], removed: [] });
 
   const host = sessionOf(a);
-  const dropped = spawnWorldItem(host, { x: 300, y: 300 }, "shovel");
+  const dropped = spawnWorldItem(host, { x: 300, y: 300 }, "scrap");
   tick(a);
   expect(sentBy("a").at(-1)).toEqual({
     full: false,
@@ -190,5 +190,5 @@ test("a new host's first snapshot is full", async () => {
   expect(b.hostId()).toBe("b");
   tick(b);
   expect(sentBy("b").at(0)?.full).toBe(true);
-  expect(sentBy("b").at(0)?.ids).toHaveLength(1);
+  expect(sentBy("b").at(0)?.ids).toHaveLength(4);
 });

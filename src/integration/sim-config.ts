@@ -86,7 +86,10 @@ export const testEntitiesConfig: EntitiesConfig = {
   cruiser: { lightRadius: 400, offset: 60 },
 };
 
-/** Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most twice a second. */
+/**
+ * Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most
+ * twice a second; three scrap lying about.
+ */
 export const testItemsConfig: ItemsConfig = {
   shovel: {
     radius: 20,
@@ -97,6 +100,9 @@ export const testItemsConfig: ItemsConfig = {
     duration: 0.1,
     volume: 1,
     hitLoudness: 1,
+  },
+  scrap: {
+    scatter: { count: 3, seed: 5, clearance: 200 },
   },
 };
 

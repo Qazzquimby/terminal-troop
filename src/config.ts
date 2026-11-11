@@ -151,6 +151,10 @@ export const config = {
       volume: 0.8,
       hitLoudness: 1.2,
     },
+    // 500 scrap about the world, none within 3 cells of the first players.
+    scrap: {
+      scatter: { count: 500, seed: 2, clearance: CELL * 3 },
+    },
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
