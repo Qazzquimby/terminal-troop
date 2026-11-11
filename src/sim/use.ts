@@ -1,8 +1,10 @@
 import { heldItem } from "./inventory.js";
+import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
+import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 
-/** A local player's item use, as plain data: what the player sees of its last use. */
+/** A player's item use, as plain data: what this client sees of it. */
 export interface ItemUse {
   readonly item: string;
   /** Where the use landed. */
@@ -46,13 +48,30 @@ export interface UseSlack {
   readonly seconds: number;
 }
 
+/** Registers `item` with `game`, and what using it does. */
 export function registerItem(
   game: Session,
-  id: string,
+  item: ItemDefinition,
   behaviour: ItemBehaviour,
 ): void {
-  if (game.items.has(id)) throw new Error(`Item already registered: ${id}`);
-  game.items.set(id, behaviour);
+  if (game.items.has(item.id))
+    throw new Error(`Item already registered: ${item.id}`);
+  game.itemDefinitions.set(item.id, item);
+  game.items.set(item.id, behaviour);
+}
+
+/**
+ * The item `player` holds: the local player's from its selected slot, a remote player's from
+ * its report. Null when it holds nothing, or an item this client does not know.
+ */
+export function heldItemOf(
+  game: Session,
+  player: Player,
+): ItemDefinition | null {
+  if (player.id === game.localId)
+    return heldItem(player.inventory, player.held)?.item ?? null;
+  if (player.reportedHeld === null) return null;
+  return game.itemDefinitions.get(player.reportedHeld) ?? null;
 }
 
 /** Queues a use for the host's next step. */
@@ -60,9 +79,14 @@ export function requestUse(game: Session, request: UseRequest): void {
   game.uses.push(request);
 }
 
-/** Shows a remote player's use as this client sees it. */
+/** Shows a remote player's use as this client sees it, and keeps it on the player to draw. */
 export function showUse(game: Session, request: UseRequest): void {
-  game.items.get(request.item)?.show(game, request, request.aim);
+  const behaviour = game.items.get(request.item);
+  if (behaviour === undefined) return;
+  const shown = behaviour.show(game, request, request.aim);
+  const player = game.players.get(request.by);
+  if (player !== undefined && player !== game.local)
+    player.use = { item: request.item, ...shown, startedAt: game.time };
 }
 
 /**

@@ -10,7 +10,7 @@ export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
 export { kindId } from "./kinds.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export { addItem, heldEmoji } from "./inventory.js";
+export { addItem } from "./inventory.js";
 export type { HeldSlot, Inventory, ItemDefinition } from "./inventory.js";
 export {
   isAreaFree,
@@ -31,7 +31,7 @@ export { applyDamage } from "./entity.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";
-export { registerItem, requestUse, showUse } from "./use.js";
+export { heldItemOf, registerItem, requestUse, showUse } from "./use.js";
 export type { ItemBehaviour, ItemUse, UseRequest } from "./use.js";
 
 export {

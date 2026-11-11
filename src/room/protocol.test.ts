@@ -1,9 +1,21 @@
+import { omit } from "lodash-es";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { NetEvent } from "../net/index.js";
 import { roomMessages } from "./protocol.js";
 import type { Message, MessageInput, RoomMessages } from "./protocol.js";
 
 const messages = roomMessages(3);
+
+/** A STATE that parses. */
+const state = {
+  id: "x",
+  name: "X",
+  x: 1,
+  y: 2,
+  aim: 0,
+  health: 100,
+  held: null,
+};
 
 describe("the message table", () => {
   test("covers every event", () => {
@@ -23,6 +35,7 @@ describe("the message table", () => {
       y: number;
       aim: number;
       health: number;
+      held: string | null;
     }>();
     expectTypeOf<Message<"beat">>().toEqualTypeOf<{
       id: string;
@@ -56,27 +69,30 @@ describe("the message table", () => {
   });
 
   test("a STATE's name is cut to nameMax", () => {
-    const parsed = messages.state.safeParse({
-      id: "x",
-      name: "ABCDE",
-      x: 1,
-      y: 2,
-      aim: 0,
-      health: 100,
-    });
+    const parsed = messages.state.safeParse({ ...state, name: "ABCDE" });
     expect(parsed.data?.name).toBe("ABC");
   });
+
+  test.each([null, "shovel", "an-item-this-build-lacks"])(
+    "a STATE holding %s parses as is",
+    (held) => {
+      expect(messages.state.safeParse({ ...state, held }).data?.held).toBe(
+        held,
+      );
+    },
+  );
 
   test.each([
     [NetEvent.HELLO, { id: "" }],
     [NetEvent.BYE, { id: 7 }],
-    [
-      NetEvent.STATE,
-      { id: "x", name: "X", x: Number.NaN, y: 0, aim: 0, health: 1 },
-    ],
-    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, health: 1 }],
-    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, aim: 0 }],
-    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, aim: 0, health: -1 }],
+    [NetEvent.STATE, { ...state, x: Number.NaN }],
+    [NetEvent.STATE, omit(state, "aim")],
+    [NetEvent.STATE, omit(state, "health")],
+    [NetEvent.STATE, { ...state, health: -1 }],
+    [NetEvent.STATE, omit(state, "held")],
+    [NetEvent.STATE, { ...state, held: "" }],
+    [NetEvent.STATE, { ...state, held: 3 }],
+    [NetEvent.STATE, { ...state, held: "x".repeat(33) }],
     [NetEvent.USE, { by: "x", item: "", x: 0, y: 0, aim: 0 }],
     [NetEvent.USE, { by: "x", item: "shovel", x: 0, y: Infinity, aim: 0 }],
     [NetEvent.DAMAGE, { host: "x", target: "y", amount: 0 }],

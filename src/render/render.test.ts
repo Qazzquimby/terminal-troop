@@ -5,6 +5,8 @@ import type { Session } from "../sim/index.js";
 import {
   createPlayer,
   createSession,
+  heldItemOf,
+  registerItem,
   registerEntityType,
   spawnEntity,
   updateSession,
@@ -134,6 +136,29 @@ test("the view's remote aim is interpolated by alpha along the shortest arc", ()
   expect(quarter?.aim).toBeCloseTo(degrees(170));
   expect(start?.aim).toBeCloseTo(degrees(160));
   expect(remote.aim).toBeCloseTo(degrees(-160));
+});
+
+test("the view's players hold what the simulation's do", () => {
+  const game = session();
+  const torch = { id: "torch", name: "Torch", maxStack: 1, emoji: "🔦" };
+  registerItem(game, torch, {
+    cooldown: 1,
+    apply: () => undefined,
+    show: (_game, at) => ({ center: at, hit: false }),
+    draw: () => undefined,
+  });
+  game.local.inventory[0] = { item: torch, quantity: 1 };
+  const remote = createPlayer("them", "THEM", game.world, game.config);
+  game.players.set("them", remote);
+  remote.reportedHeld = "torch";
+  remote.use = { item: "torch", center: origin, hit: false, startedAt: 0 };
+
+  const view = interpolatedView(game, 0.5, origin);
+  const them = view.players.get("them");
+
+  expect(heldItemOf(view, view.local)).toBe(torch);
+  expect(them === undefined ? undefined : heldItemOf(view, them)).toBe(torch);
+  expect(them?.use).toBe(remote.use);
 });
 
 test("the view's local aim points from the interpolated position to the mouse", () => {

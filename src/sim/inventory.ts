@@ -100,11 +100,3 @@ export function heldItem(
   if (selected === null) return null;
   return inventory[selected] ?? null;
 }
-
-/** The glyph drawn for the held item, or null when holding nothing. */
-export function heldEmoji(
-  inventory: Inventory,
-  selected: HeldSlot,
-): string | null {
-  return heldItem(inventory, selected)?.item.emoji ?? null;
-}
