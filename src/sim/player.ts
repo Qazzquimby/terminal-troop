@@ -5,7 +5,7 @@ import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
-import { createInventory, selectSlot } from "./inventory.js";
+import { createInventory, heldItem, selectSlot } from "./inventory.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
@@ -51,13 +51,21 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   name: string;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
-  /** Every slot empty until the room's items stock the local player's; never sent over the network. */
+  /**
+   * The local player's items, every slot empty until the room's items stock it; never sent
+   * over the network. A remote player's stays empty: what it holds is `reportedHeld`.
+   */
   inventory: Inventory;
-  /** The selected inventory slot, or null for holding nothing; never sent over the network. */
+  /** The local player's selected slot, or null for holding nothing; unused for remote players. */
   held: HeldSlot;
+  /**
+   * The id of the item a remote player last reported holding, or null for nothing. It may name
+   * an item this client does not know. Unused for the local player.
+   */
+  reportedHeld: string | null;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
-  /** The local player's latest item use; never sent over the network. */
+  /** The player's latest item use, as this client saw it; never sent over the network. */
   use: ItemUse | null;
 }
 
@@ -68,6 +76,8 @@ export interface PlayerState {
   readonly y: number;
   readonly aim: number;
   readonly health: number;
+  /** The id of the held item, or null for holding nothing. */
+  readonly held: string | null;
 }
 
 export function createPlayer(
@@ -94,6 +104,7 @@ export function createPlayer(
     radius: rules.player.radius,
     inventory: createInventory(rules.player.inventorySlots),
     held: 0,
+    reportedHeld: null,
     stamina: createStamina(rules.stamina),
     use: null,
     health: rules.player.maxHealth,
@@ -154,5 +165,6 @@ export function playerState(player: Player): PlayerState {
     y: player.y,
     aim: player.aim,
     health: player.health,
+    held: heldItem(player.inventory, player.held)?.item.id ?? null,
   };
 }

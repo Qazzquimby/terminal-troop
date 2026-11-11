@@ -3,7 +3,13 @@ import { NetEvent } from "../net/index.js";
 
 const PlayerId = z.string().min(1).max(64);
 
-/** A STATE payload, its name cut to `nameMax` characters. z.number() rejects NaN and ±Infinity. */
+/** An item's id. The room knows no items, so any well-formed id passes. */
+const ItemId = z.string().min(1).max(32);
+
+/**
+ * A STATE payload, its name cut to `nameMax` characters, with the id of the item the sender
+ * holds, or null for nothing. z.number() rejects NaN and ±Infinity.
+ */
 function stateMessage(nameMax: number) {
   return z.object({
     id: PlayerId,
@@ -12,6 +18,7 @@ function stateMessage(nameMax: number) {
     y: z.number(),
     aim: z.number(),
     health: z.number().min(0),
+    held: ItemId.nullable(),
   });
 }
 
@@ -63,7 +70,7 @@ const EntitiesMessage = z.object({
  */
 const UseMessage = z.object({
   by: PlayerId,
-  item: z.string().min(1).max(32),
+  item: ItemId,
   x: z.number(),
   y: z.number(),
   aim: z.number(),

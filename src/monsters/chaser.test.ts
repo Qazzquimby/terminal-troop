@@ -375,6 +375,7 @@ describe("sounds", () => {
       y: 400,
       aim: 0,
       health: 100,
+      held: null,
     });
     chaserAt(game, 100, 400);
     expect(runUntil(game, 3, () => game.strikes.length > 0)).toBe(true);

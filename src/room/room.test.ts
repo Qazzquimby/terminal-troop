@@ -9,6 +9,7 @@ import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
   applyDamage,
+  heldItemOf,
   playerState,
   randomFreePosition,
   registerEntityType,
@@ -186,7 +187,7 @@ const POKE = { id: "poke", name: "Poke", maxStack: 1, emoji: "👉" };
 /** A poke: 4 damage to every entity within 30px of a point 20px ahead, at most twice a second. */
 const poke: Items = {
   register(session) {
-    registerItem(session, "poke", {
+    registerItem(session, POKE, {
       cooldown: 0.5,
       apply(game, at, aim) {
         const x = at.x + Math.cos(aim) * 20;
@@ -453,6 +454,7 @@ async function withListener() {
       ...spot,
       aim: 0,
       health: 100,
+      held: null,
     });
   };
   const beat = (hidden: boolean) => {
@@ -515,9 +517,52 @@ describe("players and voice", () => {
       y: 0,
       aim: 0,
       health: 100,
+      held: null,
     });
     expect(hasX()).toBe(false);
     expect(log).not.toContain("peers x");
+  });
+
+  test("a held item change on one client shows on the other", async () => {
+    const { a, b, clock } = await pair();
+    const session = joined(b.room).session;
+    session.local.inventory[1] = { item: POKE, quantity: 1 };
+    const select = (slot: number) => {
+      updateSession(session, { ...idle, select: slot }, 1 / 60);
+      clock.advance(clock.now() + SEND_GAP);
+      b.room.frame(clock.now());
+    };
+    const seen = () => {
+      const game = joined(a.room).session;
+      const remote = game.players.get("b");
+      return remote === undefined ? undefined : heldItemOf(game, remote);
+    };
+
+    expect(seen()).toBeNull();
+    select(1);
+    expect(seen()).toBe(POKE);
+    expect(joined(a.room).session.players.get("b")?.inventory).toEqual(
+      Array(testSimConfig.player.inventorySlots).fill(null),
+    );
+    select(0);
+    expect(seen()).toBeNull();
+  });
+
+  test("a STATE holding an item this client does not know adds the player holding nothing", async () => {
+    const { other, session, spot } = await withListener();
+    other.send(NetEvent.STATE, {
+      id: "x",
+      name: "X",
+      ...spot,
+      aim: 0,
+      health: 100,
+      held: "laser",
+    });
+    const remote = session.players.get("x");
+    expect(remote?.reportedHeld).toBe("laser");
+    expect(
+      remote === undefined ? undefined : heldItemOf(session, remote),
+    ).toBeNull();
   });
 
   test("a STATE records when the player was heard", async () => {
@@ -701,6 +746,7 @@ describe("payloads that do not parse are dropped", () => {
       ...spot,
       aim: 0,
       health: 100,
+      held: null,
     });
     expect(session.players.has("x")).toBe(false);
     expect(room.presenceOf("x")).toBeUndefined();
@@ -714,6 +760,7 @@ describe("payloads that do not parse are dropped", () => {
       ...spot,
       aim: 0,
       health: 100,
+      held: null,
     });
     other.send(NetEvent.BYE, { who: "x" });
     expect(session.players.has("x")).toBe(true);
@@ -1234,6 +1281,19 @@ describe("host", () => {
         swing(a);
         expect(pokes(a)).toHaveLength(2);
         expect(pokes(b)).toHaveLength(2);
+      });
+
+      test("a remote use is kept on its player to draw, from where it was made", async () => {
+        const { a, b } = await hosted();
+        standAt(b, { x: 400, y: 500 });
+        sendUse(b, { by: "b", item: "poke", x: 400, y: 500, aim: 0 });
+        expect(sessionOf(a).players.get("b")?.use).toEqual({
+          item: "poke",
+          center: { x: 400, y: 500 },
+          hit: false,
+          startedAt: sessionOf(a).time,
+        });
+        expect(sessionOf(b).players.get("a")?.use).toBeNull();
       });
 
       test("the host applies its own use through the same checks", async () => {

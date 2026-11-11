@@ -4,6 +4,7 @@ import { separateBodies } from "./collision.js";
 import type { EntityType, Strike, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
+import type { ItemDefinition } from "./inventory.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
@@ -47,6 +48,8 @@ export interface Session {
   time: number;
   /** What each usable item does, by item id. */
   readonly items: Map<string, ItemBehaviour>;
+  /** Every item this client knows, by item id. */
+  readonly itemDefinitions: Map<string, ItemDefinition>;
   /** Uses waiting for the host's next step. */
   readonly uses: UseRequest[];
   /** The local player's uses, waiting for the room to hand them to the host. */
@@ -100,6 +103,7 @@ export function createSession(
     hosting: true,
     time: 0,
     items: new Map(),
+    itemDefinitions: new Map(),
     uses: [],
     localUses: [],
     readyAt: new Map(),
@@ -189,6 +193,7 @@ export function applyRemoteState(
 
   player.name = state.name;
   player.health = Math.min(state.health, player.maxHealth);
+  player.reportedHeld = state.held;
 
   player.tx = state.x;
   player.ty = state.y;

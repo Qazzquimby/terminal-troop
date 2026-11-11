@@ -167,6 +167,7 @@ test("player separation does not move remote players", () => {
     y: 300,
     aim: 0,
     health: 100,
+    held: null,
   });
 
   updateSession(game, idle, 1 / 60);

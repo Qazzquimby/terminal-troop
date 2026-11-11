@@ -11,6 +11,7 @@ import type {
 } from "../sim/index.js";
 import {
   aimAt,
+  heldItemOf,
   isVisible,
   lightSources,
   litWalls,
@@ -79,9 +80,13 @@ function drawTerrain(
 /** How opaque an away player is drawn. */
 const AWAY_ALPHA = 0.4;
 
-/** An away player is drawn faint, with "away" under its name. */
+/**
+ * A player with the item it holds in front of it, and its latest use while that lasts. An away
+ * player is drawn faint, with "away" under its name.
+ */
 function drawPlayer(
   ctx: CanvasRenderingContext2D,
+  game: Session,
   player: Player,
   isSelf: boolean,
   away = false,
@@ -89,6 +94,10 @@ function drawPlayer(
   ctx.save();
   if (away) ctx.globalAlpha = AWAY_ALPHA;
   drawBody(ctx, player, isSelf);
+  if (player.use !== null)
+    game.items.get(player.use.item)?.draw(ctx, player.use, game.time);
+  const held = heldItemOf(game, player);
+  if (held !== null) drawHeldItem(ctx, player, held.emoji);
   if (away) {
     ctx.font = "10px system-ui";
     ctx.fillStyle = "#aaa";
@@ -328,7 +337,7 @@ export function interpolatedView(
 
 /**
  * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
- * player `isAway` picks out drawn as away and `held` (an item glyph) in front of the local one.
+ * player `isAway` picks out drawn as away.
  */
 export function draw(
   ctx: CanvasRenderingContext2D,
@@ -338,7 +347,6 @@ export function draw(
   alpha: number,
   mouse: Point,
   isAway: (id: string) => boolean,
-  held: string | null,
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
@@ -376,18 +384,15 @@ export function draw(
   game.players.forEach((player) => {
     if (player === viewer || !inView(player, camera)) return;
     if (!isVisible(map, sources, lights, player)) return;
-    drawPlayer(ctx, player, false, isAway(player.id));
+    drawPlayer(ctx, game, player, false, isAway(player.id));
     drawHealthBar(ctx, player, player.y - player.radius - 26);
   });
   ctx.restore();
 
   // Above the darkness: lit wall faces, then the local player and its HUD.
   drawLitWalls(ctx, litWalls(seen, lit));
-  drawPlayer(ctx, viewer, true);
+  drawPlayer(ctx, game, viewer, true);
   drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
-  if (viewer.use !== null)
-    game.items.get(viewer.use.item)?.draw(ctx, viewer.use, game.time);
-  if (held !== null) drawHeldItem(ctx, viewer, held);
   drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();
 }

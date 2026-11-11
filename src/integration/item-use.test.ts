@@ -2,6 +2,9 @@ import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import { createItems } from "../items/index.js";
 import {
+  applyRemoteState,
+  heldItemOf,
+  playerState,
   registerEntityType,
   requestUse,
   spawnEntity,
@@ -88,6 +91,35 @@ test("the inventory has the configured slots, the shovel in the first", () => {
     null,
     null,
   ]);
+});
+
+test("the local player holds its selected slot's item, and reports its id", () => {
+  const game = session();
+  expect(heldItemOf(game, game.local)?.emoji).toBe("🪏");
+  expect(playerState(game.local).held).toBe("shovel");
+  updateSession(game, { ...idle, select: 1 }, DT);
+  expect(heldItemOf(game, game.local)).toBeNull();
+  expect(playerState(game.local).held).toBeNull();
+});
+
+test("a remote player holds the item it reports, and nothing for an unknown or no item", () => {
+  const game = session();
+  const report = (held: string | null) => {
+    applyRemoteState(game, {
+      id: "them",
+      name: "THEM",
+      x: 450,
+      y: 300,
+      aim: 0,
+      health: 100,
+      held,
+    });
+    const remote = game.players.get("them");
+    return remote === undefined ? undefined : heldItemOf(game, remote);
+  };
+  expect(report("shovel")?.emoji).toBe("🪏");
+  expect(report("laser")).toBeNull();
+  expect(report(null)).toBeNull();
 });
 
 test("selecting a slot past the last keeps the held one", () => {

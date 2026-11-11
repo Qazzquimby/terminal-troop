@@ -1,6 +1,5 @@
 import {
   createSimClock,
-  heldEmoji,
   remotePlayers,
   renderPosition,
   updateSession,
@@ -309,16 +308,7 @@ function frame(): void {
     room.frame(now);
     updateCamera(camera, renderPosition(session.local, alpha), frameSeconds);
     const drawStart = performance.now();
-    draw(
-      ctx,
-      session,
-      camera,
-      now,
-      alpha,
-      input.mouseWorld(),
-      isAway,
-      heldEmoji(session.local.inventory, session.local.held),
-    );
+    draw(ctx, session, camera, now, alpha, input.mouseWorld(), isAway);
     frameStats.drawMs = performance.now() - drawStart;
     updateInventory(session.local.inventory, session.local.held, inventoryOpen);
   } else {
