@@ -253,7 +253,7 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     move: { x: x / length, y: y / length },
     aim,
     sprint: frame.held.has("sprint"),
-    crouch: frame.held.has("crouch"),
+    crouch: frame.pressed.has("crouch"),
     select: pressedSlot(frame),
     use: frame.pressed.has("useItem"),
   };
