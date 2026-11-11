@@ -104,12 +104,30 @@ test("the select control picks a slot, and null keeps the current one", () => {
   expect(game.local.held).toBe(3);
 });
 
+test("with six slots, keys 7 to 9 select nothing: the player holds no item", () => {
+  const game = createSession("me", "ME", "ITEMS", "dev", testSfx(), {
+    ...testSimConfig,
+    player: { ...testSimConfig.player, inventorySlots: 6 },
+  });
+  registerContent(game, itemContent(testItemsConfig));
+  for (const slot of [6, 7, 8]) {
+    updateSession(game, { ...idle, select: 0 }, DT);
+    expect(heldItemOf(game, game.local)?.id).toBe("shovel");
+    updateSession(game, { ...idle, select: slot }, DT);
+    expect(game.local.held).toBeNull();
+    expect(heldItemOf(game, game.local)).toBeNull();
+    expect(playerState(game).content["core/items"]).toBeNull();
+  }
+  updateSession(game, { ...idle, select: 5 }, DT);
+  expect(game.local.held).toBe(5);
+});
+
 test("the inventory has the configured slots, the shovel in the first", () => {
   const game = session();
   expect(game.local.inventory).toHaveLength(
     testSimConfig.player.inventorySlots,
   );
-  expect(game.local.inventory.map((stack) => stack?.item.id ?? null)).toEqual([
+  expect(game.local.inventory.map((item) => item?.id ?? null)).toEqual([
     "shovel",
     null,
     null,
@@ -146,17 +164,6 @@ test("a remote player holds the item it reports, and nothing for an unknown or n
   expect(report("shovel")?.emoji).toBe("🪏");
   expect(report("laser")).toBeNull();
   expect(report(null)).toBeNull();
-});
-
-test("selecting a slot past the last keeps the held one", () => {
-  const game = session();
-  updateSession(game, { ...idle, select: 2 }, DT);
-  updateSession(
-    game,
-    { ...idle, select: testSimConfig.player.inventorySlots },
-    DT,
-  );
-  expect(game.local.held).toBe(2);
 });
 
 test("the use control swings the held shovel at the step's sim time and sends it to everyone", () => {

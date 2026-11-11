@@ -58,7 +58,7 @@ const ItemId = z.string().min(1).max(32);
 
 /** The id of the item in `player`'s selected slot, or null for nothing. */
 function selectedItemId(player: Player): string | null {
-  return heldItem(player.inventory, player.held)?.item.id ?? null;
+  return heldItem(player.inventory, player.held)?.id ?? null;
 }
 
 /**
@@ -152,9 +152,9 @@ export const itemUsed = contentEvent({
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
-  const stack = heldItem(local.inventory, local.held);
-  if (stack === null) return;
-  const behaviour = game.items.get(stack.item.id);
+  const item = heldItem(local.inventory, local.held);
+  if (item === null) return;
+  const behaviour = game.items.get(item.id);
   if (behaviour === undefined) return;
   if (
     local.use !== null &&
@@ -162,12 +162,12 @@ export function useHeldItem(game: Session): void {
   )
     return;
   local.use = {
-    item: stack.item.id,
+    item: item.id,
     ...behaviour.show(game, local, local.aim),
     startedAt: game.time,
   };
   itemUsed.send(game, {
-    item: stack.item.id,
+    item: item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,

@@ -72,9 +72,8 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     circleAhead(at, aim, config.reach, config.radius);
   return {
     name: "Shovel",
-    maxStack: 1,
     emoji: "🪏",
-    starting: { slot: 0, quantity: 1 },
+    startingSlot: 0,
     cooldown: config.cooldown,
     apply(game, at, aim) {
       const area = hitbox(at, aim);

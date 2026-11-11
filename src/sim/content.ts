@@ -251,18 +251,13 @@ export function defineEntity<N extends string, C, S>(
   };
 }
 
-/** A stack each player starts with, in a slot of its own. */
-interface StartingStack {
-  readonly slot: number;
-  readonly quantity: number;
-}
-
 /**
  * An item's definition, less its id, which is its content name; what using it does; and where
  * each player starts with it, if anywhere.
  */
 export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
-  readonly starting?: StartingStack;
+  /** The slot each player starts with it in, if any; no two items may share one. */
+  readonly startingSlot?: number;
   /** The state the item keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
   /** The events the item sends and receives, by key. */
@@ -285,7 +280,6 @@ export function defineItem<N extends string, C>(
       const item: ItemDefinition & { readonly id: N } = {
         id: name,
         name: spec.name,
-        maxStack: spec.maxStack,
         emoji: spec.emoji,
       };
       return {
@@ -294,10 +288,8 @@ export function defineItem<N extends string, C>(
         events: spec.events,
         register(game) {
           registerItem(game, item, spec);
-          if (spec.starting !== undefined) {
-            const { slot, quantity } = spec.starting;
-            placeItem(game.local.inventory, slot, item, quantity);
-          }
+          if (spec.startingSlot !== undefined)
+            placeItem(game.local.inventory, spec.startingSlot, item);
         },
         populate: () => undefined,
       };

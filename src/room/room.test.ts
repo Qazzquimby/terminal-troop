@@ -101,9 +101,8 @@ const biters: WorldContent = {
  */
 const poke = defineItem("poke", (cooldown: number) => ({
   name: "Poke",
-  maxStack: 1,
   emoji: "👉",
-  starting: { slot: 1, quantity: 1 },
+  startingSlot: 1,
   cooldown,
   apply(game, at, aim) {
     const x = at.x + Math.cos(aim) * 20;
@@ -459,7 +458,6 @@ describe("players and voice", () => {
     expect(seen()).toEqual({
       id: "poke",
       name: "Poke",
-      maxStack: 1,
       emoji: "👉",
     });
     expect(joined(a.room).session.players.get("b")?.inventory).toEqual(
@@ -556,7 +554,6 @@ describe("content's player state", () => {
       })).create({ lamp: undefined }),
       defineItem("lamp", () => ({
         name: "Lamp",
-        maxStack: 1,
         emoji: "🪔",
         player: fuel,
         cooldown: 1,
@@ -1397,7 +1394,7 @@ describe("host", () => {
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 20, y: blob.y });
         const local = sessionOf(b).local;
-        expect(local.inventory.map((stack) => stack?.item.id ?? null)).toEqual([
+        expect(local.inventory.map((item) => item?.id ?? null)).toEqual([
           null,
           "poke",
           null,

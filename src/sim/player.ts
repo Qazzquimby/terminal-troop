@@ -183,7 +183,7 @@ export function updatePlayer(
 ): void {
   const { player: config } = rules;
   if (controls.select !== null)
-    player.held = selectSlot(player.inventory, player.held, controls.select);
+    player.held = selectSlot(player.inventory, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
   const mode = stepGait(player, controls, moving);
   player.stamina = updateStamina(

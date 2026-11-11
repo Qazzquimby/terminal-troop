@@ -106,7 +106,6 @@ describe("content events", () => {
     }));
     const horn = defineItem("horn", () => ({
       name: "Horn",
-      maxStack: 1,
       emoji: "📯",
       cooldown: 1,
       events: { honk },
