@@ -71,9 +71,9 @@ export function showUse(game: Session, request: UseRequest): void {
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
-  const stack = heldItem(local.inventory, local.held);
-  if (stack === null) return;
-  const behaviour = game.items.get(stack.item.id);
+  const item = heldItem(local.inventory, local.held);
+  if (item === null) return;
+  const behaviour = game.items.get(item.id);
   if (behaviour === undefined) return;
   if (
     local.use !== null &&
@@ -81,13 +81,13 @@ export function useHeldItem(game: Session): void {
   )
     return;
   local.use = {
-    item: stack.item.id,
+    item: item.id,
     ...behaviour.show(game, local, local.aim),
     startedAt: game.time,
   };
   game.localUses.push({
     by: local.id,
-    item: stack.item.id,
+    item: item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,
