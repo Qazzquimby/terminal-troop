@@ -2,7 +2,7 @@ import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
 import type { EntitiesConfig } from "../entities/index.js";
 import type { ItemsConfig } from "../items/index.js";
-import type { RippleConfig } from "../render/index.js";
+import type { MapMemoryConfig, RippleConfig } from "../render/index.js";
 import type { SimConfig } from "../sim/index.js";
 
 /**
@@ -44,6 +44,13 @@ export const testRippleConfig: RippleConfig = {
   width: { sharp: 2, soft: 10 },
   alpha: { sharp: 1, soft: 0.2 },
   colour: "#fff",
+};
+
+/** Remembered terrain is saved at most once a second. */
+export const testMapMemoryConfig: MapMemoryConfig = {
+  saveInterval: 1,
+  floor: { fill: "#111", grid: "#222", alpha: 0.5 },
+  wall: { fill: "#333", edge: "#444", alpha: 0.5 },
 };
 
 /**
