@@ -2,6 +2,7 @@ import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
 import type { EntitiesConfig } from "../entities/index.js";
 import type { ItemsConfig } from "../items/index.js";
+import type { MovesConfig } from "../moves/index.js";
 import type { RippleConfig } from "../render/index.js";
 import type { SimConfig } from "../sim/index.js";
 
@@ -82,6 +83,25 @@ export const testItemsConfig: ItemsConfig = {
     duration: 0.1,
     volume: 1,
     hitLoudness: 1,
+  },
+};
+
+/**
+ * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
+ * test chaser falls to its fourth, sending what it hits two of its own body lengths away. It costs
+ * a third of the test stamina bar, at most twice a second.
+ */
+export const testMovesConfig: MovesConfig = {
+  kick: {
+    reach: 30,
+    radius: 20,
+    damage: 10,
+    knockback: 2,
+    cooldown: 0.5,
+    stamina: 30,
+    lunge: { lengths: 1, seconds: 0.1 },
+    duration: 0.1,
+    loudness: 1,
   },
 };
 

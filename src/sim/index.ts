@@ -43,14 +43,20 @@ export type {
   WorldKind,
 } from "./map.js";
 export { applyDamage } from "./entity.js";
+export { drawEffects, showEffect } from "./effects.js";
+export type { Effect } from "./effects.js";
+export { knockBack } from "./knockback.js";
+export { circleAhead, entitiesIn } from "./reach.js";
+export type { Circle } from "./reach.js";
+export { spendStamina } from "./stamina.js";
 export type { Entity } from "./entity.js";
-export { aimAt, createPlayer } from "./player.js";
+export { aimAt, createPlayer, startDash } from "./player.js";
 export { playerData } from "./player-data.js";
 export { movement } from "./movement.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
 export type { Controls, Player } from "./player.js";
-export { heldItemId, heldItemOf, registerItem } from "./use.js";
+export { heldItemId, heldItemOf, hostAccepts, registerItem } from "./use.js";
 export type { ItemUse } from "./use.js";
 
 export {

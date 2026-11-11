@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { World } from "./map.js";
 import { movement } from "./movement.js";
 import type { Controls, Player, PlayerRules } from "./player.js";
-import { createPlayer, updatePlayer } from "./player.js";
+import { createPlayer, startDash, updatePlayer } from "./player.js";
 
 const STEP = 1 / 60;
 const PLAYER_SPEED = 220;
@@ -50,6 +50,7 @@ function hold(
     crouch: false,
     select: null,
     use: false,
+    kick: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {
@@ -166,4 +167,27 @@ test("running out of stamina drops sprint to walk speed until recovered", () => 
   }
   run(player, world, true, 15);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * SPRINT_MULTIPLIER);
+});
+
+test("a dash carries the player its distance on top of walking, then ends", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  const landing = startDash(player, Math.PI / 2, 28, 0.1, world.map);
+  expect(landing.x).toBeCloseTo(500);
+  expect(landing.y).toBeCloseTo(2528);
+  hold(player, world, { move: { x: 0, y: 0 } }, 12);
+  expect(player.x).toBeCloseTo(500);
+  expect(player.y).toBeCloseTo(2528);
+  expect(player.dash).toBeNull();
+});
+
+test("a dash stops at a wall, and says where", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  player.x = 20;
+  const landing = startDash(player, Math.PI, 28, 0.1, world.map);
+  expect(landing.x).toBeGreaterThanOrEqual(14);
+  expect(landing.x).toBeLessThan(18);
+  hold(player, world, { move: { x: 0, y: 0 } }, 12);
+  expect(player.x).toBeCloseTo(14);
 });

@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { Action, InputContext } from "./actions.js";
 import {
   ACTIONS,
+  MOUSE_BUTTONS,
   createActionState,
   isActiveIn,
   toControls,
@@ -102,6 +103,7 @@ test("blur releases held actions and drops pending presses", () => {
     crouch: false,
     select: null,
     use: false,
+    kick: false,
   });
 });
 
@@ -202,6 +204,25 @@ test("a press of useItem uses the held item in that step only, even while held",
   expect(step(state).controls.use).toBe(false);
 });
 
+test("a right click kicks, in its step only, even while held", () => {
+  const state = createActionState();
+  const buttons = createButtonSource(state, ACTIONS, "play");
+  const right = MOUSE_BUTTONS[2] ?? "";
+  expect(buttons.actionsFor(right)).toEqual(["kick"]);
+  buttons.keyDown(right, false, 1);
+  expect(step(state, 1).controls.kick).toBe(true);
+  expect(step(state, 2).controls.kick).toBe(false);
+});
+
+test("a right click in the menu kicks nothing, and keeps the context menu", () => {
+  const state = createActionState();
+  const buttons = createButtonSource(state, ACTIONS, "menu");
+  const right = MOUSE_BUTTONS[2] ?? "";
+  expect(buttons.actionsFor(right)).toEqual([]);
+  buttons.keyDown(right, false, 1);
+  expect(step(state, 1).controls.kick).toBe(false);
+});
+
 test("a number key selects its slot for one step, and the last one pressed wins", () => {
   const state = createActionState();
   expect(step(state).controls.select).toBeNull();
@@ -221,6 +242,7 @@ test.each<[Action, InputContext[]]>([
   ["sprint", ["play"]],
   ["crouch", ["play"]],
   ["useItem", ["play"]],
+  ["kick", ["play"]],
   ["select1", ["play"]],
   ["toggleInventory", ["play"]],
   ["toggleSettings", ["play", "menu"]],

@@ -67,6 +67,7 @@ const walkRight = {
   crouch: false,
   select: null,
   use: false,
+  kick: false,
 };
 
 function session(): Session {

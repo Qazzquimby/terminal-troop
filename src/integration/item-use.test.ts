@@ -34,6 +34,7 @@ const idle: Controls = {
   crouch: false,
   select: null,
   use: false,
+  kick: false,
 };
 const swing: Controls = { ...idle, use: true };
 

@@ -11,6 +11,7 @@ import type {
 } from "../sim/index.js";
 import {
   aimAt,
+  drawEffects,
   heldItemOf,
   isVisible,
   lightSources,
@@ -427,6 +428,7 @@ export function draw(
     drawPlayer(ctx, game, player, false, isAway(player.id));
     drawHealthBar(ctx, player, player.y - player.radius - 26);
   });
+  drawEffects(ctx, game);
   ctx.restore();
 
   // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.

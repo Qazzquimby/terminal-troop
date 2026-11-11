@@ -93,21 +93,31 @@ const ItemUsed = z.object({
   aim: z.number(),
 });
 
-/** Whether the host accepts a use by `by`: near where its player was last reported, and off cooldown. */
-function accepts(
+/** What an item use is timed under: every item shares one cooldown per player. */
+const ITEM_COOLDOWN = "item";
+
+/**
+ * Whether the host accepts an action by player `by`, timed under `key`, that it reports doing at
+ * `at`: near where its player was last reported, and off cooldown. An accepted action starts
+ * `cooldown` seconds of it.
+ */
+export function hostAccepts(
   game: Session,
   by: string,
   at: Point,
-  behaviour: ItemBehaviour,
+  key: string,
+  cooldown: number,
 ): boolean {
   const player = game.players.get(by);
   if (player === undefined) return false;
   const known = player === game.local ? player : { x: player.tx, y: player.ty };
   const { distance, seconds } = game.config.net.useSlack;
   if (Math.hypot(at.x - known.x, at.y - known.y) > distance) return false;
-  const readyAt = game.readyAt.get(by) ?? -Infinity;
+  const timers = game.readyAt.get(key) ?? new Map<string, number>();
+  const readyAt = timers.get(by) ?? -Infinity;
   if (game.time < readyAt - seconds) return false;
-  game.readyAt.set(by, game.time + behaviour.cooldown);
+  timers.set(by, game.time + cooldown);
+  game.readyAt.set(key, timers);
   return true;
 }
 
@@ -128,7 +138,10 @@ export const itemUsed = contentEvent({
         ...behaviour.show(game, use, use.aim),
         startedAt: game.time,
       };
-    if (game.hosting && accepts(game, by, use, behaviour))
+    if (
+      game.hosting &&
+      hostAccepts(game, by, use, ITEM_COOLDOWN, behaviour.cooldown)
+    )
       behaviour.apply(game, use, use.aim);
   },
 });

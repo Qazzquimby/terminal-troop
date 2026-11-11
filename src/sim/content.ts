@@ -9,15 +9,18 @@ import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
+import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
 import { registerItem } from "./use.js";
 import type { ItemBehaviour } from "./use.js";
 
 /**
  * A content entry's name, in the namespace of where it comes from: `entity/` for kinds of entity,
- * `item/` for items. The engine's own entries are under `core/`, which content cannot take.
+ * `item/` for items, `move/` for what every player can do empty-handed. The engine's own entries
+ * are under `core/`, which content cannot take.
  */
-export type ContentName = `entity/${string}` | `item/${string}`;
+export type ContentName =
+  `entity/${string}` | `item/${string}` | `move/${string}`;
 
 /**
  * What a room's world holds: kinds of entity and item, the entities a new world starts with,
@@ -38,6 +41,8 @@ export interface WorldContent {
   register(game: Session): void;
   /** Spawns what a new world starts with. Runs once a world, on the first client to host it. */
   populate(game: Session): void;
+  /** Acts on the local player's controls, each step, once the player has moved. */
+  act?(game: Session, controls: Controls): void;
 }
 
 /**
@@ -58,6 +63,7 @@ export function registerContent(
     if (content.events !== undefined)
       registerEvents(game, content.name, content.events);
     content.register(game);
+    game.contents.push(content);
   }
 }
 

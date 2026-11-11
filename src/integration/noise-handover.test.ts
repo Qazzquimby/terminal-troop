@@ -38,6 +38,7 @@ const still: Controls = {
   crouch: false,
   select: null,
   use: false,
+  kick: false,
 };
 
 function sessionOf(room: Room): Session {

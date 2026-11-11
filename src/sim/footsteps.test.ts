@@ -15,6 +15,7 @@ const controls = (moving: boolean, sprinting: boolean): Controls => ({
   crouch: false,
   select: null,
   use: false,
+  kick: false,
 });
 const idle = controls(false, false);
 

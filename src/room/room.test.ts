@@ -37,6 +37,7 @@ const idle = {
   crouch: false,
   select: null,
   use: false,
+  kick: false,
 };
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT

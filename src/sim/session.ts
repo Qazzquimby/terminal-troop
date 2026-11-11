@@ -9,6 +9,9 @@ import type {
   OutgoingEvent,
 } from "./content-event.js";
 import { applyEvents } from "./content-event.js";
+import type { WorldContent } from "./content.js";
+import type { Effect } from "./effects.js";
+import { pruneEffects } from "./effects.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
@@ -79,8 +82,17 @@ export interface Session {
   readonly outbox: OutgoingEvent[];
   /** The noises made in the latest step; each step starts by clearing them. */
   readonly noises: Noise[];
-  /** When, in sim seconds, the host lets each player use an item again. */
-  readonly readyAt: Map<string, number>;
+  /**
+   * When, in sim seconds, the host lets each player act again: by what the action is timed
+   * under, then by player id.
+   */
+  readonly readyAt: Map<string, Map<string, number>>;
+  /** When, in sim seconds, the local player may next act, by what the action is timed under. */
+  readonly localReadyAt: Map<string, number>;
+  /** The content registered with it, in order. */
+  readonly contents: WorldContent[];
+  /** What this client is showing over the world for now. */
+  readonly effects: Effect[];
   /**
    * The local player's state changed in a way the others should hear at once; the room sends
    * it in its next frame, and clears this.
@@ -141,6 +153,9 @@ export function createSession(
     outbox: [],
     noises: [],
     readyAt: new Map(),
+    localReadyAt: new Map(),
+    contents: [],
+    effects: [],
     reportNow: false,
   };
   registerBuiltIns(game);
@@ -188,6 +203,8 @@ export function updateSession(
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
+  for (const content of game.contents) content.act?.(game, controls);
+  pruneEffects(game);
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);

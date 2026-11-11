@@ -43,6 +43,7 @@ import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { entityContent } from "./entities/index.js";
 import { itemContent } from "./items/index.js";
+import { moveContent } from "./moves/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -171,7 +172,11 @@ const room = createRoom({
   },
   config: config.room,
   sim: config,
-  content: [...entityContent(config.entities), ...itemContent(config.items)],
+  content: [
+    ...entityContent(config.entities),
+    ...itemContent(config.items),
+    ...moveContent(config.moves),
+  ],
   falloff: config.voice,
   onChange() {
     refreshPeers(room.state());

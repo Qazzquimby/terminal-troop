@@ -1,4 +1,4 @@
-import { moveWithCollision } from "./collision.js";
+import { lastFreePointAlong, moveWithCollision } from "./collision.js";
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
@@ -50,6 +50,17 @@ export interface Controls {
   readonly select: number | null;
   /** Whether to use the held item this step. */
   readonly use: boolean;
+  /** Whether to kick this step. */
+  readonly kick: boolean;
+}
+
+/** A quick move a player makes on top of walking: a fixed velocity, for a while. */
+interface Dash {
+  /** Velocity, in pixels per second. */
+  readonly vx: number;
+  readonly vy: number;
+  /** Seconds it has left. */
+  readonly seconds: number;
 }
 
 export interface Player extends Entity, Interpolated, Facing, Tracked {
@@ -78,6 +89,8 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   stride: number;
   /** Whether the local player is crouching; unused for remote players. */
   crouched: boolean;
+  /** The local player's dash under way, if any; unused for remote players. */
+  dash: Dash | null;
 }
 
 export interface PlayerState {
@@ -120,6 +133,7 @@ export function createPlayer(
     use: null,
     stride: 0,
     crouched: false,
+    dash: null,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };
@@ -190,6 +204,42 @@ export function updatePlayer(
 
   player.aim = aimAt(player, controls.aim);
   moveWithCollision(player, player.radius, dt, map, rules.world.wallBounce);
+  stepDash(player, dt, map);
+}
+
+/**
+ * Starts `player` dashing `distance` pixels towards `aim` (radians) over `seconds`, and returns
+ * where it stops if nothing but walls is in its way.
+ */
+export function startDash(
+  player: Player,
+  aim: number,
+  distance: number,
+  seconds: number,
+  map: TileMap,
+): Point {
+  const speed = distance / seconds;
+  player.dash = {
+    vx: Math.cos(aim) * speed,
+    vy: Math.sin(aim) * speed,
+    seconds,
+  };
+  return lastFreePointAlong(map, player.radius, player, {
+    x: player.x + Math.cos(aim) * distance,
+    y: player.y + Math.sin(aim) * distance,
+  });
+}
+
+/** Moves `player` along its dash for `dt`, stopping at walls, and ends the dash once it has run. */
+function stepDash(player: Player, dt: number, map: TileMap): void {
+  const { dash } = player;
+  if (dash === null) return;
+  const body = { x: player.x, y: player.y, vx: dash.vx, vy: dash.vy };
+  moveWithCollision(body, player.radius, Math.min(dt, dash.seconds), map, 0);
+  player.x = body.x;
+  player.y = body.y;
+  const seconds = dash.seconds - dt;
+  player.dash = seconds > 0 ? { ...dash, seconds } : null;
 }
 
 /** The facing, in radians, from `from` towards `target`. */
