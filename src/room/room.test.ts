@@ -8,18 +8,21 @@ import { createScope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
+  applyDamage,
   playerState,
   randomFreePosition,
   registerEntityType,
+  registerItem,
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
+import type { Point } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
 import { roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
-import type { Monsters, Room, RoomState } from "./room.js";
+import type { Items, Monsters, Room, RoomState } from "./room.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
@@ -128,9 +131,29 @@ function createHub() {
   };
 }
 
-/** Monsters that start as three blobs across the dev square, each drifting right at 20px/s. */
+/** Bites every player within 40px for 5 each step; none spawn unless a test places one. */
+const BITER = 2;
+
+/**
+ * Monsters that start as three blobs across the dev square, each drifting right at 20px/s
+ * with 10 health. Biters are registered too.
+ */
 const blobs: Monsters = {
   register(session) {
+    registerEntityType(session, BITER, {
+      radius: 10,
+      maxHealth: 10,
+      data: z.object({}),
+      update: (_entity, data) => data,
+      strikes: (entity, _data, game) =>
+        [...game.players.values()]
+          .filter(
+            (player) =>
+              Math.hypot(player.x - entity.x, player.y - entity.y) < 40,
+          )
+          .map((player) => ({ target: player.id, amount: 5 })),
+      draw: () => undefined,
+    });
     registerEntityType(session, 1, {
       radius: 10,
       maxHealth: 10,
@@ -145,6 +168,23 @@ const blobs: Monsters = {
   populate(session) {
     for (const x of [100, 400, 700])
       spawnEntity(session, 1, x, 300, { steps: 0 });
+  },
+};
+
+/** A poke: 4 damage to every entity within 30px of a point 20px ahead, at most twice a second. */
+const poke: Items = {
+  register(session) {
+    registerItem(session, "poke", {
+      cooldownMs: 500,
+      apply(game, at, aim) {
+        const x = at.x + Math.cos(aim) * 20;
+        const y = at.y + Math.sin(aim) * 20;
+        for (const entity of game.entities.values()) {
+          if (Math.hypot(entity.x - x, entity.y - y) <= 30)
+            applyDamage(entity, 4);
+        }
+      },
+    });
   },
 };
 
@@ -207,6 +247,7 @@ function setup(hub = createHub(), id = "me", clock = createManualClock()) {
     config: testRoomConfig,
     sim: testSimConfig,
     monsters: blobs,
+    items: poke,
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange() {
       changes++;
@@ -367,7 +408,13 @@ async function withListener() {
   const session = joined(ctx.room).session;
   const spot = randomFreePosition(session.world, session.local.radius);
   const sendState = () => {
-    other.send(NetEvent.STATE, { id: "x", name: "X", ...spot, aim: 0 });
+    other.send(NetEvent.STATE, {
+      id: "x",
+      name: "X",
+      ...spot,
+      aim: 0,
+      health: 100,
+    });
   };
   const beat = (hidden: boolean) => {
     other.send(NetEvent.HEARTBEAT, { id: "x", hidden, host: null });
@@ -422,7 +469,14 @@ describe("players and voice", () => {
 
   test("a STATE outside the room's free floor adds no player", async () => {
     const { other, log, hasX } = await withListener();
-    other.send(NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, aim: 0 });
+    other.send(NetEvent.STATE, {
+      id: "x",
+      name: "X",
+      x: 0,
+      y: 0,
+      aim: 0,
+      health: 100,
+    });
     expect(hasX()).toBe(false);
     expect(log).not.toContain("peers x");
   });
@@ -602,14 +656,26 @@ describe("payloads that do not parse are dropped", () => {
 
   test("a STATE with a bad field adds no player", async () => {
     const { room, other, session, spot } = await heard();
-    other.send(NetEvent.STATE, { id: "x", name: 5, ...spot, aim: 0 });
+    other.send(NetEvent.STATE, {
+      id: "x",
+      name: 5,
+      ...spot,
+      aim: 0,
+      health: 100,
+    });
     expect(session.players.has("x")).toBe(false);
     expect(room.presenceOf("x")).toBeUndefined();
   });
 
   test("a BYE without an id drops no one", async () => {
     const { other, session, spot } = await heard();
-    other.send(NetEvent.STATE, { id: "x", name: "X", ...spot, aim: 0 });
+    other.send(NetEvent.STATE, {
+      id: "x",
+      name: "X",
+      ...spot,
+      aim: 0,
+      health: 100,
+    });
     other.send(NetEvent.BYE, { who: "x" });
     expect(session.players.has("x")).toBe(true);
     other.send(NetEvent.BYE, { id: "x" });
@@ -927,7 +993,7 @@ describe("host", () => {
       const listener = hub.listener("dev:ABC");
       clock.advance(1000);
       play(get("a"), 0);
-      const entity = { id: "z:1", kind: 1, x: 450, y: 300 };
+      const entity = { id: "z:1", kind: 1, x: 450, y: 300, health: 10 };
       const data = { steps: 0 };
       listener.send(NetEvent.ENTITIES, {
         host: "b",
@@ -996,6 +1062,122 @@ describe("host", () => {
       play(get("a"), 1);
       expect(get("b").room.hostId()).toBe("a");
       expect(targets(get("b"))).toEqual(placed(get("a")));
+    });
+
+    describe("health", () => {
+      /** Two players, `a` hosting with its blobs sent to `b`. */
+      async function hosted() {
+        const { hub, clock, get } = await gather(["a", "b"]);
+        clock.advance(1000);
+        play(get("a"), 0);
+        return { hub, clock, a: get("a"), b: get("b") };
+      }
+
+      /** Moves `player` to `at`, facing right, and sends its state there. */
+      const standAt = (player: Player, at: Point) => {
+        Object.assign(sessionOf(player).local, { ...at, aim: 0 });
+        player.clock.advance(player.clock.now() + 200);
+        player.room.frame(player.clock.now());
+      };
+
+      /** `player` pokes from 20px left of `target`, after standing there. */
+      const pokeAt = (player: Player, target: Point) => {
+        const at = { x: target.x - 20, y: target.y };
+        standAt(player, at);
+        player.room.use({
+          by: sessionOf(player).localId,
+          item: "poke",
+          ...at,
+          aim: 0,
+        });
+      };
+
+      const healthOf = (player: Player, id: string) =>
+        sessionOf(player).entities.get(id)?.health;
+
+      test("a non-host's hit lands on the host, every client sees the health, and a kill removes it everywhere", async () => {
+        const { clock, a, b } = await hosted();
+        const blob = () =>
+          sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+
+        pokeAt(b, blob());
+        expect(healthOf(b, "a:2")).toBe(10);
+        clock.advance(clock.now() + 200);
+        play(a, 1 / 60);
+        expect(healthOf(a, "a:2")).toBe(6);
+        expect(healthOf(b, "a:2")).toBe(6);
+
+        pokeAt(b, blob());
+        play(a, 1 / 60);
+        expect(healthOf(a, "a:2")).toBe(6);
+
+        play(a, 0.5);
+        pokeAt(b, blob());
+        play(a, 0.5);
+        pokeAt(b, blob());
+        clock.advance(clock.now() + 200);
+        play(a, 1 / 60);
+        expect(ids(a)).toEqual(["a:1", "a:3"]);
+        expect(ids(b)).toEqual(["a:1", "a:3"]);
+      });
+
+      test("the host applies its own use through the same checks", async () => {
+        const { clock, a, b } = await hosted();
+        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        pokeAt(a, blob);
+        clock.advance(clock.now() + 200);
+        play(a, 1 / 60);
+        expect(healthOf(a, "a:2")).toBe(6);
+        expect(healthOf(b, "a:2")).toBe(6);
+      });
+
+      test("a use far from where the host last saw its player does nothing", async () => {
+        const { a, b } = await hosted();
+        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        standAt(b, { x: blob.x - 200, y: blob.y });
+        b.room.use({
+          by: "b",
+          item: "poke",
+          x: blob.x - 20,
+          y: blob.y,
+          aim: 0,
+        });
+        play(a, 1 / 60);
+        expect(healthOf(a, "a:2")).toBe(10);
+      });
+
+      test("a monster's strike hurts each player on its own client, and every client sees it", async () => {
+        const { a, b } = await hosted();
+        standAt(a, { x: 100, y: 500 });
+        standAt(b, { x: 500, y: 500 });
+        const host = sessionOf(a);
+        for (let step = 0; step < 60; step++) updateSession(host, idle, 1 / 60);
+        const remote = host.players.get("b") ?? { x: NaN, y: NaN };
+        spawnEntity(host, BITER, remote.x, remote.y, {});
+        spawnEntity(host, BITER, host.local.x, host.local.y, {});
+
+        updateSession(host, idle, 1 / 60);
+        expect(host.local.health).toBe(95);
+        expect(host.players.get("b")?.health).toBe(100);
+        a.clock.advance(a.clock.now() + 200);
+        a.room.frame(a.clock.now());
+        expect(sessionOf(b).local.health).toBe(95);
+        expect(sessionOf(b).players.get("a")?.health).toBe(95);
+
+        b.room.frame(b.clock.now());
+        expect(host.players.get("b")?.health).toBe(95);
+      });
+
+      test("damage said to come from anyone but the host is ignored", async () => {
+        const { hub, a, b } = await hosted();
+        const listener = hub.listener("dev:ABC");
+        listener.send(NetEvent.DAMAGE, { host: "b", target: "a", amount: 5 });
+        listener.send(NetEvent.DAMAGE, { host: "z", target: "b", amount: 5 });
+        expect(sessionOf(a).local.health).toBe(100);
+        expect(sessionOf(b).local.health).toBe(100);
+        listener.send(NetEvent.DAMAGE, { host: "a", target: "b", amount: 5 });
+        expect(sessionOf(b).local.health).toBe(95);
+      });
     });
   });
 });

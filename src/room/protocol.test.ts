@@ -22,6 +22,7 @@ describe("the message table", () => {
       x: number;
       y: number;
       aim: number;
+      health: number;
     }>();
     expectTypeOf<Message<"beat">>().toEqualTypeOf<{
       id: string;
@@ -35,8 +36,21 @@ describe("the message table", () => {
         kind: number;
         x: number;
         y: number;
+        health: number;
         data: unknown;
       }[];
+    }>();
+    expectTypeOf<Message<"use">>().toEqualTypeOf<{
+      by: string;
+      item: string;
+      x: number;
+      y: number;
+      aim: number;
+    }>();
+    expectTypeOf<Message<"damage">>().toEqualTypeOf<{
+      host: string;
+      target: string;
+      amount: number;
     }>();
     expectTypeOf<Message<"signal">>().toBeUnknown();
   });
@@ -48,6 +62,7 @@ describe("the message table", () => {
       x: 1,
       y: 2,
       aim: 0,
+      health: 100,
     });
     expect(parsed.data?.name).toBe("ABC");
   });
@@ -55,8 +70,18 @@ describe("the message table", () => {
   test.each([
     [NetEvent.HELLO, { id: "" }],
     [NetEvent.BYE, { id: 7 }],
-    [NetEvent.STATE, { id: "x", name: "X", x: Number.NaN, y: 0, aim: 0 }],
-    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0 }],
+    [
+      NetEvent.STATE,
+      { id: "x", name: "X", x: Number.NaN, y: 0, aim: 0, health: 1 },
+    ],
+    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, health: 1 }],
+    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, aim: 0 }],
+    [NetEvent.STATE, { id: "x", name: "X", x: 0, y: 0, aim: 0, health: -1 }],
+    [NetEvent.USE, { by: "x", item: "", x: 0, y: 0, aim: 0 }],
+    [NetEvent.USE, { by: "x", item: "shovel", x: 0, y: Infinity, aim: 0 }],
+    [NetEvent.DAMAGE, { host: "x", target: "y", amount: 0 }],
+    [NetEvent.DAMAGE, { host: "x", target: "y", amount: Number.NaN }],
+    [NetEvent.DAMAGE, { host: "x", target: "", amount: 5 }],
     [NetEvent.HEARTBEAT, { id: "x", hidden: false }],
     [
       NetEvent.HEARTBEAT,
@@ -69,13 +94,23 @@ describe("the message table", () => {
     [NetEvent.ENTITIES, { host: "x" }],
     [
       NetEvent.ENTITIES,
-      { host: "x", entities: [{ id: "x:1", kind: 0, x: 0, y: 0, data: {} }] },
+      {
+        host: "x",
+        entities: [{ id: "x:1", kind: 0, x: 0, y: 0, health: 1, data: {} }],
+      },
     ],
+    [
+      NetEvent.ENTITIES,
+      { host: "x", entities: [{ id: "x:1", kind: 1, x: 0, y: 0, data: {} }] },
+    ],
+
     [
       NetEvent.ENTITIES,
       {
         host: "x",
-        entities: [{ id: "x:1", kind: 1, x: Infinity, y: 0, data: {} }],
+        entities: [
+          { id: "x:1", kind: 1, x: Infinity, y: 0, health: 1, data: {} },
+        ],
       },
     ],
     [

@@ -42,26 +42,13 @@ function knockBack(
   }
 }
 
-/** Damages and knocks back every world entity in the hitbox; returns whether anything was hit. */
-function damageTargets(
-  game: Session,
-  center: Point,
-  radius: number,
-  damage: number,
-  knockback: number,
-): boolean {
-  let hit = false;
-  for (const entity of game.entities.values()) {
-    if (
-      Math.hypot(entity.x - center.x, entity.y - center.y) >
-      radius + entity.radius
-    )
-      continue;
-    applyDamage(entity, damage);
-    knockBack(entity, center, knockback, game.world.map);
-    hit = true;
-  }
-  return hit;
+/** Every world entity in the hitbox. */
+function targets(game: Session, center: Point, radius: number): Entity[] {
+  return [...game.entities.values()].filter(
+    (entity) =>
+      Math.hypot(entity.x - center.x, entity.y - center.y) <=
+      radius + entity.radius,
+  );
 }
 
 /** A hitbox that fades out over its duration; green when it connected. */
@@ -98,21 +85,23 @@ function drawHitbox(
 
 /** The shovel: a short melee attack in front of the player. */
 export function createShovel(config: ShovelConfig): ItemBehaviour {
+  const hitbox = (at: Point, aim: number): Point => ({
+    x: at.x + Math.cos(aim) * config.reach,
+    y: at.y + Math.sin(aim) * config.reach,
+  });
   return {
     cooldownMs: config.cooldownMs,
-    use(game, now) {
+    apply(game, at, aim) {
+      const center = hitbox(at, aim);
+      for (const entity of targets(game, center, config.radius)) {
+        applyDamage(entity, config.damage);
+        knockBack(entity, center, config.knockback, game.world.map);
+      }
+    },
+    show(game, now) {
       const { local } = game;
-      const center = {
-        x: local.x + Math.cos(local.aim) * config.reach,
-        y: local.y + Math.sin(local.aim) * config.reach,
-      };
-      const hit = damageTargets(
-        game,
-        center,
-        config.radius,
-        config.damage,
-        config.knockback,
-      );
+      const center = hitbox(local, local.aim);
+      const hit = targets(game, center, config.radius).length > 0;
       const endsAt = now + config.durationMs;
       void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, {
         volume: 0.8,

@@ -11,6 +11,7 @@ function stateMessage(nameMax: number) {
     x: z.number(),
     y: z.number(),
     aim: z.number(),
+    health: z.number().min(0),
   });
 }
 
@@ -49,10 +50,27 @@ const EntitiesMessage = z.object({
         kind: z.number().int().min(1),
         x: z.number(),
         y: z.number(),
+        health: z.number().min(0),
         data: z.unknown(),
       }),
     )
     .max(MAX_ENTITIES),
+});
+
+/** A player's item use: who used which item, standing where and facing which way. */
+const UseMessage = z.object({
+  by: PlayerId,
+  item: z.string().min(1).max(32),
+  x: z.number(),
+  y: z.number(),
+  aim: z.number(),
+});
+
+/** Damage the sender, as host, deals to the player `target`. */
+const DamageMessage = z.object({
+  host: PlayerId,
+  target: PlayerId,
+  amount: z.number().positive(),
 });
 
 /** Every event's payload schema; a missing event fails to compile. */
@@ -63,6 +81,9 @@ export function roomMessages(nameMax: number) {
     [NetEvent.BYE]: PresenceMessage,
     [NetEvent.HEARTBEAT]: HeartbeatMessage,
     [NetEvent.ENTITIES]: EntitiesMessage,
+    [NetEvent.USE]: UseMessage,
+    [NetEvent.DAMAGE]: DamageMessage,
+
     // The voice room parses its own signals.
     [NetEvent.SIGNAL]: z.unknown(),
   } as const satisfies Record<NetEvent, z.ZodType>;

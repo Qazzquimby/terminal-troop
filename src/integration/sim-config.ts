@@ -1,5 +1,6 @@
 import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
+import type { ShovelConfig } from "../items/index.js";
 import type { MonsterConfig } from "../monsters/index.js";
 import type { SimConfig } from "../sim/index.js";
 
@@ -22,7 +23,7 @@ export const testSimConfig: SimConfig = {
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
-  net: { smoothing: 12 },
+  net: { smoothing: 12, useSlack: { distance: 40, seconds: 0.1 } },
 };
 
 /**
@@ -47,7 +48,18 @@ export const testMonsterConfig: MonsterConfig = {
   },
 };
 
+/** A shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most twice a second. */
+export const testShovelConfig: ShovelConfig = {
+  radius: 20,
+  reach: 40,
+  damage: 25,
+  knockback: 20,
+  cooldownMs: 500,
+  durationMs: 100,
+};
+
 /** Sound effects for sessions under test; nothing plays. */
+
 export function testSfx(): Sfx {
   return createSfx({ full: 0, silent: 1000, pan: 500 });
 }

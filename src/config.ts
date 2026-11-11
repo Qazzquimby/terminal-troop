@@ -46,7 +46,7 @@ export const config = {
   },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL_SIZE * 1.4 },
   light: { range: CELL_SIZE * 6 },
-  net: { smoothing: 12 },
+  net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
   room: {
     sendHz: 15,
     entityHz: 10,

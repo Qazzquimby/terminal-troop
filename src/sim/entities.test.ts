@@ -47,7 +47,14 @@ describe("spawning", () => {
   test("skips ids already taken, such as ones heard from a host", () => {
     const game = session();
     applyEntitySnapshot(game, [
-      { id: "me:1", kind: KIND, x: 100, y: 300, data: { steps: 0 } },
+      {
+        id: "me:1",
+        kind: KIND,
+        x: 100,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
     ]);
     expect(spawnEntity(game, KIND, 100, 100, { steps: 0 }).id).toBe("me:2");
   });
@@ -71,10 +78,10 @@ describe("hosting", () => {
     const game = session();
     game.hosting = false;
     applyEntitySnapshot(game, [
-      { id: "h:1", kind: KIND, x: 100, y: 300, data: { steps: 0 } },
+      { id: "h:1", kind: KIND, x: 100, y: 300, health: 10, data: { steps: 0 } },
     ]);
     applyEntitySnapshot(game, [
-      { id: "h:1", kind: KIND, x: 200, y: 300, data: { steps: 5 } },
+      { id: "h:1", kind: KIND, x: 200, y: 300, health: 10, data: { steps: 5 } },
     ]);
     const entity = game.entities.get("h:1");
     updateSession(game, idle, DT);
@@ -99,22 +106,28 @@ describe("snapshots", () => {
   test("entities missing from a snapshot are removed", () => {
     const game = session();
     applyEntitySnapshot(game, [
-      { id: "h:1", kind: KIND, x: 100, y: 300, data: { steps: 0 } },
-      { id: "h:2", kind: KIND, x: 200, y: 300, data: { steps: 0 } },
+      { id: "h:1", kind: KIND, x: 100, y: 300, health: 10, data: { steps: 0 } },
+      { id: "h:2", kind: KIND, x: 200, y: 300, health: 10, data: { steps: 0 } },
     ]);
     spawnEntity(game, KIND, 300, 300, { steps: 0 });
     applyEntitySnapshot(game, [
-      { id: "h:2", kind: KIND, x: 200, y: 300, data: { steps: 0 } },
+      { id: "h:2", kind: KIND, x: 200, y: 300, health: 10, data: { steps: 0 } },
     ]);
     expect([...game.entities.keys()]).toEqual(["h:2"]);
   });
 
   test.each([
-    ["an unregistered kind", { kind: 9, x: 100, y: 300, data: { steps: 0 } }],
-    ["data its kind rejects", { kind: KIND, x: 100, y: 300, data: {} }],
+    [
+      "an unregistered kind",
+      { kind: 9, x: 100, y: 300, health: 10, data: { steps: 0 } },
+    ],
+    [
+      "data its kind rejects",
+      { kind: KIND, x: 100, y: 300, health: 10, data: {} },
+    ],
     [
       "a spot inside a wall",
-      { kind: KIND, x: 250, y: 100, data: { steps: 0 } },
+      { kind: KIND, x: 250, y: 100, health: 10, data: { steps: 0 } },
     ],
   ])("an entry with %s is left out", (_label, entry) => {
     const game = session();

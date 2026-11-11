@@ -57,14 +57,26 @@ test("after a step the local player's previous position is its pre-step position
 test("a remote player first seen in a state snaps there, then interpolates", () => {
   const game = session();
   const first = randomFreePosition(game.world, PLAYER_RADIUS);
-  applyRemoteState(game, { id: "them", name: "THEM", ...first, aim: 0 });
+  applyRemoteState(game, {
+    id: "them",
+    name: "THEM",
+    ...first,
+    aim: 0,
+    health: 100,
+  });
 
   const remote = game.players.get("them");
   if (remote === undefined) throw new Error("remote player was not created");
   expect(remote).toMatchObject({ ...first, prevX: first.x, prevY: first.y });
 
   const next = randomFreePosition(game.world, PLAYER_RADIUS);
-  applyRemoteState(game, { id: "them", name: "THEM", ...next, aim: 0 });
+  applyRemoteState(game, {
+    id: "them",
+    name: "THEM",
+    ...next,
+    aim: 0,
+    health: 100,
+  });
   updateSession(game, walkRight, FIXED_DT);
 
   expect({ x: remote.prevX, y: remote.prevY }).toEqual(first);
@@ -93,7 +105,13 @@ test("lerpAngle takes the shortest arc across the ±π wrap", () => {
 
 function remoteAt(game: Session, aim: number): Player {
   const position = randomFreePosition(game.world, PLAYER_RADIUS);
-  applyRemoteState(game, { id: "them", name: "THEM", ...position, aim });
+  applyRemoteState(game, {
+    id: "them",
+    name: "THEM",
+    ...position,
+    aim,
+    health: 100,
+  });
   const remote = game.players.get("them");
   if (remote === undefined) throw new Error("remote player was not created");
   return remote;
@@ -115,6 +133,7 @@ test("remote aim eases towards the network target across the wrap, storing the p
     x: remote.tx,
     y: remote.ty,
     aim: degrees(-170),
+    health: 100,
   });
 
   updateSession(game, walkRight, FIXED_DT);
