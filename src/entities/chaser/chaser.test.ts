@@ -3,10 +3,10 @@ import alertUrl from "./sfx/alert.mp3";
 import attackUrl from "./sfx/attack.mp3";
 import barkUrl from "./sfx/bark.mp3";
 import {
-  testMonsterConfig,
+  testEntitiesConfig,
   testSfx,
   testSimConfig,
-} from "../integration/sim-config.js";
+} from "../../integration/sim-config.js";
 import {
   applyEntitySnapshot,
   applyRemoteState,
@@ -16,11 +16,10 @@ import {
   isAreaFree,
   spawnEntity,
   updateSession,
-} from "../sim/index.js";
-import type { Session, WorldEntity } from "../sim/index.js";
-import type { ChaserConfig } from "./chaser.js";
-import { ChaserState, freshChaser } from "./chaser.js";
-import { MonsterKind, createMonsters } from "./index.js";
+} from "../../sim/index.js";
+import type { Session, WorldEntity } from "../../sim/index.js";
+import type { ChaserConfig } from "./index.js";
+import { ChaserState, chaser as chaserContent, freshChaser } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -30,7 +29,7 @@ const idle = {
   select: null,
   use: false,
 };
-const { chaser: config } = testMonsterConfig;
+const { chaser: config } = testEntitiesConfig;
 
 /** The sounds a session's chasers have played, oldest first. */
 function played(game: Session): string[] {
@@ -51,7 +50,7 @@ function world(
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  createMonsters({ ...testMonsterConfig, chaser }).register(game);
+  chaserContent.create({ chaser }).register(game);
   return game;
 }
 
@@ -60,7 +59,7 @@ function standAt(game: Session, x: number, y: number): void {
 }
 
 function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
-  return spawnEntity(game, MonsterKind.CHASER, x, y, freshChaser(seed, config));
+  return spawnEntity(game, "chaser", x, y, freshChaser(seed, config));
 }
 
 const stateOf = (entity: WorldEntity): ChaserState =>

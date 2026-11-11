@@ -174,14 +174,14 @@ function drawStamina(
   ctx.fillRect(x, y, (width * value) / max, 4);
 }
 
-/** A red health bar at `barY`, shown only once the body has taken damage. */
-function drawHealthBar(
-  ctx: CanvasRenderingContext2D,
+/** A red health bar at `barY`, shown only once a body that can fall has taken damage. */
+export function drawHealthBar(
+  ctx: Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
   body: Entity,
   barY: number,
 ): void {
   const { health, maxHealth, radius } = body;
-  if (health >= maxHealth || health <= 0) return;
+  if (!Number.isFinite(health) || health >= maxHealth || health <= 0) return;
 
   const width = radius * 2;
   const x = body.x - radius;

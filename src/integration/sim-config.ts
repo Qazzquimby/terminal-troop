@@ -1,7 +1,7 @@
 import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
+import type { EntitiesConfig } from "../entities/index.js";
 import type { ShovelConfig } from "../items/index.js";
-import type { MonsterConfig } from "../monsters/index.js";
 import type { SimConfig } from "../sim/index.js";
 
 /**
@@ -29,14 +29,11 @@ export const testSimConfig: SimConfig = {
 /**
  * Three chasers in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
- * seconds.
+ * seconds. A cruiser starts 60px right of the first host, lighting 400px round it.
  */
-export const testMonsterConfig: MonsterConfig = {
-  chaserDensity: 0.25,
-  minChasers: 2,
-  seed: 3,
-  clearance: 400,
+export const testEntitiesConfig: EntitiesConfig = {
   chaser: {
+    spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
     radius: 15,
     maxHealth: 40,
     attackDamage: 25,
@@ -50,6 +47,7 @@ export const testMonsterConfig: MonsterConfig = {
     attackRange: 32,
     attackCooldown: 1.5,
   },
+  cruiser: { lightRadius: 400, offset: 60 },
 };
 
 /** A shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most twice a second. */

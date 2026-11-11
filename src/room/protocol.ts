@@ -3,21 +3,37 @@ import { NetEvent } from "../net/index.js";
 
 const PlayerId = z.string().min(1).max(64);
 
+/**
+ * Health: any number from 0 up, Infinity included. JSON has no Infinity, so it travels as the
+ * string "Infinity". z.number() rejects NaN and ±Infinity.
+ */
+export const Health = z.codec(
+  z.union([z.number().min(0), z.literal("Infinity")]),
+  z.union([z.number().min(0), z.literal(Infinity)]),
+  {
+    decode: (wire) => (wire === "Infinity" ? Infinity : wire),
+    encode: (health) => (health === Infinity ? "Infinity" : health),
+  },
+);
+
 /** An item's id. The room knows no items, so any well-formed id passes. */
 const ItemId = z.string().min(1).max(32);
 
 /**
- * A STATE payload, its name cut to `nameMax` characters, with the id of the item the sender
- * holds, or null for nothing. z.number() rejects NaN and ±Infinity.
+ * A STATE payload, its name cut to `nameMax` characters when heard, with the id of the item the
+ * sender holds, or null for nothing.
  */
 function stateMessage(nameMax: number) {
   return z.object({
     id: PlayerId,
-    name: z.string().transform((name) => name.slice(0, nameMax)),
+    name: z.codec(z.string(), z.string(), {
+      decode: (name) => name.slice(0, nameMax),
+      encode: (name) => name,
+    }),
     x: z.number(),
     y: z.number(),
     aim: z.number(),
-    health: z.number().min(0),
+    health: Health,
     held: ItemId.nullable(),
   });
 }
@@ -57,7 +73,7 @@ const EntitiesMessage = z.object({
         kind: z.number().int().min(1),
         x: z.number(),
         y: z.number(),
-        health: z.number().min(0),
+        health: Health,
         data: z.unknown(),
       }),
     )
@@ -101,8 +117,8 @@ export function roomMessages(nameMax: number) {
 
 export type RoomMessages = ReturnType<typeof roomMessages>;
 
-/** The payload a handler of `E` receives. */
+/** The payload of `E` as the room handles it: what a handler receives and a send takes. */
 export type Message<E extends NetEvent> = z.output<RoomMessages[E]>;
 
-/** The payload a send of `E` takes. */
-export type MessageInput<E extends NetEvent> = z.input<RoomMessages[E]>;
+/** The payload of `E` as it travels, JSON-safe: a send encodes to it, a handler decodes from it. */
+export type WireMessage<E extends NetEvent> = z.input<RoomMessages[E]>;

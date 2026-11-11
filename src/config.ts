@@ -1,7 +1,6 @@
 import type { SpatialFalloff } from "./audio/index.js";
-import type { MonsterConfig } from "./monsters/index.js";
+import type { EntitiesConfig } from "./entities/index.js";
 import type { CameraConfig } from "./render/index.js";
-import type { CruiserConfig } from "./vehicles/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ShovelConfig } from "./items/index.js";
@@ -13,8 +12,7 @@ interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
   readonly camera: CameraConfig;
-  readonly monsters: MonsterConfig;
-  readonly cruiser: CruiserConfig;
+  readonly entities: EntitiesConfig;
   readonly shovel: ShovelConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
@@ -61,12 +59,13 @@ export const config = {
       goneHiddenMs: 180_000,
     },
   },
-  monsters: {
-    chaserDensity: 1.2,
-    minChasers: 2,
-    seed: 1,
-    clearance: CELL * 10,
+  entities: {
     chaser: {
+      spawn: {
+        count: { density: 1.2, min: 2 },
+        seed: 1,
+        clearance: CELL * 10,
+      },
       radius: 15,
       maxHealth: 40,
       attackDamage: 35,
@@ -80,10 +79,10 @@ export const config = {
       attackRange: 30,
       attackCooldown: 2,
     },
-  },
-  cruiser: {
-    lightRadius: CELL * 12,
-    offset: CELL,
+    cruiser: {
+      lightRadius: CELL * 12,
+      offset: CELL,
+    },
   },
   shovel: {
     radius: 20,

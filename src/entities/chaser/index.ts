@@ -2,25 +2,31 @@ import { z } from "zod";
 import alertUrl from "./sfx/alert.mp3";
 import attackUrl from "./sfx/attack.mp3";
 import barkUrl from "./sfx/bark.mp3";
-import { drawEmoji, drawFacing } from "../render/index.js";
+import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
   canSeeFrom,
+  defineEntity,
   directionalVision,
   isAreaFree,
   mulberry32Next,
-} from "../sim/index.js";
+} from "../../sim/index.js";
 import type {
   EntityDefinition,
   Point,
   Rng,
+  Scatter,
   Session,
   Strike,
   TileMap,
-} from "../sim/index.js";
-import { MAX_WAYPOINTS, planRoute, steer } from "./route.js";
+} from "../../sim/index.js";
+import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
 
-/** How a chaser moves and hunts. Distances are in pixels, speeds in pixels per second. */
+/**
+ * How a chaser moves and hunts, and how many a new world starts with. Distances are in pixels,
+ * speeds in pixels per second.
+ */
 export interface ChaserConfig {
+  readonly spawn: Scatter;
   readonly radius: number;
   /** Health when at full. */
   readonly maxHealth: number;
@@ -330,8 +336,7 @@ function bark(
   return { ...state, seed, nextBark: result, barks: state.barks + 1 };
 }
 
-/** A chaser: wanders slowly, and runs down any player it sees to where it last saw them. */
-export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
+function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
@@ -378,3 +383,16 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
     },
   };
 }
+
+/**
+ * A chaser: wanders slowly, and runs down any player it sees to where it last saw them. A new
+ * world scatters them away from the players, each drawing its own seed.
+ */
+export const chaser = defineEntity("chaser", (config: ChaserConfig) => ({
+  ...definition(config),
+  spawn: {
+    at: "scatter",
+    ...config.spawn,
+    data: (rng: Rng) => freshChaser(Math.floor(rng() * 2 ** 32), config),
+  },
+}));

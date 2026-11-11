@@ -40,8 +40,7 @@ import { createSupabaseTransport } from "./adapters/supabase-transport/index.js"
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
-import { createMonsters } from "./monsters/index.js";
-import { createCruiser } from "./vehicles/index.js";
+import { worldContent } from "./entities/index.js";
 import { createItems } from "./items/index.js";
 
 /** Owns everything that lives as long as the page. */
@@ -169,8 +168,7 @@ const room = createRoom({
   },
   config: config.room,
   sim: config,
-  monsters: createMonsters(config.monsters),
-  cruiser: createCruiser(config.cruiser),
+  content: worldContent(config.entities),
   items: createItems(config),
   falloff: config.voice,
   onChange() {

@@ -11,7 +11,7 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import { drawLitWalls, interpolatedView } from "./render.js";
+import { drawHealthBar, drawLitWalls, interpolatedView } from "./render.js";
 
 test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
   const ctx = {
@@ -78,20 +78,31 @@ function session(): Session {
   );
 }
 
+test.each([
+  ["a hurt body", 30, 40, true],
+  ["an unhurt body", 40, 40, false],
+  ["an unbreakable body, however hit", Infinity, Infinity, false],
+])("%s shows a health bar: %s", (_label, health, maxHealth, shown) => {
+  const ctx = { fillStyle: "", fillRect: vi.fn() };
+  const body = { x: 100, y: 100, vx: 0, vy: 0, radius: 10, health, maxHealth };
+  drawHealthBar(ctx, body, 80);
+  expect(ctx.fillRect.mock.calls.length > 0).toBe(shown);
+});
+
 const degrees = (value: number): number => (value * Math.PI) / 180;
 
 const origin = { x: 0, y: 0 };
 
 test("entities record their pre-step position", () => {
   const game = session();
-  registerEntityType(game, 1, {
+  registerEntityType(game, "thing", {
     radius: 5,
     maxHealth: 10,
     collides: false,
     data: z.object({}),
     draw: () => undefined,
   });
-  const entity = spawnEntity(game, 1, 100, 200, {});
+  const entity = spawnEntity(game, "thing", 100, 200, {});
   expect(entity).toMatchObject({ prevX: 100, prevY: 200 });
 
   entity.vx = 10 / FIXED_DT;
