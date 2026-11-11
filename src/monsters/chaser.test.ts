@@ -8,8 +8,11 @@ import {
   testSimConfig,
 } from "../integration/sim-config.js";
 import {
+  applyEntitySnapshot,
   applyRemoteState,
   createSession,
+  cueEntities,
+  entitySnapshot,
   isAreaFree,
   spawnEntity,
   updateSession,
@@ -63,16 +66,19 @@ function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
 const stateOf = (entity: WorldEntity): ChaserState =>
   ChaserState.parse(entity.data);
 
+/** Steps `seconds`, one step a frame. */
 function run(game: Session, seconds: number): void {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, idle, DT);
+    cueEntities(game);
   }
 }
 
-/** Steps until `done` holds, at most `seconds` long; false if it never did. */
+/** Steps until `done` holds, at most `seconds` long, one step a frame; false if it never did. */
 function runUntil(game: Session, seconds: number, done: () => boolean) {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, idle, DT);
+    cueEntities(game);
     if (done()) return true;
   }
   return false;
@@ -315,6 +321,37 @@ describe("sounds", () => {
     expect(attacks()).toBe(1);
     run(game, 0.2);
     expect(attacks()).toBe(2);
+  });
+
+  test("many steps in one frame play each sound at most once", () => {
+    const game = world(blind);
+    const zombie = chaserAt(game, 450, 300);
+    for (let step = 0; step < 30 / DT; step++) updateSession(game, idle, DT);
+    expect(stateOf(zombie).barks).toBeGreaterThan(1);
+    cueEntities(game);
+    expect(played(game)).toEqual([barkUrl]);
+    cueEntities(game);
+    expect(played(game)).toHaveLength(1);
+  });
+
+  test("a client following snapshots hears what they change, from where it stands", () => {
+    const host = world();
+    standAt(host, 500, 300);
+    chaserAt(host, 300, 300);
+    const follower = world();
+    follower.hosting = false;
+    standAt(follower, 100, 500);
+    applyEntitySnapshot(follower, entitySnapshot(host));
+    cueEntities(follower);
+    expect(played(follower)).toEqual([]);
+
+    run(host, DT);
+    applyEntitySnapshot(follower, entitySnapshot(host));
+    cueEntities(follower);
+    expect(played(follower)).toEqual([alertUrl]);
+    expect(vi.mocked(follower.sfx.play).mock.calls[0]?.[2]).toBe(
+      follower.local,
+    );
   });
 
   test("each attack strikes the local player in range for its damage", () => {

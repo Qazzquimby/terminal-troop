@@ -56,6 +56,7 @@ export const testShovelConfig: ShovelConfig = {
   knockback: 20,
   cooldown: 0.5,
   duration: 0.1,
+  volume: 1,
 };
 
 /** Sound effects for sessions under test; nothing plays. */

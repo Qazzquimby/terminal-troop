@@ -80,6 +80,7 @@ export const config = {
     knockback: 30,
     cooldown: 1,
     duration: 0.18,
+    volume: 0.8,
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },

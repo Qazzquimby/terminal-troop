@@ -49,6 +49,8 @@ const Seed = z
   .min(-(2 ** 31))
   .max(2 ** 31 - 1);
 
+const Count = z.number().int().min(0);
+
 /** What a chaser keeps whichever mode it is in. */
 const Shared = {
   /** Seconds until the next bark. */
@@ -57,6 +59,10 @@ const Shared = {
   attackCooldown: z.number().min(0),
   /** Whether it attacks in this step. */
   attacking: z.boolean(),
+  /** Counts of barks, chases started and attacks, so every client hears each one. */
+  barks: Count,
+  alerts: Count,
+  attacks: Count,
   seed: Seed,
   route: Route,
   /** Where a chase is headed, or null while wandering. */
@@ -105,6 +111,9 @@ export function freshChaser(seed: number): ChaserState {
     nextBark: result,
     attackCooldown: 0,
     attacking: false,
+    barks: 0,
+    alerts: 0,
+    attacks: 0,
     facing: 0,
   };
 }
@@ -193,6 +202,30 @@ function wander(
   return { ...state, seed, ...result };
 }
 
+/** What a chaser carries over from `state` on changing mode. */
+function kept(state: ChaserState) {
+  const {
+    seed,
+    nextBark,
+    attackCooldown,
+    attacking,
+    barks,
+    alerts,
+    attacks,
+    facing,
+  } = state;
+  return {
+    seed,
+    nextBark,
+    attackCooldown,
+    attacking,
+    barks,
+    alerts,
+    attacks,
+    facing,
+  };
+}
+
 /** Heads for `seen`, planning anew unless the chase already heads close enough to it. */
 function pursue(
   state: ChaserState,
@@ -209,14 +242,11 @@ function pursue(
   )
     return state;
   return {
+    ...kept(state),
     mode: "chase",
-    seed: state.seed,
     route: planRoute(map, config.radius, at, seen) ?? [],
     target: seen,
-    nextBark: state.nextBark,
-    attackCooldown: state.attackCooldown,
-    attacking: state.attacking,
-    facing: state.facing,
+    alerts: state.mode === "chase" ? state.alerts : state.alerts + 1,
   };
 }
 
@@ -226,15 +256,12 @@ function giveUp(state: ChaserState, config: ChaserConfig): Wander {
     pauseLength(rng, config),
   );
   return {
+    ...kept(state),
     mode: "wander",
     seed,
     route: [],
     target: null,
     pause: result,
-    nextBark: state.nextBark,
-    attackCooldown: state.attackCooldown,
-    attacking: state.attacking,
-    facing: state.facing,
   };
 }
 
@@ -275,35 +302,21 @@ function attack(
     target !== null &&
     Math.hypot(target.x - at.x, target.y - at.y) <=
       attackRange(at.radius, game);
+  if (!attacking) return { ...state, attacking, attackCooldown };
   return {
     ...state,
     attacking,
-    attackCooldown: attacking ? ATTACK_COOLDOWN : attackCooldown,
+    attackCooldown: ATTACK_COOLDOWN,
+    attacks: state.attacks + 1,
   };
 }
 
-/** Ticks the bark timer, drawing a fresh gap once it runs out. */
+/** Ticks the bark timer, barking and drawing a fresh gap once it runs out. */
 function bark(state: ChaserState, dt: number): ChaserState {
   const nextBark = state.nextBark - dt;
   if (nextBark > 0) return { ...state, nextBark };
   const { result, seed } = withSeed(state.seed, barkGap);
-  return { ...state, seed, nextBark: result };
-}
-
-/** Plays what changed from `previous` to `next`: an alert on starting a chase, an attack, a bark. */
-function cue(
-  previous: ChaserState,
-  next: ChaserState,
-  at: Point,
-  game: Session,
-): void {
-  const listener = { x: game.local.x, y: game.local.y };
-  const play = (url: string): void => {
-    void game.sfx.play(url, at, listener);
-  };
-  if (previous.mode !== "chase" && next.mode === "chase") play(SOUNDS.alert);
-  if (next.attacking) play(SOUNDS.attack);
-  if (next.nextBark > previous.nextBark) play(SOUNDS.bark);
+  return { ...state, seed, nextBark: result, barks: state.barks + 1 };
 }
 
 /** A chaser: wanders slowly, and runs down any player it sees to where it last saw them. */
@@ -315,7 +328,6 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
     update(entity, state, dt, game) {
       const thought = think(state, entity, dt, game, config);
       const next = bark(attack(thought, entity, dt, game), dt);
-      cue(state, next, entity, game);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
       const route = steer(entity, next.route, speed, dt);
@@ -334,6 +346,14 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
             Math.hypot(player.x - entity.x, player.y - entity.y) <= range,
         )
         .map((player) => ({ target: player.id, amount: config.attackDamage }));
+    },
+    cue(entity, previous, next, game) {
+      const play = (url: string): void => {
+        void game.sfx.play(url, entity, game.local);
+      };
+      if (next.alerts > previous.alerts) play(SOUNDS.alert);
+      if (next.attacks > previous.attacks) play(SOUNDS.attack);
+      if (next.barks > previous.barks) play(SOUNDS.bark);
     },
 
     draw(ctx, entity, state) {

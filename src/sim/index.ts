@@ -1,6 +1,7 @@
 export { isSweepFree } from "./collision.js";
 export {
   applyEntitySnapshot,
+  cueEntities,
   entitySnapshot,
   registerEntityType,
   spawnEntity,
@@ -30,7 +31,7 @@ export { applyDamage } from "./entity.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";
-export { registerItem, requestUse } from "./use.js";
+export { registerItem, requestUse, showUse } from "./use.js";
 export type { ItemBehaviour, ItemUse, UseRequest } from "./use.js";
 
 export {
