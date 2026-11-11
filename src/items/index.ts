@@ -2,6 +2,8 @@ import type { ContentConfig, WorldContent } from "../sim/index.js";
 import { scrap } from "./scrap/index.js";
 import { shovel } from "./shovel/index.js";
 
+export { credit } from "./scrap/index.js";
+
 /** Every item in the game. */
 const ITEMS = [shovel, scrap] as const;
 

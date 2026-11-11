@@ -30,6 +30,7 @@ export type {
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { HeldSlot, Inventory } from "./inventory.js";
+export { removeItem } from "./inventory.js";
 export {
   isAreaFree,
   mulberry32,
