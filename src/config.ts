@@ -1,5 +1,6 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { MonsterConfig } from "./monsters/index.js";
+import type { CruiserConfig } from "./sim/cruiser";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ShovelConfig } from "./items/index.js";
@@ -12,6 +13,7 @@ interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
   readonly monsters: MonsterConfig;
+  readonly cruiser: CruiserConfig;
   readonly shovel: ShovelConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
@@ -71,6 +73,10 @@ export const config = {
       wanderPause: { min: 0.8, max: 3 },
       repathDistance: CELL_SIZE / 2,
     },
+  },
+  cruiser: {
+    lightRadius: CELL_SIZE * 12,
+    offset: CELL_SIZE,
   },
   shovel: {
     radius: 20,

@@ -6,6 +6,8 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, WorldEntity } from "./entities.js";
+export { CruiserKind, createCruiser } from "./cruiser";
+export type { CruiserConfig } from "./cruiser";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export {
