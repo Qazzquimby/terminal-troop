@@ -12,7 +12,9 @@ import type { Session } from "./session.js";
 import { createSession, updateSession } from "./session.js";
 
 const DT = 1 / 60;
-const KIND = 1;
+const KIND = "walker";
+/** The number the walker is sent as: it is the first kind registered. */
+const KIND_ID = 1;
 const idle = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
@@ -44,6 +46,45 @@ function session(localId = "me"): Session {
   return game;
 }
 
+describe("registering", () => {
+  const still = {
+    radius: 5,
+    maxHealth: 1,
+    data: z.null(),
+    draw: () => undefined,
+  };
+
+  test("numbers kinds by the order they are registered in, from 1", () => {
+    const game = session();
+    registerEntityType(game, "rock", still);
+    registerEntityType(game, "tree", still);
+    expect([...game.kindIds]).toEqual([
+      [KIND, KIND_ID],
+      ["rock", 2],
+      ["tree", 3],
+    ]);
+    expect(spawnEntity(game, "tree", 100, 100, null).kind).toBe(3);
+  });
+
+  test("a name registered twice throws", () => {
+    expect(() => {
+      registerEntityType(session(), KIND, still);
+    }).toThrow(/already registered/);
+  });
+
+  test("a kind without finite health throws, since snapshots could not carry it", () => {
+    expect(() => {
+      registerEntityType(session(), "rock", { ...still, maxHealth: Infinity });
+    }).toThrow(/finite/);
+  });
+
+  test("spawning a name never registered throws", () => {
+    expect(() => spawnEntity(session(), "rock", 100, 100, null)).toThrow(
+      /Unregistered/,
+    );
+  });
+});
+
 describe("spawning", () => {
   test("ids are the local id and a counter", () => {
     const game = session();
@@ -56,7 +97,7 @@ describe("spawning", () => {
     applyEntitySnapshot(game, [
       {
         id: "me:1",
-        kind: KIND,
+        kind: KIND_ID,
         x: 100,
         y: 300,
         health: 10,
@@ -85,10 +126,24 @@ describe("hosting", () => {
     const game = session();
     game.hosting = false;
     applyEntitySnapshot(game, [
-      { id: "h:1", kind: KIND, x: 100, y: 300, health: 10, data: { steps: 0 } },
+      {
+        id: "h:1",
+        kind: KIND_ID,
+        x: 100,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
     ]);
     applyEntitySnapshot(game, [
-      { id: "h:1", kind: KIND, x: 200, y: 300, health: 10, data: { steps: 5 } },
+      {
+        id: "h:1",
+        kind: KIND_ID,
+        x: 200,
+        y: 300,
+        health: 10,
+        data: { steps: 5 },
+      },
     ]);
     const entity = game.entities.get("h:1");
     updateSession(game, idle, DT);
@@ -111,7 +166,13 @@ describe("hosting", () => {
   test("a session that does not host keeps a dead entity until the host's snapshot drops it", () => {
     const game = session();
     game.hosting = false;
-    const entry = { id: "h:1", kind: KIND, x: 100, y: 300, data: { steps: 0 } };
+    const entry = {
+      id: "h:1",
+      kind: KIND_ID,
+      x: 100,
+      y: 300,
+      data: { steps: 0 },
+    };
     applyEntitySnapshot(game, [{ ...entry, health: 0 }]);
     updateSession(game, idle, DT);
     expect([...game.entities.keys()]).toEqual(["h:1"]);
@@ -132,7 +193,7 @@ describe("damage", () => {
 
   test("a strike on the local player lands at once, and one on a player not in the session is dropped", () => {
     const game = session();
-    registerEntityType(game, 2, {
+    registerEntityType(game, "striker", {
       radius: 10,
       maxHealth: 10,
       data: z.object({}),
@@ -143,7 +204,7 @@ describe("damage", () => {
       ],
       draw: () => undefined,
     });
-    spawnEntity(game, 2, 100, 300, {});
+    spawnEntity(game, "striker", 100, 300, {});
     updateSession(game, idle, DT);
     expect(game.local.health).toBe(0);
     expect(game.strikes).toEqual([]);
@@ -165,12 +226,33 @@ describe("snapshots", () => {
   test("entities missing from a snapshot are removed", () => {
     const game = session();
     applyEntitySnapshot(game, [
-      { id: "h:1", kind: KIND, x: 100, y: 300, health: 10, data: { steps: 0 } },
-      { id: "h:2", kind: KIND, x: 200, y: 300, health: 10, data: { steps: 0 } },
+      {
+        id: "h:1",
+        kind: KIND_ID,
+        x: 100,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
+      {
+        id: "h:2",
+        kind: KIND_ID,
+        x: 200,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
     ]);
     spawnEntity(game, KIND, 300, 300, { steps: 0 });
     applyEntitySnapshot(game, [
-      { id: "h:2", kind: KIND, x: 200, y: 300, health: 10, data: { steps: 0 } },
+      {
+        id: "h:2",
+        kind: KIND_ID,
+        x: 200,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
     ]);
     expect([...game.entities.keys()]).toEqual(["h:2"]);
   });
@@ -182,11 +264,11 @@ describe("snapshots", () => {
     ],
     [
       "data its kind rejects",
-      { kind: KIND, x: 100, y: 300, health: 10, data: {} },
+      { kind: KIND_ID, x: 100, y: 300, health: 10, data: {} },
     ],
     [
       "a spot inside a wall",
-      { kind: KIND, x: 250, y: 100, health: 10, data: { steps: 0 } },
+      { kind: KIND_ID, x: 250, y: 100, health: 10, data: { steps: 0 } },
     ],
   ])("an entry with %s is left out", (_label, entry) => {
     const game = session();

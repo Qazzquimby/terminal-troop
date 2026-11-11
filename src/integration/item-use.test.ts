@@ -25,7 +25,7 @@ const idle: Controls = {
 const swing: Controls = { ...idle, use: true };
 
 /** A kind that stands still with 40 health. */
-const DUMMY = 1;
+const DUMMY = "dummy";
 
 /** A dev-square session holding the starting shovel, with the test items registered and sound muted. */
 function session() {

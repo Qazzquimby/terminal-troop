@@ -41,6 +41,8 @@ export interface Session {
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
   readonly entityTypes: Map<number, EntityType>;
+  /** The number each kind is registered and sent as, by name. */
+  readonly kindIds: Map<string, number>;
   nextEntityId: number;
   /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
   hosting: boolean;
@@ -99,6 +101,7 @@ export function createSession(
     players: new Map([[localId, local]]),
     entities: new Map(),
     entityTypes: new Map(),
+    kindIds: new Map(),
     nextEntityId: 1,
     hosting: true,
     time: 0,

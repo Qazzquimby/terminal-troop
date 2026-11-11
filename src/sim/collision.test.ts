@@ -118,14 +118,14 @@ function collisionSession() {
     data: z.null(),
     draw: () => undefined,
   };
-  registerEntityType(game, 1, definition);
-  registerEntityType(game, 2, { ...definition, collides: false });
+  registerEntityType(game, "solid", definition);
+  registerEntityType(game, "ghost", { ...definition, collides: false });
   return game;
 }
 
 test("a session separates its player and entities and updates host targets", () => {
   const game = collisionSession();
-  const entity = spawnEntity(game, 1, game.local.x, game.local.y, null);
+  const entity = spawnEntity(game, "solid", game.local.x, game.local.y, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -138,8 +138,8 @@ test("a session separates its player and entities and updates host targets", () 
 
 test("a session separates entities from other entities", () => {
   const game = collisionSession();
-  const first = spawnEntity(game, 1, 500, 300, null);
-  const second = spawnEntity(game, 1, 500, 300, null);
+  const first = spawnEntity(game, "solid", 500, 300, null);
+  const second = spawnEntity(game, "solid", 500, 300, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -150,7 +150,7 @@ test("a session separates entities from other entities", () => {
 
 test("noncolliding entities do not separate from players", () => {
   const game = collisionSession();
-  const entity = spawnEntity(game, 2, game.local.x, game.local.y, null);
+  const entity = spawnEntity(game, "ghost", game.local.x, game.local.y, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -181,7 +181,7 @@ test("player separation does not move remote players", () => {
 test("a client yields to entities without changing their host targets", () => {
   const game = collisionSession();
   game.hosting = false;
-  const entity = spawnEntity(game, 1, game.local.x, game.local.y, null);
+  const entity = spawnEntity(game, "solid", game.local.x, game.local.y, null);
 
   updateSession(game, idle, 1 / 60);
 

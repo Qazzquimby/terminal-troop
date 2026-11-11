@@ -84,14 +84,14 @@ const origin = { x: 0, y: 0 };
 
 test("entities record their pre-step position", () => {
   const game = session();
-  registerEntityType(game, 1, {
+  registerEntityType(game, "thing", {
     radius: 5,
     maxHealth: 10,
     collides: false,
     data: z.object({}),
     draw: () => undefined,
   });
-  const entity = spawnEntity(game, 1, 100, 200, {});
+  const entity = spawnEntity(game, "thing", 100, 200, {});
   expect(entity).toMatchObject({ prevX: 100, prevY: 200 });
 
   entity.vx = 10 / FIXED_DT;

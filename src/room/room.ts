@@ -18,6 +18,7 @@ import type {
   Session,
   SimConfig,
   UseRequest,
+  WorldContent,
   WorldKind,
 } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
@@ -46,14 +47,6 @@ export interface RoomConfig {
   /** Milliseconds between heartbeats, and between presence sweeps. */
   readonly heartbeatMs: number;
   readonly presence: PresenceTiming;
-}
-
-/** The monsters a room's world holds. */
-export interface Monsters {
-  /** Registers their kinds with a new session, before any snapshot reaches it. */
-  register(session: Session): void;
-  /** Spawns the ones a new world starts with. */
-  populate(session: Session): void;
 }
 
 /** The usable items a room's players hold. */
@@ -96,11 +89,8 @@ export interface RoomDeps {
   readonly clock: RoomClock;
   readonly config: RoomConfig;
   readonly sim: SimConfig;
-  readonly monsters: Monsters;
-  readonly cruiser?: {
-    register(session: Session): void;
-    populate(session: Session): void;
-  };
+  /** What the world holds. Every client registers it in this order, which numbers its kinds. */
+  readonly content: readonly WorldContent[];
   readonly items: Items;
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
@@ -130,7 +120,7 @@ export interface Room {
   /** Undefined for a remote player who is gone, or outside a room. */
   presenceOf(id: string): Presence | undefined;
   /**
-   * The one player who runs the shared world: it runs the monsters and sends them to everyone
+   * The one player who runs the shared world: it runs the entities and sends them to everyone
    * else. A host keeps the role while it is active; only when it goes away, leaves or hides
    * does a new one take over, and every client adopts the latest election it hears. Undefined
    * outside a room, and on joining until the host is heard or the first heartbeat elects one.
@@ -233,8 +223,7 @@ export function createRoom(deps: RoomDeps): Room {
     const hosting = view?.id === localId;
     room.session.hosting = hosting;
     if (hosting && !room.populated) {
-      deps.monsters.populate(room.session);
-      deps.cruiser?.populate(room.session);
+      for (const content of deps.content) content.populate(room.session);
       room.populated = true;
     }
   }
@@ -397,8 +386,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sfx,
       deps.sim,
     );
-    deps.monsters.register(session);
-    deps.cruiser?.register(session);
+    for (const content of deps.content) content.register(session);
     deps.items.register(session);
     session.hosting = false;
     const room: Link = {

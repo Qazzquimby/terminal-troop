@@ -17,13 +17,13 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import type { Point, UseRequest } from "../sim/index.js";
+import type { Point, UseRequest, WorldContent } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
 import { roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
-import type { Items, Monsters, Room, RoomState } from "./room.js";
+import type { Items, Room, RoomState } from "./room.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
@@ -138,30 +138,10 @@ function createHub() {
   };
 }
 
-/** Bites every player within 40px for 5 each step; none spawn unless a test places one. */
-const BITER = 2;
-
-/**
- * Monsters that start as three blobs across the dev square, each drifting right at 20px/s
- * with 10 health, and heard stepping. Biters are registered too.
- */
-const blobs: Monsters = {
+/** Three blobs start across the dev square, each drifting right at 20px/s with 10 health, and heard stepping. */
+const blobs: WorldContent = {
   register(session) {
-    registerEntityType(session, BITER, {
-      radius: 10,
-      maxHealth: 10,
-      data: z.object({}),
-      update: (_entity, data) => data,
-      strikes: (entity, _data, game) =>
-        [...game.players.values()]
-          .filter(
-            (player) =>
-              Math.hypot(player.x - entity.x, player.y - entity.y) < 40,
-          )
-          .map((player) => ({ target: player.id, amount: 5 })),
-      draw: () => undefined,
-    });
-    registerEntityType(session, 1, {
+    registerEntityType(session, "blob", {
       radius: 10,
       maxHealth: 10,
       data: z.object({ steps: z.number().int() }),
@@ -178,8 +158,31 @@ const blobs: Monsters = {
   },
   populate(session) {
     for (const x of [100, 400, 700])
-      spawnEntity(session, 1, x, 300, { steps: 0 });
+      spawnEntity(session, "blob", x, 300, { steps: 0 });
   },
+};
+
+/** Bites every player within 40px for 5 each step; none spawn unless a test places one. */
+const BITER = "biter";
+
+const biters: WorldContent = {
+  register(session) {
+    registerEntityType(session, BITER, {
+      radius: 10,
+      maxHealth: 10,
+      data: z.object({}),
+      update: (_entity, data) => data,
+      strikes: (entity, _data, game) =>
+        [...game.players.values()]
+          .filter(
+            (player) =>
+              Math.hypot(player.x - entity.x, player.y - entity.y) < 40,
+          )
+          .map((player) => ({ target: player.id, amount: 5 })),
+      draw: () => undefined,
+    });
+  },
+  populate: () => undefined,
 };
 
 const POKE = { id: "poke", name: "Poke", maxStack: 1, emoji: "👉" };
@@ -242,7 +245,12 @@ interface Sound {
   readonly listener: Point | null;
 }
 
-function setup(hub = createHub(), id = "me", clock = createManualClock()) {
+function setup(
+  hub = createHub(),
+  id = "me",
+  clock = createManualClock(),
+  content: readonly WorldContent[] = [blobs, biters],
+) {
   const log: string[] = [];
   const failures: { peerFailed: (id: string) => void }[] = [];
   const transport = hub.transport(id, log);
@@ -284,7 +292,7 @@ function setup(hub = createHub(), id = "me", clock = createManualClock()) {
     },
     config: testRoomConfig,
     sim: testSimConfig,
-    monsters: blobs,
+    content,
     items: poke,
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange() {
@@ -795,7 +803,11 @@ describe("host", () => {
    * Players joined in order to one room. They share one clock, except those in `own`, whose
    * clocks move only when told to.
    */
-  async function gather(ids: readonly string[], own: readonly string[] = []) {
+  async function gather(
+    ids: readonly string[],
+    own: readonly string[] = [],
+    content?: readonly WorldContent[],
+  ) {
     const hub = createHub();
     const clock = createManualClock();
     const players = new Map<string, Player>();
@@ -809,6 +821,7 @@ describe("host", () => {
         hub,
         id,
         own.includes(id) ? createManualClock() : clock,
+        content,
       );
       players.set(id, player);
       await player.room.join("ABC", id.toUpperCase());
@@ -1010,7 +1023,7 @@ describe("host", () => {
     expect(hosts()).toEqual(["b", "b", "b", "b"]);
   });
 
-  describe("monsters", () => {
+  describe("entities", () => {
     const sessionOf = (player: Player) => joined(player.room).session;
     const ids = (player: Player) => [...sessionOf(player).entities.keys()];
     const placed = (player: Player) =>
@@ -1032,6 +1045,51 @@ describe("host", () => {
         updateSession(sessionOf(player), idle, 1 / 60);
       player.room.frame(player.clock.now());
     };
+
+    test("every client numbers the kinds by the order of its content list", async () => {
+      const kinds = (player: Player) => [...sessionOf(player).kindIds];
+      const { get } = await gather(["a", "b"]);
+      expect(kinds(get("a"))).toEqual([
+        ["blob", 1],
+        ["biter", 2],
+      ]);
+      expect(kinds(get("b"))).toEqual(kinds(get("a")));
+
+      const reversed = await gather(["c"], [], [biters, blobs]);
+      expect(kinds(reversed.get("c"))).toEqual([
+        ["biter", 1],
+        ["blob", 2],
+      ]);
+    });
+
+    test("each world is populated once, by its first host, and not again on a handover", async () => {
+      const populated: string[] = [];
+      const counted: WorldContent = {
+        register: () => undefined,
+        populate(session) {
+          populated.push(session.localId);
+        },
+      };
+      const { clock, get } = await gather(
+        ["a", "b", "c"],
+        [],
+        [blobs, counted],
+      );
+      expect(populated).toEqual([]);
+      clock.advance(1000);
+      play(get("a"), 0);
+      expect(populated).toEqual(["a"]);
+
+      await get("a").room.leave();
+      clock.advance(3000);
+      expect(get("b").room.hostId()).toBe("b");
+      play(get("b"), 1);
+      await get("b").room.leave();
+      clock.advance(5000);
+      expect(get("c").room.hostId()).toBe("c");
+      expect(ids(get("c"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(populated).toEqual(["a"]);
+    });
 
     test("the first host spawns them once, and a newcomer takes them from it", async () => {
       const { clock, get, add } = await gather(["a"]);

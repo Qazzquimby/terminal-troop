@@ -130,14 +130,21 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
   };
 }
 
+/**
+ * Registers a kind under `name`, numbered by the order kinds are registered in, from 1. Clients
+ * that register the same kinds in the same order number them alike, as snapshots need.
+ */
 export function registerEntityType<S>(
   game: Session,
-  kind: number,
+  name: string,
   definition: EntityDefinition<S>,
 ): void {
-  if (!Number.isInteger(kind) || kind < 1 || game.entityTypes.has(kind)) {
-    throw new Error("Entity kinds must be unique positive integers.");
-  }
+  if (game.kindIds.has(name))
+    throw new Error(`Entity kind already registered: ${name}`);
+  if (!Number.isFinite(definition.maxHealth))
+    throw new Error(`Entity kind ${name} needs a finite maxHealth to be sent.`);
+  const kind = game.entityTypes.size + 1;
+  game.kindIds.set(name, kind);
   game.entityTypes.set(kind, entityType(definition));
 }
 
@@ -176,19 +183,20 @@ function placeEntity(
 }
 
 /**
- * Spawns a `kind` at (x, y) under an id no entity in the session holds. Throws when `data` is
- * not the kind's state.
+ * Spawns the kind registered as `name` at (x, y) under an id no entity in the session holds.
+ * Throws when `data` is not the kind's state.
  */
 export function spawnEntity(
   game: Session,
-  kind: number,
+  name: string,
   x: number,
   y: number,
   data: unknown,
 ): WorldEntity {
-  const type = game.entityTypes.get(kind);
-  if (type === undefined)
-    throw new Error(`Unregistered entity kind: ${String(kind)}`);
+  const kind = game.kindIds.get(name);
+  const type = kind === undefined ? undefined : game.entityTypes.get(kind);
+  if (kind === undefined || type === undefined)
+    throw new Error(`Unregistered entity kind: ${name}`);
   const parsed = type.data.parse(data);
 
   let id = `${game.localId}:${String(game.nextEntityId++)}`;

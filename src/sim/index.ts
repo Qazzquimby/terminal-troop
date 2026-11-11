@@ -1,4 +1,4 @@
-export { isSweepFree, nearestFreePoint } from "./collision.js";
+export { isSweepFree } from "./collision.js";
 export {
   applyEntitySnapshot,
   cueEntities,
@@ -7,7 +7,15 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
-export { kindId } from "./kinds.js";
+export { defineEntity, entityKind } from "./content.js";
+export type {
+  Content,
+  ContentConfig,
+  EntitySpec,
+  Scatter,
+  SpawnRule,
+  WorldContent,
+} from "./content.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export { addItem } from "./inventory.js";
