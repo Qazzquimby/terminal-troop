@@ -24,6 +24,8 @@ export const testSimConfig: SimConfig = {
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
   net: { smoothing: 12, useSlack: { distance: 40, seconds: 0.1 } },
+  cruiser: { lightRadius: 600, offset: 50, cashoutRadius: 150 },
+  scrap: { value: 1, cashoutVolume: 1, count: 0 },
 };
 
 /**

@@ -60,6 +60,8 @@ export interface Monsters {
 export interface Items {
   /** Registers what each one does with a new session, and stocks its local player's inventory. */
   register(session: Session): void;
+  /** Spawns the ground items a new world starts with. */
+  populate?(session: Session): void;
 }
 
 /**
@@ -235,6 +237,7 @@ export function createRoom(deps: RoomDeps): Room {
     if (hosting && !room.populated) {
       deps.monsters.populate(room.session);
       deps.cruiser?.populate(room.session);
+      deps.items.populate?.(room.session);
       room.populated = true;
     }
   }
@@ -327,6 +330,11 @@ export function createRoom(deps: RoomDeps): Room {
         if (room.roster.get(message.by) === undefined) return;
         showUse(room.session, message);
         if (room.host?.id === localId) requestUse(room.session, message);
+      }),
+      [NetEvent.PICKUP]: on(NetEvent.PICKUP, (message) => {
+        if (room.host?.id !== localId) return;
+        if (message.by === localId) return;
+        room.session.entities.delete(message.entityId);
       }),
       [NetEvent.DAMAGE]: on(NetEvent.DAMAGE, (message) => {
         if (message.target !== localId) return;
@@ -514,6 +522,8 @@ export function createRoom(deps: RoomDeps): Room {
       sendState(room, now, room.forceState);
       for (const request of room.session.localUses.splice(0))
         handUse(room, request);
+      for (const pickup of room.session.localPickups.splice(0))
+        void send(NetEvent.PICKUP, pickup);
       sendStrikes(room);
       for (const amount of room.session.cashOuts.splice(0))
         void send(NetEvent.CREDIT, { by: localId, amount });

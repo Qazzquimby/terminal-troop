@@ -1,14 +1,15 @@
 import type { Sfx } from "../audio/index.js";
 import type { ScrapConfig } from "../items/scrap.js";
-import { SCRAP, SCRAP_SOUNDS } from "../items/scrap.js";
+import { SCRAP, SCRAP_SOUNDS, ScrapKind } from "../items/scrap.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies } from "./collision.js";
 import type { EntityType, Strike, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
+import type { CruiserConfig } from "./cruiser.js";
 import { CruiserKind } from "./cruiser.js";
-import { heldItem, removeItem } from "./inventory.js";
+import { addItem, heldItem, removeItem } from "./inventory.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
@@ -16,6 +17,12 @@ import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
 import type { ItemBehaviour, UseRequest, UseSlack } from "./use.js";
 import { applyUses, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
+
+/** A player's pickup of a ground entity, for the host to remove it. */
+export interface PickupRequest {
+  readonly by: string;
+  readonly entityId: string;
+}
 
 /** How remote players follow the state they report. */
 interface SyncConfig {
@@ -31,6 +38,7 @@ export interface SimConfig extends PlayerRules {
   readonly light: LightConfig;
   readonly net: SyncConfig;
   readonly scrap: ScrapConfig;
+  readonly cruiser: CruiserConfig;
 }
 
 export interface Session {
@@ -56,6 +64,10 @@ export interface Session {
   readonly uses: UseRequest[];
   /** The local player's uses, waiting for the room to hand them to the host. */
   readonly localUses: UseRequest[];
+  /** The local player's pickups, waiting for the room to hand them to the host. */
+  readonly localPickups: PickupRequest[];
+  /** Ground entity ids the local player has picked up, kept out of the host's snapshots. */
+  readonly collected: Set<string>;
   /** When, in sim seconds, the host lets each player use an item again. */
   readonly readyAt: Map<string, number>;
   /** Damage the host has dealt to remote players, waiting to be sent to them. */
@@ -111,6 +123,8 @@ export function createSession(
     items: new Map(),
     uses: [],
     localUses: [],
+    localPickups: [],
+    collected: new Set(),
     readyAt: new Map(),
     strikes: [],
     credit: 0,
@@ -170,15 +184,38 @@ function cashOut(game: Session): void {
   if (slot === null) return;
   const stack = heldItem(game.local.inventory, slot);
   if (stack?.item.id !== SCRAP.id) return;
-  if (!nearCruiser(game, game.config.scrap.cashoutRadius)) return;
+  if (!nearCruiser(game, game.config.cruiser.cashoutRadius)) return;
 
   removeItem(game.local.inventory, slot, 1);
   void game.sfx.play(SCRAP_SOUNDS.cashout, game.local, game.local, {
-    volume: game.config.scrap.volume,
+    volume: game.config.scrap.cashoutVolume,
   });
   const value = game.config.scrap.value;
   game.credit += value;
   game.cashOuts.push(value);
+}
+
+/**
+ * Picks up the ground scrap the local player is standing on, if its inventory has room, and
+ * asks the host to remove it from the world.
+ */
+function pickUp(game: Session): void {
+  const { local } = game;
+  for (const entity of game.entities.values()) {
+    if (entity.kind !== ScrapKind) continue;
+    if (game.collected.has(entity.id)) continue;
+    if (
+      Math.hypot(entity.x - local.x, entity.y - local.y) >
+      local.radius + entity.radius
+    )
+      continue;
+    if (addItem(local.inventory, SCRAP, 1) > 0) return;
+    game.collected.add(entity.id);
+    game.entities.delete(entity.id);
+    if (!game.hosting)
+      game.localPickups.push({ by: local.id, entityId: entity.id });
+    return;
+  }
 }
 
 export function updateSession(
@@ -189,6 +226,7 @@ export function updateSession(
   game.time += dt;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
+  pickUp(game);
   if (controls.use) useHeldItem(game);
   cashOut(game);
 

@@ -13,6 +13,8 @@ export interface CruiserConfig {
   readonly lightRadius: number;
   /** How far from the player the cruiser starts, in pixels. */
   readonly offset: number;
+  /** How close the player must be to the cruiser to cash out scrap, in pixels. */
+  readonly cashoutRadius: number;
 }
 
 export const CruiserKind = kindId("cruiser");

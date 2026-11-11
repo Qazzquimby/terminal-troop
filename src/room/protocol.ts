@@ -69,6 +69,12 @@ const UseMessage = z.object({
   aim: z.number(),
 });
 
+/** A player's pickup of a ground entity, sent to the host to remove it. */
+const PickupMessage = z.object({
+  by: PlayerId,
+  entityId: z.string().min(1).max(80),
+});
+
 /** Damage the sender, as host, deals to the player `target`. */
 const DamageMessage = z.object({
   host: PlayerId,
@@ -91,6 +97,7 @@ export function roomMessages(nameMax: number) {
     [NetEvent.HEARTBEAT]: HeartbeatMessage,
     [NetEvent.ENTITIES]: EntitiesMessage,
     [NetEvent.USE]: UseMessage,
+    [NetEvent.PICKUP]: PickupMessage,
     [NetEvent.DAMAGE]: DamageMessage,
     [NetEvent.CREDIT]: CreditMessage,
 

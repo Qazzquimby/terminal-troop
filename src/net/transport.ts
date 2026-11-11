@@ -8,6 +8,8 @@ export const NetEvent = {
   ENTITIES: "entities",
   /** A player's item use, for the host to apply. */
   USE: "use",
+  /** A player's pickup of a ground entity, for the host to remove. */
+  PICKUP: "pickup",
   /** Damage the host deals to one player, for that player to apply. */
   DAMAGE: "damage",
   /** A player's scrap cashout: the credits it is worth, for the room to add to its total. */

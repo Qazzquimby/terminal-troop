@@ -282,6 +282,7 @@ export function applyEntitySnapshot(
 ): void {
   const kept = new Set<string>();
   for (const { id, kind, x, y, health, data } of snapshot) {
+    if (game.collected.has(id)) continue;
     const type = game.entityTypes.get(kind);
     if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
       continue;

@@ -78,6 +78,7 @@ export const config = {
   cruiser: {
     lightRadius: CELL_SIZE * 12,
     offset: CELL_SIZE,
+    cashoutRadius: CELL_SIZE * 3,
   },
   shovel: {
     radius: 20,
@@ -89,9 +90,9 @@ export const config = {
     volume: 0.8,
   },
   scrap: {
-    cashoutRadius: CELL_SIZE * 3,
     value: 1,
-    volume: 0.8,
+    cashoutVolume: 0.8,
+    count: 500,
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },
