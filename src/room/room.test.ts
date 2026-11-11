@@ -1239,21 +1239,27 @@ describe("host", () => {
       const data = { steps: 0 };
       listener.send(NetEvent.ENTITIES, {
         host: "b",
+        full: true,
         entities: [{ ...entity, data }],
         world: {},
+        removed: [],
       });
       listener.send(NetEvent.ENTITIES, {
         host: "z",
+        full: true,
         entities: [{ ...entity, data }],
         world: {},
+        removed: [],
       });
       expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
       expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
 
       listener.send(NetEvent.ENTITIES, {
         host: "a",
+        full: true,
         entities: [{ ...entity, data }],
         world: {},
+        removed: [],
       });
       expect(ids(get("b"))).toEqual(["z:1"]);
     });

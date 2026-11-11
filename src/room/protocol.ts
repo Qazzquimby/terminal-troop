@@ -55,20 +55,24 @@ const HeartbeatMessage = PresenceMessage.extend({
   host: HostView.nullable(),
 });
 
-/** Most entities a snapshot carries. */
-const MAX_ENTITIES = 256;
+/** Most entities a snapshot carries, and most ids it says are gone. */
+const MAX_ENTITIES = 4096;
+
+const EntityId = z.string().min(1).max(80);
 
 /**
- * Every entity the sender hosts, by the sender's id, and each content entry's world state by the
- * entry's name. Each kind parses its own data, and each entry its own state, so an entity or a
- * value its parser rejects is dropped where it is applied.
+ * The entities the sender hosts, by the sender's id, and each content entry's world state by the
+ * entry's name. A full snapshot carries every entity; any other only those changed since the
+ * sender's last, and the ids of those gone. Each kind parses its own data, and each entry its own
+ * state, so an entity or a value its parser rejects is dropped where it is applied.
  */
 const EntitiesMessage = z.object({
   host: PlayerId,
+  full: z.boolean(),
   entities: z
     .array(
       z.object({
-        id: z.string().min(1).max(80),
+        id: EntityId,
         kind: z.number().int().min(1),
         x: z.number(),
         y: z.number(),
@@ -77,6 +81,7 @@ const EntitiesMessage = z.object({
       }),
     )
     .max(MAX_ENTITIES),
+  removed: z.array(EntityId).max(MAX_ENTITIES),
   world: z.record(z.string(), z.unknown()),
 });
 

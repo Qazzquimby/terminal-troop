@@ -3,6 +3,7 @@ import type { Scope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
+  applyEntityChanges,
   applyEntitySnapshot,
   applyRemoteState,
   applyWorldState,
@@ -45,6 +46,12 @@ export interface RoomConfig {
   readonly sendHz: number;
   /** Most entity snapshots per second, while hosting. */
   readonly entityHz: number;
+  /**
+   * Milliseconds between full entity snapshots, while hosting. Between them a snapshot carries
+   * only the entities that changed and the ids of those gone; a full one, also sent to each
+   * newcomer and as a new host's first, mends what a lost snapshot missed.
+   */
+  readonly fullSnapshotMs: number;
   /** Milliseconds between heartbeats, and between presence sweeps. */
   readonly heartbeatMs: number;
   readonly presence: PresenceTiming;
@@ -141,6 +148,10 @@ interface Link {
   /** When the last heartbeat was due to go out. */
   lastPulse: number;
   lastEntitiesSent: number;
+  /** When the last full entity snapshot went out. */
+  lastFullSent: number;
+  /** Each entity as this client last sent it while hosting, by id; empty while not hosting. */
+  sent: Map<string, string>;
   /** The world has its starting entities: this client spawned them or heard them from a host. */
   populated: boolean;
 }
@@ -201,12 +212,36 @@ export function createRoom(deps: RoomDeps): Room {
     if (away) void send(NetEvent.CONTENT, message);
   }
 
+  /**
+   * Sends the entities and the world state, at most `entityHz` times a second unless forced: in
+   * full when forced, as this client's first while hosting, or every `fullSnapshotMs`; otherwise
+   * only the entities changed since the last send, and the ids of those gone.
+   */
   function sendEntities(room: Link, now: number, force = false): void {
     if (!force && now - room.lastEntitiesSent < 1000 / config.entityHz) return;
     room.lastEntitiesSent = now;
+    const entities = entitySnapshot(room.session);
+    const current = new Map(
+      entities.map((entity) => [entity.id, JSON.stringify(entity)]),
+    );
+    const full =
+      force ||
+      room.sent.size === 0 ||
+      now - room.lastFullSent >= config.fullSnapshotMs;
+    const previous = room.sent;
+    room.sent = current;
+    if (full) room.lastFullSent = now;
     void send(NetEvent.ENTITIES, {
       host: localId,
-      entities: entitySnapshot(room.session),
+      full,
+      entities: full
+        ? entities
+        : entities.filter(
+            (entity) => previous.get(entity.id) !== current.get(entity.id),
+          ),
+      removed: full
+        ? []
+        : [...previous.keys()].filter((id) => !current.has(id)),
       world: worldState(room.session),
     });
   }
@@ -219,6 +254,7 @@ export function createRoom(deps: RoomDeps): Room {
     room.host = view;
     const hosting = view?.id === localId;
     room.session.hosting = hosting;
+    if (!hosting) room.sent.clear();
     if (hosting && !room.populated) {
       for (const content of deps.content) content.populate(room.session);
       room.populated = true;
@@ -305,7 +341,9 @@ export function createRoom(deps: RoomDeps): Room {
       }),
       [NetEvent.ENTITIES]: on(NetEvent.ENTITIES, (message) => {
         if (message.host === localId || message.host !== room.host?.id) return;
-        applyEntitySnapshot(room.session, message.entities);
+        if (message.full) applyEntitySnapshot(room.session, message.entities);
+        else
+          applyEntityChanges(room.session, message.entities, message.removed);
         applyWorldState(room.session, message.world);
         room.populated = true;
       }),
@@ -391,6 +429,8 @@ export function createRoom(deps: RoomDeps): Room {
       views: new Map(),
       lastPulse: clock.now(),
       lastEntitiesSent: -Infinity,
+      lastFullSent: -Infinity,
+      sent: new Map(),
       populated: false,
     };
     await transport.join(roomKey(code, deps.world), handlers(room));

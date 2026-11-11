@@ -45,10 +45,12 @@ describe("health", () => {
   test("an encoded snapshot with unbreakable health survives JSON", () => {
     const snapshot: Message<"entities"> = {
       host: "h",
+      full: true,
       entities: [
         { id: "h:1", kind: 1, x: 10, y: 20, health: 40, data: {} },
         { id: "h:2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
       ],
+      removed: [],
       world: { "item/scrap": 3 },
     };
     const schema = messages[NetEvent.ENTITIES];
@@ -88,6 +90,7 @@ describe("the message table", () => {
     }>();
     expectTypeOf<Message<"entities">>().toEqualTypeOf<{
       host: string;
+      full: boolean;
       entities: {
         id: string;
         kind: number;
@@ -96,6 +99,7 @@ describe("the message table", () => {
         health: number;
         data: unknown;
       }[];
+      removed: string[];
       world: Record<string, unknown>;
     }>();
     expectTypeOf<Message<"content">>().toEqualTypeOf<{
