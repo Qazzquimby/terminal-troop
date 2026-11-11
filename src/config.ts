@@ -1,6 +1,6 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { MonsterConfig } from "./monsters/index.js";
-import type { CruiserConfig } from "./sim/cruiser";
+import type { CruiserConfig } from "./sim/cruiser.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ShovelConfig } from "./items/index.js";
@@ -28,7 +28,7 @@ export const config = {
   view: { width: 900, height: 600 },
   player: {
     radius: 14,
-    speed: 220,
+    speed: 120,
     acceleration: 1100,
     sprintMultiplier: 1.8,
     maxHealth: 100,
@@ -58,19 +58,19 @@ export const config = {
     },
   },
   monsters: {
-    chaserDensity: 0.6,
+    chaserDensity: 1.2,
     minChasers: 2,
     seed: 1,
     clearance: CELL_SIZE * 10,
     chaser: {
       radius: 15,
-      maxHealth: 30,
+      maxHealth: 40,
       attackDamage: 35,
-      wanderSpeed: 55,
-      chaseSpeed: 150,
+      wanderSpeed: 60,
+      chaseSpeed: 120,
       sightRange: CELL_SIZE * 5,
       wanderRange: CELL_SIZE * 5,
-      wanderPause: { min: 0.8, max: 3 },
+      wanderPause: { min: 0.4, max: 1.5 },
       repathDistance: CELL_SIZE / 2,
     },
   },
@@ -81,8 +81,8 @@ export const config = {
   shovel: {
     radius: 20,
     reach: 45,
-    damage: 20,
-    knockback: 30,
+    damage: 15,
+    knockback: 20,
     cooldownMs: 1000,
     durationMs: 180,
   },
