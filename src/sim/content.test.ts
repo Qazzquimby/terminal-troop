@@ -159,7 +159,7 @@ test("content of several kinds registers them all and spawns them together", () 
   const vampires: Content<"vampires", number> = {
     name: "vampires",
     create: ({ vampires: count }) => ({
-      name: "vampires",
+      name: "entity/vampires",
       register(game) {
         coffin.register(game);
         vampire.register(game);

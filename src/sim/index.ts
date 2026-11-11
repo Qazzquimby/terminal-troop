@@ -18,6 +18,7 @@ export type { OutgoingEvent } from "./content-event.js";
 export type {
   Content,
   ContentConfig,
+  ContentName,
   EntitySpec,
   Scatter,
   SpawnRule,

@@ -381,7 +381,7 @@ describe("sounds", () => {
     expect(runUntil(game, 3, () => game.outbox.length > 0)).toBe(true);
     expect(game.outbox).toEqual([
       {
-        content: "health",
+        content: "core/health",
         event: "damage",
         route: "player",
         to: "them",

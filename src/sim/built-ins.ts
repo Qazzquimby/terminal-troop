@@ -14,18 +14,14 @@ interface BuiltIn {
 
 /**
  * The engine's own player state and events, by the name each travels under. Every session has
- * them, and content may not use these names.
+ * them, under `core/`, a namespace content names cannot take.
  */
-const BUILT_INS: Readonly<Record<string, BuiltIn>> = {
+const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   /** The id of the item each player holds, and each use of it. */
-  held: { player: heldItemId, events: { use: itemUsed } },
+  "core/held": { player: heldItemId, events: { use: itemUsed } },
   /** The damage the host deals each player, sent to that player's own client. */
-  health: { events: { damage: damaged } },
+  "core/health": { events: { damage: damaged } },
 };
-
-export const RESERVED_NAMES: ReadonlySet<string> = new Set(
-  Object.keys(BUILT_INS),
-);
 
 /** Registers the engine's own player state and events with a new session. */
 export function registerBuiltIns(game: Session): void {

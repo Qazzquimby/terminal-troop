@@ -10,7 +10,7 @@ import {
   playerState,
   registerContent,
 } from "./index.js";
-import type { WorldContent } from "./index.js";
+import type { ContentName, WorldContent } from "./index.js";
 
 function session() {
   return createSession("me", "ME", "DATA", "dev", testSfx(), testSimConfig);
@@ -76,28 +76,51 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
   ]);
   lit.set(game.local, true);
   expect(playerState(game).content).toEqual({
-    held: null,
-    bat: "Infinity",
-    torch: true,
+    "core/held": null,
+    "entity/bat": "Infinity",
+    "item/torch": true,
   });
 });
 
 test("every session reports the held item, with no content listed", () => {
   const game = session();
   registerContent(game, []);
-  expect(playerState(game).content).toEqual({ held: null });
+  expect(playerState(game).content).toEqual({ "core/held": null });
 });
 
-test("content may not take a name the engine keeps for its own", () => {
+test("content is named for where it comes from, and only the engine's own is core", () => {
+  expectTypeOf<"entity/lamp">().toExtend<ContentName>();
+  expectTypeOf<"item/lamp">().toExtend<ContentName>();
+  expectTypeOf<"core/held">().not.toExtend<ContentName>();
+  expectTypeOf<"lamp">().not.toExtend<ContentName>();
+});
+
+test("an entity and an item of the same name keep their own state", () => {
   const game = session();
-  const held: WorldContent = {
-    name: "held",
-    register: () => undefined,
-    populate: () => undefined,
-  };
-  expect(() => {
-    registerContent(game, [held]);
-  }).toThrow("Content name reserved by the engine: held");
+  const glow = playerData({ schema: z.number(), initial: () => 1 });
+  const fuel = playerData({ schema: z.number(), initial: () => 2 });
+  registerContent(game, [
+    defineEntity("lamp", () => ({
+      ...shape,
+      data: z.object({}),
+      player: glow,
+    })).create({ lamp: undefined }),
+    defineItem("lamp", () => ({
+      name: "Lamp",
+      maxStack: 1,
+      emoji: "🪔",
+      player: fuel,
+      cooldown: 1,
+      apply: () => undefined,
+      show: (_game, at) => ({ center: at, hit: false }),
+      draw: () => undefined,
+    })).create({ lamp: undefined }),
+  ]);
+  expect(playerState(game).content).toEqual({
+    "core/held": null,
+    "entity/lamp": 1,
+    "item/lamp": 2,
+  });
 });
 
 test("a remote player's reported values are decoded by each entry's own schema", () => {
@@ -105,7 +128,7 @@ test("a remote player's reported values are decoded by each entry's own schema",
   const ammo = playerData({ schema: Count, initial: () => 0 });
   registerContent(game, [
     {
-      name: "gun",
+      name: "item/gun",
       player: ammo,
       register: () => undefined,
       populate: () => undefined,
@@ -114,7 +137,7 @@ test("a remote player's reported values are decoded by each entry's own schema",
   applyRemoteState(game, {
     ...playerState(game),
     id: "them",
-    content: { gun: "Infinity" },
+    content: { "item/gun": "Infinity" },
   });
   const them = game.players.get("them");
   expect(them === undefined ? undefined : ammo.get(them)).toBe(Infinity);
@@ -122,12 +145,16 @@ test("a remote player's reported values are decoded by each entry's own schema",
 
 test("a content name used twice throws", () => {
   const game = session();
-  const entry = (name: string): WorldContent => ({
+  const entry = (name: ContentName): WorldContent => ({
     name,
     register: () => undefined,
     populate: () => undefined,
   });
   expect(() => {
-    registerContent(game, [entry("a"), entry("b"), entry("a")]);
-  }).toThrow("Content name used twice: a");
+    registerContent(game, [
+      entry("item/a"),
+      entry("entity/a"),
+      entry("item/a"),
+    ]);
+  }).toThrow("Content name used twice: item/a");
 });

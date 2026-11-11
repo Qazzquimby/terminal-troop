@@ -3,7 +3,7 @@ import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { contentEvent } from "./content-event.js";
 import type { PlayerEvent, RoomEvent } from "./content-event.js";
-import { defineItem, registerContent } from "./content.js";
+import { defineEntity, defineItem, registerContent } from "./content.js";
 import type { WorldContent } from "./content.js";
 import { createSession } from "./session.js";
 import type { Session } from "./session.js";
@@ -33,7 +33,7 @@ const nudge = contentEvent({
 });
 
 const entry: WorldContent = {
-  name: "signals",
+  name: "item/signals",
   events: { flare, nudge },
   register: () => undefined,
   populate: () => undefined,
@@ -58,14 +58,14 @@ describe("content events", () => {
     nudge.send(game, "them", { by: 2 });
     expect(game.outbox).toEqual([
       {
-        content: "signals",
+        content: "item/signals",
         event: "flare",
         route: "all",
         to: null,
         payload: { brightness: "3" },
       },
       {
-        content: "signals",
+        content: "item/signals",
         event: "nudge",
         route: "player",
         to: "them",
@@ -86,12 +86,24 @@ describe("content events", () => {
     expect(game.outbox).toEqual([]);
   });
 
-  test("an item's own events travel under its name", () => {
+  test("an item's and an entity's own events travel under their namespaced names", () => {
     const honk = contentEvent({
       schema: z.object({ pitch: z.number() }),
       to: "all",
       receive: () => undefined,
     });
+    const hoot = contentEvent({
+      schema: z.object({ pitch: z.number() }),
+      to: "all",
+      receive: () => undefined,
+    });
+    const hornKind = defineEntity("horn", () => ({
+      radius: 10,
+      maxHealth: 10,
+      data: z.object({}),
+      events: { honk: hoot },
+      draw: () => undefined,
+    }));
     const horn = defineItem("horn", () => ({
       name: "Horn",
       maxStack: 1,
@@ -103,11 +115,22 @@ describe("content events", () => {
       draw: () => undefined,
     }));
     const game = session();
-    registerContent(game, [horn.create({ horn: null })]);
+    registerContent(game, [
+      hornKind.create({ horn: null }),
+      horn.create({ horn: null }),
+    ]);
+    hoot.send(game, { pitch: 1 });
     honk.send(game, { pitch: 2 });
     expect(game.outbox).toEqual([
       {
-        content: "horn",
+        content: "entity/horn",
+        event: "honk",
+        route: "all",
+        to: null,
+        payload: { pitch: 1 },
+      },
+      {
+        content: "item/horn",
         event: "honk",
         route: "all",
         to: null,
@@ -116,23 +139,20 @@ describe("content events", () => {
     ]);
   });
 
-  test("every session has the engine's own events, and content may not take their names", () => {
+  test("every session has the engine's own events, under core", () => {
     const game = session();
     expect(
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
-      ["held", ["use"]],
-      ["health", ["damage"]],
+      ["core/held", ["use"]],
+      ["core/health", ["damage"]],
     ]);
-    expect(() => {
-      registerContent(game, [{ ...entry, name: "health" }]);
-    }).toThrow("Content name reserved by the engine: health");
   });
 
   test("an event registered twice throws", () => {
     const game = session();
     expect(() => {
-      registerContent(game, [entry, { ...entry, name: "again" }]);
-    }).toThrow("Event already registered: again.flare");
+      registerContent(game, [entry, { ...entry, name: "entity/again" }]);
+    }).toThrow("Event already registered: entity/again.flare");
   });
 });

@@ -113,8 +113,8 @@ describe("the message table", () => {
 
   test.each([
     {},
-    { held: "shovel" },
-    { held: null, lamp: { on: true, fuel: "Infinity" } },
+    { "core/held": "shovel" },
+    { "core/held": null, "item/lamp": { on: true, fuel: "Infinity" } },
     { "an-entry-this-build-lacks": [1, 2] },
   ])("a STATE's content %o parses as is, left to each entry", (content) => {
     expect(
@@ -123,9 +123,21 @@ describe("the message table", () => {
   });
 
   test.each([
-    { from: "a", to: null, content: "held", event: "use", payload: 1 },
-    { from: "a", to: "b", content: "health", event: "damage", payload: {} },
-    { from: "a", to: null, content: "lamp", event: "toggle", payload: null },
+    { from: "a", to: null, content: "core/held", event: "use", payload: 1 },
+    {
+      from: "a",
+      to: "b",
+      content: "core/health",
+      event: "damage",
+      payload: {},
+    },
+    {
+      from: "a",
+      to: null,
+      content: "item/lamp",
+      event: "toggle",
+      payload: null,
+    },
   ])("a CONTENT's payload %o parses as is, left to its event", (message) => {
     expect(messages.content.safeParse(message).data).toEqual(message);
   });
@@ -133,7 +145,7 @@ describe("the message table", () => {
   const content = {
     from: "a",
     to: null,
-    content: "held",
+    content: "core/held",
     event: "use",
     payload: {},
   };
