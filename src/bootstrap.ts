@@ -42,7 +42,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { createMonsters } from "./monsters/index.js";
-import { createCruiser } from "./sim/cruiser.js";
+import { createCruiser } from "./vehicles/index.js";
 import { createItems } from "./items/index.js";
 
 /** Owns everything that lives as long as the page. */

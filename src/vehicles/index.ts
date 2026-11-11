@@ -1,11 +1,13 @@
 import { z } from "zod";
-import { drawEmoji } from "../render/render.js";
-import { nearestFreePoint } from "./collision.js";
-import { registerEntityType, spawnEntity } from "./entities.js";
-import { kindId } from "./kinds.js";
-import { isAreaFree } from "./map.js";
-import type { Point } from "./map.js";
-import type { Session } from "./session.js";
+import { drawEmoji } from "../render/index.js";
+import {
+  isAreaFree,
+  kindId,
+  nearestFreePoint,
+  registerEntityType,
+  spawnEntity,
+} from "../sim/index.js";
+import type { Point, Session } from "../sim/index.js";
 
 /** A car that starts beside the player, carrying a wide light. */
 export interface CruiserConfig {
@@ -15,7 +17,7 @@ export interface CruiserConfig {
   readonly offset: number;
 }
 
-export const CruiserKind = kindId("cruiser");
+const CruiserKind = kindId("cruiser");
 
 /** The cruiser's body; its emoji is drawn to that size. */
 const BODY_RADIUS = 10;

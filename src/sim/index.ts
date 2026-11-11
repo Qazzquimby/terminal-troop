@@ -1,4 +1,4 @@
-export { isSweepFree } from "./collision.js";
+export { isSweepFree, nearestFreePoint } from "./collision.js";
 export {
   applyEntitySnapshot,
   cueEntities,
@@ -8,9 +8,6 @@ export {
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
 export { kindId } from "./kinds.js";
-export type { EntityKind } from "./kinds.js";
-export { CruiserKind, createCruiser } from "./cruiser.js";
-export type { CruiserConfig } from "./cruiser.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export { addItem, createInventory, heldEmoji } from "./inventory.js";
