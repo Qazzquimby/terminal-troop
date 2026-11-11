@@ -4,9 +4,11 @@ export {
   cueEntities,
   entitySnapshot,
   registerEntityType,
+  removeEntity,
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export { spawnWorldItem } from "./world-items.js";
 export {
   defineEntity,
   defineItem,

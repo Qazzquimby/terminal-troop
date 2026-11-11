@@ -57,6 +57,8 @@ export interface Controls {
   readonly use: boolean;
   /** Whether the secondary action was pressed this step. */
   readonly secondary: boolean;
+  /** Whether to pick up the nearest item the player touches this step. */
+  readonly interact: boolean;
 }
 
 /** A quick move a player makes on top of walking: a fixed velocity, for a while. */

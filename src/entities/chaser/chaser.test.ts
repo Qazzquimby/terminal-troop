@@ -31,6 +31,7 @@ const idle = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 const { chaser: config } = testEntitiesConfig;
 

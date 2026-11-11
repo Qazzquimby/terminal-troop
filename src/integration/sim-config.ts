@@ -39,6 +39,7 @@ export const testSimConfig: SimConfig = {
     sprint: { interval: 0.25, loudness: 1.5 },
     crouch: { interval: 0.75, loudness: 0.2 },
   },
+  worldItems: { radius: 8, cooldown: 0.2 },
 };
 
 /** The local player hears a noise of loudness 1 from 300px, and sees it ripple for 0.5s. */

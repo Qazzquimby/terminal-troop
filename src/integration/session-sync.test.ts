@@ -79,6 +79,7 @@ const idle = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 test("clients in the same room build the same world", async () => {

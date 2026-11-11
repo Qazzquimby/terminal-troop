@@ -38,6 +38,7 @@ const idle = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT
@@ -1116,6 +1117,7 @@ describe("host", () => {
       expect(kinds(get("a"))).toEqual([
         ["blob", 1],
         ["biter", 2],
+        ["core/world-item", 3],
       ]);
       expect(kinds(get("b"))).toEqual(kinds(get("a")));
 
