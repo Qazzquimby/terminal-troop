@@ -15,6 +15,7 @@ import {
   playerState,
   randomFreePosition,
   registerEntityType,
+  defineEntity,
   defineItem,
   spawnEntity,
   updateSession,
@@ -149,7 +150,7 @@ function createHub() {
 
 /** Three blobs start across the dev square, each drifting right at 20px/s with 10 health, and heard stepping. */
 const blobs: WorldContent = {
-  name: "blob",
+  name: "entity/blob",
   register(session) {
     registerEntityType(session, "blob", {
       radius: 10,
@@ -176,7 +177,7 @@ const blobs: WorldContent = {
 const BITER = "biter";
 
 const biters: WorldContent = {
-  name: BITER,
+  name: "entity/biter",
   register(session) {
     registerEntityType(session, BITER, {
       radius: 10,
@@ -578,7 +579,7 @@ describe("players and voice", () => {
       ...spot,
       aim: 0,
       health: 100,
-      content: { held: "laser" },
+      content: { "core/held": "laser" },
     });
     const remote = session.players.get("x");
     expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
@@ -604,7 +605,7 @@ describe("content's player state", () => {
     initial: () => ({ lit: false, fuel: 10 }),
   });
   const lamp: WorldContent = {
-    name: "lamp",
+    name: "item/lamp",
     player: lampState,
     register: () => undefined,
     populate: () => undefined,
@@ -644,6 +645,50 @@ describe("content's player state", () => {
     );
   });
 
+  test("an entity and an item of the same name sync their own state, each under its namespace", async () => {
+    const glow = playerData({ schema: z.number(), initial: () => 1 });
+    const fuel = playerData({ schema: z.number(), initial: () => 2 });
+    const lamps = [
+      defineEntity("lamp", () => ({
+        radius: 10,
+        maxHealth: 10,
+        data: z.object({}),
+        player: glow,
+        draw: () => undefined,
+      })).create({ lamp: undefined }),
+      defineItem("lamp", () => ({
+        name: "Lamp",
+        maxStack: 1,
+        emoji: "🪔",
+        player: fuel,
+        cooldown: 1,
+        apply: () => undefined,
+        show: (_game, at) => ({ center: at, hit: false }),
+        draw: () => undefined,
+      })).create({ lamp: undefined }),
+    ];
+    const clock = createManualClock();
+    const a = setup(createHub(), "a", clock, lamps);
+    const b = setup(a.hub, "b", clock, lamps);
+    await a.room.join("ABC", "A");
+    await b.room.join("ABC", "B");
+    const listener = a.hub.listener("dev:ABC");
+    const local = joined(b.room).session.local;
+    glow.set(local, 5);
+    fuel.set(local, 7);
+    clock.advance(clock.now() + SEND_GAP);
+    b.room.frame(clock.now());
+
+    const remote = joined(a.room).session.players.get("b");
+    expect(
+      remote === undefined ? undefined : [glow.get(remote), fuel.get(remote)],
+    ).toEqual([5, 7]);
+    const sent = listener.heard.filter(({ event }) => event === NetEvent.STATE);
+    expect(sent.at(-1)?.payload).toMatchObject({
+      content: { "core/held": null, "entity/lamp": 5, "item/lamp": 7 },
+    });
+  });
+
   /** A room joined as "me" with the lamp, and a report from a bare listener "x" of its content. */
   async function reported() {
     const ctx = setup(createHub(), "me", createManualClock(), content);
@@ -676,10 +721,15 @@ describe("content's player state", () => {
   test("an unknown entry or a value its entry rejects is dropped, and the rest of the STATE applies", async () => {
     const { session, report } = await reported();
     expect(
-      report({ lamp: { lit: "yes", fuel: 1 }, held: "poke", ghost: 1 }, "XY"),
+      report(
+        { "item/lamp": { lit: "yes", fuel: 1 }, "core/held": "poke", ghost: 1 },
+        "XY",
+      ),
     ).toEqual({ lamp: { lit: false, fuel: 10 }, held: "poke" });
     expect(session.players.get("x")?.name).toBe("XY");
-    expect(report({ lamp: { lit: true, fuel: "Infinity" }, held: 7 })).toEqual({
+    expect(
+      report({ "item/lamp": { lit: true, fuel: "Infinity" }, "core/held": 7 }),
+    ).toEqual({
       lamp: { lit: true, fuel: Infinity },
       held: "poke",
     });
@@ -687,7 +737,7 @@ describe("content's player state", () => {
 
   test("an entry missing from a STATE keeps its last value", async () => {
     const { report } = await reported();
-    report({ lamp: { lit: true, fuel: 3 }, held: "poke" });
+    report({ "item/lamp": { lit: true, fuel: 3 }, "core/held": "poke" });
     expect(report({})).toEqual({ lamp: { lit: true, fuel: 3 }, held: "poke" });
   });
 });
@@ -1175,7 +1225,7 @@ describe("host", () => {
 
     test("an unbreakable entity reaches the other players whole", async () => {
       const rocks: WorldContent = {
-        name: "rock",
+        name: "entity/rock",
         register(session) {
           registerEntityType(session, "rock", {
             radius: 10,
@@ -1207,7 +1257,7 @@ describe("host", () => {
     test("each world is populated once, by its first host, and not again on a handover", async () => {
       const populated: string[] = [];
       const counted: WorldContent = {
-        name: "counted",
+        name: "entity/counted",
         register: () => undefined,
         populate(session) {
           populated.push(session.localId);

@@ -16,6 +16,7 @@ export {
 export type {
   Content,
   ContentConfig,
+  ContentName,
   EntitySpec,
   Scatter,
   SpawnRule,

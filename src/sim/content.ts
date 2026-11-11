@@ -1,4 +1,3 @@
-import { RESERVED_NAMES } from "./built-ins.js";
 import { nearestFreePoint } from "./collision.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
@@ -13,12 +12,18 @@ import { registerItem } from "./use.js";
 import type { ItemBehaviour } from "./use.js";
 
 /**
+ * A content entry's name, in the namespace of where it comes from: `entity/` for kinds of entity,
+ * `item/` for items. The engine's own entries are under `core/`, which content cannot take.
+ */
+export type ContentName = `entity/${string}` | `item/${string}`;
+
+/**
  * What a room's world holds: kinds of entity and item, the entities a new world starts with,
  * the items each player starts with, and the state each player keeps.
  */
 export interface WorldContent {
   /** Unique in a content list; the key its player state travels under. */
-  readonly name: string;
+  readonly name: ContentName;
   /** The state it keeps on every player, if any. */
   readonly player?: PlayerData<unknown> | undefined;
   /**
@@ -32,7 +37,7 @@ export interface WorldContent {
 
 /**
  * Registers each of `contents` with a new session, in order: first its player state, then the
- * rest. Throws on a name used twice, or one the engine keeps for its own.
+ * rest. Throws on a name used twice.
  */
 export function registerContent(
   game: Session,
@@ -40,8 +45,6 @@ export function registerContent(
 ): void {
   const names = new Set<string>();
   for (const content of contents) {
-    if (RESERVED_NAMES.has(content.name))
-      throw new Error(`Content name reserved by the engine: ${content.name}`);
     if (names.has(content.name))
       throw new Error(`Content name used twice: ${content.name}`);
     names.add(content.name);
@@ -202,8 +205,9 @@ function spawnByRule<S>(
 }
 
 /**
- * A content entry of one kind, registered under `name` and configured by the slice under the
- * same name. `define` builds the kind from that slice when the entry is created.
+ * A content entry of one kind, registered as the kind `name` and configured by the slice under
+ * the same name; the entry itself is `entity/<name>`. `define` builds the kind from that slice
+ * when the entry is created.
  */
 export function defineEntity<N extends string, C, S>(
   name: N,
@@ -215,7 +219,7 @@ export function defineEntity<N extends string, C, S>(
       const spec = define(config[name]);
       const kind = entityKind(name, spec);
       return {
-        name,
+        name: `entity/${name}`,
         player: spec.player,
         register(game) {
           kind.register(game);
@@ -248,8 +252,9 @@ export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
 }
 
 /**
- * A content entry of one item, registered under `name` and configured by the slice under the
- * same name. `define` builds the item from that slice when the entry is created.
+ * A content entry of one item, registered as the item id `name` and configured by the slice
+ * under the same name; the entry itself is `item/<name>`. `define` builds the item from that
+ * slice when the entry is created.
  */
 export function defineItem<N extends string, C>(
   name: N,
@@ -266,7 +271,7 @@ export function defineItem<N extends string, C>(
         emoji: spec.emoji,
       };
       return {
-        name,
+        name: `item/${name}`,
         player: spec.player,
         register(game) {
           registerItem(game, item, spec);
