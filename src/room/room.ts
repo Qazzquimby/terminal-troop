@@ -114,13 +114,11 @@ export interface Room {
   join(rawCode: string, name: string): Promise<JoinResult>;
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
-  /** Runs after the simulation steps of a frame: sends state and the damage dealt, then mixes voice. */
-  frame(now: number): void;
   /**
-   * Hands the local player's item use to the host: queued for this client's next step while
-   * hosting, sent to the host otherwise, and dropped while no host is known.
+   * Runs after the simulation steps of a frame: sends state, hands the local player's item uses
+   * to the host, sends the damage dealt, then mixes voice.
    */
-  use(request: UseRequest): void;
+  frame(now: number): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
   setHidden(hidden: boolean): void;
   /** Undefined for a remote player who is gone, or outside a room. */
@@ -192,6 +190,16 @@ export function createRoom(deps: RoomDeps): Room {
     room.lastSent = now;
     room.forceState = false;
     void send(NetEvent.STATE, playerState(room.session.local));
+  }
+
+  /**
+   * Hands an item use to the host: queued for this client's next step while hosting, sent to
+   * the host otherwise, and dropped while no host is known.
+   */
+  function handUse(room: Link, request: UseRequest): void {
+    const host = room.host?.id;
+    if (host === localId) requestUse(room.session, request);
+    else if (host !== undefined) void send(NetEvent.USE, request);
   }
 
   /** Sends each remote player the damage dealt to it since the last frame. */
@@ -490,6 +498,8 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       const room = link;
       sendState(room, now, room.forceState);
+      for (const request of room.session.localUses.splice(0))
+        handUse(room, request);
       sendStrikes(room);
       if (room.host?.id === localId) sendEntities(room, now);
       if (room.voiceRoom !== null)
@@ -502,13 +512,6 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       sendHeartbeat(link);
       if (shown) link.forceState = true;
-    },
-
-    use(request) {
-      if (link === null) return;
-      const host = link.host?.id;
-      if (host === localId) requestUse(link.session, request);
-      else if (host !== undefined) void send(NetEvent.USE, request);
     },
 
     presenceOf: (id) => link?.roster.get(id),

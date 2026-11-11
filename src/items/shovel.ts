@@ -1,10 +1,16 @@
 import { applyDamage, isAreaFree } from "../sim/index.js";
-import type { Entity, Point, Session, TileMap } from "../sim/index.js";
-import type { ItemBehaviour } from "./behaviour.js";
+import type {
+  Entity,
+  ItemBehaviour,
+  ItemUse,
+  Point,
+  Session,
+  TileMap,
+} from "../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
-/** How the shovel attacks. Distances in pixels, times in milliseconds. */
+/** How the shovel attacks. Distances in pixels, times in sim seconds. */
 export interface ShovelConfig {
   /** The radius of the hitbox. */
   readonly radius: number;
@@ -15,9 +21,9 @@ export interface ShovelConfig {
   /** How far, in pixels, a hit entity is pushed away from the hitbox centre. */
   readonly knockback: number;
   /** Minimum time between swings. */
-  readonly cooldownMs: number;
+  readonly cooldown: number;
   /** How long a swing is shown. */
-  readonly durationMs: number;
+  readonly duration: number;
 }
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
@@ -51,20 +57,19 @@ function targets(game: Session, center: Point, radius: number): Entity[] {
   );
 }
 
-/** A hitbox that fades out over its duration; green when it connected. */
+/** A hitbox that fades out over `duration` seconds from `use.startedAt`; green when it connected. */
 function drawHitbox(
   ctx: CanvasRenderingContext2D,
-  center: Point,
+  use: ItemUse,
   radius: number,
-  hit: boolean,
-  startedAt: number,
-  endsAt: number,
-  now: number,
+  duration: number,
+  time: number,
 ): void {
-  const progress = (now - startedAt) / (endsAt - startedAt);
+  const progress = (time - use.startedAt) / duration;
   if (progress < 0 || progress > 1) return;
 
-  const color = hit ? "#8fd694" : "#e1bd83";
+  const { center } = use;
+  const color = use.hit ? "#8fd694" : "#e1bd83";
   const fade = 1 - progress;
 
   ctx.save();
@@ -90,7 +95,7 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
     y: at.y + Math.sin(aim) * config.reach,
   });
   return {
-    cooldownMs: config.cooldownMs,
+    cooldown: config.cooldown,
     apply(game, at, aim) {
       const center = hitbox(at, aim);
       for (const entity of targets(game, center, config.radius)) {
@@ -98,21 +103,17 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
         knockBack(entity, center, config.knockback, game.world.map);
       }
     },
-    show(game, now) {
+    show(game) {
       const { local } = game;
       const center = hitbox(local, local.aim);
       const hit = targets(game, center, config.radius).length > 0;
-      const endsAt = now + config.durationMs;
       void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, {
         volume: 0.8,
       });
-      return {
-        startedAt: now,
-        endsAt,
-        draw(ctx, drawNow) {
-          drawHitbox(ctx, center, config.radius, hit, now, endsAt, drawNow);
-        },
-      };
+      return { center, hit };
+    },
+    draw(ctx, use, time) {
+      drawHitbox(ctx, use, config.radius, config.duration, time);
     },
   };
 }

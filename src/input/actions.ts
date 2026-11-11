@@ -2,7 +2,8 @@ import type { Point, Controls } from "../sim/index.js";
 
 /**
  * The only place key codes and context permissions are named: each action's keys,
- * and the input contexts it is active in.
+ * and the input contexts it is active in. Keys are `KeyboardEvent.code`s, or a
+ * `MOUSE_BUTTONS` name for a mouse button.
  */
 export const ACTIONS = {
   moveUp: { keys: ["KeyW", "ArrowUp"], contexts: ["play"] },
@@ -10,6 +11,7 @@ export const ACTIONS = {
   moveDown: { keys: ["KeyS", "ArrowDown"], contexts: ["play"] },
   moveRight: { keys: ["KeyD", "ArrowRight"], contexts: ["play"] },
   sprint: { keys: ["ShiftLeft", "ShiftRight"], contexts: ["play"] },
+  useItem: { keys: ["MouseLeft"], contexts: ["play"] },
   toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
@@ -26,6 +28,13 @@ export const ACTIONS = {
 } as const;
 
 export type Action = keyof typeof ACTIONS;
+
+/** The key code each mouse button drives actions with, by `MouseEvent.button`. */
+export const MOUSE_BUTTONS: readonly string[] = [
+  "MouseLeft",
+  "MouseMiddle",
+  "MouseRight",
+];
 
 /** The number keys select inventory slots; a key's position here is its slot index. */
 const SLOT_ACTIONS = [
@@ -44,6 +53,7 @@ const NAMED_KEYS: Readonly<Record<string, string>> = {
   ShiftLeft: "Shift",
   ShiftRight: "Shift",
   Escape: "Esc",
+  MouseLeft: "Click",
   ArrowUp: "↑",
   ArrowDown: "↓",
   ArrowLeft: "←",
@@ -91,11 +101,11 @@ export interface ActionFrame {
 }
 
 /**
- * The slot a number key pressed this frame selects, or undefined if none was pressed; the last
+ * The slot a number key pressed this frame selects, or null if none was pressed; the last
  * key pressed wins. Selecting an empty slot holds nothing.
  */
-export function pressedSlot(frame: ActionFrame): number | undefined {
-  let selected: number | undefined;
+function pressedSlot(frame: ActionFrame): number | null {
+  let selected: number | null = null;
   SLOT_ACTIONS.forEach((action, slot) => {
     if (frame.pressed.has(action)) selected = slot;
   });
@@ -242,5 +252,7 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     move: { x: x / length, y: y / length },
     aim,
     sprint: frame.held.has("sprint"),
+    select: pressedSlot(frame),
+    use: frame.pressed.has("useItem"),
   };
 }

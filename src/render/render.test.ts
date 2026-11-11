@@ -57,7 +57,13 @@ test("lit walls draw a shallow band into the wall instead of a whole tile", () =
 
 const FIXED_DT = 1 / 60;
 
-const walkRight = { move: { x: 1, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const walkRight = {
+  move: { x: 1, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 
 function session(): Session {
   return createSession(

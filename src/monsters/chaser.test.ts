@@ -20,7 +20,13 @@ import { ChaserState, freshChaser } from "./chaser.js";
 import { MonsterKind, createMonsters } from "./index.js";
 
 const DT = 1 / 60;
-const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const idle = {
+  move: { x: 0, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 const { chaser: config } = testMonsterConfig;
 
 /** The sounds a session's chasers have played, oldest first. */
