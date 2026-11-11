@@ -7,6 +7,7 @@ import {
   applyRemoteState,
   heldItemOf,
   playerState,
+  registerContent,
   registerEntityType,
   requestUse,
   spawnEntity,
@@ -50,7 +51,7 @@ function session() {
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  for (const content of itemContent(testItemsConfig)) content.register(game);
+  registerContent(game, itemContent(testItemsConfig));
   registerEntityType(game, DUMMY, {
     radius: 15,
     maxHealth: 40,
@@ -104,10 +105,10 @@ test("the inventory has the configured slots, the shovel in the first", () => {
 test("the local player holds its selected slot's item, and reports its id", () => {
   const game = session();
   expect(heldItemOf(game, game.local)?.emoji).toBe("🪏");
-  expect(playerState(game.local).held).toBe("shovel");
+  expect(playerState(game).content).toEqual({ inventory: "shovel" });
   updateSession(game, { ...idle, select: 1 }, DT);
   expect(heldItemOf(game, game.local)).toBeNull();
-  expect(playerState(game.local).held).toBeNull();
+  expect(playerState(game).content).toEqual({ inventory: null });
 });
 
 test("a remote player holds the item it reports, and nothing for an unknown or no item", () => {
@@ -120,7 +121,7 @@ test("a remote player holds the item it reports, and nothing for an unknown or n
       y: 300,
       aim: 0,
       health: 100,
-      held,
+      content: { inventory: held },
     });
     const remote = game.players.get("them");
     return remote === undefined ? undefined : heldItemOf(game, remote);

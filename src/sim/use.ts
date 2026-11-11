@@ -1,7 +1,9 @@
+import { z } from "zod";
 import { heldItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
+import { playerData } from "./player-data.js";
 import type { Session } from "./session.js";
 
 /** A player's item use, as plain data: what this client sees of it. */
@@ -60,18 +62,33 @@ export function registerItem(
   game.items.set(item.id, behaviour);
 }
 
+/** The id of the item in `player`'s selected slot, or null for nothing. */
+function selectedItemId(player: Player): string | null {
+  return heldItem(player.inventory, player.held)?.item.id ?? null;
+}
+
 /**
- * The item `player` holds: the local player's from its selected slot, a remote player's from
- * its report. Null when it holds nothing, or an item this client does not know.
+ * The id of the item a player holds, or null for nothing: the local player's from its selected
+ * slot, a remote player's as it last reported. A reported id may name an item this client does
+ * not know.
  */
+export const heldItemId = playerData({
+  schema: z.string().min(1).max(32).nullable(),
+  initial: selectedItemId,
+});
+
+/** Keeps the local player's held item id in step with its selected slot. */
+export function reportHeld(local: Player): void {
+  heldItemId.set(local, selectedItemId(local));
+}
+
+/** The item `player` holds; null when it holds nothing, or an item this client does not know. */
 export function heldItemOf(
   game: Session,
   player: Player,
 ): ItemDefinition | null {
-  if (player.id === game.localId)
-    return heldItem(player.inventory, player.held)?.item ?? null;
-  if (player.reportedHeld === null) return null;
-  return game.itemDefinitions.get(player.reportedHeld) ?? null;
+  const id = heldItemId.get(player);
+  return id === null ? null : (game.itemDefinitions.get(id) ?? null);
 }
 
 /** Queues a use for the host's next step. */

@@ -20,8 +20,9 @@ export const Health = z.codec(
 const ItemId = z.string().min(1).max(32);
 
 /**
- * A STATE payload, its name cut to `nameMax` characters when heard, with the id of the item the
- * sender holds, or null for nothing.
+ * A STATE payload, its name cut to `nameMax` characters when heard. `content` holds each content
+ * entry's state for the sender by the entry's name; each entry parses its own, so a value its
+ * entry rejects, or of an entry this client lacks, is dropped where it is applied.
  */
 function stateMessage(nameMax: number) {
   return z.object({
@@ -34,7 +35,7 @@ function stateMessage(nameMax: number) {
     y: z.number(),
     aim: z.number(),
     health: Health,
-    held: ItemId.nullable(),
+    content: z.record(z.string(), z.unknown()),
   });
 }
 

@@ -5,6 +5,7 @@ import type { Session } from "../sim/index.js";
 import {
   createPlayer,
   createSession,
+  heldItemId,
   heldItemOf,
   registerItem,
   registerEntityType,
@@ -161,7 +162,7 @@ test("the view's players hold what the simulation's do", () => {
   game.local.inventory[0] = { item: torch, quantity: 1 };
   const remote = createPlayer("them", "THEM", game.world, game.config);
   game.players.set("them", remote);
-  remote.reportedHeld = "torch";
+  heldItemId.set(remote, "torch");
   remote.use = { item: "torch", center: origin, hit: false, startedAt: 0 };
 
   const view = interpolatedView(game, 0.5, origin);

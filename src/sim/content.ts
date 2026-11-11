@@ -5,15 +5,21 @@ import { placeItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, Rng } from "./map.js";
+import { registerPlayerData } from "./player-data.js";
+import type { PlayerData } from "./player-data.js";
 import type { Session } from "./session.js";
-import { registerItem } from "./use.js";
+import { heldItemId, registerItem } from "./use.js";
 import type { ItemBehaviour } from "./use.js";
 
 /**
  * What a room's world holds: kinds of entity and item, the entities a new world starts with,
- * and the items each player starts with.
+ * the items each player starts with, and the state each player keeps.
  */
 export interface WorldContent {
+  /** Unique in a content list; the key its player state travels under. */
+  readonly name: string;
+  /** The state it keeps on every player, if any. */
+  readonly player?: PlayerData<unknown> | undefined;
   /**
    * Registers its kinds and items with a new session, and stocks its local player's inventory,
    * before any snapshot reaches it.
@@ -22,6 +28,33 @@ export interface WorldContent {
   /** Spawns what a new world starts with. Runs once a world, on the first client to host it. */
   populate(game: Session): void;
 }
+
+/**
+ * Registers each of `contents` with a new session, in order: first its player state, then the
+ * rest. Throws on a name used twice.
+ */
+export function registerContent(
+  game: Session,
+  contents: readonly WorldContent[],
+): void {
+  const names = new Set<string>();
+  for (const content of contents) {
+    if (names.has(content.name))
+      throw new Error(`Content name used twice: ${content.name}`);
+    names.add(content.name);
+    if (content.player !== undefined)
+      registerPlayerData(game, content.name, content.player);
+    content.register(game);
+  }
+}
+
+/** What every player holds, by item id, for the others to draw. */
+export const inventory: WorldContent = {
+  name: "inventory",
+  player: heldItemId,
+  register: () => undefined,
+  populate: () => undefined,
+};
 
 /**
  * An entry of the content list: turns its config slice, kept under its `name`, into a world's
@@ -96,6 +129,8 @@ export type SpawnRule<S> =
 /** A kind's definition, and where a new world puts its starting entities; none without `spawn`. */
 export interface EntitySpec<S> extends EntityDefinition<S> {
   readonly spawn?: SpawnRule<S>;
+  /** The state the kind keeps on every player, if any. */
+  readonly player?: PlayerData<unknown>;
 }
 
 /** Random spots tried for each scattered entity before taking the one furthest from the players. */
@@ -185,6 +220,8 @@ export function defineEntity<N extends string, C, S>(
       const spec = define(config[name]);
       const kind = entityKind(name, spec);
       return {
+        name,
+        player: spec.player,
         register(game) {
           kind.register(game);
         },
@@ -211,6 +248,8 @@ interface StartingStack {
  */
 export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
   readonly starting?: StartingStack;
+  /** The state the item keeps on every player, if any. */
+  readonly player?: PlayerData<unknown>;
 }
 
 /**
@@ -232,6 +271,8 @@ export function defineItem<N extends string, C>(
         emoji: spec.emoji,
       };
       return {
+        name,
+        player: spec.player,
         register(game) {
           registerItem(game, item, spec);
           if (spec.starting !== undefined) {
