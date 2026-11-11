@@ -6,7 +6,8 @@ import type { SimConfig } from "../sim/index.js";
 
 /**
  * Tuning for tests that build a whole session. A full stamina bar lasts 3s of sprinting and
- * refills in 4s after a 0.6s rest.
+ * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
+ * where it was made. Walking steps every 0.5s at loudness 0.5; sprinting every 0.25s at 1.5.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -24,12 +25,17 @@ export const testSimConfig: SimConfig = {
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
   net: { smoothing: 12, useSlack: { distance: 40, seconds: 0.1 } },
+  noise: { blur: 0.2 },
+  footsteps: {
+    walk: { interval: 0.5, loudness: 0.5 },
+    sprint: { interval: 0.25, loudness: 1.5 },
+  },
 };
 
 /**
  * Three chasers in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
- * seconds. A cruiser starts 60px right of the first host, lighting 400px round it.
+ * seconds, and hear a noise of loudness 1 from 300px. A cruiser starts 60px right of the first host, lighting 400px round it.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   chaser: {
@@ -46,6 +52,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     barkGap: { min: 4, max: 8 },
     attackRange: 32,
     attackCooldown: 1.5,
+    hearingRange: 300,
   },
   cruiser: { lightRadius: 400, offset: 60 },
 };

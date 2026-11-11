@@ -115,10 +115,12 @@ test("the inventory has the configured slots, the shovel in the first", () => {
 test("the local player holds its selected slot's item, and reports its id", () => {
   const game = session();
   expect(heldItemOf(game, game.local)?.emoji).toBe("🪏");
-  expect(playerState(game).content).toEqual({ "core/items": "shovel" });
+  expect(playerState(game).content).toMatchObject({
+    "core/items": "shovel",
+  });
   updateSession(game, { ...idle, select: 1 }, DT);
   expect(heldItemOf(game, game.local)).toBeNull();
-  expect(playerState(game).content).toEqual({ "core/items": null });
+  expect(playerState(game).content).toMatchObject({ "core/items": null });
 });
 
 test("a remote player holds the item it reports, and nothing for an unknown or no item", () => {

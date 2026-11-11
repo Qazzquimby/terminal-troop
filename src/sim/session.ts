@@ -11,6 +11,8 @@ import type {
 import { applyEvents } from "./content-event.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
+import { emitFootsteps } from "./footsteps.js";
+import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
@@ -18,6 +20,7 @@ import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
+import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
@@ -37,6 +40,8 @@ export interface SimConfig extends PlayerRules {
   readonly vision: VisionConfig;
   readonly light: LightConfig;
   readonly net: SyncConfig;
+  readonly noise: NoiseConfig;
+  readonly footsteps: FootstepConfig;
 }
 
 export interface Session {
@@ -72,6 +77,8 @@ export interface Session {
   readonly inbox: Delivery[];
   /** Events sent, waiting for the room to route them. */
   readonly outbox: OutgoingEvent[];
+  /** The noises made in the latest step; each step starts by clearing them. */
+  readonly noises: Noise[];
   /** When, in sim seconds, the host lets each player use an item again. */
   readonly readyAt: Map<string, number>;
   /**
@@ -132,6 +139,7 @@ export function createSession(
     eventAddresses: new Map(),
     inbox: [],
     outbox: [],
+    noises: [],
     readyAt: new Map(),
     reportNow: false,
   };
@@ -175,6 +183,7 @@ export function updateSession(
   dt: number,
 ): void {
   game.time += dt;
+  game.noises.length = 0;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
   reportHeld(game.local);
@@ -185,6 +194,7 @@ export function updateSession(
   }
 
   applyEvents(game);
+  emitFootsteps(game, dt);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
 

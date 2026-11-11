@@ -46,6 +46,8 @@ export { applyDamage } from "./entity.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
+export { noisesHeardBy } from "./noise.js";
+export type { Heard } from "./noise.js";
 export type { Controls, Player } from "./player.js";
 export { heldItemId, heldItemOf, registerItem } from "./use.js";
 export type { ItemUse } from "./use.js";
