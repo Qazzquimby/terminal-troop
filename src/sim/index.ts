@@ -7,7 +7,7 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
-export { defineEntity, entityKind } from "./content.js";
+export { defineEntity, defineItem, entityKind } from "./content.js";
 export type {
   Content,
   ContentConfig,
@@ -18,8 +18,7 @@ export type {
 } from "./content.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export { addItem } from "./inventory.js";
-export type { HeldSlot, Inventory, ItemDefinition } from "./inventory.js";
+export type { HeldSlot, Inventory } from "./inventory.js";
 export {
   isAreaFree,
   mulberry32,
@@ -40,7 +39,7 @@ export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";
 export { heldItemOf, registerItem, requestUse, showUse } from "./use.js";
-export type { ItemBehaviour, ItemUse, UseRequest } from "./use.js";
+export type { ItemUse, UseRequest } from "./use.js";
 
 export {
   applyRemoteState,

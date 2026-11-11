@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "vitest";
 import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
 import { createScope } from "../lib/scope/index.js";
-import { createItems } from "../items/index.js";
-import { worldContent } from "../entities/index.js";
+import { itemContent } from "../items/index.js";
+import { entityContent } from "../entities/index.js";
 import { NetEvent } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
@@ -13,7 +13,7 @@ import { createManualClock, testRoomConfig } from "./room-helpers.js";
 import {
   testEntitiesConfig,
   testSfx,
-  testShovelConfig,
+  testItemsConfig,
   testSimConfig,
 } from "./sim-config.js";
 
@@ -43,8 +43,10 @@ function client(id: string): Room {
     clock,
     config: testRoomConfig,
     sim: testSimConfig,
-    content: worldContent(testEntitiesConfig),
-    items: createItems({ shovel: testShovelConfig }),
+    content: [
+      ...entityContent(testEntitiesConfig),
+      ...itemContent(testItemsConfig),
+    ],
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange: () => undefined,
     onPeerFailed: () => undefined,

@@ -55,6 +55,23 @@ export function addItem(
   return remaining;
 }
 
+/** Puts a stack of `quantity` `item` in `slot`, which must exist and be empty. */
+export function placeItem(
+  inventory: Inventory,
+  slot: number,
+  item: ItemDefinition,
+  quantity: number,
+): void {
+  requireQuantity(quantity);
+  if (quantity > item.maxStack)
+    throw new RangeError(`More ${item.id} than one stack holds.`);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= inventory.length)
+    throw new RangeError("Invalid inventory slot.");
+  if (inventory[slot] !== null)
+    throw new RangeError(`Inventory slot ${String(slot)} is taken.`);
+  inventory[slot] = { item, quantity };
+}
+
 /** @public Returns the quantity removed. */
 export function removeItem(
   inventory: Inventory,

@@ -1,7 +1,7 @@
 import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
 import type { EntitiesConfig } from "../entities/index.js";
-import type { ShovelConfig } from "../items/index.js";
+import type { ItemsConfig } from "../items/index.js";
 import type { SimConfig } from "../sim/index.js";
 
 /**
@@ -50,15 +50,17 @@ export const testEntitiesConfig: EntitiesConfig = {
   cruiser: { lightRadius: 400, offset: 60 },
 };
 
-/** A shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most twice a second. */
-export const testShovelConfig: ShovelConfig = {
-  radius: 20,
-  reach: 40,
-  damage: 25,
-  knockback: 20,
-  cooldown: 0.5,
-  duration: 0.1,
-  volume: 1,
+/** Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most twice a second. */
+export const testItemsConfig: ItemsConfig = {
+  shovel: {
+    radius: 20,
+    reach: 40,
+    damage: 25,
+    knockback: 20,
+    cooldown: 0.5,
+    duration: 0.1,
+    volume: 1,
+  },
 };
 
 /** Sound effects for sessions under test; nothing plays. */

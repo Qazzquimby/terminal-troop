@@ -1,13 +1,11 @@
-import { applyDamage, isAreaFree } from "../sim/index.js";
+import { applyDamage, defineItem, isAreaFree } from "../../sim/index.js";
 import type {
   Entity,
-  ItemBehaviour,
-  ItemDefinition,
   ItemUse,
   Point,
   Session,
   TileMap,
-} from "../sim/index.js";
+} from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
@@ -28,13 +26,6 @@ export interface ShovelConfig {
   /** Volume of a swing's sound, 0..1. */
   readonly volume: number;
 }
-
-export const SHOVEL = {
-  id: "shovel",
-  name: "Shovel",
-  maxStack: 1,
-  emoji: "🪏",
-} as const satisfies ItemDefinition;
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
 
@@ -98,13 +89,17 @@ function drawHitbox(
   ctx.restore();
 }
 
-/** The shovel: a short melee attack in front of the player. */
-export function createShovel(config: ShovelConfig): ItemBehaviour {
+/** The shovel: a short melee attack in front of the player, held in the first slot from the start. */
+export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   const hitbox = (at: Point, aim: number): Point => ({
     x: at.x + Math.cos(aim) * config.reach,
     y: at.y + Math.sin(aim) * config.reach,
   });
   return {
+    name: "Shovel",
+    maxStack: 1,
+    emoji: "🪏",
+    starting: { slot: 0, quantity: 1 },
     cooldown: config.cooldown,
     apply(game, at, aim) {
       const center = hitbox(at, aim);
@@ -125,4 +120,4 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
       drawHitbox(ctx, use, config.radius, config.duration, time);
     },
   };
-}
+});

@@ -3,12 +3,12 @@ import { chaser } from "./chaser/index.js";
 import { cruiser } from "./cruiser/index.js";
 
 /** Every kind of entity in the game; the room numbers kinds by this order. */
-const CONTENT = [chaser, cruiser] as const;
+const ENTITIES = [chaser, cruiser] as const;
 
 /** Each entry's config, under its name. */
-export type EntitiesConfig = ContentConfig<(typeof CONTENT)[number]>;
+export type EntitiesConfig = ContentConfig<(typeof ENTITIES)[number]>;
 
-/** The world's content, in the order its kinds are numbered. */
-export function worldContent(config: EntitiesConfig): WorldContent[] {
-  return CONTENT.map((entry) => entry.create(config));
+/** The world's entities, in the order their kinds are numbered. */
+export function entityContent(config: EntitiesConfig): WorldContent[] {
+  return ENTITIES.map((entry) => entry.create(config));
 }

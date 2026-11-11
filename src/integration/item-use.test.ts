@@ -1,7 +1,8 @@
-import { expect, test, vi } from "vitest";
+import { expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
-import { worldContent } from "../entities/index.js";
-import { createItems } from "../items/index.js";
+import { entityContent } from "../entities/index.js";
+import { itemContent } from "../items/index.js";
+import type { ItemsConfig } from "../items/index.js";
 import {
   applyRemoteState,
   heldItemOf,
@@ -16,10 +17,11 @@ import type { Controls, Point, Session } from "../sim/index.js";
 import {
   testEntitiesConfig,
   testSfx,
-  testShovelConfig,
+  testItemsConfig,
   testSimConfig,
 } from "./sim-config.js";
 
+const { shovel } = testItemsConfig;
 const DT = 1 / 60;
 const idle: Controls = {
   move: { x: 0, y: 0 },
@@ -48,7 +50,7 @@ function session() {
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  createItems({ shovel: testShovelConfig }).register(game);
+  for (const content of itemContent(testItemsConfig)) content.register(game);
   registerEntityType(game, DUMMY, {
     radius: 15,
     maxHealth: 40,
@@ -162,7 +164,7 @@ test("a swing waits out the cooldown in sim seconds", () => {
   const game = session();
   updateSession(game, swing, DT);
   const first = game.local.use;
-  wait(game, testShovelConfig.cooldown - 2 * DT);
+  wait(game, shovel.cooldown - 2 * DT);
   updateSession(game, swing, DT);
   expect(game.local.use).toBe(first);
   expect(game.localUses).toHaveLength(1);
@@ -187,8 +189,8 @@ test("a swing damages what is in its hitbox and knocks it away from the hitbox's
 
   swingRight(game);
   expect(game.local.use?.hit).toBe(true);
-  expect(hit.health).toBe(40 - testShovelConfig.damage);
-  expect(hit.x).toBeCloseTo(500 + testShovelConfig.knockback);
+  expect(hit.health).toBe(40 - shovel.damage);
+  expect(hit.x).toBeCloseTo(500 + shovel.knockback);
   expect(hit.y).toBeCloseTo(300);
   expect(missed).toMatchObject({ health: 40, x: 450, y: 380 });
 });
@@ -206,7 +208,7 @@ test("a wall in the way stops the knockback but not the damage", () => {
   const pinned = spawnEntity(game, DUMMY, 575, 500, {});
   swingRight(game);
   expect(pinned).toMatchObject({
-    health: 40 - testShovelConfig.damage,
+    health: 40 - shovel.damage,
     x: 575,
     y: 500,
   });
@@ -214,7 +216,7 @@ test("a wall in the way stops the knockback but not the damage", () => {
 
 test("a swing at the cruiser leaves it whole", () => {
   const game = session();
-  for (const content of worldContent(testEntitiesConfig))
+  for (const content of entityContent(testEntitiesConfig))
     content.register(game);
   standAt(game, { x: 450, y: 300 });
   const cruiser = spawnEntity(game, "cruiser", 500, 300, {});
@@ -229,7 +231,11 @@ test("a swing that kills removes its target", () => {
   const game = session();
   standAt(game, { x: 450, y: 300 });
   const target = spawnEntity(game, DUMMY, 500, 300, {});
-  target.health = testShovelConfig.damage;
+  target.health = shovel.damage;
   swingRight(game);
   expect(game.entities.has(target.id)).toBe(false);
+});
+test("the items config needs the shovel's slice", () => {
+  expectTypeOf({}).not.toExtend<ItemsConfig>();
+  expectTypeOf(testItemsConfig).toExtend<ItemsConfig>();
 });
