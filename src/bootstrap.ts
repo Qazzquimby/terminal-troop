@@ -23,6 +23,7 @@ import {
 import {
   draw,
   createCamera,
+  createMapMemory,
   createRipples,
   screenToWorld,
   updateCamera,
@@ -117,6 +118,15 @@ const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
+const mapMemory = createMapMemory(config.mapMemory, {
+  get: (key) => localStorage.getItem(key),
+  set: (key, value) => {
+    localStorage.setItem(key, value);
+  },
+  remove: (key) => {
+    localStorage.removeItem(key);
+  },
+});
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
@@ -185,8 +195,8 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence and ripples from the console or a test browser.
-if (debug) Object.assign(window, { voice, room, ripples });
+// Debug hook for driving voice and reading presence, ripples and map memory from the console or a test browser.
+if (debug) Object.assign(window, { voice, room, ripples, mapMemory });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -275,6 +285,10 @@ async function enterRoom(rawCode: string): Promise<void> {
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
   clock.reset(performance.now());
   ripples.clear();
+  mapMemory.enter(
+    { room: state.code, world: env.world, seed: state.session.seed },
+    state.session.world.map,
+  );
   updateCamera(camera, state.session.local, 0);
 }
 
@@ -315,7 +329,18 @@ function frame(): void {
     room.frame(now);
     updateCamera(camera, renderPosition(session.local, alpha), frameSeconds);
     const drawStart = performance.now();
-    draw(ctx, session, camera, now, alpha, input.mouseWorld(), isAway, ripples);
+    draw(
+      ctx,
+      session,
+      camera,
+      now,
+      alpha,
+      input.mouseWorld(),
+      isAway,
+      ripples,
+      mapMemory,
+    );
+    mapMemory.save(now);
     frameStats.drawMs = performance.now() - drawStart;
     updateInventory(session.local.inventory, session.local.held, inventoryOpen);
   } else {
@@ -364,11 +389,13 @@ on(copyBtn, "click", () => {
 
 on(document, "visibilitychange", () => {
   room.setHidden(document.hidden);
+  if (document.hidden) mapMemory.flush();
 });
 
 // Leaving sends BYE before anything else, while the page can still send.
 on(window, "beforeunload", () => {
   void room.leave();
+  mapMemory.flush();
 });
 
 requestAnimationFrame(frame);

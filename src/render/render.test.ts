@@ -1,18 +1,34 @@
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
-import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import type { Session } from "../sim/index.js";
+import {
+  testMapMemoryConfig,
+  testSfx,
+  testSimConfig,
+} from "../integration/sim-config.js";
+import type { Session, VisionSource } from "../sim/index.js";
 import {
   createPlayer,
   createSession,
   heldItemId,
   heldItemOf,
+  isVisible,
+  lightSources,
+  litWalls,
   registerItem,
   registerEntityType,
   spawnEntity,
   updateSession,
+  visibilityPolygon,
+  visionOrigins,
 } from "../sim/index.js";
-import { drawHealthBar, drawLitWalls, interpolatedView } from "./render.js";
+import { createMapMemory } from "./map-memory.js";
+import type { MapMemory } from "./map-memory.js";
+import {
+  drawHealthBar,
+  drawLitWalls,
+  drawRemembered,
+  interpolatedView,
+} from "./render.js";
 
 test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
   const ctx = {
@@ -184,4 +200,75 @@ test("the view's local aim points from the interpolated position to the mouse", 
   expect(view.local.aim).toBeCloseTo(Math.PI / 2);
   expect(view.players.get("me")?.aim).toBeCloseTo(Math.PI / 2);
   expect(game.local.aim).toBe(2);
+});
+
+const everywhere = { x: 0, y: 0, width: 900, height: 600 };
+
+/** Traces what the local player sees and lights facing `aim`, as `draw` does, and remembers it. */
+function look(game: Session, memory: MapMemory, aim: number): boolean {
+  const viewer = { ...game.local, aim };
+  const sources = visionOrigins(game, viewer);
+  const lights = lightSources(game, viewer);
+  const { map } = game.world;
+  const trace = (source: VisionSource) =>
+    visibilityPolygon(map, source, 64, 900);
+  const seen = sources.map(trace);
+  const lit = lights.map(trace);
+  memory.see({ seen, lit, walls: litWalls(seen, lit) }, everywhere);
+  const [thing] = game.entities.values();
+  return thing !== undefined && isVisible(map, sources, lights, thing);
+}
+
+test("terrain seen before is drawn out of sight, and nothing that stood on it", () => {
+  const game = createSession(
+    "me",
+    "ME",
+    "MEMORY",
+    "dev",
+    testSfx(),
+    testSimConfig,
+  );
+  Object.assign(game.local, { x: 175, y: 325 });
+  registerEntityType(game, "thing", {
+    radius: 5,
+    maxHealth: 10,
+    collides: false,
+    data: z.object({}),
+    draw: () => undefined,
+  });
+  spawnEntity(game, "thing", 325, 325, {});
+  const memory = createMapMemory(testMapMemoryConfig, {
+    get: () => null,
+    set: () => undefined,
+    remove: () => undefined,
+  });
+  memory.enter(
+    { room: "MEMORY", world: "dev", seed: game.seed },
+    game.world.map,
+  );
+
+  expect(look(game, memory, 0)).toBe(true);
+  expect(look(game, memory, Math.PI)).toBe(false);
+
+  const rects: number[][] = [];
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    rect: (...args: number[]) => {
+      rects.push(args);
+    },
+  };
+  drawRemembered(ctx, memory.within(everywhere), testMapMemoryConfig, 50);
+
+  expect(rects).toContainEqual([300, 300, 50, 50]);
 });
