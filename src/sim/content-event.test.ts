@@ -116,6 +116,19 @@ describe("content events", () => {
     ]);
   });
 
+  test("every session has the engine's own events, and content may not take their names", () => {
+    const game = session();
+    expect(
+      [...game.events].map(([name, events]) => [name, [...events.keys()]]),
+    ).toEqual([
+      ["held", ["use"]],
+      ["health", ["damage"]],
+    ]);
+    expect(() => {
+      registerContent(game, [{ ...entry, name: "health" }]);
+    }).toThrow("Content name reserved by the engine: health");
+  });
+
   test("an event registered twice throws", () => {
     const game = session();
     expect(() => {

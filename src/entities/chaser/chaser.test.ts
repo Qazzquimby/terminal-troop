@@ -13,7 +13,6 @@ import {
   createSession,
   cueEntities,
   entitySnapshot,
-  health,
   isAreaFree,
   registerContent,
   spawnEntity,
@@ -52,7 +51,7 @@ function world(
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  registerContent(game, [chaserContent.create({ chaser }), health]);
+  registerContent(game, [chaserContent.create({ chaser })]);
   return game;
 }
 

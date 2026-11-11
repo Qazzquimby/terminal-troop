@@ -3,7 +3,7 @@ import { nearestFreePoint } from "./collision.js";
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
-import { damaged, registerEntityType, spawnEntity } from "./entities.js";
+import { registerEntityType, spawnEntity } from "./entities.js";
 import { placeItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
@@ -57,14 +57,6 @@ export function registerContent(
     content.register(game);
   }
 }
-
-/** The damage the host deals each player, sent to that player's own client. */
-export const health: WorldContent = {
-  name: "health",
-  events: { damage: damaged },
-  register: () => undefined,
-  populate: () => undefined,
-};
 
 /**
  * An entry of the content list: turns its config slice, kept under its `name`, into a world's

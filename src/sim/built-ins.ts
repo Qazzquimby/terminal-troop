@@ -1,5 +1,6 @@
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
+import { damaged } from "./entities.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { Session } from "./session.js";
@@ -18,6 +19,8 @@ interface BuiltIn {
 const BUILT_INS: Readonly<Record<string, BuiltIn>> = {
   /** The id of the item each player holds, and each use of it. */
   held: { player: heldItemId, events: { use: itemUsed } },
+  /** The damage the host deals each player, sent to that player's own client. */
+  health: { events: { damage: damaged } },
 };
 
 export const RESERVED_NAMES: ReadonlySet<string> = new Set(

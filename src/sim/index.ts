@@ -11,7 +11,6 @@ export {
   defineEntity,
   defineItem,
   entityKind,
-  health,
   registerContent,
 } from "./content.js";
 export { contentEvent, receiveEvent } from "./content-event.js";

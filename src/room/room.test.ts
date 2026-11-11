@@ -10,7 +10,6 @@ import type { Transport } from "../net/index.js";
 import {
   applyDamage,
   contentEvent,
-  health,
   heldItemId,
   heldItemOf,
   playerData,
@@ -262,7 +261,7 @@ function setup(
   hub = createHub(),
   id = "me",
   clock = createManualClock(),
-  content: readonly WorldContent[] = [blobs, biters, health, poke],
+  content: readonly WorldContent[] = [blobs, biters, poke],
 ) {
   const log: string[] = [];
   const failures: { peerFailed: (id: string) => void }[] = [];
@@ -1695,6 +1694,22 @@ describe("host", () => {
         "b from-host 2 from a",
         "c from-host 2 from a",
       ]);
+    });
+
+    test("the host's damage reaches its player with no content listed", async () => {
+      const { clock, get } = await gather(["a", "b"], [], []);
+      clock.advance(1000);
+      const [a, b] = [get("a"), get("b")];
+      sessionOf(a).outbox.push({
+        content: "health",
+        event: "damage",
+        route: "player",
+        to: "b",
+        payload: { amount: 5 },
+      });
+      a.room.frame(clock.now());
+      step(b);
+      expect(sessionOf(b).local.health).toBe(95);
     });
 
     test("an unknown entry or event, a payload its event rejects, or a sender not in the room is dropped, and the rest apply", async () => {
