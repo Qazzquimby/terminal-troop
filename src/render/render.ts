@@ -18,11 +18,12 @@ import {
   movement,
   renderAim,
   renderPosition,
-  rippleRing,
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
 import type { Camera } from "./camera.js";
+import { rippleRing } from "./ripples.js";
+import type { Ripples } from "./ripples.js";
 
 interface Circle extends Point {
   readonly radius: number;
@@ -268,17 +269,21 @@ export function drawLitWalls(
   ctx.stroke();
 }
 
-/** Each noise the local player heard lately, as a ring spreading from where it seemed to come from. */
+/**
+ * Each noise the local player heard lately, as of `now` in ms, as a ring spreading from where it
+ * seemed to come from.
+ */
 function drawRipples(
   ctx: CanvasRenderingContext2D,
-  game: Session,
+  ripples: Ripples,
+  now: number,
   camera: Camera,
 ): void {
-  const { ripples } = game.config;
+  const { config } = ripples;
   ctx.save();
-  ctx.strokeStyle = ripples.colour;
-  for (const ripple of game.ripples.list) {
-    const ring = rippleRing(ripple, game.time, ripples);
+  ctx.strokeStyle = config.colour;
+  for (const ripple of ripples.list) {
+    const ring = rippleRing(ripple, now, config);
     if (ring === null || !inView(ring, camera)) continue;
     ctx.globalAlpha = ring.alpha;
     ctx.lineWidth = ring.width;
@@ -371,7 +376,7 @@ export function interpolatedView(
 
 /**
  * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
- * player `isAway` picks out drawn as away.
+ * player `isAway` picks out drawn as away, and what the local player heard as `ripples`.
  */
 export function draw(
   ctx: CanvasRenderingContext2D,
@@ -381,6 +386,7 @@ export function draw(
   alpha: number,
   mouse: Point,
   isAway: (id: string) => boolean,
+  ripples: Ripples,
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
@@ -425,7 +431,7 @@ export function draw(
 
   // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.
   drawLitWalls(ctx, litWalls(seen, lit));
-  drawRipples(ctx, game, camera);
+  drawRipples(ctx, ripples, now, camera);
   drawPlayer(ctx, game, viewer, true);
   drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
   drawStamina(ctx, viewer, game.config.stamina.max);

@@ -1,6 +1,6 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { EntitiesConfig } from "./entities/index.js";
-import type { CameraConfig } from "./render/index.js";
+import type { CameraConfig, RippleConfig } from "./render/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
@@ -12,6 +12,7 @@ interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
   readonly camera: CameraConfig;
+  readonly ripples: RippleConfig;
   readonly entities: EntitiesConfig;
   readonly items: ItemsConfig;
   readonly voice: VoiceFalloff;
@@ -28,6 +29,16 @@ export const config = {
   view: { width: 900, height: 600 },
   // Eases out from 1:1 by a fifth of the gap each 60Hz frame.
   camera: { zoom: 1.25, zoomRate: 13.4 },
+  // What the local player hears, drawn as ripples: a walking step 3.5 cells off and a sprinting
+  // one 11 cells off.
+  ripples: {
+    hearingRange: CELL * 7,
+    duration: 0.9,
+    radius: { min: 12, perLoudness: 40 },
+    width: { sharp: 1.5, soft: 7 },
+    alpha: { sharp: 0.85, soft: 0.2 },
+    colour: "#9fd3ff",
+  },
   player: {
     radius: 14,
     speed: 120,
@@ -57,15 +68,6 @@ export const config = {
     walk: { interval: 0.5, loudness: 0.5 },
     sprint: { interval: 0.3, loudness: 1.6 },
     crouch: { interval: 0.7, loudness: 0.15 },
-  },
-  // A player hears a walking step 3.5 cells off and a sprinting one 11 cells off.
-  ripples: {
-    hearingRange: CELL * 7,
-    duration: 0.9,
-    radius: { min: 12, perLoudness: 40 },
-    width: { sharp: 1.5, soft: 7 },
-    alpha: { sharp: 0.85, soft: 0.2 },
-    colour: "#9fd3ff",
   },
   room: {
     sendHz: 15,

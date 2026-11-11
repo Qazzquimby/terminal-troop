@@ -4,7 +4,14 @@ import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { broadcastNoise, isAreaFree, updateSession } from "../sim/index.js";
+import { createRipples } from "../render/index.js";
+import type { Ripples } from "../render/index.js";
+import {
+  broadcastNoise,
+  isAreaFree,
+  mulberry32,
+  updateSession,
+} from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
@@ -12,7 +19,12 @@ import {
   createManualClock,
   testRoomConfig,
 } from "./room-helpers.js";
-import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
+import {
+  testEntitiesConfig,
+  testRippleConfig,
+  testSfx,
+  testSimConfig,
+} from "./sim-config.js";
 
 const DT = 1 / 60;
 
@@ -46,9 +58,18 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-function steps(room: Room, controls: Controls, seconds: number): void {
-  for (let step = 0; step < Math.round(seconds / DT); step++)
-    updateSession(sessionOf(room), controls, DT);
+/** Steps `room` for `seconds`, hearing each step into `ripples` when given, as a frame does. */
+function steps(
+  room: Room,
+  controls: Controls,
+  seconds: number,
+  ripples?: Ripples,
+): void {
+  const game = sessionOf(room);
+  for (let step = 0; step < Math.round(seconds / DT); step++) {
+    updateSession(game, controls, DT);
+    ripples?.hear(game, game.time * 1000);
+  }
 }
 
 function chaserOf(room: Room): WorldEntity {
@@ -133,21 +154,23 @@ test("each client sees the other's footsteps, worked out from its state, and the
   const { a, b, clock } = await pair();
   const host = sessionOf(a);
   const guest = sessionOf(b);
+  const heardByHost = createRipples(testRippleConfig, mulberry32(1));
+  const heardByGuest = createRipples(testRippleConfig, mulberry32(2));
   const spot = freeSpotNear(guest, host.local, 100);
   Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
-  steps(b, { ...still, move: { x: 1, y: 0 } }, DT);
+  steps(b, { ...still, move: { x: 1, y: 0 } }, DT, heardByGuest);
   b.frame(clock.now());
-  steps(a, still, 1);
-  expect(host.ripples.list).toHaveLength(1);
+  steps(a, still, 1, heardByHost);
+  expect(heardByHost.list).toHaveLength(1);
   expect(host.outbox).toEqual([]);
 
   broadcastNoise(host, { at: host.local, loudness: 1 });
   a.frame(clock.now());
-  steps(b, still, DT);
+  steps(b, still, DT, heardByGuest);
   expect(guest.noises).toEqual([
     { at: { x: host.local.x, y: host.local.y }, loudness: 1 },
   ]);
-  expect(guest.ripples.list.at(-1)).toMatchObject({ loudness: 1 });
+  expect(heardByGuest.list.at(-1)).toMatchObject({ loudness: 1 });
   steps(a, still, DT);
   expect(host.noises).toHaveLength(1);
 });
