@@ -52,8 +52,7 @@ function place(room: Room, at: Point): void {
 }
 
 const scrapCarried = (room: Room): number =>
-  sessionOf(room).local.inventory.filter((stack) => stack?.item.id === "scrap")
-    .length;
+  sessionOf(room).local.inventory.filter((item) => item?.id === "scrap").length;
 
 /** Gives `room`'s player `count` scrap, from its second slot on, and holds the first. */
 function stock(room: Room, count: number): void {
@@ -61,7 +60,7 @@ function stock(room: Room, count: number): void {
   const definition = game.itemDefinitions.get("scrap");
   if (definition === undefined) throw new Error("no scrap");
   for (let slot = 1; slot <= count; slot++)
-    game.local.inventory[slot] = { item: definition, quantity: 1 };
+    game.local.inventory[slot] = definition;
   game.local.held = 1;
 }
 

@@ -108,10 +108,10 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
       if (!settle(game, asked)) return;
       const { inventory, held } = game.local;
       const slot =
-        held !== null && inventory[held]?.item.id === ITEM
+        held !== null && inventory[held]?.id === ITEM
           ? held
-          : inventory.findIndex((stack) => stack?.item.id === ITEM);
-      if (slot !== -1) removeItem(inventory, slot, 1);
+          : inventory.findIndex((item) => item?.id === ITEM);
+      if (slot !== -1) removeItem(inventory, slot);
     },
   });
 
@@ -153,7 +153,6 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
 
   return {
     name: "Scrap",
-    maxStack: 1,
     emoji: "🔩",
     scatter: config.scatter,
     world: credit,

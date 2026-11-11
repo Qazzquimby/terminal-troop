@@ -4,6 +4,8 @@ import {
   addItem,
   createInventory,
   heldItem,
+  isFull,
+  placeItem,
   removeItem,
   selectSlot,
 } from "./inventory.js";
@@ -11,67 +13,65 @@ import {
 const material: ItemDefinition = {
   id: "material",
   name: "Material",
-  maxStack: 5,
   emoji: "🪨",
 };
 
-const quantities = (inventory: ReturnType<typeof createInventory>): number[] =>
-  inventory.map((stack) => stack?.quantity ?? 0);
+const tool: ItemDefinition = { id: "tool", name: "Tool", emoji: "🔧" };
 
-test("fills existing stacks before empty slots", () => {
+const ids = (inventory: ReturnType<typeof createInventory>) =>
+  inventory.map((item) => item?.id ?? null);
+
+test("each item takes a slot of its own, the same item included", () => {
   const inventory = createInventory(3);
-  expect(addItem(inventory, material, 3)).toBe(0);
-  expect(addItem(inventory, material, 4)).toBe(0);
-  expect(quantities(inventory)).toEqual([5, 2, 0]);
+  expect(addItem(inventory, material)).toBe(true);
+  expect(addItem(inventory, material)).toBe(true);
+  expect(ids(inventory)).toEqual(["material", "material", null]);
 });
 
-test("returns overflow without exceeding capacity", () => {
-  const inventory = createInventory(2);
-  expect(addItem(inventory, material, 12)).toBe(2);
-  expect(quantities(inventory)).toEqual([5, 5]);
+test("an item fills the first empty slot", () => {
+  const inventory = createInventory(3);
+  placeItem(inventory, 0, tool);
+  placeItem(inventory, 2, tool);
+  addItem(inventory, material);
+  expect(ids(inventory)).toEqual(["tool", "material", "tool"]);
 });
 
-test("removes only the available quantity and clears empty slots", () => {
+test("a full inventory takes nothing more", () => {
   const inventory = createInventory(2);
-  addItem(inventory, material, 4);
-  expect(removeItem(inventory, 0, 2)).toBe(2);
-  expect(inventory[0]?.quantity).toBe(2);
-  expect(removeItem(inventory, 0, 10)).toBe(2);
+  addItem(inventory, material);
+  expect(isFull(inventory)).toBe(false);
+  addItem(inventory, tool);
+  expect(isFull(inventory)).toBe(true);
+  expect(addItem(inventory, material)).toBe(false);
+  expect(ids(inventory)).toEqual(["material", "tool"]);
+});
+
+test("removing empties the slot and returns what it held", () => {
+  const inventory = createInventory(2);
+  addItem(inventory, material);
+  expect(removeItem(inventory, 0)).toBe(material);
   expect(inventory[0]).toBeNull();
-  expect(removeItem(inventory, 0, 1)).toBe(0);
+  expect(removeItem(inventory, 0)).toBeNull();
 });
 
 test("rejects invalid inventory operations", () => {
   expect(() => createInventory(0)).toThrow(RangeError);
   const inventory = createInventory(1);
-  expect(() => addItem(inventory, material, -1)).toThrow(RangeError);
-  expect(() => addItem(inventory, material, 1.5)).toThrow(RangeError);
-  expect(() => removeItem(inventory, 2, 1)).toThrow(RangeError);
-  expect(() => addItem(inventory, { ...material, maxStack: 0 }, 1)).toThrow(
-    RangeError,
-  );
-});
-
-test("keeps different item types separate", () => {
-  const inventory = createInventory(2);
-  const tool: ItemDefinition = {
-    id: "tool",
-    name: "Tool",
-    maxStack: 1,
-    emoji: "🔧",
-  };
-  addItem(inventory, material, 2);
-  expect(addItem(inventory, tool, 2)).toBe(1);
-  expect(inventory[0]?.item.id).toBe("material");
-  expect(inventory[1]?.item.id).toBe("tool");
+  expect(() => removeItem(inventory, 2)).toThrow(RangeError);
+  expect(() => {
+    placeItem(inventory, 1, tool);
+  }).toThrow(RangeError);
+  placeItem(inventory, 0, tool);
+  expect(() => {
+    placeItem(inventory, 0, material);
+  }).toThrow(RangeError);
 });
 
 test("selects slots by number, including empty ones", () => {
   const inventory = createInventory(3);
-  addItem(inventory, material, 1);
-  expect(heldItem(inventory, selectSlot(inventory, 2, 0))?.item.id).toBe(
-    "material",
-  );
+  addItem(inventory, material);
+  expect(heldItem(inventory, selectSlot(inventory, 2, 0))?.id).toBe("material");
+  expect(selectSlot(inventory, 0, 2)).toBe(2);
   expect(heldItem(inventory, selectSlot(inventory, 0, 2))).toBeNull();
 });
 

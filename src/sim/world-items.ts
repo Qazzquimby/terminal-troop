@@ -107,7 +107,7 @@ export const granted = contentEvent({
   receive(game, { item }) {
     const definition = game.itemDefinitions.get(item);
     if (definition === undefined) return;
-    if (addItem(game.local.inventory, definition, 1) > 0) letGo(game, item);
+    if (!addItem(game.local.inventory, definition)) letGo(game, item);
   },
 });
 
@@ -163,8 +163,6 @@ export function interact(game: Session): void {
     return;
   }
   if (local.held === null) return;
-  const stack = local.inventory[local.held];
-  if (stack === null || stack === undefined) return;
-  removeItem(local.inventory, local.held, 1);
-  letGo(game, stack.item.id);
+  const item = removeItem(local.inventory, local.held);
+  if (item !== null) letGo(game, item.id);
 }

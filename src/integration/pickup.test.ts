@@ -35,7 +35,6 @@ const reach: Controls = { ...idle, interact: true };
 /** A bolt: an item that does nothing, lying about to be picked up. */
 const bolt = defineItem("bolt", () => ({
   name: "Bolt",
-  maxStack: 1,
   emoji: "🔩",
 }));
 
@@ -59,7 +58,7 @@ function place(room: Room, at: Point): void {
 }
 
 const carried = (room: Room): (string | null)[] =>
-  sessionOf(room).local.inventory.map((stack) => stack?.item.id ?? null);
+  sessionOf(room).local.inventory.map((item) => item?.id ?? null);
 
 /** Clients `ids` joined to one room on a hub that sends every payload through JSON, the first hosting. */
 async function crew(...ids: string[]) {
@@ -247,7 +246,7 @@ test("standing on a bolt with a full inventory, E drops the held item instead", 
   const lying = layBolt(host, exchange);
   const definition = sessionOf(b).itemDefinitions.get("bolt");
   if (definition === undefined) throw new Error("no bolt");
-  sessionOf(b).local.inventory.fill({ item: definition, quantity: 1 });
+  sessionOf(b).local.inventory.fill(definition);
   sessionOf(b).local.held = 2;
   place(b, SPOT);
   exchange();
@@ -267,7 +266,7 @@ test("a bolt granted to an inventory that filled meanwhile goes back to the worl
   updateSession(sessionOf(b), reach, DT);
   const definition = sessionOf(b).itemDefinitions.get("bolt");
   if (definition === undefined) throw new Error("no bolt");
-  sessionOf(b).local.inventory.fill({ item: definition, quantity: 1 });
+  sessionOf(b).local.inventory.fill(definition);
   exchange();
   exchange();
   expect(sessionOf(host).entities.has(lying.id)).toBe(false);
@@ -294,7 +293,7 @@ function holdBolt(room: Room): void {
   const game = sessionOf(room);
   const definition = game.itemDefinitions.get("bolt");
   if (definition === undefined) throw new Error("no bolt");
-  game.local.inventory[1] = { item: definition, quantity: 1 };
+  game.local.inventory[1] = definition;
   game.local.held = 1;
 }
 

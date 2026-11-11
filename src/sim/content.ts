@@ -258,15 +258,10 @@ export function defineEntity<N extends string, C, S>(
   };
 }
 
-/** A stack each player starts with, in a slot of its own. */
-interface StartingStack {
-  readonly slot: number;
-  readonly quantity: number;
-}
-
 /** What every item spec has, usable or not. */
 interface ItemBase extends Omit<ItemDefinition, "id"> {
-  readonly starting?: StartingStack;
+  /** The slot each player starts with it in, if any; no two items may share one. */
+  readonly startingSlot?: number;
   /** Where a new world lays it on the ground, one item each, if anywhere. */
   readonly scatter?: Scatter;
   /** The state the item keeps on every player, if any. */
@@ -306,7 +301,6 @@ export function defineItem<N extends string, C>(
       const item: ItemDefinition & { readonly id: N } = {
         id: name,
         name: spec.name,
-        maxStack: spec.maxStack,
         emoji: spec.emoji,
       };
       const { scatter } = spec;
@@ -322,10 +316,8 @@ export function defineItem<N extends string, C>(
             spec.cooldown === undefined ? undefined : spec,
           );
           registerWorldItems(game);
-          if (spec.starting !== undefined) {
-            const { slot, quantity } = spec.starting;
-            placeItem(game.local.inventory, slot, item, quantity);
-          }
+          if (spec.startingSlot !== undefined)
+            placeItem(game.local.inventory, spec.startingSlot, item);
         },
         populate(game) {
           if (scatter === undefined) return;
