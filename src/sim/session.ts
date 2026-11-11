@@ -182,11 +182,11 @@ function nearCruiser(game: Session, radius: number): boolean {
 function cashOut(game: Session): void {
   const slot = game.local.held;
   if (slot === null) return;
-  const stack = heldItem(game.local.inventory, slot);
-  if (stack?.item.id !== SCRAP.id) return;
+  const item = heldItem(game.local.inventory, slot);
+  if (item?.id !== SCRAP.id) return;
   if (!nearCruiser(game, game.config.cruiser.cashoutRadius)) return;
 
-  removeItem(game.local.inventory, slot, 1);
+  removeItem(game.local.inventory, slot);
   void game.sfx.play(SCRAP_SOUNDS.cashout, game.local, game.local, {
     volume: game.config.scrap.cashoutVolume,
   });
@@ -196,8 +196,8 @@ function cashOut(game: Session): void {
 }
 
 /**
- * Picks up the ground scrap the local player is standing on, if its inventory has room, and
- * asks the host to remove it from the world.
+ * Picks up the nearest ground scrap the local player is close enough to reach, if its inventory
+ * has room, and asks the host to remove it from the world.
  */
 function pickUp(game: Session): void {
   const { local } = game;
@@ -209,7 +209,7 @@ function pickUp(game: Session): void {
       local.radius + entity.radius
     )
       continue;
-    if (addItem(local.inventory, SCRAP, 1) > 0) return;
+    if (!addItem(local.inventory, SCRAP)) return;
     game.collected.add(entity.id);
     game.entities.delete(entity.id);
     if (!game.hosting)
@@ -226,7 +226,7 @@ export function updateSession(
   game.time += dt;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
-  pickUp(game);
+  if (controls.pickup) pickUp(game);
   if (controls.use) useHeldItem(game);
   cashOut(game);
 

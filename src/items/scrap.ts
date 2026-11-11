@@ -19,7 +19,6 @@ export interface ScrapConfig {
 export const SCRAP = {
   id: "scrap",
   name: "Scrap",
-  maxStack: 1,
   emoji: "🔩",
 } as const satisfies ItemDefinition;
 

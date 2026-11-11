@@ -42,6 +42,8 @@ export interface Controls {
   readonly select: number | null;
   /** Whether to use the held item this step. */
   readonly use: boolean;
+  /** Whether to pick up a nearby ground item this step. */
+  readonly pickup: boolean;
 }
 
 export interface Player extends Entity, Interpolated, Facing, Tracked {

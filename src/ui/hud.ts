@@ -15,7 +15,7 @@ export function createInventoryHud(
     previous = signature;
 
     list.replaceChildren(
-      ...inventory.map((stack, index) => {
+      ...inventory.map((item, index) => {
         const slot = document.createElement("li");
         const number = document.createElement("span");
         const contents = document.createElement("span");
@@ -24,9 +24,9 @@ export function createInventoryHud(
         number.className = "slot-number";
         number.textContent = String(index + 1);
         contents.textContent =
-          stack === null
+          item === null
             ? "Empty"
-            : `${stack.item.emoji} ${stack.item.name} × ${String(stack.quantity)}`;
+            : `${item.emoji} ${item.name}       `;
 
         slot.append(number, contents);
         return slot;
