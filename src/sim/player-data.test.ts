@@ -76,7 +76,7 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
   ]);
   lit.set(game.local, true);
   expect(playerState(game).content).toEqual({
-    "core/held": null,
+    "core/items": null,
     "entity/bat": "Infinity",
     "item/torch": true,
   });
@@ -85,13 +85,13 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
 test("every session reports the held item, with no content listed", () => {
   const game = session();
   registerContent(game, []);
-  expect(playerState(game).content).toEqual({ "core/held": null });
+  expect(playerState(game).content).toEqual({ "core/items": null });
 });
 
 test("content is named for where it comes from, and only the engine's own is core", () => {
   expectTypeOf<"entity/lamp">().toExtend<ContentName>();
   expectTypeOf<"item/lamp">().toExtend<ContentName>();
-  expectTypeOf<"core/held">().not.toExtend<ContentName>();
+  expectTypeOf<"core/items">().not.toExtend<ContentName>();
   expectTypeOf<"lamp">().not.toExtend<ContentName>();
 });
 
@@ -117,7 +117,7 @@ test("an entity and an item of the same name keep their own state", () => {
     })).create({ lamp: undefined }),
   ]);
   expect(playerState(game).content).toEqual({
-    "core/held": null,
+    "core/items": null,
     "entity/lamp": 1,
     "item/lamp": 2,
   });

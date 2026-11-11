@@ -118,8 +118,8 @@ describe("the message table", () => {
 
   test.each([
     {},
-    { "core/held": "shovel" },
-    { "core/held": null, "item/lamp": { on: true, fuel: "Infinity" } },
+    { "core/items": "shovel" },
+    { "core/items": null, "item/lamp": { on: true, fuel: "Infinity" } },
     { "an-entry-this-build-lacks": [1, 2] },
   ])("a STATE's content %o parses as is, left to each entry", (content) => {
     expect(

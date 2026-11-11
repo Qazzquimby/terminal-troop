@@ -8,7 +8,7 @@ import { heldItemId } from "./use.js";
  */
 const BUILT_IN_DATA = {
   /** The id of the item each player holds. */
-  "core/held": heldItemId,
+  "core/items": heldItemId,
 } as const;
 
 /** Registers the engine's own player state with a new session. */

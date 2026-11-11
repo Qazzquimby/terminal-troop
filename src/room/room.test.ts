@@ -579,7 +579,7 @@ describe("players and voice", () => {
       ...spot,
       aim: 0,
       health: 100,
-      content: { "core/held": "laser" },
+      content: { "core/items": "laser" },
     });
     const remote = session.players.get("x");
     expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
@@ -685,7 +685,7 @@ describe("content's player state", () => {
     ).toEqual([5, 7]);
     const sent = listener.heard.filter(({ event }) => event === NetEvent.STATE);
     expect(sent.at(-1)?.payload).toMatchObject({
-      content: { "core/held": null, "entity/lamp": 5, "item/lamp": 7 },
+      content: { "core/items": null, "entity/lamp": 5, "item/lamp": 7 },
     });
   });
 
@@ -722,13 +722,17 @@ describe("content's player state", () => {
     const { session, report } = await reported();
     expect(
       report(
-        { "item/lamp": { lit: "yes", fuel: 1 }, "core/held": "poke", ghost: 1 },
+        {
+          "item/lamp": { lit: "yes", fuel: 1 },
+          "core/items": "poke",
+          ghost: 1,
+        },
         "XY",
       ),
     ).toEqual({ lamp: { lit: false, fuel: 10 }, held: "poke" });
     expect(session.players.get("x")?.name).toBe("XY");
     expect(
-      report({ "item/lamp": { lit: true, fuel: "Infinity" }, "core/held": 7 }),
+      report({ "item/lamp": { lit: true, fuel: "Infinity" }, "core/items": 7 }),
     ).toEqual({
       lamp: { lit: true, fuel: Infinity },
       held: "poke",
@@ -737,7 +741,7 @@ describe("content's player state", () => {
 
   test("an entry missing from a STATE keeps its last value", async () => {
     const { report } = await reported();
-    report({ "item/lamp": { lit: true, fuel: 3 }, "core/held": "poke" });
+    report({ "item/lamp": { lit: true, fuel: 3 }, "core/items": "poke" });
     expect(report({})).toEqual({ lamp: { lit: true, fuel: 3 }, held: "poke" });
   });
 });
