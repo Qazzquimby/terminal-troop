@@ -113,8 +113,8 @@ describe("the message table", () => {
 
   test.each([
     {},
-    { inventory: "shovel" },
-    { inventory: null, lamp: { on: true, fuel: "Infinity" } },
+    { held: "shovel" },
+    { held: null, lamp: { on: true, fuel: "Infinity" } },
     { "an-entry-this-build-lacks": [1, 2] },
   ])("a STATE's content %o parses as is, left to each entry", (content) => {
     expect(
@@ -123,7 +123,7 @@ describe("the message table", () => {
   });
 
   test.each([
-    { from: "a", to: null, content: "inventory", event: "use", payload: 1 },
+    { from: "a", to: null, content: "held", event: "use", payload: 1 },
     { from: "a", to: "b", content: "health", event: "damage", payload: {} },
     { from: "a", to: null, content: "lamp", event: "toggle", payload: null },
   ])("a CONTENT's payload %o parses as is, left to its event", (message) => {
@@ -133,7 +133,7 @@ describe("the message table", () => {
   const content = {
     from: "a",
     to: null,
-    content: "inventory",
+    content: "held",
     event: "use",
     payload: {},
   };

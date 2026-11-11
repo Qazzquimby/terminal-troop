@@ -13,7 +13,6 @@ import {
   health,
   heldItemId,
   heldItemOf,
-  inventory,
   playerData,
   playerState,
   randomFreePosition,
@@ -263,7 +262,7 @@ function setup(
   hub = createHub(),
   id = "me",
   clock = createManualClock(),
-  content: readonly WorldContent[] = [blobs, biters, health, inventory, poke],
+  content: readonly WorldContent[] = [blobs, biters, health, poke],
 ) {
   const log: string[] = [];
   const failures: { peerFailed: (id: string) => void }[] = [];
@@ -581,7 +580,7 @@ describe("players and voice", () => {
       ...spot,
       aim: 0,
       health: 100,
-      content: { inventory: "laser" },
+      content: { held: "laser" },
     });
     const remote = session.players.get("x");
     expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
@@ -612,7 +611,7 @@ describe("content's player state", () => {
     register: () => undefined,
     populate: () => undefined,
   };
-  const content = [inventory, poke, lamp];
+  const content = [poke, lamp];
 
   test("a value set on one client shows on the other", async () => {
     const clock = createManualClock();
@@ -630,6 +629,21 @@ describe("content's player state", () => {
     clock.advance(clock.now() + SEND_GAP);
     b.room.frame(clock.now());
     expect(seen()).toEqual({ lit: true, fuel: Infinity });
+  });
+
+  test("the held item reaches the others with no content listed", async () => {
+    const clock = createManualClock();
+    const a = setup(createHub(), "a", clock, []);
+    const b = setup(a.hub, "b", clock, []);
+    await a.room.join("ABC", "A");
+    await b.room.join("ABC", "B");
+    heldItemId.set(joined(b.room).session.local, "poke");
+    clock.advance(clock.now() + SEND_GAP);
+    b.room.frame(clock.now());
+    const remote = joined(a.room).session.players.get("b");
+    expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
+      "poke",
+    );
   });
 
   /** A room joined as "me" with the lamp, and a report from a bare listener "x" of its content. */
@@ -664,20 +678,18 @@ describe("content's player state", () => {
   test("an unknown entry or a value its entry rejects is dropped, and the rest of the STATE applies", async () => {
     const { session, report } = await reported();
     expect(
-      report(
-        { lamp: { lit: "yes", fuel: 1 }, inventory: "poke", ghost: 1 },
-        "XY",
-      ),
+      report({ lamp: { lit: "yes", fuel: 1 }, held: "poke", ghost: 1 }, "XY"),
     ).toEqual({ lamp: { lit: false, fuel: 10 }, held: "poke" });
     expect(session.players.get("x")?.name).toBe("XY");
-    expect(
-      report({ lamp: { lit: true, fuel: "Infinity" }, inventory: 7 }),
-    ).toEqual({ lamp: { lit: true, fuel: Infinity }, held: "poke" });
+    expect(report({ lamp: { lit: true, fuel: "Infinity" }, held: 7 })).toEqual({
+      lamp: { lit: true, fuel: Infinity },
+      held: "poke",
+    });
   });
 
   test("an entry missing from a STATE keeps its last value", async () => {
     const { report } = await reported();
-    report({ lamp: { lit: true, fuel: 3 }, inventory: "poke" });
+    report({ lamp: { lit: true, fuel: 3 }, held: "poke" });
     expect(report({})).toEqual({ lamp: { lit: true, fuel: 3 }, held: "poke" });
   });
 });
@@ -1385,7 +1397,7 @@ describe("host", () => {
       /** Hands `use` to the room as the local player's use, skipping its own cooldown. */
       const sendUse = (player: Player, use: Point & { aim: number }) => {
         sessionOf(player).outbox.push({
-          content: "inventory",
+          content: "held",
           event: "use",
           route: "all",
           to: null,

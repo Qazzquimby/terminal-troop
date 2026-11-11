@@ -75,7 +75,29 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
     })).create({ torch: undefined }),
   ]);
   lit.set(game.local, true);
-  expect(playerState(game).content).toEqual({ bat: "Infinity", torch: true });
+  expect(playerState(game).content).toEqual({
+    held: null,
+    bat: "Infinity",
+    torch: true,
+  });
+});
+
+test("every session reports the held item, with no content listed", () => {
+  const game = session();
+  registerContent(game, []);
+  expect(playerState(game).content).toEqual({ held: null });
+});
+
+test("content may not take a name the engine keeps for its own", () => {
+  const game = session();
+  const held: WorldContent = {
+    name: "held",
+    register: () => undefined,
+    populate: () => undefined,
+  };
+  expect(() => {
+    registerContent(game, [held]);
+  }).toThrow("Content name reserved by the engine: held");
 });
 
 test("a remote player's reported values are decoded by each entry's own schema", () => {
