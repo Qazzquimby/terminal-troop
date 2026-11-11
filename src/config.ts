@@ -77,7 +77,7 @@ export const config = {
     sprintMultiplier: 1.8,
     crouchMultiplier: 0.5,
     maxHealth: 100,
-    inventorySlots: 9,
+    inventorySlots: 6,
     nameMax: 8,
     knockbackSeconds: 0.15,
   },

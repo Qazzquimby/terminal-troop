@@ -60,17 +60,13 @@ export function isFull(inventory: Inventory): boolean {
 export type HeldSlot = number | null;
 
 /**
- * The slot held after pressing slot number `slot` while holding `held`: the pressed slot, even
- * when it is empty, unless the inventory has no such slot.
+ * The slot held after pressing slot number `slot`: the pressed slot, even when it is empty, or
+ * nothing when the inventory has no such slot.
  */
-export function selectSlot(
-  inventory: Inventory,
-  held: HeldSlot,
-  slot: number,
-): HeldSlot {
+export function selectSlot(inventory: Inventory, slot: number): HeldSlot {
   return Number.isInteger(slot) && slot >= 0 && slot < inventory.length
     ? slot
-    : held;
+    : null;
 }
 
 /** The item in the selected slot, or null when holding nothing. */

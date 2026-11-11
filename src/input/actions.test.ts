@@ -224,6 +224,19 @@ test("E presses interact, in its step only, even while held", () => {
   expect(step(state, 2).controls.interact).toBe(false);
 });
 
+test("number keys 7 to 9 select slots 6 to 8, for the inventory to turn down past its last", () => {
+  const state = createActionState();
+  for (const [action, slot] of [
+    ["select7", 6],
+    ["select8", 7],
+    ["select9", 8],
+  ] as const) {
+    state.press(action, 1);
+    expect(step(state).controls.select).toBe(slot);
+    state.release(action, 2);
+  }
+});
+
 test("a right click in the menu presses nothing, and keeps the context menu", () => {
   const state = createActionState();
   const buttons = createButtonSource(state, ACTIONS, "menu");

@@ -70,14 +70,14 @@ test("rejects invalid inventory operations", () => {
 test("selects slots by number, including empty ones", () => {
   const inventory = createInventory(3);
   addItem(inventory, material);
-  expect(heldItem(inventory, selectSlot(inventory, 2, 0))?.id).toBe("material");
-  expect(selectSlot(inventory, 0, 2)).toBe(2);
-  expect(heldItem(inventory, selectSlot(inventory, 0, 2))).toBeNull();
+  expect(heldItem(inventory, selectSlot(inventory, 0))?.id).toBe("material");
+  expect(selectSlot(inventory, 2)).toBe(2);
+  expect(heldItem(inventory, selectSlot(inventory, 2))).toBeNull();
 });
 
-test("a slot number past either end keeps the held slot", () => {
+test("a slot number past either end holds nothing", () => {
   const inventory = createInventory(3);
-  expect(selectSlot(inventory, 1, 3)).toBe(1);
-  expect(selectSlot(inventory, 1, -1)).toBe(1);
-  expect(selectSlot(inventory, null, 8)).toBeNull();
+  expect(selectSlot(inventory, 3)).toBeNull();
+  expect(selectSlot(inventory, 8)).toBeNull();
+  expect(selectSlot(inventory, -1)).toBeNull();
 });
