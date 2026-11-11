@@ -8,7 +8,7 @@ import {
 } from "./camera.js";
 
 test("camera centers its target even at the world boundary", () => {
-  const camera = createCamera({ width: 900, height: 600});
+  const camera = createCamera({ width: 900, height: 600 });
   camera.zoom = 1;
   camera.targetZoom = 1;
   updateCamera(camera, { x: 14, y: 14 });
@@ -44,7 +44,10 @@ test("screenToWorld inverts the view transform at any zoom", () => {
   camera.zoom = 2;
   updateCamera(camera, { x: 1000, y: 800 });
 
-  expect(screenToWorld(camera, { x: 450, y: 300 })).toEqual({ x: 1000, y: 800 });
+  expect(screenToWorld(camera, { x: 450, y: 300 })).toEqual({
+    x: 1000,
+    y: 800,
+  });
   expect(screenToWorld(camera, { x: 0, y: 0 })).toEqual({
     x: camera.x,
     y: camera.y,

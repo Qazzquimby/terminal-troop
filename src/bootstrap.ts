@@ -312,11 +312,7 @@ function frame(): void {
       heldEmoji(session.local.inventory, session.local.held),
     );
     frameStats.drawMs = performance.now() - drawStart;
-    updateInventory(
-      session.local.inventory,
-      session.local.held,
-      inventoryOpen,
-    );
+    updateInventory(session.local.inventory, session.local.held, inventoryOpen);
   } else {
     inventoryEl.hidden = true;
     ctx.fillStyle = "#090b0e";

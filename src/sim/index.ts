@@ -8,16 +8,9 @@ export {
 export type { EntityDefinition, WorldEntity } from "./entities.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export {
-  addItem,
-  createInventory,
-  heldEmoji,
-  heldItem,
-  removeItem,
-  selectSlot,
-} from "./inventory.js";
+export { heldEmoji, heldItem, selectSlot } from "./inventory.js";
 export type { HeldSlot, Inventory } from "./inventory.js";
-export { SHOVEL, SLOT_COUNT, startingInventory } from "./items.js";
+export { SHOVEL } from "./items.js";
 export {
   isAreaFree,
   mulberry32,
@@ -33,7 +26,7 @@ export type {
   World,
   WorldKind,
 } from "./map.js";
-export { applyDamage, isDead } from "./entity.js";
+export { applyDamage } from "./entity.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";

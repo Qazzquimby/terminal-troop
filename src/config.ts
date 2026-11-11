@@ -5,7 +5,6 @@ import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ShovelConfig } from "./items/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
-import {CELL_SIZE} from "./integration/tile-maps";
 
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
 interface AppConfig extends SimConfig {
@@ -19,10 +18,11 @@ interface AppConfig extends SimConfig {
   readonly ui: UiConfig;
 }
 
+const CELL = 50;
 const STAMINA_MAX = 100;
 
 export const config = {
-  world: { cell: CELL_SIZE, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
+  world: { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
   player: {
     radius: 14,
@@ -42,8 +42,8 @@ export const config = {
     regenDelay: 0.6,
     recover: STAMINA_MAX * 0.3,
   },
-  vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL_SIZE * 1.4 },
-  light: { range: CELL_SIZE * 6 },
+  vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
+  light: { range: CELL * 6 },
   net: { smoothing: 12 },
   room: {
     sendHz: 15,
@@ -59,17 +59,17 @@ export const config = {
     chaserDensity: 0.6,
     minChasers: 2,
     seed: 1,
-    clearance: CELL_SIZE * 10,
+    clearance: CELL * 10,
     chaser: {
       radius: 15,
       maxHealth: 30,
       attackDamage: 35,
       wanderSpeed: 55,
       chaseSpeed: 150,
-      sightRange: CELL_SIZE * 5,
-      wanderRange: CELL_SIZE * 5,
+      sightRange: CELL * 5,
+      wanderRange: CELL * 5,
       wanderPause: { min: 0.8, max: 3 },
-      repathDistance: CELL_SIZE / 2,
+      repathDistance: CELL / 2,
     },
   },
   shovel: {

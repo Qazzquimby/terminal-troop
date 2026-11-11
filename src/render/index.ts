@@ -1,7 +1,3 @@
-export {
-  createCamera,
-  screenToWorld,
-  updateCamera,
-} from "./camera.js";
+export { createCamera, screenToWorld, updateCamera } from "./camera.js";
 export type { Camera } from "./camera.js";
-export { draw } from "./render.js";
+export { draw, drawFacing } from "./render.js";

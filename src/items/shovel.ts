@@ -1,8 +1,8 @@
 import { applyDamage, isAreaFree } from "../sim/index.js";
 import type { Entity, Point, Session, TileMap } from "../sim/index.js";
 import type { ItemBehaviour } from "./behaviour.js";
-import hitUrl from "../assets/sfx/shovel/hit.mp3";
-import missUrl from "../assets/sfx/shovel/miss.mp3";
+import hitUrl from "./sfx/hit.mp3";
+import missUrl from "./sfx/miss.mp3";
 
 /** How the shovel attacks. Distances in pixels, times in milliseconds. */
 export interface ShovelConfig {
@@ -114,8 +114,9 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
         config.knockback,
       );
       const endsAt = now + config.durationMs;
-      void game.sfx
-        .play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, { volume: 0.8 });
+      void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, {
+        volume: 0.8,
+      });
       return {
         startedAt: now,
         endsAt,

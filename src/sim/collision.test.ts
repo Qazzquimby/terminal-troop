@@ -5,11 +5,7 @@ import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
 import { moveWithCollision, separateBodies } from "./collision.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
 import { isAreaFree } from "./map.js";
-import {
-  applyRemoteState,
-  createSession,
-  updateSession,
-} from "./session.js";
+import { applyRemoteState, createSession, updateSession } from "./session.js";
 
 test("wall movement stops at the collision face", () => {
   const map = mapWithCenterWall();
@@ -51,10 +47,7 @@ test("coincident bodies separate without invalid coordinates", () => {
 
   separateBodies([first, second], emptyMap());
 
-  expect(Math.hypot(first.x - second.x, first.y - second.y)).toBeCloseTo(
-    20,
-    5,
-  );
+  expect(Math.hypot(first.x - second.x, first.y - second.y)).toBeCloseTo(20, 5);
 });
 
 test("a coincident movable body can separate away from a map boundary", () => {
@@ -176,9 +169,9 @@ test("player separation does not move remote players", () => {
   updateSession(game, idle, 1 / 60);
 
   expect(game.players.get("peer")).toMatchObject({ x: 400, y: 300 });
-  expect(Math.hypot(game.local.x - 400, game.local.y - 300)).toBeGreaterThanOrEqual(
-    game.local.radius * 2 - 1e-5,
-  );
+  expect(
+    Math.hypot(game.local.x - 400, game.local.y - 300),
+  ).toBeGreaterThanOrEqual(game.local.radius * 2 - 1e-5);
 });
 
 test("a client yields to entities without changing their host targets", () => {
