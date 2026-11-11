@@ -1,4 +1,5 @@
 import {
+  kindId,
   mulberry32,
   randomFreePosition,
   registerEntityType,
@@ -21,7 +22,7 @@ export interface MonsterConfig {
   readonly chaser: ChaserConfig;
 }
 
-export const MonsterKind = { CHASER: 1 } as const;
+export const MonsterKind = { CHASER: kindId("chaser") } as const;
 
 /** Random spots tried for each monster before taking the one furthest from the players. */
 const SPAWN_ATTEMPTS = 64;
