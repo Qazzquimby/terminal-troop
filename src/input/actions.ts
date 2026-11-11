@@ -14,7 +14,6 @@ export const ACTIONS = {
   crouch: { keys: ["KeyC"], contexts: ["play"] },
   useItem: { keys: ["MouseLeft"], contexts: ["play"] },
   secondary: { keys: ["MouseRight"], contexts: ["play"] },
-  toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
   pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },

@@ -44,11 +44,11 @@ test("a press is reported in one step only", () => {
 
 test("a tap between steps registers as pressed and released exactly once", () => {
   const state = createActionState();
-  state.press("toggleInventory", 1);
-  state.release("toggleInventory", 2);
+  state.press("toggleDebug", 1);
+  state.release("toggleDebug", 2);
   const first = step(state).frame;
-  expect(first.pressed).toEqual(actions("toggleInventory"));
-  expect(first.released).toEqual(actions("toggleInventory"));
+  expect(first.pressed).toEqual(actions("toggleDebug"));
+  expect(first.released).toEqual(actions("toggleDebug"));
   expect(first.held.size).toBe(0);
   const second = step(state).frame;
   expect(second.pressed.size).toBe(0);
@@ -244,7 +244,6 @@ test.each<[Action, InputContext[]]>([
   ["useItem", ["play"]],
   ["secondary", ["play"]],
   ["select1", ["play"]],
-  ["toggleInventory", ["play"]],
   ["toggleSettings", ["play", "menu"]],
   ["toggleDebug", ["play", "menu"]],
   ["pushToTalk", ["play", "menu"]],
@@ -265,7 +264,7 @@ function uiInput() {
       calls.push(["held", action, held, time]),
   });
   const sink = withUiHandlers(state, {
-    toggleInventory: { press: record("toggleInventory").press },
+    toggleDebug: { press: record("toggleDebug").press },
     pushToTalk: { held: record("pushToTalk").held },
     sprint: record("sprint"),
   });
@@ -274,27 +273,27 @@ function uiInput() {
 
 test("every event still reaches the action state", () => {
   const { state, sink } = uiInput();
-  sink.press("toggleInventory", 1);
+  sink.press("toggleDebug", 1);
   sink.press("moveUp", 1);
   sink.resume("sprint", 1);
-  sink.release("toggleInventory", 2);
+  sink.release("toggleDebug", 2);
   const first = step(state, 2).frame;
-  expect(first.pressed).toEqual(actions("toggleInventory", "moveUp"));
-  expect(first.released).toEqual(actions("toggleInventory"));
+  expect(first.pressed).toEqual(actions("toggleDebug", "moveUp"));
+  expect(first.released).toEqual(actions("toggleDebug"));
   sink.clear(3);
   expect(step(state, 3).frame.released).toEqual(actions("moveUp", "sprint"));
 });
 
 test("a toggle press handler runs on press, not on resume", () => {
   const { sink, calls } = uiInput();
-  sink.press("toggleInventory", 1);
-  sink.release("toggleInventory", 2);
-  sink.resume("toggleInventory", 3);
+  sink.press("toggleDebug", 1);
+  sink.release("toggleDebug", 2);
+  sink.resume("toggleDebug", 3);
   sink.clear(4);
-  sink.press("toggleInventory", 5);
+  sink.press("toggleDebug", 5);
   expect(calls).toEqual([
-    ["press", "toggleInventory", 1],
-    ["press", "toggleInventory", 5],
+    ["press", "toggleDebug", 1],
+    ["press", "toggleDebug", 5],
   ]);
 });
 
