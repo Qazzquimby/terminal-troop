@@ -22,6 +22,12 @@ import {
   visionOrigins,
 } from "../sim/index.js";
 import type { Camera } from "./camera.js";
+import type {
+  Area,
+  MapMemory,
+  MapMemoryConfig,
+  RememberedTerrain,
+} from "./map-memory.js";
 import { rippleRing } from "./ripples.js";
 import type { Ripples } from "./ripples.js";
 
@@ -37,6 +43,16 @@ function viewWidth(camera: Camera): number {
 /** The height of the world the camera covers, in world units. */
 function viewHeight(camera: Camera): number {
   return camera.view.height * camera.zoom;
+}
+
+/** The part of the world the camera covers. */
+function viewArea(camera: Camera): Area {
+  return {
+    x: camera.x,
+    y: camera.y,
+    width: viewWidth(camera),
+    height: viewHeight(camera),
+  };
 }
 
 function inView(body: Circle, camera: Camera): boolean {
@@ -224,27 +240,58 @@ function drawHeldItem(
   ctx.restore();
 }
 
+/** What drawing filled and stroked paths needs of a context. */
+type PathContext = Pick<
+  CanvasRenderingContext2D,
+  | "fillStyle"
+  | "strokeStyle"
+  | "lineWidth"
+  | "beginPath"
+  | "moveTo"
+  | "lineTo"
+  | "closePath"
+  | "fill"
+  | "stroke"
+>;
+
+const LIT_WALL = { fill: "#4b525a", edge: "#5f6871" };
+
+/**
+ * Remembered floor and wall faces, drawn faint under everything: what is in sight is drawn over
+ * them as usual.
+ */
+export function drawRemembered(
+  ctx: PathContext &
+    Pick<CanvasRenderingContext2D, "save" | "restore" | "globalAlpha" | "rect">,
+  terrain: RememberedTerrain,
+  { floor, wall }: MapMemoryConfig,
+  cell: number,
+): void {
+  ctx.save();
+  ctx.globalAlpha = floor.alpha;
+  ctx.beginPath();
+  for (const { x, y } of terrain.floor) ctx.rect(x, y, cell, cell);
+  ctx.fillStyle = floor.fill;
+  ctx.fill();
+  ctx.strokeStyle = floor.grid;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.globalAlpha = wall.alpha;
+  drawLitWalls(ctx, terrain.walls, wall);
+  ctx.restore();
+}
+
 /**
  * Lit wall faces, drawn outside the darkness clip: rays stop at wall faces, so walls are never
  * inside a visibility polygon. Shallow bands distinguish walls from both floor and darkness.
  */
 export function drawLitWalls(
-  ctx: Pick<
-    CanvasRenderingContext2D,
-    | "fillStyle"
-    | "strokeStyle"
-    | "lineWidth"
-    | "beginPath"
-    | "moveTo"
-    | "lineTo"
-    | "closePath"
-    | "fill"
-    | "stroke"
-  >,
+  ctx: PathContext,
   walls: VisibilityPolygon["walls"],
+  colours: { readonly fill: string; readonly edge: string } = LIT_WALL,
 ): void {
   const depth = 4;
-  ctx.fillStyle = "#4b525a";
+  ctx.fillStyle = colours.fill;
   ctx.beginPath();
   for (const faces of walls.values()) {
     for (const { from, to, normal } of faces) {
@@ -257,7 +304,7 @@ export function drawLitWalls(
   }
   ctx.fill();
 
-  ctx.strokeStyle = "#5f6871";
+  ctx.strokeStyle = colours.edge;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (const faces of walls.values()) {
@@ -376,7 +423,8 @@ export function interpolatedView(
 
 /**
  * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
- * player `isAway` picks out drawn as away, and what the local player heard as `ripples`.
+ * player `isAway` picks out drawn as away, and what the local player heard as `ripples`. What
+ * the local player sees is added to `memory`, and what it remembers out of sight is drawn faint.
  */
 export function draw(
   ctx: CanvasRenderingContext2D,
@@ -387,6 +435,7 @@ export function draw(
   mouse: Point,
   isAway: (id: string) => boolean,
   ripples: Ripples,
+  memory: MapMemory,
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
@@ -396,6 +445,9 @@ export function draw(
   const { rays } = game.config.vision;
   const seen = tracePolygons(map, sources, camera, rays);
   const lit = tracePolygons(map, lights, camera, rays);
+  const walls = litWalls(seen, lit);
+  const area = viewArea(camera);
+  memory.see({ seen, lit, walls }, area);
 
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, camera.view.width, camera.view.height);
@@ -403,6 +455,7 @@ export function draw(
   const scale = 1 / camera.zoom;
   ctx.scale(scale, scale);
   ctx.translate(-camera.x, -camera.y);
+  drawRemembered(ctx, memory.within(area), memory.config, map.cell);
 
   // Inside the darkness: only what is both seen and lit.
   ctx.save();
@@ -430,7 +483,7 @@ export function draw(
   ctx.restore();
 
   // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.
-  drawLitWalls(ctx, litWalls(seen, lit));
+  drawLitWalls(ctx, walls);
   drawRipples(ctx, ripples, now, camera);
   drawPlayer(ctx, game, viewer, true);
   drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);

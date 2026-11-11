@@ -1,6 +1,10 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { EntitiesConfig } from "./entities/index.js";
-import type { CameraConfig, RippleConfig } from "./render/index.js";
+import type {
+  CameraConfig,
+  MapMemoryConfig,
+  RippleConfig,
+} from "./render/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
@@ -13,6 +17,7 @@ interface AppConfig extends SimConfig {
   readonly room: RoomConfig;
   readonly camera: CameraConfig;
   readonly ripples: RippleConfig;
+  readonly mapMemory: MapMemoryConfig;
   readonly entities: EntitiesConfig;
   readonly items: ItemsConfig;
   readonly voice: VoiceFalloff;
@@ -38,6 +43,13 @@ export const config = {
     width: { sharp: 1.5, soft: 7 },
     alpha: { sharp: 0.85, soft: 0.2 },
     colour: "#9fd3ff",
+  },
+  // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
+  mapMemory: {
+    saveInterval: 5,
+    maxRooms: 50,
+    floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
+    wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
   },
   player: {
     radius: 14,
