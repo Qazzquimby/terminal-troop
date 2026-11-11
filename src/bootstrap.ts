@@ -45,7 +45,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { entityContent } from "./entities/index.js";
-import { itemContent } from "./items/index.js";
+import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 
 /** Owns everything that lives as long as the page. */
@@ -345,7 +345,7 @@ function frame(): void {
     hud.show({
       inventory: session.local.inventory,
       held: session.local.held,
-      credit: 0,
+      credit: credit.get(session),
     });
   } else {
     hud.show(null);

@@ -173,8 +173,9 @@ async function hosted(): Promise<{ a: Room; b: Room }> {
 test("the host's entities reach the other client, ids, kinds, spots and state alike", async () => {
   const { a, b } = await hosted();
   expect(a.hostId()).toBe("a");
-  // Three chasers, then the cruiser, numbered by the content list on both clients.
-  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([1, 1, 1, 2]);
+  // Three chasers, the cruiser, then three scrap lying about, numbered by the content list on
+  // both clients.
+  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([1, 1, 1, 2, 3, 3, 3]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 
   for (let step = 0; step < 60; step++)
@@ -191,7 +192,7 @@ test("when the host leaves, the other client runs the same entities on", async (
   await flush();
   clock.advance(2000);
   expect(b.hostId()).toBe("b");
-  expect(sessionOf(b).entities.size).toBe(4);
+  expect(sessionOf(b).entities.size).toBe(7);
   expect([...sessionOf(b).entities.keys()]).toEqual(handed.map(({ id }) => id));
 
   for (let step = 0; step < 120; step++)

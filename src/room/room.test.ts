@@ -1240,10 +1240,12 @@ describe("host", () => {
       listener.send(NetEvent.ENTITIES, {
         host: "b",
         entities: [{ ...entity, data }],
+        world: {},
       });
       listener.send(NetEvent.ENTITIES, {
         host: "z",
         entities: [{ ...entity, data }],
+        world: {},
       });
       expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
       expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
@@ -1251,6 +1253,7 @@ describe("host", () => {
       listener.send(NetEvent.ENTITIES, {
         host: "a",
         entities: [{ ...entity, data }],
+        world: {},
       });
       expect(ids(get("b"))).toEqual(["z:1"]);
     });

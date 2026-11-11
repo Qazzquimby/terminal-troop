@@ -149,6 +149,16 @@ export const config = {
       volume: 0.8,
       hitLoudness: 1.2,
     },
+    // 500 scrap about the world, none within 3 cells of the first players; each sells for 1 while
+    // its holder stands within 3 cells of the cruiser, one every quarter second.
+    scrap: {
+      value: 1,
+      cashoutRadius: CELL * 3,
+      sellInterval: 0.25,
+      sellTimeout: 2,
+      volume: 0.8,
+      scatter: { count: 500, seed: 2, clearance: CELL * 3 },
+    },
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five

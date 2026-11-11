@@ -5,6 +5,7 @@ import type { Transport } from "../net/index.js";
 import {
   applyEntitySnapshot,
   applyRemoteState,
+  applyWorldState,
   cueEntities,
   createSession,
   entitySnapshot,
@@ -12,6 +13,7 @@ import {
   receiveEvent,
   registerContent,
   removePlayer,
+  worldState,
 } from "../sim/index.js";
 import type {
   OutgoingEvent,
@@ -205,6 +207,7 @@ export function createRoom(deps: RoomDeps): Room {
     void send(NetEvent.ENTITIES, {
       host: localId,
       entities: entitySnapshot(room.session),
+      world: worldState(room.session),
     });
   }
 
@@ -303,6 +306,7 @@ export function createRoom(deps: RoomDeps): Room {
       [NetEvent.ENTITIES]: on(NetEvent.ENTITIES, (message) => {
         if (message.host === localId || message.host !== room.host?.id) return;
         applyEntitySnapshot(room.session, message.entities);
+        applyWorldState(room.session, message.world);
         room.populated = true;
       }),
       [NetEvent.CONTENT]: on(NetEvent.CONTENT, (message) => {
