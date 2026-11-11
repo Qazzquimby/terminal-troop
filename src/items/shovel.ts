@@ -24,6 +24,8 @@ export interface ShovelConfig {
   readonly cooldown: number;
   /** How long a swing is shown. */
   readonly duration: number;
+  /** Volume of a swing's sound, 0..1. */
+  readonly volume: number;
 }
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
@@ -103,12 +105,11 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
         knockBack(entity, center, config.knockback, game.world.map);
       }
     },
-    show(game) {
-      const { local } = game;
-      const center = hitbox(local, local.aim);
+    show(game, at, aim) {
+      const center = hitbox(at, aim);
       const hit = targets(game, center, config.radius).length > 0;
-      void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, {
-        volume: 0.8,
+      void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, at, game.local, {
+        volume: config.volume,
       });
       return { center, hit };
     },

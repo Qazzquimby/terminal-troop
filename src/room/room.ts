@@ -5,12 +5,14 @@ import type { Transport } from "../net/index.js";
 import {
   applyEntitySnapshot,
   applyRemoteState,
+  cueEntities,
   createSession,
   entitySnapshot,
   applyDamage,
   playerState,
   removePlayer,
   requestUse,
+  showUse,
 } from "../sim/index.js";
 import type {
   Session,
@@ -115,8 +117,8 @@ export interface Room {
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
   /**
-   * Runs after the simulation steps of a frame: sends state, hands the local player's item uses
-   * to the host, sends the damage dealt, then mixes voice.
+   * Runs after the simulation steps of a frame: sends state, sends the local player's item uses,
+   * sends the damage dealt, plays the entities' sound cues, then mixes voice.
    */
   frame(now: number): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
@@ -193,13 +195,14 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   /**
-   * Hands an item use to the host: queued for this client's next step while hosting, sent to
-   * the host otherwise, and dropped while no host is known.
+   * Sends an item use to the room, for the host to apply and everyone else to hear, and
+   * queues it for this client's next step while hosting. Dropped while no host is known.
    */
   function handUse(room: Link, request: UseRequest): void {
     const host = room.host?.id;
+    if (host === undefined) return;
     if (host === localId) requestUse(room.session, request);
-    else if (host !== undefined) void send(NetEvent.USE, request);
+    void send(NetEvent.USE, request);
   }
 
   /** Sends each remote player the damage dealt to it since the last frame. */
@@ -315,9 +318,10 @@ export function createRoom(deps: RoomDeps): Room {
         room.populated = true;
       }),
       [NetEvent.USE]: on(NetEvent.USE, (message) => {
-        if (room.host?.id !== localId) return;
+        if (message.by === localId) return;
         if (room.roster.get(message.by) === undefined) return;
-        requestUse(room.session, message);
+        showUse(room.session, message);
+        if (room.host?.id === localId) requestUse(room.session, message);
       }),
       [NetEvent.DAMAGE]: on(NetEvent.DAMAGE, (message) => {
         if (message.target !== localId) return;
@@ -502,6 +506,7 @@ export function createRoom(deps: RoomDeps): Room {
         handUse(room, request);
       sendStrikes(room);
       if (room.host?.id === localId) sendEntities(room, now);
+      cueEntities(room.session);
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     },

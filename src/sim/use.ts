@@ -29,8 +29,11 @@ export interface ItemBehaviour {
   readonly cooldown: number;
   /** Applies a use by a player standing at `at`, facing `aim`. Runs only on the host. */
   apply(game: Session, at: Point, aim: number): void;
-  /** Starts the local player's use as this client sees it: where it lands and whether it hits. */
-  show(game: Session): Pick<ItemUse, "center" | "hit">;
+  /**
+   * Starts a use by a player standing at `at`, facing `aim`, as this client sees it: plays its
+   * sound for this client's listener, and returns where it lands and whether it hits.
+   */
+  show(game: Session, at: Point, aim: number): Pick<ItemUse, "center" | "hit">;
   /** Draws `use` as of sim time `time`; does nothing once it has finished. */
   draw(ctx: CanvasRenderingContext2D, use: ItemUse, time: number): void;
 }
@@ -57,6 +60,11 @@ export function requestUse(game: Session, request: UseRequest): void {
   game.uses.push(request);
 }
 
+/** Shows a remote player's use as this client sees it. */
+export function showUse(game: Session, request: UseRequest): void {
+  game.items.get(request.item)?.show(game, request, request.aim);
+}
+
 /**
  * Starts the local player's use of its held item, if it is usable and off cooldown, and
  * queues the request for the room to hand to the host.
@@ -74,7 +82,7 @@ export function useHeldItem(game: Session): void {
     return;
   local.use = {
     item: stack.item.id,
-    ...behaviour.show(game),
+    ...behaviour.show(game, local, local.aim),
     startedAt: game.time,
   };
   game.localUses.push({

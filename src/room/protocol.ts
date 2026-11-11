@@ -57,7 +57,10 @@ const EntitiesMessage = z.object({
     .max(MAX_ENTITIES),
 });
 
-/** A player's item use: who used which item, standing where and facing which way. */
+/**
+ * A player's item use, sent to the whole room for the host to apply and everyone to hear: who
+ * used which item, standing where and facing which way.
+ */
 const UseMessage = z.object({
   by: PlayerId,
   item: z.string().min(1).max(32),
