@@ -59,7 +59,6 @@ export const testShovelConfig: ShovelConfig = {
 };
 
 /** Sound effects for sessions under test; nothing plays. */
-
 export function testSfx(): Sfx {
   return createSfx({ full: 0, silent: 1000, pan: 500 });
 }

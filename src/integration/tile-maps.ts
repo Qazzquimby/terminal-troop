@@ -1,6 +1,6 @@
 import type { TileMap } from "../sim/index.js";
 
-const CELL_SIZE = 50;
+export const CELL_SIZE = 50;
 
 export function emptyMap(): TileMap {
   return { cell: CELL_SIZE, cols: 6, rows: 6, solid: new Uint8Array(36) };
