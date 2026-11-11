@@ -1,7 +1,6 @@
 export { isSweepFree } from "./collision.js";
 export {
   applyEntitySnapshot,
-  cullDeadEntities,
   entitySnapshot,
   registerEntityType,
   spawnEntity,

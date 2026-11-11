@@ -1,5 +1,5 @@
-import { applyDamage, cullDeadEntities } from "../sim/index.js";
-import type { Point, Session } from "../sim/index.js";
+import { applyDamage, isAreaFree } from "../sim/index.js";
+import type { Entity, Point, Session, TileMap } from "../sim/index.js";
 import type { ItemBehaviour } from "./behaviour.js";
 import hitUrl from "../assets/sfx/shovel/hit.mp3";
 import missUrl from "../assets/sfx/shovel/miss.mp3";
@@ -12,6 +12,8 @@ export interface ShovelConfig {
   readonly reach: number;
   /** Damage dealt to every world entity in the hitbox. */
   readonly damage: number;
+  /** How far, in pixels, a hit entity is pushed away from the hitbox centre. */
+  readonly knockback: number;
   /** Minimum time between swings. */
   readonly cooldownMs: number;
   /** How long a swing is shown. */
@@ -20,24 +22,45 @@ export interface ShovelConfig {
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
 
-/** Damages every world entity in the hitbox; returns whether anything was hit. */
+/** Pushes `entity` `distance` pixels away from `from`, unless a wall is in the way. */
+function knockBack(
+  entity: Entity,
+  from: Point,
+  distance: number,
+  map: TileMap,
+): void {
+  const dx = entity.x - from.x;
+  const dy = entity.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return;
+
+  const x = entity.x + (dx / length) * distance;
+  const y = entity.y + (dy / length) * distance;
+  if (isAreaFree(map, x, y, entity.radius)) {
+    entity.x = x;
+    entity.y = y;
+  }
+}
+
+/** Damages and knocks back every world entity in the hitbox; returns whether anything was hit. */
 function damageTargets(
   game: Session,
   center: Point,
   radius: number,
   damage: number,
+  knockback: number,
 ): boolean {
   let hit = false;
   for (const entity of game.entities.values()) {
     if (
-      Math.hypot(entity.x - center.x, entity.y - center.y) <=
+      Math.hypot(entity.x - center.x, entity.y - center.y) >
       radius + entity.radius
-    ) {
-      applyDamage(entity, damage);
-      hit = true;
-    }
+    )
+      continue;
+    applyDamage(entity, damage);
+    knockBack(entity, center, knockback, game.world.map);
+    hit = true;
   }
-  if (hit) cullDeadEntities(game);
   return hit;
 }
 
@@ -83,7 +106,13 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
         x: local.x + Math.cos(local.aim) * config.reach,
         y: local.y + Math.sin(local.aim) * config.reach,
       };
-      const hit = damageTargets(game, center, config.radius, config.damage);
+      const hit = damageTargets(
+        game,
+        center,
+        config.radius,
+        config.damage,
+        config.knockback,
+      );
       const endsAt = now + config.durationMs;
       void game.sfx
         .play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, { volume: 0.8 });

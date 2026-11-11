@@ -161,6 +161,7 @@ export function spawnEntity(
  * stops hosting eases on from where the entity is.
  */
 export function updateEntities(game: Session, dt: number): void {
+  cullDeadEntities(game);
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
@@ -183,11 +184,10 @@ export function updateEntities(game: Session, dt: number): void {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
-  cullDeadEntities(game);
 }
 
 /** Removes every entity that has been destroyed. */
-export function cullDeadEntities(game: Session): void {
+function cullDeadEntities(game: Session): void {
   for (const [id, entity] of game.entities) {
     if (isDead(entity)) game.entities.delete(id);
   }
