@@ -4,7 +4,6 @@ import type { ItemBehaviour } from "./behaviour.js";
 import type { ShovelConfig } from "./shovel.js";
 import { createShovel } from "./shovel.js";
 
-export type { ItemBehaviour } from "./behaviour.js";
 export type { ShovelConfig } from "./shovel.js";
 
 /** Every usable item, by item id. */
