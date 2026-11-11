@@ -211,7 +211,7 @@ test("using an empty hand does nothing", () => {
   expect(game.outbox).toEqual([]);
 });
 
-test("a swing damages what is in its hitbox and knocks it away from the hitbox's centre", () => {
+test("a swing damages what is in its hitbox and knocks it away from the swinger", () => {
   const game = session();
   standAt(game, { x: 450, y: 300 });
   const hit = spawnEntity(game, DUMMY, 500, 300, {});
@@ -223,6 +223,18 @@ test("a swing damages what is in its hitbox and knocks it away from the hitbox's
   expect(hit.x).toBeCloseTo(500 + shovel.knockback);
   expect(hit.y).toBeCloseTo(300);
   expect(missed).toMatchObject({ health: 40, x: 450, y: 380 });
+});
+
+test("a swing knocks what it hits straight away from the swinger, not from the hitbox's centre", () => {
+  const game = session();
+  standAt(game, { x: 450, y: 300 });
+  const hit = spawnEntity(game, DUMMY, 500, 310, {});
+
+  swingRight(game);
+  expect(hit.health).toBe(40 - shovel.damage);
+  const away = Math.hypot(50, 10);
+  expect(hit.x).toBeCloseTo(500 + (50 / away) * shovel.knockback);
+  expect(hit.y).toBeCloseTo(310 + (10 / away) * shovel.knockback);
 });
 
 test("a swing that hits nothing shows a miss, and makes no noise", () => {

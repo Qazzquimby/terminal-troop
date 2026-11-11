@@ -18,7 +18,7 @@ export interface ShovelConfig {
   readonly reach: number;
   /** Damage dealt to every world entity in the hitbox. */
   readonly damage: number;
-  /** How far, in pixels, a hit entity is pushed away from the hitbox centre. */
+  /** How far, in pixels, a hit entity is pushed away from the player. */
   readonly knockback: number;
   /** Minimum time between swings. */
   readonly cooldown: number;
@@ -81,7 +81,7 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
       const hit = entitiesIn(game, area);
       for (const entity of hit) {
         applyDamage(entity, config.damage);
-        knockBack(entity, center, config.knockback, game.world.map, "stay");
+        knockBack(entity, at, config.knockback, game.world.map, "stay");
       }
       if (hit.length > 0)
         broadcastNoise(game, { at: center, loudness: config.hitLoudness });
