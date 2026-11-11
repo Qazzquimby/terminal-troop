@@ -9,8 +9,8 @@ export type { ScrapConfig } from "./scrap.js";
 export { SCRAP } from "./scrap.js";
 export type { ShovelConfig } from "./shovel.js";
 
-/** Number keys 1-9 select these slots. */
-const SLOT_COUNT = 9;
+/** Number keys select these slots. */
+const SLOT_COUNT = 6;
 
 /** The id of every usable item. */
 type ItemId = typeof SHOVEL.id;
@@ -18,7 +18,7 @@ type ItemId = typeof SHOVEL.id;
 /** Every player starts holding a shovel in the first slot. */
 function startingInventory(): Inventory {
   const inventory = createInventory(SLOT_COUNT);
-  addItem(inventory, SHOVEL, 1);
+  addItem(inventory, SHOVEL);
   return inventory;
 }
 
