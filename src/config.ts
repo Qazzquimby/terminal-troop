@@ -49,6 +49,13 @@ export const config = {
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
   net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
+  // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
+  noise: { blur: 0.25 },
+  // Loudness is a multiple of a listener's hearing range.
+  footsteps: {
+    walk: { interval: 0.5, loudness: 0.5 },
+    sprint: { interval: 0.3, loudness: 1.6 },
+  },
   room: {
     sendHz: 15,
     entityHz: 10,
@@ -78,6 +85,7 @@ export const config = {
       barkGap: { min: 6, max: 12 },
       attackRange: 30,
       attackCooldown: 2,
+      hearingRange: CELL * 5,
     },
     cruiser: {
       lightRadius: CELL * 12,

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vitest";
 import {
+  createHub,
   createManualClock,
   testRoomConfig,
 } from "../integration/room-helpers.js";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { createScope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
-import type { Transport } from "../net/index.js";
 import {
   applyDamage,
   contentEvent,
@@ -29,8 +29,6 @@ import { Health, roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
 import type { Room, RoomState } from "./room.js";
 
-type Handlers = Parameters<Transport["join"]>[1];
-
 const SEND_GAP = 1000 / 15;
 const idle = {
   move: { x: 0, y: 0 },
@@ -45,109 +43,6 @@ const heartbeat = roomMessages(testSimConfig.player.nameMax)[
 
 /** Lets pending promise callbacks run, so a held join is waiting on its gate. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-/** A payload as it arrives after travelling as JSON, as over the real transport. */
-const overJson = (payload: unknown): unknown =>
-  payload === undefined ? undefined : JSON.parse(JSON.stringify(payload));
-
-/**
- * Transports that deliver to every other member of the same room, synchronously, each payload
- * through JSON.
- */
-function createHub() {
-  const members = new Map<string, { room: string; handlers: Handlers }>();
-  /** While set, members hear only those in their own group; members in no group hear everyone. */
-  let groups: Map<string, number> | null = null;
-  const hears = (from: string, to: string): boolean =>
-    groups === null || groups.get(from) === groups.get(to);
-
-  function transport(name: string, log: string[]) {
-    let held: {
-      resolve: () => void;
-      reject: (error: Error) => void;
-    } | null = null;
-    let holdNext = false;
-
-    const port: Transport = {
-      label: "memory",
-      async join(room, handlers) {
-        members.delete(name);
-        if (holdNext) {
-          holdNext = false;
-          await new Promise<void>((resolve, reject) => {
-            held = { resolve, reject };
-          });
-        }
-        members.set(name, { room, handlers });
-      },
-      leave() {
-        log.push("transport leave");
-        members.delete(name);
-        return Promise.resolve();
-      },
-      send(event, payload) {
-        if (event !== NetEvent.STATE && event !== NetEvent.HEARTBEAT)
-          log.push(`send ${event}`);
-        const self = members.get(name);
-        if (self === undefined) return Promise.resolve();
-        for (const [other, member] of members) {
-          if (other !== name && member.room === self.room && hears(name, other))
-            member.handlers[event]?.(overJson(payload));
-        }
-        return Promise.resolve();
-      },
-    };
-    return {
-      port,
-      /** The next join waits until the returned control settles it. */
-      holdNextJoin() {
-        holdNext = true;
-        return {
-          resolve() {
-            held?.resolve();
-          },
-          reject(error: Error) {
-            held?.reject(error);
-          },
-        };
-      },
-    };
-  }
-
-  /** A bare member of `room` that records what reaches it. */
-  function listener(room: string) {
-    const heard: { event: string; payload: unknown }[] = [];
-    const handlers: Handlers = {};
-    for (const event of Object.values(NetEvent)) {
-      handlers[event] = (payload) => heard.push({ event, payload });
-    }
-    members.set("listener", { room, handlers });
-    const send = (event: NetEvent, payload: unknown): void => {
-      for (const [other, member] of members) {
-        if (other !== "listener" && member.room === room)
-          member.handlers[event]?.(payload);
-      }
-    };
-    return { heard, send };
-  }
-
-  return {
-    transport,
-    listener,
-    inRoom: (name: string) => members.has(name),
-    /** Splits the members into `sides` that hear only each other, until `heal`. */
-    partition(...sides: string[][]) {
-      groups = new Map(
-        sides.flatMap((side, index) =>
-          side.map((name) => [name, index] as const),
-        ),
-      );
-    },
-    heal() {
-      groups = null;
-    },
-  };
-}
 
 /** Three blobs start across the dev square, each drifting right at 20px/s with 10 health, and heard stepping. */
 const blobs: WorldContent = {

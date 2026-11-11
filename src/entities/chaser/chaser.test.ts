@@ -391,3 +391,89 @@ describe("sounds", () => {
     expect(game.players.get("them")?.health).toBe(100);
   });
 });
+
+describe("hearing", () => {
+  const blind = { ...config, sightRange: 0 };
+
+  /** A remote player at (x, y) reporting it moves in `mode`. */
+  function moverAt(
+    game: Session,
+    x: number,
+    y: number,
+    mode: "walk" | "sprint",
+  ): void {
+    applyRemoteState(game, {
+      id: "them",
+      name: "THEM",
+      x,
+      y,
+      aim: 0,
+      health: 100,
+      content: { "core/movement": { mode, moving: true } },
+    });
+  }
+
+  const distanceTo = (zombie: WorldEntity, x: number, y: number): number =>
+    Math.hypot(zombie.x - x, zombie.y - y);
+
+  test("a wandering chaser turns towards a player it hears sprinting, placing it roughly", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    moverAt(game, 750, 300, "sprint");
+    const zombie = chaserAt(game, 450, 300);
+    run(game, DT);
+
+    const state = stateOf(zombie);
+    if (state.mode !== "wander" || state.noiseTarget === null)
+      throw new Error("heard nothing");
+    const { noiseTarget } = state;
+    const spread = 300 * testSimConfig.noise.blur;
+    expect(
+      Math.hypot(noiseTarget.x - 750, noiseTarget.y - 300),
+    ).toBeLessThanOrEqual(spread);
+    expect(zombie.vx).toBeGreaterThan(0);
+
+    run(game, 2);
+    expect(distanceTo(zombie, 750, 300)).toBeLessThan(300 - 80);
+  });
+
+  test("a player walking beyond its footsteps' reach is not heard", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    moverAt(game, 750, 300, "walk");
+    const zombie = chaserAt(game, 450, 300);
+    run(game, 2);
+    expect(stateOf(zombie)).toMatchObject({ noiseTarget: null });
+  });
+
+  test("standing at the noise, it forgets it and wanders on", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    moverAt(game, 600, 300, "sprint");
+    const zombie = chaserAt(game, 450, 300);
+    run(game, DT);
+    expect(stateOf(zombie)).not.toMatchObject({ noiseTarget: null });
+
+    game.players.delete("them");
+    run(game, 5);
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "wander",
+      noiseTarget: null,
+    });
+  });
+
+  test("sight overrides hearing", () => {
+    const game = world();
+    standAt(game, 450, 450);
+    moverAt(game, 650, 300, "sprint");
+    const zombie = chaserAt(game, 450, 300);
+    Object.assign(zombie, {
+      data: { ...stateOf(zombie), facing: Math.PI / 2 },
+    });
+    run(game, DT);
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "chase",
+      target: { x: 450, y: 450 },
+    });
+  });
+});

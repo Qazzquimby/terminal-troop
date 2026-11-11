@@ -6,6 +6,7 @@ import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
 import { createInventory, selectSlot } from "./inventory.js";
+import { movement } from "./movement.js";
 import type { PlayerData } from "./player-data.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
@@ -68,6 +69,8 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   stamina: Stamina;
   /** The player's latest item use, as this client saw it; never sent over the network. */
   use: ItemUse | null;
+  /** Seconds until the player's next footstep while it moves; never sent over the network. */
+  stride: number;
 }
 
 export interface PlayerState {
@@ -108,6 +111,7 @@ export function createPlayer(
     content: new Map(),
     stamina: createStamina(rules.stamina),
     use: null,
+    stride: 0,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };
@@ -126,6 +130,7 @@ export function updatePlayer(
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
   const sprinting = controls.sprint && moving && canSprint(player.stamina);
   player.stamina = updateStamina(player.stamina, sprinting, dt, rules.stamina);
+  movement.set(player, { mode: sprinting ? "sprint" : "walk", moving });
 
   const speed = sprinting
     ? config.speed * config.sprintMultiplier

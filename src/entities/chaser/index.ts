@@ -9,9 +9,11 @@ import {
   directionalVision,
   isAreaFree,
   mulberry32Next,
+  noisesHeardBy,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
+  Heard,
   Point,
   Rng,
   Scatter,
@@ -48,6 +50,8 @@ export interface ChaserConfig {
   readonly attackRange: number;
   /** Seconds between attacks. */
   readonly attackCooldown: number;
+  /** How far a chaser hears a noise of loudness 1. */
+  readonly hearingRange: number;
 }
 
 const Waypoint = z.object({ x: z.number(), y: z.number() });
@@ -83,11 +87,17 @@ const Shared = {
 };
 
 /**
- * - wander: walks `route`, then stands for `pause` seconds, then picks a new leg
+ * - wander: walks `route`, then stands for `pause` seconds, then picks a new leg; a heard
+ *   noise turns its route towards `noiseTarget`, where the noise seemed to come from
  * - chase: heads along `route` for `target`, where a player was last seen
  */
 export const ChaserState = z.discriminatedUnion("mode", [
-  z.object({ ...Shared, mode: z.literal("wander"), pause: z.number().min(0) }),
+  z.object({
+    ...Shared,
+    mode: z.literal("wander"),
+    pause: z.number().min(0),
+    noiseTarget: Waypoint.nullable(),
+  }),
   z.object({ ...Shared, mode: z.literal("chase") }),
 ]);
 
@@ -100,7 +110,11 @@ const LEG_ATTEMPTS = 8;
 
 const SOUNDS = { bark: barkUrl, alert: alertUrl, attack: attackUrl } as const;
 
-const COLOURS = { wander: "#7d9a52", chase: "#d8473a" } as const;
+const COLOURS = {
+  wander: "#7d9a52",
+  listen: "#d8a13a",
+  chase: "#d8473a",
+} as const;
 
 const CHASER_GLYPH = "🧟";
 
@@ -115,6 +129,7 @@ export function freshChaser(seed: number, config: ChaserConfig): ChaserState {
     route: [],
     target: null,
     pause: 0,
+    noiseTarget: null,
     nextBark: result,
     attackCooldown: 0,
     attacking: false,
@@ -193,21 +208,75 @@ function wanderLeg(
   return null;
 }
 
+/** The clearest noise a chaser at `at` hears this step, or null, and its seed after listening. */
+function listen(
+  state: Wander,
+  at: Point,
+  game: Session,
+  config: ChaserConfig,
+): { result: Heard | null; seed: number } {
+  return withSeed(state.seed, (rng) => {
+    let clearest: Heard | null = null;
+    for (const heard of noisesHeardBy(game, {
+      at,
+      range: config.hearingRange,
+      rng,
+    })) {
+      if (clearest === null || heard.clarity > clearest.clarity)
+        clearest = heard;
+    }
+    return clearest;
+  });
+}
+
+/**
+ * Heads for `heard`, planning anew unless the route already heads close enough to it. A noise
+ * no route reaches is ignored.
+ */
+function investigate(
+  state: Wander,
+  at: Point,
+  heard: Point,
+  map: TileMap,
+  config: ChaserConfig,
+): Wander {
+  const { noiseTarget } = state;
+  if (
+    noiseTarget !== null &&
+    state.route.length > 0 &&
+    Math.hypot(noiseTarget.x - heard.x, noiseTarget.y - heard.y) <=
+      config.repathDistance
+  )
+    return state;
+  const route = planRoute(map, config.radius, at, heard);
+  if (route === null || route.length === 0) return state;
+  return { ...state, route, noiseTarget: heard };
+}
+
+/**
+ * Walks its route, turning it towards the clearest noise it hears; at the end of a route it
+ * stands, then picks a new leg.
+ */
 function wander(
   state: Wander,
   at: Point,
   dt: number,
-  map: TileMap,
+  game: Session,
   config: ChaserConfig,
 ): Wander {
+  const { map } = game.world;
+  const { result: heard, seed } = listen(state, at, game, config);
+  if (heard !== null)
+    return investigate({ ...state, seed }, at, heard.at, map, config);
   if (state.route.length > 0) return state;
-  if (state.pause > 0)
-    return { ...state, pause: Math.max(0, state.pause - dt) };
-  const { result, seed } = withSeed(state.seed, (rng) => ({
+  const standing = { ...state, noiseTarget: null };
+  if (standing.pause > 0)
+    return { ...standing, pause: Math.max(0, standing.pause - dt) };
+  const leg = withSeed(standing.seed, (rng) => ({
     route: wanderLeg(map, at, rng, config) ?? [],
     pause: pauseLength(rng, config),
   }));
-  return { ...state, seed, ...result };
+  return { ...standing, seed: leg.seed, ...leg.result };
 }
 
 /** What a chaser carries over from `state` on changing mode. */
@@ -270,12 +339,14 @@ function giveUp(state: ChaserState, config: ChaserConfig): Wander {
     route: [],
     target: null,
     pause: result,
+    noiseTarget: null,
   };
 }
 
 /**
  * The state a chaser at `at` moves to: a sighted player starts or steers a chase, a chase
- * that reaches where its player was last seen gives up, and otherwise it wanders.
+ * that reaches where its player was last seen gives up, and otherwise it wanders, drawn by
+ * what it hears.
  */
 function think(
   state: ChaserState,
@@ -287,7 +358,7 @@ function think(
   const { map } = game.world;
   const seen = sighting(game, at, config.sightRange, state.facing);
   if (seen !== null) return pursue(state, at, seen, map, config);
-  if (state.mode === "wander") return wander(state, at, dt, map, config);
+  if (state.mode === "wander") return wander(state, at, dt, game, config);
   return state.route.length > 0 ? state : giveUp(state, config);
 }
 
@@ -374,7 +445,10 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
 
     draw(ctx, entity, state) {
       drawEmoji(ctx, entity, CHASER_GLYPH, entity.radius * 2);
-      ctx.strokeStyle = COLOURS[state.mode];
+      ctx.strokeStyle =
+        state.mode === "wander" && state.noiseTarget !== null
+          ? COLOURS.listen
+          : COLOURS[state.mode];
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(entity.x, entity.y, entity.radius + 2, 0, Math.PI * 2);
@@ -385,8 +459,9 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
 }
 
 /**
- * A chaser: wanders slowly, and runs down any player it sees to where it last saw them. A new
- * world scatters them away from the players, each drawing its own seed.
+ * A chaser: wanders slowly, drawn towards what it hears, and runs down any player it sees to
+ * where it last saw them. A new world scatters them away from the players, each drawing its own
+ * seed.
  */
 export const chaser = defineEntity("chaser", (config: ChaserConfig) => ({
   ...definition(config),
