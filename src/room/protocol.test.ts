@@ -118,8 +118,8 @@ describe("the message table", () => {
 
   test.each([
     {},
-    { inventory: "shovel" },
-    { inventory: null, lamp: { on: true, fuel: "Infinity" } },
+    { held: "shovel" },
+    { held: null, lamp: { on: true, fuel: "Infinity" } },
     { "an-entry-this-build-lacks": [1, 2] },
   ])("a STATE's content %o parses as is, left to each entry", (content) => {
     expect(

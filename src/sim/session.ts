@@ -1,4 +1,5 @@
 import type { Sfx } from "../audio/index.js";
+import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies } from "./collision.js";
 import type { EntityType, Strike, WorldEntity } from "./entities.js";
@@ -83,6 +84,7 @@ function buildRoomWorld(
   return buildWorld(config.world, mulberry32(seed));
 }
 
+/** A new session, holding the engine's own player state but no content yet. */
 export function createSession(
   localId: string,
   name: string,
@@ -95,7 +97,7 @@ export function createSession(
   const world = buildRoomWorld(seed, worldKind, config);
   const local = createPlayer(localId, name, world, config);
 
-  return {
+  const game: Session = {
     localId,
     config,
     local,
@@ -117,6 +119,8 @@ export function createSession(
     readyAt: new Map(),
     strikes: [],
   };
+  registerBuiltIns(game);
+  return game;
 }
 
 /** Every player in the session except the local one. */

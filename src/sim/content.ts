@@ -1,3 +1,4 @@
+import { RESERVED_NAMES } from "./built-ins.js";
 import { nearestFreePoint } from "./collision.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
@@ -8,7 +9,7 @@ import type { Point, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { Session } from "./session.js";
-import { heldItemId, registerItem } from "./use.js";
+import { registerItem } from "./use.js";
 import type { ItemBehaviour } from "./use.js";
 
 /**
@@ -31,7 +32,7 @@ export interface WorldContent {
 
 /**
  * Registers each of `contents` with a new session, in order: first its player state, then the
- * rest. Throws on a name used twice.
+ * rest. Throws on a name used twice, or one the engine keeps for its own.
  */
 export function registerContent(
   game: Session,
@@ -39,6 +40,8 @@ export function registerContent(
 ): void {
   const names = new Set<string>();
   for (const content of contents) {
+    if (RESERVED_NAMES.has(content.name))
+      throw new Error(`Content name reserved by the engine: ${content.name}`);
     if (names.has(content.name))
       throw new Error(`Content name used twice: ${content.name}`);
     names.add(content.name);
@@ -47,14 +50,6 @@ export function registerContent(
     content.register(game);
   }
 }
-
-/** What every player holds, by item id, for the others to draw. */
-export const inventory: WorldContent = {
-  name: "inventory",
-  player: heldItemId,
-  register: () => undefined,
-  populate: () => undefined,
-};
 
 /**
  * An entry of the content list: turns its config slice, kept under its `name`, into a world's

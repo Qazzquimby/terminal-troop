@@ -11,7 +11,6 @@ export {
   defineEntity,
   defineItem,
   entityKind,
-  inventory,
   registerContent,
 } from "./content.js";
 export type {
