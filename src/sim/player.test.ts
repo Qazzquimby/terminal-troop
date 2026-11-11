@@ -2,7 +2,8 @@ import { expect, test } from "vitest";
 import type { World } from "./map.js";
 import { movement } from "./movement.js";
 import type { Controls, Player, PlayerRules } from "./player.js";
-import { createPlayer, updatePlayer } from "./player.js";
+import type { CollisionBody } from "./collision.js";
+import { createPlayer, startDash, stepDash, updatePlayer } from "./player.js";
 
 const STEP = 1 / 60;
 const PLAYER_SPEED = 220;
@@ -50,6 +51,7 @@ function hold(
     crouch: false,
     select: null,
     use: false,
+    secondary: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {
@@ -166,4 +168,67 @@ test("running out of stamina drops sprint to walk speed until recovered", () => 
   }
   run(player, world, true, 15);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * SPRINT_MULTIPLIER);
+});
+
+/** Steps `player`'s dash `steps` times past `others`. */
+function dash(
+  player: Player,
+  world: World,
+  steps: number,
+  others: CollisionBody[] = [],
+) {
+  for (let i = 0; i < steps; i++) stepDash(player, STEP, world.map, others);
+}
+
+const post = (x: number, y: number): CollisionBody => ({
+  x,
+  y,
+  vx: 0,
+  vy: 0,
+  radius: 15,
+});
+
+test("a dash carries the player its distance over its time, then ends", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  const landing = startDash(player, Math.PI / 2, 28, 0.1, world.map, []);
+  expect(landing.x).toBeCloseTo(500);
+  expect(landing.y).toBeCloseTo(2528);
+  dash(player, world, 12);
+  expect(player.x).toBeCloseTo(500);
+  expect(player.y).toBeCloseTo(2528);
+  expect(player.dash).toBeNull();
+});
+
+test("a dash stops at a wall, and says where", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  player.x = 20;
+  const landing = startDash(player, Math.PI, 28, 0.1, world.map, []);
+  expect(landing.x).toBeGreaterThanOrEqual(14);
+  expect(landing.x).toBeLessThan(18);
+  dash(player, world, 12);
+  expect(player.x).toBeCloseTo(14);
+});
+
+test("a dash stops touching a body in its way, and says where", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  const others = [post(540, 2500)];
+  const landing = startDash(player, 0, 28, 0.1, world.map, others);
+  expect(landing.x).toBeCloseTo(511);
+  dash(player, world, 12, others);
+  expect(player.x).toBeCloseTo(511);
+});
+
+test("a dash goes on once a body in its way has moved off", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  const others = [post(531, 2500)];
+  startDash(player, 0, 28, 0.1, world.map, others);
+  dash(player, world, 2, others);
+  expect(player.x).toBeCloseTo(502);
+  others.length = 0;
+  dash(player, world, 10, others);
+  expect(player.x).toBeGreaterThan(520);
 });

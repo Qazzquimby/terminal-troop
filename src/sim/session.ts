@@ -9,6 +9,8 @@ import type {
   OutgoingEvent,
 } from "./content-event.js";
 import { applyEvents } from "./content-event.js";
+import type { WorldContent } from "./content.js";
+import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
@@ -19,7 +21,12 @@ import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
-import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
+import {
+  createPlayer,
+  smoothPlayer,
+  stepDash,
+  updatePlayer,
+} from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
 import { applyContentState, contentState } from "./player-data.js";
@@ -79,8 +86,17 @@ export interface Session {
   readonly outbox: OutgoingEvent[];
   /** The noises made in the latest step; each step starts by clearing them. */
   readonly noises: Noise[];
-  /** When, in sim seconds, the host lets each player use an item again. */
-  readonly readyAt: Map<string, number>;
+  /**
+   * When, in sim seconds, the host lets each player act again: by what the action is timed
+   * under, then by player id.
+   */
+  readonly readyAt: Map<string, Map<string, number>>;
+  /** When, in sim seconds, the local player may next act, by what the action is timed under. */
+  readonly localReadyAt: Map<string, number>;
+  /** The content registered with it, in order. */
+  readonly contents: WorldContent[];
+  /** The flashes shown in the latest step; each step starts by clearing them. */
+  readonly flashes: Flash[];
   /**
    * The local player's state changed in a way the others should hear at once; the room sends
    * it in its next frame, and clears this.
@@ -141,6 +157,9 @@ export function createSession(
     outbox: [],
     noises: [],
     readyAt: new Map(),
+    localReadyAt: new Map(),
+    contents: [],
+    flashes: [],
     reportNow: false,
   };
   registerBuiltIns(game);
@@ -155,6 +174,17 @@ export function remotePlayers(game: Session): Player[] {
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
 function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
+}
+
+/** Every body in the session that others collide with, but `body` itself. */
+export function solidBodiesBut(
+  game: Session,
+  body: CollisionBody,
+): CollisionBody[] {
+  return [
+    ...game.players.values(),
+    ...[...game.entities.values()].filter((entity) => entity.collides),
+  ].filter((other) => other !== body);
 }
 
 function separateSessionBodies(game: Session): void {
@@ -184,10 +214,13 @@ export function updateSession(
 ): void {
   game.time += dt;
   game.noises.length = 0;
+  game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
+  stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
+  for (const content of game.contents) content.act?.(game, controls);
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);

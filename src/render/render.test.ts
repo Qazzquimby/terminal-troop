@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import {
+  testFlashConfig,
   testMapMemoryConfig,
   testSfx,
   testSimConfig,
@@ -24,6 +25,7 @@ import {
 import { createMapMemory } from "./map-memory.js";
 import type { MapMemory } from "./map-memory.js";
 import {
+  drawFlashes,
   drawHealthBar,
   drawLitWalls,
   drawRemembered,
@@ -83,6 +85,7 @@ const walkRight = {
   crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 function session(): Session {
@@ -270,4 +273,45 @@ test("terrain seen before is drawn out of sight, and nothing that stood on it", 
   drawRemembered(ctx, memory.within(everywhere), testMapMemoryConfig, 50);
 
   expect(rects).toContainEqual([300, 300, 50, 50]);
+});
+
+test("a flash is drawn as a filled disc and its ring on the blow, fading as it swells", () => {
+  const calls: unknown[][] = [];
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    arc: (x: number, y: number, radius: number, from: number, to: number) =>
+      calls.push(["arc", x, y, radius, from, to]),
+    fill() {
+      calls.push(["fill", this.fillStyle, this.globalAlpha]);
+    },
+    stroke() {
+      calls.push(["stroke", this.strokeStyle, this.globalAlpha]);
+    },
+  };
+  const flash = {
+    at: { x: 40, y: 60 },
+    radius: 20,
+    hit: true,
+    startedAt: 1000,
+  };
+  const { duration, start, fill, colour } = testFlashConfig;
+  drawFlashes(ctx, { config: testFlashConfig, list: [flash] }, 1000);
+  expect(calls).toEqual([
+    ["arc", 40, 60, 20 * start, 0, Math.PI * 2],
+    ["fill", colour.hit, fill],
+    ["stroke", colour.hit, 1],
+  ]);
+  calls.length = 0;
+  drawFlashes(
+    ctx,
+    { config: testFlashConfig, list: [flash] },
+    1000 + duration * 1000,
+  );
+  expect(calls).toEqual([]);
 });

@@ -2,12 +2,14 @@ import type { SpatialFalloff } from "./audio/index.js";
 import type { EntitiesConfig } from "./entities/index.js";
 import type {
   CameraConfig,
+  FlashConfig,
   MapMemoryConfig,
   RippleConfig,
 } from "./render/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
+import type { MovesConfig } from "./moves/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
@@ -17,9 +19,11 @@ interface AppConfig extends SimConfig {
   readonly room: RoomConfig;
   readonly camera: CameraConfig;
   readonly ripples: RippleConfig;
+  readonly flashes: FlashConfig;
   readonly mapMemory: MapMemoryConfig;
   readonly entities: EntitiesConfig;
   readonly items: ItemsConfig;
+  readonly moves: MovesConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
@@ -32,8 +36,15 @@ const STAMINA_MAX = 100;
 export const config = {
   world: { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
-  // Eases out from 1:1 by a fifth of the gap each 60Hz frame.
-  camera: { zoom: 1.25, zoomRate: 13.4 },
+  // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
+  // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads
+  // it. A jump of more than 4 cells, such as a respawn, is cut to rather than panned across.
+  camera: {
+    zoom: 1.25,
+    zoomRate: 13.4,
+    followRate: 18,
+    snapDistance: CELL * 4,
+  },
   // What the local player hears, drawn as ripples: a walking step 3.5 cells off and a sprinting
   // one 11 cells off.
   ripples: {
@@ -50,6 +61,14 @@ export const config = {
     maxRooms: 50,
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
+  },
+  // A kick's flash: three quarters of its size at first, swelling to full as it fades over 0.3s.
+  flashes: {
+    duration: 0.3,
+    start: 0.75,
+    fill: 0.55,
+    width: 4,
+    colour: { hit: "#ffb04a", miss: "#e6edf3" },
   },
   player: {
     radius: 14,
@@ -127,6 +146,20 @@ export const config = {
       duration: 0.18,
       volume: 0.8,
       hitLoudness: 1.2,
+    },
+  },
+  moves: {
+    // A lunge of one body length into a kick that lands a little short of the shovel; five
+    // kicks fell a chaser, each sending it 2.5 of its own body lengths away.
+    kick: {
+      reach: 32,
+      radius: 18,
+      damage: 8,
+      knockback: 2.5,
+      cooldown: 0.8,
+      stamina: STAMINA_MAX * 0.15,
+      lunge: { lengths: 1, seconds: 0.08 },
+      loudness: 1,
     },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },

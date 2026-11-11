@@ -28,6 +28,8 @@ import type {
   MapMemoryConfig,
   RememberedTerrain,
 } from "./map-memory.js";
+import { flashDisc } from "./flashes.js";
+import type { Flashes } from "./flashes.js";
 import { rippleRing } from "./ripples.js";
 import type { Ripples } from "./ripples.js";
 
@@ -320,6 +322,42 @@ export function drawLitWalls(
  * Each noise the local player heard lately, as of `now` in ms, as a ring spreading from where it
  * seemed to come from.
  */
+/** Draws each flash as of `time` in ms: a filled disc and its ring, fading out. */
+export function drawFlashes(
+  ctx: Pick<
+    CanvasRenderingContext2D,
+    | "save"
+    | "restore"
+    | "beginPath"
+    | "arc"
+    | "fill"
+    | "stroke"
+    | "fillStyle"
+    | "strokeStyle"
+    | "lineWidth"
+    | "globalAlpha"
+  >,
+  flashes: Pick<Flashes, "config" | "list">,
+  time: number,
+): void {
+  const { config } = flashes;
+  for (const flash of flashes.list) {
+    const disc = flashDisc(flash, time, config);
+    if (disc === null) continue;
+    ctx.save();
+    ctx.fillStyle = disc.colour;
+    ctx.strokeStyle = disc.colour;
+    ctx.lineWidth = config.width;
+    ctx.beginPath();
+    ctx.arc(disc.x, disc.y, disc.radius, 0, Math.PI * 2);
+    ctx.globalAlpha = disc.fade * config.fill;
+    ctx.fill();
+    ctx.globalAlpha = disc.fade;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawRipples(
   ctx: CanvasRenderingContext2D,
   ripples: Ripples,
@@ -423,7 +461,8 @@ export function interpolatedView(
 
 /**
  * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
- * player `isAway` picks out drawn as away, and what the local player heard as `ripples`. What
+ * player `isAway` picks out drawn as away, the blows seen landing as `flashes`, and what the
+ * local player heard as `ripples`. What
  * the local player sees is added to `memory`, and what it remembers out of sight is drawn faint.
  */
 export function draw(
@@ -434,6 +473,7 @@ export function draw(
   alpha: number,
   mouse: Point,
   isAway: (id: string) => boolean,
+  flashes: Flashes,
   ripples: Ripples,
   memory: MapMemory,
 ): void {
@@ -480,6 +520,7 @@ export function draw(
     drawPlayer(ctx, game, player, false, isAway(player.id));
     drawHealthBar(ctx, player, player.y - player.radius - 26);
   });
+  drawFlashes(ctx, flashes, now);
   ctx.restore();
 
   // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.

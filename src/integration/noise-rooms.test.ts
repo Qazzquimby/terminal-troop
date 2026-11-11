@@ -50,6 +50,7 @@ const still: Controls = {
   crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 function sessionOf(room: Room): Session {

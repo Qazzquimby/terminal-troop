@@ -30,6 +30,7 @@ const idle = {
   crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 const { chaser: config } = testEntitiesConfig;
 

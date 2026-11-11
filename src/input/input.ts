@@ -12,7 +12,8 @@ import type { Point, Controls, ViewConfig } from "../sim/index.js";
 /**
  * Only actions active in the current context respond, and only their keys are kept from
  * the page; every other key keeps its default (focus moves, sliders, typing). Mouse buttons
- * pressed on the canvas drive actions like keys. UI actions run immediately, outside the
+ * pressed on the canvas drive actions like keys, and the canvas keeps its context menu to
+ * itself while the right button drives an action. UI actions run immediately, outside the
  * simulation step. `toWorld` turns a canvas point into a world point.
  */
 export function createInput(
@@ -45,6 +46,10 @@ export function createInput(
   canvas.addEventListener("pointerdown", (event) => {
     const code = MOUSE_BUTTONS[event.button];
     if (code !== undefined) buttons.keyDown(code, false, event.timeStamp);
+  });
+
+  canvas.addEventListener("contextmenu", (event) => {
+    if (buttons.actionsFor("MouseRight").length > 0) event.preventDefault();
   });
 
   window.addEventListener("pointerup", (event) => {

@@ -22,6 +22,7 @@ const idle = {
   crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 /** A dev-square session whose one kind counts its updates and drifts right at 60px/s. */

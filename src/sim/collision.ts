@@ -251,3 +251,30 @@ export function separateBodies(
     if (!moved) return;
   }
 }
+
+/**
+ * How far `body` can move from where it stands along the unit vector `direction` before it
+ * touches any of `others`; Infinity when none is in the way. One it already touches ahead of it
+ * leaves no room at all, and one behind it is no obstacle.
+ */
+export function distanceToContact(
+  body: CollisionBody,
+  direction: Point,
+  others: readonly CollisionBody[],
+): number {
+  let nearest = Infinity;
+  for (const other of others) {
+    const dx = other.x - body.x;
+    const dy = other.y - body.y;
+    const along = dx * direction.x + dy * direction.y;
+    if (along <= 0) continue;
+    const reach = body.radius + other.radius;
+    const across = dx * dx + dy * dy - along * along;
+    if (across >= reach * reach) continue;
+    nearest = Math.min(
+      nearest,
+      Math.max(0, along - Math.sqrt(reach * reach - across)),
+    );
+  }
+  return nearest;
+}

@@ -1,16 +1,12 @@
 import {
   applyDamage,
   broadcastNoise,
+  circleAhead,
   defineItem,
-  isAreaFree,
+  entitiesIn,
+  knockBack,
 } from "../../sim/index.js";
-import type {
-  Entity,
-  ItemUse,
-  Point,
-  Session,
-  TileMap,
-} from "../../sim/index.js";
+import type { ItemUse, Point } from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
@@ -35,35 +31,6 @@ export interface ShovelConfig {
 }
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
-
-/** Pushes `entity` `distance` pixels away from `from`, unless a wall is in the way. */
-function knockBack(
-  entity: Entity,
-  from: Point,
-  distance: number,
-  map: TileMap,
-): void {
-  const dx = entity.x - from.x;
-  const dy = entity.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length === 0) return;
-
-  const x = entity.x + (dx / length) * distance;
-  const y = entity.y + (dy / length) * distance;
-  if (isAreaFree(map, x, y, entity.radius)) {
-    entity.x = x;
-    entity.y = y;
-  }
-}
-
-/** Every world entity in the hitbox. */
-function targets(game: Session, center: Point, radius: number): Entity[] {
-  return [...game.entities.values()].filter(
-    (entity) =>
-      Math.hypot(entity.x - center.x, entity.y - center.y) <=
-      radius + entity.radius,
-  );
-}
 
 /** A hitbox that fades out over `duration` seconds from `use.startedAt`; green when it connected. */
 function drawHitbox(
@@ -101,10 +68,8 @@ function drawHitbox(
  * A swing that hits makes a noise every client hears.
  */
 export const shovel = defineItem("shovel", (config: ShovelConfig) => {
-  const hitbox = (at: Point, aim: number): Point => ({
-    x: at.x + Math.cos(aim) * config.reach,
-    y: at.y + Math.sin(aim) * config.reach,
-  });
+  const hitbox = (at: Point, aim: number) =>
+    circleAhead(at, aim, config.reach, config.radius);
   return {
     name: "Shovel",
     maxStack: 1,
@@ -112,22 +77,23 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     starting: { slot: 0, quantity: 1 },
     cooldown: config.cooldown,
     apply(game, at, aim) {
-      const center = hitbox(at, aim);
-      const hit = targets(game, center, config.radius);
+      const area = hitbox(at, aim);
+      const { center } = area;
+      const hit = entitiesIn(game, area);
       for (const entity of hit) {
         applyDamage(entity, config.damage);
-        knockBack(entity, center, config.knockback, game.world.map);
+        knockBack(entity, center, config.knockback, game.world.map, "stay");
       }
       if (hit.length > 0)
         broadcastNoise(game, { at: center, loudness: config.hitLoudness });
     },
     show(game, at, aim) {
-      const center = hitbox(at, aim);
-      const hit = targets(game, center, config.radius).length > 0;
+      const area = hitbox(at, aim);
+      const hit = entitiesIn(game, area).length > 0;
       void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, at, game.local, {
         volume: config.volume,
       });
-      return { center, hit };
+      return { center: area.center, hit };
     },
     draw(ctx, use, time) {
       drawHitbox(ctx, use, config.radius, config.duration, time);

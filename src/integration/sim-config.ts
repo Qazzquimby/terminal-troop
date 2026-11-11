@@ -2,7 +2,12 @@ import { createSfx } from "../audio/index.js";
 import type { Sfx } from "../audio/index.js";
 import type { EntitiesConfig } from "../entities/index.js";
 import type { ItemsConfig } from "../items/index.js";
-import type { MapMemoryConfig, RippleConfig } from "../render/index.js";
+import type { MovesConfig } from "../moves/index.js";
+import type {
+  FlashConfig,
+  MapMemoryConfig,
+  RippleConfig,
+} from "../render/index.js";
 import type { SimConfig } from "../sim/index.js";
 
 /**
@@ -91,6 +96,33 @@ export const testItemsConfig: ItemsConfig = {
     volume: 1,
     hitLoudness: 1,
   },
+};
+
+/**
+ * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
+ * test chaser falls to its fourth, sending what it hits two of its own body lengths away. It costs
+ * a third of the test stamina bar, at most twice a second.
+ */
+export const testMovesConfig: MovesConfig = {
+  kick: {
+    reach: 30,
+    radius: 20,
+    damage: 10,
+    knockback: 2,
+    cooldown: 0.5,
+    stamina: 30,
+    lunge: { lengths: 1, seconds: 0.1 },
+    loudness: 1,
+  },
+};
+
+/** A flash lasts 0.5s, swelling from half its size. */
+export const testFlashConfig: FlashConfig = {
+  duration: 0.5,
+  start: 0.5,
+  fill: 0.3,
+  width: 2,
+  colour: { hit: "#f00", miss: "#888" },
 };
 
 /** Sound effects for sessions under test; nothing plays. */

@@ -1,8 +1,12 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
-import { moveWithCollision, separateBodies } from "./collision.js";
+import {
+  distanceToContact,
+  moveWithCollision,
+  separateBodies,
+} from "./collision.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
 import { isAreaFree } from "./map.js";
 import { applyRemoteState, createSession, updateSession } from "./session.js";
@@ -101,6 +105,7 @@ const idle = {
   crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 function collisionSession() {
@@ -190,4 +195,30 @@ test("a client yields to entities without changing their host targets", () => {
   expect(
     Math.hypot(entity.x - game.local.x, entity.y - game.local.y),
   ).toBeGreaterThanOrEqual(entity.radius + game.local.radius - 1e-5);
+});
+
+describe("distanceToContact", () => {
+  const body = { x: 0, y: 0, vx: 0, vy: 0, radius: 10 };
+  const at = (x: number, y: number) => ({ x, y, vx: 0, vy: 0, radius: 5 });
+  const right = { x: 1, y: 0 };
+
+  test("is the gap to the nearest body ahead in the way", () => {
+    expect(distanceToContact(body, right, [at(40, 0), at(30, 0)])).toBeCloseTo(
+      15,
+    );
+  });
+
+  test("allows for a body off to the side that the path still clips", () => {
+    expect(distanceToContact(body, right, [at(40, 9)])).toBeCloseTo(40 - 12);
+  });
+
+  test("ignores bodies clear of the path or behind", () => {
+    expect(distanceToContact(body, right, [at(40, 16), at(-20, 0)])).toBe(
+      Infinity,
+    );
+  });
+
+  test("is zero for a body already touching ahead", () => {
+    expect(distanceToContact(body, right, [at(14, 0)])).toBe(0);
+  });
 });
