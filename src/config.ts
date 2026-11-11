@@ -1,12 +1,11 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { MonsterConfig } from "./monsters/index.js";
-import type { CruiserConfig } from "./sim/cruiser.js";
+import type { CruiserConfig } from "./vehicles/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ShovelConfig } from "./items/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
-import {CELL_SIZE} from "./integration/tile-maps";
 
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
 interface AppConfig extends SimConfig {
@@ -21,10 +20,11 @@ interface AppConfig extends SimConfig {
   readonly ui: UiConfig;
 }
 
+const CELL = 50;
 const STAMINA_MAX = 100;
 
 export const config = {
-  world: { cell: CELL_SIZE, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
+  world: { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
   player: {
     radius: 14,
@@ -44,8 +44,8 @@ export const config = {
     regenDelay: 0.6,
     recover: STAMINA_MAX * 0.3,
   },
-  vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL_SIZE * 1.4 },
-  light: { range: CELL_SIZE * 6 },
+  vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
+  light: { range: CELL * 6 },
   net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
   room: {
     sendHz: 15,
@@ -61,22 +61,22 @@ export const config = {
     chaserDensity: 1.2,
     minChasers: 2,
     seed: 1,
-    clearance: CELL_SIZE * 10,
+    clearance: CELL * 10,
     chaser: {
       radius: 15,
       maxHealth: 40,
       attackDamage: 35,
       wanderSpeed: 60,
       chaseSpeed: 120,
-      sightRange: CELL_SIZE * 5,
-      wanderRange: CELL_SIZE * 5,
+      sightRange: CELL * 5,
+      wanderRange: CELL * 5,
       wanderPause: { min: 0.4, max: 1.5 },
-      repathDistance: CELL_SIZE / 2,
+      repathDistance: CELL / 2,
     },
   },
   cruiser: {
-    lightRadius: CELL_SIZE * 12,
-    offset: CELL_SIZE,
+    lightRadius: CELL * 12,
+    offset: CELL,
   },
   shovel: {
     radius: 20,
