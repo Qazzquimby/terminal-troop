@@ -157,9 +157,9 @@ export const itemUsed = contentEvent({
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
-  const stack = heldItem(local.inventory, local.held);
-  if (stack === null) return;
-  const behaviour = game.items.get(stack.id);
+  const item = heldItem(local.inventory, local.held);
+  if (item === null) return;
+  const behaviour = game.items.get(item.id);
   if (behaviour === undefined) return;
   if (
     local.use !== null &&
@@ -167,12 +167,12 @@ export function useHeldItem(game: Session): void {
   )
     return;
   local.use = {
-    item: stack.id,
+    item: item.id,
     ...behaviour.show(game, local, local.aim, local.id),
     startedAt: game.time,
   };
   itemUsed.send(game, {
-    item: stack.id,
+    item: item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,
