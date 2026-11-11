@@ -5,7 +5,7 @@ import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
-import { selectSlot } from "./inventory.js";
+import { createInventory, selectSlot } from "./inventory.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
@@ -23,6 +23,7 @@ interface PlayerConfig {
   readonly sprintMultiplier: number;
   /** Health when at full. */
   readonly maxHealth: number;
+  /** How many slots a player's inventory has. */
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
@@ -50,7 +51,7 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   name: string;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
-  /** Empty until the room's items stock the local player's; never sent over the network. */
+  /** Every slot empty until the room's items stock the local player's; never sent over the network. */
   inventory: Inventory;
   /** The selected inventory slot, or null for holding nothing; never sent over the network. */
   held: HeldSlot;
@@ -91,7 +92,7 @@ export function createPlayer(
     prevAim: 0,
     taim: 0,
     radius: rules.player.radius,
-    inventory: [],
+    inventory: createInventory(rules.player.inventorySlots),
     held: 0,
     stamina: createStamina(rules.stamina),
     use: null,
@@ -109,7 +110,7 @@ export function updatePlayer(
 ): void {
   const { player: config } = rules;
   if (controls.select !== null)
-    player.held = selectSlot(player.inventory, controls.select);
+    player.held = selectSlot(player.inventory, player.held, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
   const sprinting = controls.sprint && moving && canSprint(player.stamina);
   player.stamina = updateStamina(player.stamina, sprinting, dt, rules.stamina);

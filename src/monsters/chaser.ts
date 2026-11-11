@@ -36,6 +36,12 @@ export interface ChaserConfig {
   readonly wanderPause: { readonly min: number; readonly max: number };
   /** How far a sighted player must be from where the chase is headed before it plans anew. */
   readonly repathDistance: number;
+  /** Seconds between barks, drawn between the two after each one. */
+  readonly barkGap: { readonly min: number; readonly max: number };
+  /** How close to its target a chasing chaser must be to attack. */
+  readonly attackRange: number;
+  /** Seconds between attacks. */
+  readonly attackCooldown: number;
 }
 
 const Waypoint = z.object({ x: z.number(), y: z.number() });
@@ -86,15 +92,6 @@ type Wander = Extract<ChaserState, { mode: "wander" }>;
 /** Random points tried for a wander leg before standing a while longer. */
 const LEG_ATTEMPTS = 8;
 
-/** Seconds between barks; a fresh gap is drawn after each one. */
-const BARK_GAP = { min: 6, max: 12 } as const;
-
-/** How close to its target a chasing chaser must be to attack, in pixels. */
-const ATTACK_RANGE = 30;
-
-/** Seconds between attacks. */
-const ATTACK_COOLDOWN = 2;
-
 const SOUNDS = { bark: barkUrl, alert: alertUrl, attack: attackUrl } as const;
 
 const COLOURS = { wander: "#7d9a52", chase: "#d8473a" } as const;
@@ -102,8 +99,10 @@ const COLOURS = { wander: "#7d9a52", chase: "#d8473a" } as const;
 const CHASER_GLYPH = "🧟";
 
 /** A fresh chaser's state, its random draws seeded by `seed`. */
-export function freshChaser(seed: number): ChaserState {
-  const { result, seed: next } = withSeed(seed | 0, barkGap);
+export function freshChaser(seed: number, config: ChaserConfig): ChaserState {
+  const { result, seed: next } = withSeed(seed | 0, (rng) =>
+    barkGap(rng, config),
+  );
   return {
     mode: "wander",
     seed: next,
@@ -162,8 +161,9 @@ function pauseLength(rng: Rng, config: ChaserConfig): number {
   return min + (max - min) * rng();
 }
 
-function barkGap(rng: Rng): number {
-  return BARK_GAP.min + (BARK_GAP.max - BARK_GAP.min) * rng();
+function barkGap(rng: Rng, config: ChaserConfig): number {
+  const { min, max } = config.barkGap;
+  return min + (max - min) * rng();
 }
 
 /** A route to a random free point within the wander range, or null when none of the tries finds one. */
@@ -286,8 +286,12 @@ function think(
 }
 
 /** How close a player must be to a chaser of `radius` to be hit by its attack. */
-function attackRange(radius: number, game: Session): number {
-  return Math.max(ATTACK_RANGE, radius + game.config.player.radius + 1);
+function attackRange(
+  radius: number,
+  game: Session,
+  config: ChaserConfig,
+): number {
+  return Math.max(config.attackRange, radius + game.config.player.radius + 1);
 }
 
 /** Ticks the attack cooldown, and attacks once the chaser is close to where it is headed. */
@@ -296,6 +300,7 @@ function attack(
   at: Point & { readonly radius: number },
   dt: number,
   game: Session,
+  config: ChaserConfig,
 ): ChaserState {
   const attackCooldown = Math.max(0, state.attackCooldown - dt);
   const { target } = state;
@@ -303,21 +308,25 @@ function attack(
     attackCooldown === 0 &&
     target !== null &&
     Math.hypot(target.x - at.x, target.y - at.y) <=
-      attackRange(at.radius, game);
+      attackRange(at.radius, game, config);
   if (!attacking) return { ...state, attacking, attackCooldown };
   return {
     ...state,
     attacking,
-    attackCooldown: ATTACK_COOLDOWN,
+    attackCooldown: config.attackCooldown,
     attacks: state.attacks + 1,
   };
 }
 
 /** Ticks the bark timer, barking and drawing a fresh gap once it runs out. */
-function bark(state: ChaserState, dt: number): ChaserState {
+function bark(
+  state: ChaserState,
+  dt: number,
+  config: ChaserConfig,
+): ChaserState {
   const nextBark = state.nextBark - dt;
   if (nextBark > 0) return { ...state, nextBark };
-  const { result, seed } = withSeed(state.seed, barkGap);
+  const { result, seed } = withSeed(state.seed, (rng) => barkGap(rng, config));
   return { ...state, seed, nextBark: result, barks: state.barks + 1 };
 }
 
@@ -329,7 +338,7 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
     data: ChaserState,
     update(entity, state, dt, game) {
       const thought = think(state, entity, dt, game, config);
-      const next = bark(attack(thought, entity, dt, game), dt);
+      const next = bark(attack(thought, entity, dt, game, config), dt, config);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
       const route = steer(entity, next.route, speed, dt);
@@ -341,7 +350,7 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      const range = attackRange(entity.radius, game);
+      const range = attackRange(entity.radius, game, config);
       return [...game.players.values()]
         .filter(
           (player) =>

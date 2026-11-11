@@ -114,7 +114,7 @@ const params = new URLSearchParams(location.search);
 const debug = params.has("debug");
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
-const camera = createCamera(config.view);
+const camera = createCamera(config.view, config.camera);
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
@@ -270,7 +270,7 @@ async function enterRoom(rawCode: string): Promise<void> {
   url.set("room", state.code);
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
   clock.reset(performance.now());
-  updateCamera(camera, state.session.local);
+  updateCamera(camera, state.session.local, 0);
 }
 
 function debugInfo(): DebugInfo {
@@ -285,12 +285,17 @@ function debugInfo(): DebugInfo {
   };
 }
 
+/** When the last frame ran, on the `performance.now()` clock. */
+let lastFrame = performance.now();
+
 /**
  * Reads the clock here rather than taking the rAF timestamp: that is the frame start, and key
  * events handled after it carry later times, which would push them a frame late.
  */
 function frame(): void {
   const now = performance.now();
+  const frameSeconds = (now - lastFrame) / 1000;
+  lastFrame = now;
   const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
   const session = joinedSession(room.state());
@@ -302,7 +307,7 @@ function frame(): void {
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
-    updateCamera(camera, renderPosition(session.local, alpha));
+    updateCamera(camera, renderPosition(session.local, alpha), frameSeconds);
     const drawStart = performance.now();
     draw(
       ctx,

@@ -14,11 +14,12 @@ function keysOf<T extends object>(object: T): Extract<keyof T, string>[] {
 }
 
 /**
- * Turns key events into actions on `sink`. Pure and DOM-free: the caller feeds
- * it key codes (mouse buttons included) and the current context. An action is held while it is active in
- * the context and any of its keys is down; only active actions reach the sink.
+ * Turns key and mouse button events into actions on `sink`. Pure and DOM-free: the caller
+ * feeds it key codes, a mouse button's being its `MOUSE_BUTTONS` name, and the current context.
+ * An action is held while it is active in the context and any of its keys is down; only active
+ * actions reach the sink.
  */
-export function createKeyboardSource<A extends string, C extends string>(
+export function createButtonSource<A extends string, C extends string>(
   sink: ActionSink<A>,
   bindings: Readonly<Record<A, Binding<C>>>,
   initialContext: C,

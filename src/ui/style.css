@@ -168,11 +168,19 @@ canvas {
   align-items: center;
   gap: 12px;
   padding: 8px;
+  border: 1px solid transparent;
   background: #222a33;
+}
+#inventory-slots li.selected {
+  border-color: #73cfff;
+  background: #1d3442;
 }
 .slot-number {
   width: 20px;
   color: #8795a5;
+}
+.selected .slot-number {
+  color: #73cfff;
 }
 [hidden] {
   display: none !important;
