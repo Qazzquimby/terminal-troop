@@ -144,7 +144,7 @@ describe("content events", () => {
     expect(
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
-      ["core/held", ["use"]],
+      ["core/items", ["use"]],
       ["core/health", ["damage"]],
     ]);
   });

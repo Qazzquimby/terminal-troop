@@ -18,7 +18,7 @@ interface BuiltIn {
  */
 const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   /** The id of the item each player holds, and each use of it. */
-  "core/held": { player: heldItemId, events: { use: itemUsed } },
+  "core/items": { player: heldItemId, events: { use: itemUsed } },
   /** The damage the host deals each player, sent to that player's own client. */
   "core/health": { events: { damage: damaged } },
 };
