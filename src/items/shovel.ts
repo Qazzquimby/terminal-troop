@@ -1,3 +1,4 @@
+import { applyDamage, cullDeadEntities } from "../sim/index.js";
 import type { Point, Session } from "../sim/index.js";
 import type { ItemBehaviour } from "./behaviour.js";
 import hitUrl from "../assets/sfx/shovel/hit.mp3";
@@ -9,6 +10,8 @@ export interface ShovelConfig {
   readonly radius: number;
   /** How far in front of the player the hitbox is centred. */
   readonly reach: number;
+  /** Damage dealt to every world entity in the hitbox. */
+  readonly damage: number;
   /** Minimum time between swings. */
   readonly cooldownMs: number;
   /** How long a swing is shown. */
@@ -17,25 +20,25 @@ export interface ShovelConfig {
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
 
-/** Anything a swing can touch: a position and a radius. */
-interface Target extends Point {
-  readonly radius: number;
-}
-
-/** Every other player, and every world entity: players and monsters are the same kind of thing. */
-function targets(game: Session): Target[] {
-  const others = [...game.players.values()].filter(
-    (player) => player !== game.local,
-  );
-  return [...others, ...game.entities.values()];
-}
-
-function anyTargetIn(game: Session, center: Point, radius: number): boolean {
-  return targets(game).some(
-    (target) =>
-      Math.hypot(target.x - center.x, target.y - center.y) <=
-      radius + target.radius,
-  );
+/** Damages every world entity in the hitbox; returns whether anything was hit. */
+function damageTargets(
+  game: Session,
+  center: Point,
+  radius: number,
+  damage: number,
+): boolean {
+  let hit = false;
+  for (const entity of game.entities.values()) {
+    if (
+      Math.hypot(entity.x - center.x, entity.y - center.y) <=
+      radius + entity.radius
+    ) {
+      applyDamage(entity, damage);
+      hit = true;
+    }
+  }
+  if (hit) cullDeadEntities(game);
+  return hit;
 }
 
 /** A hitbox that fades out over its duration; green when it connected. */
@@ -80,7 +83,7 @@ export function createShovel(config: ShovelConfig): ItemBehaviour {
         x: local.x + Math.cos(local.aim) * config.reach,
         y: local.y + Math.sin(local.aim) * config.reach,
       };
-      const hit = anyTargetIn(game, center, config.radius);
+      const hit = damageTargets(game, center, config.radius, config.damage);
       const endsAt = now + config.durationMs;
       void game.sfx
         .play(hit ? SOUNDS.hit : SOUNDS.miss, local, local, { volume: 0.8 });

@@ -4,6 +4,7 @@ import attackUrl from "../assets/sfx/zombie/attack.mp3";
 import barkUrl from "../assets/sfx/zombie/bark.mp3";
 import { drawFacing } from "../render/render.js";
 import {
+  applyDamage,
   canSeeFrom,
   directionalVision,
   isAreaFree,
@@ -21,6 +22,10 @@ import { MAX_WAYPOINTS, planRoute, steer } from "./route.js";
 /** How a chaser moves and hunts. Distances are in pixels, speeds in pixels per second. */
 export interface ChaserConfig {
   readonly radius: number;
+  /** Health when at full. */
+  readonly maxHealth: number;
+  /** Damage dealt to each player within attack range. */
+  readonly attackDamage: number;
   readonly wanderSpeed: number;
   readonly chaseSpeed: number;
   /** How far a chaser sees a player it has a clear line to within its sight cone. */
@@ -263,6 +268,7 @@ function voice(
   at: Point & { readonly radius: number },
   dt: number,
   game: Session,
+  config: ChaserConfig,
 ): ChaserState {
   const listener = { x: game.local.x, y: game.local.y };
   const play = (url: string): void => {
@@ -282,7 +288,10 @@ function voice(
     Math.hypot(next.target.x - at.x, next.target.y - at.y) <= attackRange
   ) {
     play(SOUNDS.attack);
-    // doesnt actually attack yet
+    for (const player of game.players.values()) {
+      if (Math.hypot(player.x - at.x, player.y - at.y) <= attackRange)
+        applyDamage(player, config.attackDamage);
+    }
     attackCooldown = ATTACK_COOLDOWN;
   }
 
@@ -302,10 +311,11 @@ function voice(
 export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
   return {
     radius: config.radius,
+    maxHealth: config.maxHealth,
     data: ChaserState,
     update(entity, state, dt, game) {
       const thought = think(state, entity, dt, game, config);
-      const next = voice(state, thought, entity, dt, game);
+      const next = voice(state, thought, entity, dt, game, config);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
       const route = steer(entity, next.route, speed, dt);

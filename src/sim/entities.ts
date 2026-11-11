@@ -1,16 +1,16 @@
 import type { z } from "zod";
-import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
+import type { Entity } from "./entity.js";
+import { isDead } from "./entity.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
 import type { Session } from "./session.js";
 import type { LightEmission } from "./vision.js";
 
-export interface WorldEntity extends Body, Interpolated, Tracked {
+export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
   readonly kind: number;
-  radius: number;
   collides: boolean;
   grantsVision: boolean;
   ownerId: string | null;
@@ -21,6 +21,7 @@ export interface WorldEntity extends Body, Interpolated, Tracked {
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
 export interface EntityDefinition<S> {
   readonly radius: number;
+  readonly maxHealth: number;
   readonly collides?: boolean;
   /** Parses the kind's state; an entity whose data fails it is neither spawned nor kept. */
   readonly data: z.ZodType<S>;
@@ -44,6 +45,7 @@ export interface EntityDefinition<S> {
 /** A registered kind, its state parsed from an entity's `data` at each call. */
 export interface EntityType {
   readonly radius: number;
+  readonly maxHealth: number;
   readonly collides: boolean;
   readonly data: z.ZodType;
   light(entity: WorldEntity): LightEmission | null;
@@ -69,6 +71,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
   const { data: schema } = definition;
   return {
     radius: definition.radius,
+    maxHealth: definition.maxHealth,
     collides: definition.collides ?? true,
     data: schema,
     light(entity) {
@@ -120,6 +123,8 @@ function placeEntity(
     vx: 0,
     vy: 0,
     radius: type.radius,
+    health: type.maxHealth,
+    maxHealth: type.maxHealth,
     collides: type.collides,
     grantsVision: false,
     ownerId: null,
@@ -178,6 +183,14 @@ export function updateEntities(game: Session, dt: number): void {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
+  cullDeadEntities(game);
+}
+
+/** Removes every entity that has been destroyed. */
+export function cullDeadEntities(game: Session): void {
+  for (const [id, entity] of game.entities) {
+    if (isDead(entity)) game.entities.delete(id);
+  }
 }
 
 /** Eases every entity towards the host's latest snapshot of it. */

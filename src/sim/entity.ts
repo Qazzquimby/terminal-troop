@@ -11,3 +11,15 @@ export interface Entity extends Body {
   /** Health when at full. */
   readonly maxHealth: number;
 }
+
+/** Reduces an entity's health by `amount`, never below zero. Returns the health lost. */
+export function applyDamage(entity: Entity, amount: number): number {
+  const lost = Math.min(entity.health, Math.max(0, amount));
+  entity.health -= lost;
+  return lost;
+}
+
+/** Whether an entity has been destroyed. */
+export function isDead(entity: Entity): boolean {
+  return entity.health <= 0;
+}

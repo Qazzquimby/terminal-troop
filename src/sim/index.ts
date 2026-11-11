@@ -1,6 +1,7 @@
 export { isSweepFree } from "./collision.js";
 export {
   applyEntitySnapshot,
+  cullDeadEntities,
   entitySnapshot,
   registerEntityType,
   spawnEntity,
@@ -33,6 +34,7 @@ export type {
   World,
   WorldKind,
 } from "./map.js";
+export { applyDamage, isDead } from "./entity.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";

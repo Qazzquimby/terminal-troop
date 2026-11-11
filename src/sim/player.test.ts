@@ -14,8 +14,8 @@ const rules: PlayerRules = {
     speed: PLAYER_SPEED,
     acceleration: 1100,
     sprintMultiplier: SPRINT_MULTIPLIER,
-    inventorySlots: 4,
     maxHealth: 100,
+    inventorySlots: 4,
     nameMax: 8,
   },
   stamina: {

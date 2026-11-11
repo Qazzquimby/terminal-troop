@@ -1,4 +1,5 @@
 import type {
+  Entity,
   Interpolated,
   Player,
   Point,
@@ -147,6 +148,23 @@ function drawStamina(
   ctx.fillRect(x - 1, y - 1, width + 2, 6);
   ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
   ctx.fillRect(x, y, (width * value) / max, 4);
+}
+
+/** A red health bar at `barY`, shown only once the body has taken damage. */
+function drawHealthBar(
+  ctx: CanvasRenderingContext2D,
+  body: Entity,
+  barY: number,
+): void {
+  const { health, maxHealth, radius } = body;
+  if (health >= maxHealth || health <= 0) return;
+
+  const width = radius * 2;
+  const x = body.x - radius;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.fillRect(x - 1, barY - 1, width + 2, 5);
+  ctx.fillStyle = "#d8473a";
+  ctx.fillRect(x, barY, (width * health) / maxHealth, 3);
 }
 
 /** The held item is a small glyph floating in front of the player, not a world body. */
@@ -337,18 +355,21 @@ export function draw(
     ctx.save();
     definition.draw(ctx, entity, now, game);
     ctx.restore();
+    drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
   });
 
   game.players.forEach((player) => {
     if (player === viewer || !inView(player, camera)) return;
-    if (isVisible(map, sources, lights, player))
-      drawPlayer(ctx, player, false, isAway(player.id));
+    if (!isVisible(map, sources, lights, player)) return;
+    drawPlayer(ctx, player, false, isAway(player.id));
+    drawHealthBar(ctx, player, player.y - player.radius - 26);
   });
   ctx.restore();
 
   // Above the darkness: lit wall faces, then the local player and its HUD.
   drawLitWalls(ctx, litWalls(seen, lit));
   drawPlayer(ctx, viewer, true);
+  drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
   viewer.use?.draw(ctx, now);
   if (held !== null) drawHeldItem(ctx, viewer, held);
   drawStamina(ctx, viewer, game.config.stamina.max);

@@ -62,6 +62,8 @@ export const config = {
     clearance: CELL_SIZE * 10,
     chaser: {
       radius: 15,
+      maxHealth: 30,
+      attackDamage: 35,
       wanderSpeed: 55,
       chaseSpeed: 150,
       sightRange: CELL_SIZE * 5,
@@ -70,7 +72,7 @@ export const config = {
       repathDistance: CELL_SIZE / 2,
     },
   },
-  shovel: { radius: 20, reach: 45, cooldownMs: 1000, durationMs: 180 },
+  shovel: { radius: 20, reach: 45, damage: 20, cooldownMs: 1000, durationMs: 180 },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },
   voiceConnections: {
