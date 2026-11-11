@@ -1,8 +1,8 @@
 import { z } from "zod";
-import alertUrl from "../assets/sfx/zombie/alert.mp3";
-import attackUrl from "../assets/sfx/zombie/attack.mp3";
-import barkUrl from "../assets/sfx/zombie/bark.mp3";
-import { drawFacing } from "../render/render.js";
+import alertUrl from "./sfx/alert.mp3";
+import attackUrl from "./sfx/attack.mp3";
+import barkUrl from "./sfx/bark.mp3";
+import { drawFacing } from "../render/index.js";
 import {
   applyDamage,
   canSeeFrom,

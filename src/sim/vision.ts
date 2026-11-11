@@ -80,9 +80,7 @@ export function wallCell(
 interface RayHit {
   readonly distance: number;
   /** The wall cell that stopped the ray, if one did before `maxDist`. */
-  readonly wall:
-    | { readonly key: WallKey; readonly normal: Point }
-    | undefined;
+  readonly wall: { readonly key: WallKey; readonly normal: Point } | undefined;
 }
 
 function hitAt(
@@ -405,7 +403,9 @@ function traceWallFaces(
   for (const [index, first] of angles.entries()) {
     const last =
       angles[index + 1] ??
-      (closed ? first + Math.PI * 2 - (first - (angles[0] ?? first)) : undefined);
+      (closed
+        ? first + Math.PI * 2 - (first - (angles[0] ?? first))
+        : undefined);
     if (last === undefined || last <= first) continue;
 
     const middle = (first + last) / 2;
@@ -430,10 +430,7 @@ function intersectWallFaces(
   seen: WallFace,
   lit: WallFace,
 ): WallFace | undefined {
-  if (
-    seen.normal.x !== lit.normal.x ||
-    seen.normal.y !== lit.normal.y
-  )
+  if (seen.normal.x !== lit.normal.x || seen.normal.y !== lit.normal.y)
     return undefined;
 
   const from = {
@@ -496,7 +493,9 @@ export function visibilityPolygon(
     offsets.add((i / (cone === undefined ? count : count - 1)) * sweep);
   }
 
-  const angles = [...offsets].sort((a, b) => a - b).map((offset) => start + offset);
+  const angles = [...offsets]
+    .sort((a, b) => a - b)
+    .map((offset) => start + offset);
   for (const angle of angles) {
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);

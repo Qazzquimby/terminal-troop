@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
-import alertUrl from "../assets/sfx/zombie/alert.mp3";
-import attackUrl from "../assets/sfx/zombie/attack.mp3";
-import barkUrl from "../assets/sfx/zombie/bark.mp3";
+import alertUrl from "./sfx/alert.mp3";
+import attackUrl from "./sfx/attack.mp3";
+import barkUrl from "./sfx/bark.mp3";
 import {
   testMonsterConfig,
   testSfx,
@@ -32,17 +32,10 @@ function world(
   chaser: ChaserConfig = config,
   surroundingsRadius = testSimConfig.vision.surroundingsRadius,
 ): Session {
-  const game = createSession(
-    "me",
-    "ME",
-    "CHASE",
-    "dev",
-    testSfx(),
-    {
-      ...testSimConfig,
-      vision: { ...testSimConfig.vision, surroundingsRadius },
-    },
-  );
+  const game = createSession("me", "ME", "CHASE", "dev", testSfx(), {
+    ...testSimConfig,
+    vision: { ...testSimConfig.vision, surroundingsRadius },
+  });
   vi.spyOn(game.sfx, "play").mockResolvedValue({
     stop: () => undefined,
     setVolume: () => undefined,
@@ -184,7 +177,6 @@ describe("chasing", () => {
     standAt(game, 600, 300 + config.repathDistance / 2);
     run(game, DT);
     expect(stateOf(zombie).target).toMatchObject({ x: 600, y: 300 });
-    // fails, not sure if the player is in the zombies view cone
 
     standAt(game, 600, 300 + config.repathDistance * 2);
     run(game, DT);
@@ -234,6 +226,7 @@ describe("wandering", () => {
 
   test("walks slowly from place to place, clear of the walls", () => {
     const game = world(blind);
+    standAt(game, 100, 500);
     const zombie = chaserAt(game, 450, 300);
     let travelled = 0;
     let fastest = 0;
@@ -255,6 +248,7 @@ describe("wandering", () => {
   test("the same seed walks the same way", () => {
     const walk = (seed: number) => {
       const game = world(blind);
+      standAt(game, 100, 500);
       const zombie = chaserAt(game, 450, 300, seed);
       run(game, 6);
       return { x: zombie.x, y: zombie.y };
@@ -267,14 +261,14 @@ describe("wandering", () => {
 describe("sounds", () => {
   const blind = { ...config, sightRange: 0 };
 
-  test("barks for the first time after 8 to 16 seconds", () => {
+  test("barks for the first time after 6 to 12 seconds", () => {
     const game = world(blind);
     chaserAt(game, 450, 300);
 
-    run(game, 8 - DT);
+    run(game, 6 - DT);
     expect(played(game)).toEqual([]);
 
-    expect(runUntil(game, 8, () => played(game).length > 0)).toBe(true);
+    expect(runUntil(game, 6, () => played(game).length > 0)).toBe(true);
     expect(played(game)).toEqual([barkUrl]);
   });
 
@@ -294,9 +288,9 @@ describe("sounds", () => {
     standAt(game, 500, 300);
     const zombie = chaserAt(game, 300, 300);
 
-    expect(
-      runUntil(game, 3, () => played(game).includes(attackUrl)),
-    ).toBe(true);
+    expect(runUntil(game, 3, () => played(game).includes(attackUrl))).toBe(
+      true,
+    );
     expect(
       Math.hypot(zombie.x - game.local.x, zombie.y - game.local.y),
     ).toBeGreaterThanOrEqual(zombie.radius + game.local.radius - 1e-5);

@@ -117,15 +117,11 @@ test("surroundings never exceed the viewer's sight range", () => {
 });
 
 test("walls block the omnidirectional part of directional vision", () => {
-  const sources = directionalVision(
-    { x: 175, y: 125 },
-    0,
-    {
-      coneAngle: Math.PI / 2,
-      rays: 64,
-      surroundingsRadius: 150,
-    },
-  );
+  const sources = directionalVision({ x: 175, y: 125 }, 0, {
+    coneAngle: Math.PI / 2,
+    rays: 64,
+    surroundingsRadius: 150,
+  });
 
   expect(
     sources.some((source) =>
@@ -381,11 +377,7 @@ test("long wall edges stay continuous as the viewer turns with few regular rays"
 test("continuous wall edges do not bridge an occluding obstacle", () => {
   const map = longWallMap();
   map.solid[4 * map.cols + 2] = 1;
-  const polygon = visibilityPolygon(
-    map,
-    { x: 75, y: 225, range: 400 },
-    4,
-  );
+  const polygon = visibilityPolygon(map, { x: 75, y: 225, range: 400 }, 4);
   const walls = litWalls([polygon], [polygon]);
   const hidden = cellsOf(map, walls).filter(
     ({ col, row }) => col === 4 && row >= 2 && row <= 6,

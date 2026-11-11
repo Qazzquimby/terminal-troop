@@ -2,7 +2,7 @@ import type { Inventory, ItemDefinition } from "./inventory.js";
 import { addItem, createInventory } from "./inventory.js";
 
 /** Number keys 1-9 select these slots. */
-export const SLOT_COUNT = 9;
+const SLOT_COUNT = 9;
 
 export const SHOVEL: ItemDefinition = {
   id: "shovel",
