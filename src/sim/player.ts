@@ -7,6 +7,7 @@ import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
 import { createInventory, selectSlot } from "./inventory.js";
 import { movement } from "./movement.js";
+import type { MovementMode } from "./movement.js";
 import type { PlayerData } from "./player-data.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
@@ -23,6 +24,8 @@ interface PlayerConfig {
   readonly acceleration: number;
   /** Top sprinting speed as a multiple of `speed`. */
   readonly sprintMultiplier: number;
+  /** Top crouching speed as a multiple of `speed`. */
+  readonly crouchMultiplier: number;
   /** Health when at full. */
   readonly maxHealth: number;
   /** How many slots a player's inventory has. */
@@ -41,6 +44,8 @@ export interface Controls {
   readonly move: Point;
   readonly aim: Point;
   readonly sprint: boolean;
+  /** Whether to toggle crouching this step. */
+  readonly crouch: boolean;
   /** The inventory slot to select this step, or null to keep the current one. */
   readonly select: number | null;
   /** Whether to use the held item this step. */
@@ -71,6 +76,8 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   use: ItemUse | null;
   /** Seconds until the player's next footstep while it moves; never sent over the network. */
   stride: number;
+  /** Whether the local player is crouching; unused for remote players. */
+  crouched: boolean;
 }
 
 export interface PlayerState {
@@ -112,9 +119,40 @@ export function createPlayer(
     stamina: createStamina(rules.stamina),
     use: null,
     stride: 0,
+    crouched: false,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };
+}
+
+/**
+ * Steps `player`'s gait under `controls`: a crouch press toggles crouching, and sprinting,
+ * which needs moving with stamina to spend, stands it up. A crouching player crouches whether
+ * it moves or not.
+ */
+function stepGait(
+  player: Player,
+  controls: Controls,
+  moving: boolean,
+): MovementMode {
+  if (controls.crouch) player.crouched = !player.crouched;
+  if (controls.sprint && moving && canSprint(player.stamina)) {
+    player.crouched = false;
+    return "sprint";
+  }
+  return player.crouched ? "crouch" : "walk";
+}
+
+/** A gait's top speed as a multiple of the walking speed. */
+function speedFactor(mode: MovementMode, config: PlayerConfig): number {
+  switch (mode) {
+    case "walk":
+      return 1;
+    case "sprint":
+      return config.sprintMultiplier;
+    case "crouch":
+      return config.crouchMultiplier;
+  }
 }
 
 export function updatePlayer(
@@ -128,13 +166,16 @@ export function updatePlayer(
   if (controls.select !== null)
     player.held = selectSlot(player.inventory, player.held, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
-  const sprinting = controls.sprint && moving && canSprint(player.stamina);
-  player.stamina = updateStamina(player.stamina, sprinting, dt, rules.stamina);
-  movement.set(player, { mode: sprinting ? "sprint" : "walk", moving });
+  const mode = stepGait(player, controls, moving);
+  player.stamina = updateStamina(
+    player.stamina,
+    mode === "sprint",
+    dt,
+    rules.stamina,
+  );
+  movement.set(player, { mode, moving });
 
-  const speed = sprinting
-    ? config.speed * config.sprintMultiplier
-    : config.speed;
+  const speed = config.speed * speedFactor(mode, config);
   const targetX = controls.move.x * speed;
   const targetY = controls.move.y * speed;
   const dx = targetX - player.vx;

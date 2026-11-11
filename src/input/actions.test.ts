@@ -1,11 +1,13 @@
 import { expect, test } from "vitest";
 import type { Action, InputContext } from "./actions.js";
 import {
+  ACTIONS,
   createActionState,
   isActiveIn,
   toControls,
   withUiHandlers,
 } from "./actions.js";
+import { createButtonSource } from "./buttons.js";
 
 const AIM = { x: 0, y: 0 };
 
@@ -97,6 +99,7 @@ test("blur releases held actions and drops pending presses", () => {
     move: { x: 0, y: 0 },
     aim: AIM,
     sprint: false,
+    crouch: false,
     select: null,
     use: false,
   });
@@ -173,6 +176,26 @@ test("sprint follows the held sprint action", () => {
   expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
 });
 
+test("a crouch press asks for one toggle, in its step only, even while held", () => {
+  const state = holding("moveRight", "crouch");
+  expect(step(state).controls.crouch).toBe(true);
+  expect(step(state).controls.crouch).toBe(false);
+  state.release("crouch", 1500);
+  state.press("crouch", 1600);
+  expect(step(state, 2000).controls.crouch).toBe(true);
+});
+
+test("C held across a trip to the menu and back asks for no toggle", () => {
+  const state = createActionState();
+  const buttons = createButtonSource(state, ACTIONS, "play");
+  buttons.keyDown("KeyC", false, 1);
+  expect(step(state, 1).controls.crouch).toBe(true);
+  buttons.setContext("menu", 2);
+  expect(step(state, 2).controls.crouch).toBe(false);
+  buttons.setContext("play", 3);
+  expect(step(state, 3).controls.crouch).toBe(false);
+});
+
 test("a press of useItem uses the held item in that step only, even while held", () => {
   const state = holding("useItem");
   expect(step(state).controls.use).toBe(true);
@@ -196,6 +219,7 @@ test.each<[Action, InputContext[]]>([
   ["moveDown", ["play"]],
   ["moveRight", ["play"]],
   ["sprint", ["play"]],
+  ["crouch", ["play"]],
   ["useItem", ["play"]],
   ["select1", ["play"]],
   ["toggleInventory", ["play"]],

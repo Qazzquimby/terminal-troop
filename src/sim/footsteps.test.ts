@@ -6,12 +6,13 @@ import { applyRemoteState, createSession, updateSession } from "./session.js";
 import type { Session } from "./session.js";
 
 const DT = 1 / 60;
-const { walk, sprint } = testSimConfig.footsteps;
+const { walk, sprint, crouch } = testSimConfig.footsteps;
 
 const controls = (moving: boolean, sprinting: boolean): Controls => ({
   move: { x: moving ? 1 : 0, y: 0 },
   aim: { x: 0, y: 0 },
   sprint: sprinting,
+  crouch: false,
   select: null,
   use: false,
 });
@@ -63,6 +64,18 @@ describe("the local player's footsteps", () => {
       true,
     );
     expect(sprint.loudness).toBeGreaterThan(walk.loudness);
+  });
+
+  test("crouching steps less often and quieter", () => {
+    const game = session();
+    updateSession(game, { ...idle, crouch: true }, DT);
+    const steps = noisesOver(game, controls(true, false), 2);
+    expect(steps).toHaveLength(Math.ceil(2 / crouch.interval));
+    expect(steps.every(({ loudness }) => loudness === crouch.loudness)).toBe(
+      true,
+    );
+    expect(crouch.interval).toBeGreaterThan(walk.interval);
+    expect(crouch.loudness).toBeLessThan(walk.loudness);
   });
 
   test("stopping ends them, and moving again steps at once", () => {

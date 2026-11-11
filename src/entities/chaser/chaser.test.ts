@@ -27,6 +27,7 @@ const idle = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
   sprint: false,
+  crouch: false,
   select: null,
   use: false,
 };
@@ -400,7 +401,7 @@ describe("hearing", () => {
     game: Session,
     x: number,
     y: number,
-    mode: "walk" | "sprint",
+    mode: "walk" | "sprint" | "crouch",
   ): void {
     applyRemoteState(game, {
       id: "them",
@@ -444,6 +445,21 @@ describe("hearing", () => {
     const zombie = chaserAt(game, 450, 300);
     run(game, 2);
     expect(stateOf(zombie)).toMatchObject({ noiseTarget: null });
+  });
+
+  test("a player crouching where its walking is heard goes unheard", () => {
+    const heard = (mode: "walk" | "crouch"): boolean => {
+      const game = world(blind);
+      standAt(game, 100, 500);
+      moverAt(game, 570, 300, mode);
+      const zombie = chaserAt(game, 450, 300);
+      return runUntil(game, 1, () => {
+        const state = stateOf(zombie);
+        return state.mode === "wander" && state.noiseTarget !== null;
+      });
+    };
+    expect(heard("walk")).toBe(true);
+    expect(heard("crouch")).toBe(false);
   });
 
   test("standing at the noise, it forgets it and wanders on", () => {

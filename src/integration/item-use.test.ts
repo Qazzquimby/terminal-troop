@@ -28,6 +28,7 @@ const idle: Controls = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
   sprint: false,
+  crouch: false,
   select: null,
   use: false,
 };
