@@ -4,7 +4,6 @@ import {
   remotePlayers,
   renderPosition,
   selectSlot,
-  swing,
   updateSession,
 } from "./sim/index.js";
 import { NetEvent, createCountingTransport } from "./net/index.js";
@@ -39,6 +38,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { createMonsters } from "./monsters/index.js";
+import { createItems, useHeldItem } from "./items/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -339,11 +339,7 @@ on(settingsBtn, "click", (event) => {
   settingsMenu.open(event.timeStamp);
 });
 
-/** Swing sounds, relative to the public directory. */
-const SWING_SOUNDS = {
-  hit: "/shovel/hit.mp3",
-  miss: "/shovel/miss.mp3",
-} as const;
+const items = createItems(config);
 
 canvas.addEventListener(
   "pointerdown",
@@ -351,18 +347,7 @@ canvas.addEventListener(
     if (event.button !== 0) return;
     const session = joinedSession(room.state());
     if (session === null) return;
-    const result = swing(session, performance.now(), config.swing);
-    if (result === null) return;
-    sfx
-      .play(
-        result.hit ? SWING_SOUNDS.hit : SWING_SOUNDS.miss,
-        session.local,
-        session.local,
-        { volume: 0.8 },
-      )
-      .catch((error: unknown) => {
-        if (debug) console.info("Swing sound failed", error);
-      });
+    useHeldItem(session, performance.now(), items);
   },
   { signal: app.signal },
 );

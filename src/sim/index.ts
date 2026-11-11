@@ -33,10 +33,10 @@ export type {
   World,
   WorldKind,
 } from "./map.js";
+export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
-export type { Controls, Player, Swing } from "./player.js";
-export { swing } from "./swing.js";
-export type { SwingConfig, SwingResult } from "./swing.js";
+export type { Controls, Player } from "./player.js";
+export type { ItemUse } from "./use.js";
 export {
   applyRemoteState,
   createSession,

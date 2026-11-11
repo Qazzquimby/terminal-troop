@@ -16,6 +16,7 @@ export const testSimConfig: SimConfig = {
     acceleration: 1100,
     sprintMultiplier: 1.8,
     inventorySlots: 4,
+    maxHealth: 100,
     nameMax: 8,
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },

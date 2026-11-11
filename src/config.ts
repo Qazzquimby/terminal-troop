@@ -1,7 +1,8 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { MonsterConfig } from "./monsters/index.js";
 import type { RoomConfig } from "./room/index.js";
-import type { SimClockConfig, SimConfig, SwingConfig } from "./sim/index.js";
+import type { SimClockConfig, SimConfig } from "./sim/index.js";
+import type { ShovelConfig } from "./items/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 import {CELL_SIZE} from "./integration/tile-maps";
@@ -11,7 +12,7 @@ interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
   readonly monsters: MonsterConfig;
-  readonly swing: SwingConfig;
+  readonly shovel: ShovelConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
@@ -28,7 +29,8 @@ export const config = {
     speed: 220,
     acceleration: 1100,
     sprintMultiplier: 1.8,
-    inventorySlots: 12,
+    maxHealth: 100,
+    inventorySlots: 6,
     nameMax: 8,
   },
   stamina: {
@@ -68,7 +70,7 @@ export const config = {
       repathDistance: CELL_SIZE / 2,
     },
   },
-  swing: { radius: 15, reach: 20, cooldownMs: 1000, durationMs: 180 },
+  shovel: { radius: 20, reach: 45, cooldownMs: 1000, durationMs: 180 },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   voice: { full: 100, silent: 600, pan: 300 },
   voiceConnections: {

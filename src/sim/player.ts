@@ -1,11 +1,12 @@
-import type { Body } from "./collision.js";
 import { moveWithCollision } from "./collision.js";
+import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
 import { startingInventory } from "./items.js";
+import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
 
@@ -20,6 +21,8 @@ interface PlayerConfig {
   readonly acceleration: number;
   /** Top sprinting speed as a multiple of `speed`. */
   readonly sprintMultiplier: number;
+  /** Health when at full. */
+  readonly maxHealth: number;
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
@@ -37,29 +40,19 @@ export interface Controls {
   readonly sprint: boolean;
 }
 
-/** A swing of the held tool: shown by the renderer, never sent over the network. */
-export interface Swing {
-  readonly startedAt: number;
-  readonly endsAt: number;
-  readonly hit: boolean;
-  readonly center: Point;
-  readonly radius: number;
-}
-
-export interface Player extends Body, Interpolated, Facing, Tracked {
+export interface Player extends Entity, Interpolated, Facing, Tracked {
   readonly id: string;
   readonly kind: typeof EntityKind.PLAYER;
   name: string;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
-  radius: number;
   inventory: Inventory;
   /** The selected inventory slot, or null for holding nothing; never sent over the network. */
   held: HeldSlot;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
   /** Only meaningful for the local player; never sent over the network. */
-  swing: Swing | null;
+  use: ItemUse | null;
 }
 
 export interface PlayerState {
@@ -95,7 +88,9 @@ export function createPlayer(
     inventory: startingInventory(),
     held: 0,
     stamina: createStamina(rules.stamina),
-    swing: null,
+    use: null,
+    health: rules.player.maxHealth,
+    maxHealth: rules.player.maxHealth,
   };
 }
 
