@@ -1,28 +1,38 @@
 import type { Sfx } from "../audio/index.js";
-import type { ScrapConfig } from "../items/scrap.js";
-import { SCRAP, SCRAP_SOUNDS, ScrapKind } from "../items/scrap.js";
+import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies } from "./collision.js";
-import type { EntityType, Strike, WorldEntity } from "./entities.js";
+import type {
+  ContentEvent,
+  Delivery,
+  EventAddress,
+  OutgoingEvent,
+} from "./content-event.js";
+import { applyEvents } from "./content-event.js";
+import type { WorldContent } from "./content.js";
+import type { Flash } from "./flashes.js";
+import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
+import { emitFootsteps } from "./footsteps.js";
+import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
+import type { ItemDefinition } from "./inventory.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
-import type { CruiserConfig } from "./cruiser.js";
-import { CruiserKind } from "./cruiser.js";
-import { addItem, heldItem, removeItem } from "./inventory.js";
 import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
-import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
-import type { ItemBehaviour, UseRequest, UseSlack } from "./use.js";
-import { applyUses, useHeldItem } from "./use.js";
+import {
+  createPlayer,
+  smoothPlayer,
+  stepDash,
+  updatePlayer,
+} from "./player.js";
+import type { Noise, NoiseConfig } from "./noise.js";
+import type { PlayerData } from "./player-data.js";
+import { applyContentState, contentState } from "./player-data.js";
+import type { ItemBehaviour, UseSlack } from "./use.js";
+import { reportHeld, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
-
-/** A player's pickup of a ground entity, for the host to remove it. */
-export interface PickupRequest {
-  readonly by: string;
-  readonly entityId: string;
-}
 
 /** How remote players follow the state they report. */
 interface SyncConfig {
@@ -37,8 +47,8 @@ export interface SimConfig extends PlayerRules {
   readonly vision: VisionConfig;
   readonly light: LightConfig;
   readonly net: SyncConfig;
-  readonly scrap: ScrapConfig;
-  readonly cruiser: CruiserConfig;
+  readonly noise: NoiseConfig;
+  readonly footsteps: FootstepConfig;
 }
 
 export interface Session {
@@ -53,6 +63,8 @@ export interface Session {
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
   readonly entityTypes: Map<number, EntityType>;
+  /** The number each kind is registered and sent as, by name. */
+  readonly kindIds: Map<string, number>;
   nextEntityId: number;
   /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
   hosting: boolean;
@@ -60,22 +72,36 @@ export interface Session {
   time: number;
   /** What each usable item does, by item id. */
   readonly items: Map<string, ItemBehaviour>;
-  /** Uses waiting for the host's next step. */
-  readonly uses: UseRequest[];
-  /** The local player's uses, waiting for the room to hand them to the host. */
-  readonly localUses: UseRequest[];
-  /** The local player's pickups, waiting for the room to hand them to the host. */
-  readonly localPickups: PickupRequest[];
-  /** Ground entity ids the local player has picked up, kept out of the host's snapshots. */
-  readonly collected: Set<string>;
-  /** When, in sim seconds, the host lets each player use an item again. */
-  readonly readyAt: Map<string, number>;
-  /** Damage the host has dealt to remote players, waiting to be sent to them. */
-  readonly strikes: Strike[];
-  /** The room's shared credit total. */
-  credit: number;
-  /** Credits the local player cashed out, waiting for the room to send them. */
-  readonly cashOuts: number[];
+  /** Every item this client knows, by item id. */
+  readonly itemDefinitions: Map<string, ItemDefinition>;
+  /** The state each content entry keeps on every player, by the entry's name. */
+  readonly playerData: Map<string, PlayerData<unknown>>;
+  /** Each content entry's events, by the entry's name, then by key. */
+  readonly events: Map<string, Map<string, ContentEvent<unknown>>>;
+  /** Where each registered event travels. */
+  readonly eventAddresses: Map<ContentEvent<unknown>, EventAddress>;
+  /** Events received, waiting for the next step. */
+  readonly inbox: Delivery[];
+  /** Events sent, waiting for the room to route them. */
+  readonly outbox: OutgoingEvent[];
+  /** The noises made in the latest step; each step starts by clearing them. */
+  readonly noises: Noise[];
+  /**
+   * When, in sim seconds, the host lets each player act again: by what the action is timed
+   * under, then by player id.
+   */
+  readonly readyAt: Map<string, Map<string, number>>;
+  /** When, in sim seconds, the local player may next act, by what the action is timed under. */
+  readonly localReadyAt: Map<string, number>;
+  /** The content registered with it, in order. */
+  readonly contents: WorldContent[];
+  /** The flashes shown in the latest step; each step starts by clearing them. */
+  readonly flashes: Flash[];
+  /**
+   * The local player's state changed in a way the others should hear at once; the room sends
+   * it in its next frame, and clears this.
+   */
+  reportNow: boolean;
 }
 
 function roomSeed(code: string, base: number): number {
@@ -95,6 +121,7 @@ function buildRoomWorld(
   return buildWorld(config.world, mulberry32(seed));
 }
 
+/** A new session, holding the engine's own player state but no content yet. */
 export function createSession(
   localId: string,
   name: string,
@@ -107,7 +134,7 @@ export function createSession(
   const world = buildRoomWorld(seed, worldKind, config);
   const local = createPlayer(localId, name, world, config);
 
-  return {
+  const game: Session = {
     localId,
     config,
     local,
@@ -117,19 +144,26 @@ export function createSession(
     players: new Map([[localId, local]]),
     entities: new Map(),
     entityTypes: new Map(),
+    kindIds: new Map(),
     nextEntityId: 1,
     hosting: true,
     time: 0,
     items: new Map(),
-    uses: [],
-    localUses: [],
-    localPickups: [],
-    collected: new Set(),
+    itemDefinitions: new Map(),
+    playerData: new Map(),
+    events: new Map(),
+    eventAddresses: new Map(),
+    inbox: [],
+    outbox: [],
+    noises: [],
     readyAt: new Map(),
-    strikes: [],
-    credit: 0,
-    cashOuts: [],
+    localReadyAt: new Map(),
+    contents: [],
+    flashes: [],
+    reportNow: false,
   };
+  registerBuiltIns(game);
+  return game;
 }
 
 /** Every player in the session except the local one. */
@@ -140,6 +174,17 @@ export function remotePlayers(game: Session): Player[] {
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
 function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
+}
+
+/** Every body in the session that others collide with, but `body` itself. */
+export function solidBodiesBut(
+  game: Session,
+  body: CollisionBody,
+): CollisionBody[] {
+  return [
+    ...game.players.values(),
+    ...[...game.entities.values()].filter((entity) => entity.collides),
+  ].filter((other) => other !== body);
 }
 
 function separateSessionBodies(game: Session): void {
@@ -162,83 +207,45 @@ function separateSessionBodies(game: Session): void {
   }
 }
 
-/** Whether the local player is close enough to the cruiser to cash out. */
-function nearCruiser(game: Session, radius: number): boolean {
-  for (const entity of game.entities.values()) {
-    if (entity.kind !== CruiserKind) continue;
-    const distance = Math.hypot(
-      entity.x - game.local.x,
-      entity.y - game.local.y,
-    );
-    if (distance <= radius + entity.radius) return true;
-  }
-  return false;
-}
-
-/**
- * Cashes out the scrap the local player holds beside the cruiser: adds to this client's credit
- * and queues the amount for the room to send. Consumes one scrap.
- */
-function cashOut(game: Session): void {
-  const slot = game.local.held;
-  if (slot === null) return;
-  const item = heldItem(game.local.inventory, slot);
-  if (item?.id !== SCRAP.id) return;
-  if (!nearCruiser(game, game.config.cruiser.cashoutRadius)) return;
-
-  removeItem(game.local.inventory, slot);
-  void game.sfx.play(SCRAP_SOUNDS.cashout, game.local, game.local, {
-    volume: game.config.scrap.cashoutVolume,
-  });
-  const value = game.config.scrap.value;
-  game.credit += value;
-  game.cashOuts.push(value);
-}
-
-/**
- * Picks up the nearest ground scrap the local player is close enough to reach, if its inventory
- * has room, and asks the host to remove it from the world.
- */
-function pickUp(game: Session): void {
-  const { local } = game;
-  for (const entity of game.entities.values()) {
-    if (entity.kind !== ScrapKind) continue;
-    if (game.collected.has(entity.id)) continue;
-    if (
-      Math.hypot(entity.x - local.x, entity.y - local.y) >
-      local.radius + entity.radius
-    )
-      continue;
-    if (!addItem(local.inventory, SCRAP)) return;
-    game.collected.add(entity.id);
-    game.entities.delete(entity.id);
-    if (!game.hosting)
-      game.localPickups.push({ by: local.id, entityId: entity.id });
-    return;
-  }
-}
-
 export function updateSession(
   game: Session,
   controls: Controls,
   dt: number,
 ): void {
   game.time += dt;
+  game.noises.length = 0;
+  game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
-  if (controls.pickup) pickUp(game);
+  stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
+  reportHeld(game.local);
   if (controls.use) useHeldItem(game);
-  cashOut(game);
+  for (const content of game.contents) content.act?.(game, controls);
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);
   }
 
-  applyUses(game);
+  applyEvents(game);
+  emitFootsteps(game, dt);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
 
   separateSessionBodies(game);
+}
+
+/** The local player's state, as its STATE reports it. */
+export function playerState(game: Session): PlayerState {
+  const { local } = game;
+  return {
+    id: local.id,
+    name: local.name,
+    x: local.x,
+    y: local.y,
+    aim: local.aim,
+    health: local.health,
+    content: contentState(game),
+  };
 }
 
 /** Drops a remote player; false when there is none by that id. */
@@ -272,6 +279,7 @@ export function applyRemoteState(
 
   player.name = state.name;
   player.health = Math.min(state.health, player.maxHealth);
+  applyContentState(game, player, state.content);
 
   player.tx = state.x;
   player.ty = state.y;

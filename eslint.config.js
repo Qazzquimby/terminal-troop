@@ -35,6 +35,24 @@ const NO_REDUCE = ["reduce", "reduceRight"].map((name) => ({
     "reduce obscures intent: use map/filter/Object.fromEntries/a loop, or a lodash-es helper (sum, groupBy, keyBy, ...).",
 }));
 
+// Only the input module handles raw input; everything else reads actions and Controls.
+const RAW_INPUT_MESSAGE =
+  "Raw input belongs to the input module; read actions and Controls instead.";
+const NO_RAW_INPUT = [
+  "CallExpression[callee.property.name='addEventListener'][arguments.0.value=/^(key|pointer|mouse|touch|wheel|contextmenu)/]",
+  "AssignmentExpression[left.property.name=/^on(key|pointer|mouse|touch|wheel|contextmenu)/]",
+  "TSTypeReference[typeName.name=/^(Keyboard|Pointer|Mouse|Wheel|Touch)Event$/]",
+  "NewExpression[callee.name=/^(Keyboard|Pointer|Mouse|Wheel|Touch)Event$/]",
+  "MemberExpression[property.name='getGamepads']",
+].map((selector) => ({ selector, message: RAW_INPUT_MESSAGE }));
+
+const TS_RESTRICTED_SYNTAX = [
+  ...NO_EXPORT_STAR,
+  ...NO_OUTSIDE_REEXPORTS,
+  ...NO_PREDICATES,
+  ...NO_REDUCE,
+];
+
 const TEST_SOURCE = ["src/**/*.test.ts"];
 
 export default tseslint.config(
@@ -74,10 +92,8 @@ export default tseslint.config(
       ],
       "no-restricted-syntax": [
         "error",
-        ...NO_EXPORT_STAR,
-        ...NO_OUTSIDE_REEXPORTS,
-        ...NO_PREDICATES,
-        ...NO_REDUCE,
+        ...TS_RESTRICTED_SYNTAX,
+        ...NO_RAW_INPUT,
       ],
       "@typescript-eslint/strict-boolean-expressions": [
         "error",
@@ -89,6 +105,11 @@ export default tseslint.config(
       ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
     },
+  },
+  {
+    // The input module (tests included) is the one place raw input is handled.
+    files: ["src/input/**/*.ts"],
+    rules: { "no-restricted-syntax": ["error", ...TS_RESTRICTED_SYNTAX] },
   },
   {
     files: ["**/*.js", "**/*.mjs"],

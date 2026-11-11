@@ -1,5 +1,6 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { moveWithCollision } from "./collision.js";
+import { contentEvent } from "./content-event.js";
 import type { Entity } from "./entity.js";
 import { applyDamage, isDead } from "./entity.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
@@ -130,14 +131,21 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
   };
 }
 
+/**
+ * Registers a kind under `name`, numbered by the order kinds are registered in, from 1. Clients
+ * that register the same kinds in the same order number them alike, as snapshots need.
+ */
 export function registerEntityType<S>(
   game: Session,
-  kind: number,
+  name: string,
   definition: EntityDefinition<S>,
 ): void {
-  if (!Number.isInteger(kind) || kind < 1 || game.entityTypes.has(kind)) {
-    throw new Error("Entity kinds must be unique positive integers.");
-  }
+  if (game.kindIds.has(name))
+    throw new Error(`Entity kind already registered: ${name}`);
+  if (!(definition.maxHealth > 0))
+    throw new Error(`Entity kind ${name} needs a positive maxHealth.`);
+  const kind = game.entityTypes.size + 1;
+  game.kindIds.set(name, kind);
   game.entityTypes.set(kind, entityType(definition));
 }
 
@@ -176,19 +184,20 @@ function placeEntity(
 }
 
 /**
- * Spawns a `kind` at (x, y) under an id no entity in the session holds. Throws when `data` is
- * not the kind's state.
+ * Spawns the kind registered as `name` at (x, y) under an id no entity in the session holds.
+ * Throws when `data` is not the kind's state.
  */
 export function spawnEntity(
   game: Session,
-  kind: number,
+  name: string,
   x: number,
   y: number,
   data: unknown,
 ): WorldEntity {
-  const type = game.entityTypes.get(kind);
-  if (type === undefined)
-    throw new Error(`Unregistered entity kind: ${String(kind)}`);
+  const kind = game.kindIds.get(name);
+  const type = kind === undefined ? undefined : game.entityTypes.get(kind);
+  if (kind === undefined || type === undefined)
+    throw new Error(`Unregistered entity kind: ${name}`);
   const parsed = type.data.parse(data);
 
   let id = `${game.localId}:${String(game.nextEntityId++)}`;
@@ -231,13 +240,26 @@ export function updateEntities(game: Session, dt: number): void {
   });
 }
 
+/** Damage the host deals to one player, for that player's own client to apply. */
+export const damaged = contentEvent({
+  schema: z.object({ amount: z.number().positive() }),
+  to: "player",
+  from: "host",
+  receive(game, { amount }) {
+    applyDamage(game.local, amount);
+    game.reportNow = true;
+  },
+});
+
 /**
  * Deals `strike` to its player: the local player takes it at once, and a remote one is sent
- * it, since each player keeps its own health.
+ * it, since each player keeps its own health. A strike of no damage does nothing.
  */
 function strikePlayer(game: Session, strike: Strike): void {
+  if (!(strike.amount > 0)) return;
   if (strike.target === game.localId) applyDamage(game.local, strike.amount);
-  else if (game.players.has(strike.target)) game.strikes.push(strike);
+  else if (game.players.has(strike.target))
+    damaged.send(game, strike.target, { amount: strike.amount });
 }
 
 /** Removes every entity that has been destroyed. */
@@ -282,7 +304,6 @@ export function applyEntitySnapshot(
 ): void {
   const kept = new Set<string>();
   for (const { id, kind, x, y, health, data } of snapshot) {
-    if (game.collected.has(id)) continue;
     const type = game.entityTypes.get(kind);
     if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
       continue;

@@ -1,6 +1,5 @@
 import {
   createSimClock,
-  heldEmoji,
   remotePlayers,
   renderPosition,
   updateSession,
@@ -11,8 +10,8 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
+  createInventoryHud,
   createDebugOverlay,
-  createHud,
   createMicIndicatorView,
   createSettingsMenu,
   createStatusView,
@@ -24,7 +23,11 @@ import {
 import {
   draw,
   createCamera,
+  createMapMemory,
+  createFlashes,
+  createRipples,
   screenToWorld,
+  snapCamera,
   updateCamera,
 } from "./render/index.js";
 import { createSfx } from "./audio/index.js";
@@ -41,9 +44,9 @@ import { createSupabaseTransport } from "./adapters/supabase-transport/index.js"
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
-import { createMonsters } from "./monsters/index.js";
-import { createCruiser } from "./sim/cruiser.js";
-import { createItems } from "./items/index.js";
+import { entityContent } from "./entities/index.js";
+import { itemContent } from "./items/index.js";
+import { moveContent } from "./moves/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -64,6 +67,8 @@ const roomInput = element("#room", HTMLInputElement);
 const createBtn = element("#create", HTMLButtonElement);
 const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
+const inventoryEl = element("#inventory", HTMLElement);
+const inventoryList = element("#inventory-slots", HTMLOListElement);
 const debugEl = element("#debug", HTMLPreElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
@@ -112,7 +117,19 @@ const params = new URLSearchParams(location.search);
 const debug = params.has("debug");
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
-const camera = createCamera(config.view);
+const camera = createCamera(config.view, config.camera);
+/** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
+const ripples = createRipples(config.ripples, Math.random);
+const flashes = createFlashes(config.flashes);
+const mapMemory = createMapMemory(config.mapMemory, {
+  get: (key) => localStorage.getItem(key),
+  set: (key, value) => {
+    localStorage.setItem(key, value);
+  },
+  remove: (key) => {
+    localStorage.removeItem(key);
+  },
+});
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
@@ -146,7 +163,9 @@ function applySettings(current: Settings): void {
 }
 applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
-const hud = createHud();
+const updateInventory = createInventoryHud(inventoryEl, inventoryList);
+
+let inventoryOpen = false;
 
 const room = createRoom({
   localId: playerId,
@@ -166,9 +185,11 @@ const room = createRoom({
   },
   config: config.room,
   sim: config,
-  monsters: createMonsters(config.monsters),
-  cruiser: createCruiser(config.cruiser),
-  items: createItems(config),
+  content: [
+    ...entityContent(config.entities),
+    ...itemContent(config.items),
+    ...moveContent(config.moves),
+  ],
   falloff: config.voice,
   onChange() {
     refreshPeers(room.state());
@@ -177,8 +198,8 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence from the console or a test browser.
-if (debug) Object.assign(window, { voice, room });
+// Debug hook for driving voice and reading presence, ripples, flashes and map memory from the console or a test browser.
+if (debug) Object.assign(window, { voice, room, ripples, flashes, mapMemory });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -196,6 +217,11 @@ const input = createInput(
   (point) => screenToWorld(camera, point),
   config.view,
   {
+    toggleInventory: {
+      press() {
+        if (room.state().kind === "joined") inventoryOpen = !inventoryOpen;
+      },
+    },
     toggleSettings: {
       press(time) {
         settingsMenu.toggle(time);
@@ -256,11 +282,18 @@ async function enterRoom(rawCode: string): Promise<void> {
   nameInput.value = name;
   localStorage.setItem(nameKey, name);
   roomInput.value = state.code;
+  inventoryOpen = false;
   const url = new URLSearchParams(location.search);
   url.set("room", state.code);
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
   clock.reset(performance.now());
-  updateCamera(camera, state.session.local);
+  ripples.clear();
+  flashes.clear();
+  mapMemory.enter(
+    { room: state.code, world: env.world, seed: state.session.seed },
+    state.session.world.map,
+  );
+  snapCamera(camera, state.session.local);
 }
 
 function debugInfo(): DebugInfo {
@@ -275,12 +308,17 @@ function debugInfo(): DebugInfo {
   };
 }
 
+/** When the last frame ran, on the `performance.now()` clock. */
+let lastFrame = performance.now();
+
 /**
  * Reads the clock here rather than taking the rAF timestamp: that is the frame start, and key
  * events handled after it carry later times, which would push them a frame late.
  */
 function frame(): void {
   const now = performance.now();
+  const frameSeconds = (now - lastFrame) / 1000;
+  lastFrame = now;
   const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
   const session = joinedSession(room.state());
@@ -288,11 +326,13 @@ function frame(): void {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
       updateSession(session, input.getControls(until), clock.dt);
+      ripples.hear(session, until);
+      flashes.see(session, until);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
-    updateCamera(camera, renderPosition(session.local, alpha));
+    updateCamera(camera, renderPosition(session.local, alpha), frameSeconds);
     const drawStart = performance.now();
     draw(
       ctx,
@@ -302,12 +342,15 @@ function frame(): void {
       alpha,
       input.mouseWorld(),
       isAway,
-      heldEmoji(session.local.inventory, session.local.held),
+      flashes,
+      ripples,
+      mapMemory,
     );
+    mapMemory.save(now);
     frameStats.drawMs = performance.now() - drawStart;
-    hud.inventory(session.local.inventory, session.local.held);
-    hud.credit(session.credit);
+    updateInventory(session.local.inventory, session.local.held, inventoryOpen);
   } else {
+    inventoryEl.hidden = true;
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
@@ -352,11 +395,13 @@ on(copyBtn, "click", () => {
 
 on(document, "visibilitychange", () => {
   room.setHidden(document.hidden);
+  if (document.hidden) mapMemory.flush();
 });
 
 // Leaving sends BYE before anything else, while the page can still send.
 on(window, "beforeunload", () => {
   void room.leave();
+  mapMemory.flush();
 });
 
 requestAnimationFrame(frame);

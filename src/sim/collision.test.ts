@@ -1,8 +1,12 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
-import { moveWithCollision, separateBodies } from "./collision.js";
+import {
+  distanceToContact,
+  moveWithCollision,
+  separateBodies,
+} from "./collision.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
 import { isAreaFree } from "./map.js";
 import { applyRemoteState, createSession, updateSession } from "./session.js";
@@ -98,8 +102,10 @@ const idle = {
   move: { x: 0, y: 0 },
   aim: { x: 500, y: 300 },
   sprint: false,
+  crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 function collisionSession() {
@@ -118,14 +124,14 @@ function collisionSession() {
     data: z.null(),
     draw: () => undefined,
   };
-  registerEntityType(game, 1, definition);
-  registerEntityType(game, 2, { ...definition, collides: false });
+  registerEntityType(game, "solid", definition);
+  registerEntityType(game, "ghost", { ...definition, collides: false });
   return game;
 }
 
 test("a session separates its player and entities and updates host targets", () => {
   const game = collisionSession();
-  const entity = spawnEntity(game, 1, game.local.x, game.local.y, null);
+  const entity = spawnEntity(game, "solid", game.local.x, game.local.y, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -138,8 +144,8 @@ test("a session separates its player and entities and updates host targets", () 
 
 test("a session separates entities from other entities", () => {
   const game = collisionSession();
-  const first = spawnEntity(game, 1, 500, 300, null);
-  const second = spawnEntity(game, 1, 500, 300, null);
+  const first = spawnEntity(game, "solid", 500, 300, null);
+  const second = spawnEntity(game, "solid", 500, 300, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -150,7 +156,7 @@ test("a session separates entities from other entities", () => {
 
 test("noncolliding entities do not separate from players", () => {
   const game = collisionSession();
-  const entity = spawnEntity(game, 2, game.local.x, game.local.y, null);
+  const entity = spawnEntity(game, "ghost", game.local.x, game.local.y, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -167,6 +173,7 @@ test("player separation does not move remote players", () => {
     y: 300,
     aim: 0,
     health: 100,
+    content: {},
   });
 
   updateSession(game, idle, 1 / 60);
@@ -180,7 +187,7 @@ test("player separation does not move remote players", () => {
 test("a client yields to entities without changing their host targets", () => {
   const game = collisionSession();
   game.hosting = false;
-  const entity = spawnEntity(game, 1, game.local.x, game.local.y, null);
+  const entity = spawnEntity(game, "solid", game.local.x, game.local.y, null);
 
   updateSession(game, idle, 1 / 60);
 
@@ -188,4 +195,30 @@ test("a client yields to entities without changing their host targets", () => {
   expect(
     Math.hypot(entity.x - game.local.x, entity.y - game.local.y),
   ).toBeGreaterThanOrEqual(entity.radius + game.local.radius - 1e-5);
+});
+
+describe("distanceToContact", () => {
+  const body = { x: 0, y: 0, vx: 0, vy: 0, radius: 10 };
+  const at = (x: number, y: number) => ({ x, y, vx: 0, vy: 0, radius: 5 });
+  const right = { x: 1, y: 0 };
+
+  test("is the gap to the nearest body ahead in the way", () => {
+    expect(distanceToContact(body, right, [at(40, 0), at(30, 0)])).toBeCloseTo(
+      15,
+    );
+  });
+
+  test("allows for a body off to the side that the path still clips", () => {
+    expect(distanceToContact(body, right, [at(40, 9)])).toBeCloseTo(40 - 12);
+  });
+
+  test("ignores bodies clear of the path or behind", () => {
+    expect(distanceToContact(body, right, [at(40, 16), at(-20, 0)])).toBe(
+      Infinity,
+    );
+  });
+
+  test("is zero for a body already touching ahead", () => {
+    expect(distanceToContact(body, right, [at(14, 0)])).toBe(0);
+  });
 });

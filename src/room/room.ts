@@ -8,16 +8,16 @@ import {
   cueEntities,
   createSession,
   entitySnapshot,
-  applyDamage,
   playerState,
+  receiveEvent,
+  registerContent,
   removePlayer,
-  requestUse,
-  showUse,
 } from "../sim/index.js";
 import type {
+  OutgoingEvent,
   Session,
   SimConfig,
-  UseRequest,
+  WorldContent,
   WorldKind,
 } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
@@ -33,7 +33,7 @@ import type {
   Roster,
 } from "./presence.js";
 import { roomMessages } from "./protocol.js";
-import type { Message, MessageInput } from "./protocol.js";
+import type { Message, WireMessage } from "./protocol.js";
 import { INVALID_ROOM_CODE, parseRoomCode, roomKey } from "./room-code.js";
 import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 
@@ -46,22 +46,6 @@ export interface RoomConfig {
   /** Milliseconds between heartbeats, and between presence sweeps. */
   readonly heartbeatMs: number;
   readonly presence: PresenceTiming;
-}
-
-/** The monsters a room's world holds. */
-export interface Monsters {
-  /** Registers their kinds with a new session, before any snapshot reaches it. */
-  register(session: Session): void;
-  /** Spawns the ones a new world starts with. */
-  populate(session: Session): void;
-}
-
-/** The usable items a room's players hold. */
-export interface Items {
-  /** Registers what each one does with a new session, and stocks its local player's inventory. */
-  register(session: Session): void;
-  /** Spawns the ground items a new world starts with. */
-  populate?(session: Session): void;
 }
 
 /**
@@ -98,12 +82,8 @@ export interface RoomDeps {
   readonly clock: RoomClock;
   readonly config: RoomConfig;
   readonly sim: SimConfig;
-  readonly monsters: Monsters;
-  readonly cruiser?: {
-    register(session: Session): void;
-    populate(session: Session): void;
-  };
-  readonly items: Items;
+  /** What the world holds. Every client registers it in this order, which numbers its kinds. */
+  readonly content: readonly WorldContent[];
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
@@ -123,8 +103,9 @@ export interface Room {
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
   /**
-   * Runs after the simulation steps of a frame: sends state, sends the local player's item uses,
-   * sends the damage dealt, plays the entities' sound cues, then mixes voice.
+   * Runs after the simulation steps of a frame: sends state, routes the content events sent in
+   * those steps, sends the entities while hosting, plays the entities' sound cues, then mixes
+   * voice.
    */
   frame(now: number): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
@@ -132,7 +113,7 @@ export interface Room {
   /** Undefined for a remote player who is gone, or outside a room. */
   presenceOf(id: string): Presence | undefined;
   /**
-   * The one player who runs the shared world: it runs the monsters and sends them to everyone
+   * The one player who runs the shared world: it runs the entities and sends them to everyone
    * else. A host keeps the role while it is active; only when it goes away, leaves or hides
    * does a new one take over, and every client adopts the latest election it hears. Undefined
    * outside a room, and on joining until the host is heard or the first heartbeat elects one.
@@ -177,15 +158,12 @@ export function createRoom(deps: RoomDeps): Room {
   let hidden = false;
   /** Mapped over each event, so indexing it with a generic event keeps that event's types. */
   const messages: {
-    [E in NetEvent]: z.ZodType<Message<E>, MessageInput<E>>;
+    [E in NetEvent]: z.ZodType<Message<E>, WireMessage<E>>;
   } = roomMessages(deps.sim.player.nameMax);
 
-  /** Sends `msg` as `event` to the rest of the room. */
-  function send<E extends NetEvent>(
-    event: E,
-    msg: MessageInput<E>,
-  ): Promise<void> {
-    return transport.send(event, msg);
+  /** Encodes `msg` for the wire and sends it as `event` to the rest of the room. */
+  function send<E extends NetEvent>(event: E, msg: Message<E>): Promise<void> {
+    return transport.send(event, messages[event].encode(msg));
   }
 
   function setState(next: RoomState): void {
@@ -197,24 +175,28 @@ export function createRoom(deps: RoomDeps): Room {
     if (!force && now - room.lastSent < 1000 / config.sendHz) return;
     room.lastSent = now;
     room.forceState = false;
-    void send(NetEvent.STATE, playerState(room.session.local));
+    room.session.reportNow = false;
+    void send(NetEvent.STATE, playerState(room.session));
   }
 
   /**
-   * Sends an item use to the room, for the host to apply and everyone else to hear, and
-   * queues it for this client's next step while hosting. Dropped while no host is known.
+   * Hands `outgoing` to each client its route reaches: this one's next step without a round
+   * trip, the others over the transport. One for the host is dropped while no host is known.
    */
-  function handUse(room: Link, request: UseRequest): void {
+  function route(room: Link, outgoing: OutgoingEvent): void {
     const host = room.host?.id;
-    if (host === undefined) return;
-    if (host === localId) requestUse(room.session, request);
-    void send(NetEvent.USE, request);
-  }
-
-  /** Sends each remote player the damage dealt to it since the last frame. */
-  function sendStrikes(room: Link): void {
-    for (const { target, amount } of room.session.strikes.splice(0))
-      void send(NetEvent.DAMAGE, { host: localId, target, amount });
+    const { route: reach, ...address } = outgoing;
+    const message = { ...address, from: localId };
+    const here =
+      reach === "all" ||
+      (reach === "host" ? host === localId : outgoing.to === localId);
+    const away =
+      reach === "all" ||
+      (reach === "host"
+        ? host !== undefined && host !== localId
+        : outgoing.to !== localId);
+    if (here) receiveEvent(room.session, message, host);
+    if (away) void send(NetEvent.CONTENT, message);
   }
 
   function sendEntities(room: Link, now: number, force = false): void {
@@ -235,9 +217,7 @@ export function createRoom(deps: RoomDeps): Room {
     const hosting = view?.id === localId;
     room.session.hosting = hosting;
     if (hosting && !room.populated) {
-      deps.monsters.populate(room.session);
-      deps.cruiser?.populate(room.session);
-      deps.items.populate?.(room.session);
+      for (const content of deps.content) content.populate(room.session);
       room.populated = true;
     }
   }
@@ -325,26 +305,10 @@ export function createRoom(deps: RoomDeps): Room {
         applyEntitySnapshot(room.session, message.entities);
         room.populated = true;
       }),
-      [NetEvent.USE]: on(NetEvent.USE, (message) => {
-        if (message.by === localId) return;
-        if (room.roster.get(message.by) === undefined) return;
-        showUse(room.session, message);
-        if (room.host?.id === localId) requestUse(room.session, message);
-      }),
-      [NetEvent.PICKUP]: on(NetEvent.PICKUP, (message) => {
-        if (room.host?.id !== localId) return;
-        if (message.by === localId) return;
-        room.session.entities.delete(message.entityId);
-      }),
-      [NetEvent.DAMAGE]: on(NetEvent.DAMAGE, (message) => {
-        if (message.target !== localId) return;
-        if (message.host === localId || message.host !== room.host?.id) return;
-        applyDamage(room.session.local, message.amount);
-        room.forceState = true;
-      }),
-      [NetEvent.CREDIT]: on(NetEvent.CREDIT, (message) => {
-        if (message.by === localId) return;
-        room.session.credit += message.amount;
+      [NetEvent.CONTENT]: on(NetEvent.CONTENT, (message) => {
+        if (message.from === localId) return;
+        if (room.roster.get(message.from) === undefined) return;
+        receiveEvent(room.session, message, room.host?.id);
       }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
@@ -409,9 +373,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sfx,
       deps.sim,
     );
-    deps.monsters.register(session);
-    deps.cruiser?.register(session);
-    deps.items.register(session);
+    registerContent(session, deps.content);
     session.hosting = false;
     const room: Link = {
       scope,
@@ -519,14 +481,9 @@ export function createRoom(deps: RoomDeps): Room {
     frame(now) {
       if (link === null) return;
       const room = link;
-      sendState(room, now, room.forceState);
-      for (const request of room.session.localUses.splice(0))
-        handUse(room, request);
-      for (const pickup of room.session.localPickups.splice(0))
-        void send(NetEvent.PICKUP, pickup);
-      sendStrikes(room);
-      for (const amount of room.session.cashOuts.splice(0))
-        void send(NetEvent.CREDIT, { by: localId, amount });
+      sendState(room, now, room.forceState || room.session.reportNow);
+      for (const outgoing of room.session.outbox.splice(0))
+        route(room, outgoing);
       if (room.host?.id === localId) sendEntities(room, now);
       cueEntities(room.session);
       if (room.voiceRoom !== null)

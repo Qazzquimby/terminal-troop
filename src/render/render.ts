@@ -11,15 +11,27 @@ import type {
 } from "../sim/index.js";
 import {
   aimAt,
+  heldItemOf,
   isVisible,
   lightSources,
   litWalls,
+  movement,
   renderAim,
   renderPosition,
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
 import type { Camera } from "./camera.js";
+import type {
+  Area,
+  MapMemory,
+  MapMemoryConfig,
+  RememberedTerrain,
+} from "./map-memory.js";
+import { flashDisc } from "./flashes.js";
+import type { Flashes } from "./flashes.js";
+import { rippleRing } from "./ripples.js";
+import type { Ripples } from "./ripples.js";
 
 interface Circle extends Point {
   readonly radius: number;
@@ -33,6 +45,16 @@ function viewWidth(camera: Camera): number {
 /** The height of the world the camera covers, in world units. */
 function viewHeight(camera: Camera): number {
   return camera.view.height * camera.zoom;
+}
+
+/** The part of the world the camera covers. */
+function viewArea(camera: Camera): Area {
+  return {
+    x: camera.x,
+    y: camera.y,
+    width: viewWidth(camera),
+    height: viewHeight(camera),
+  };
 }
 
 function inView(body: Circle, camera: Camera): boolean {
@@ -79,9 +101,13 @@ function drawTerrain(
 /** How opaque an away player is drawn. */
 const AWAY_ALPHA = 0.4;
 
-/** An away player is drawn faint, with "away" under its name. */
+/**
+ * A player with the item it holds in front of it, and its latest use while that lasts. An away
+ * player is drawn faint, with "away" under its name.
+ */
 function drawPlayer(
   ctx: CanvasRenderingContext2D,
+  game: Session,
   player: Player,
   isSelf: boolean,
   away = false,
@@ -89,6 +115,10 @@ function drawPlayer(
   ctx.save();
   if (away) ctx.globalAlpha = AWAY_ALPHA;
   drawBody(ctx, player, isSelf);
+  if (player.use !== null)
+    game.items.get(player.use.item)?.draw(ctx, player.use, game.time);
+  const held = heldItemOf(game, player);
+  if (held !== null) drawHeldItem(ctx, player, held.emoji);
   if (away) {
     ctx.font = "10px system-ui";
     ctx.fillStyle = "#aaa";
@@ -130,14 +160,25 @@ export function drawEmoji(
   ctx.restore();
 }
 
+/** How large a crouching player's body is drawn, as a fraction of its radius. */
+const CROUCHED_SCALE = 0.7;
+
+/** A player's body, drawn smaller while it crouches, its facing line, and its name. */
 function drawBody(
   ctx: CanvasRenderingContext2D,
   player: Player,
   isSelf: boolean,
 ): void {
+  const crouched = movement.get(player).mode === "crouch";
   ctx.fillStyle = isSelf ? "#73cfff" : "#e1bd83";
   ctx.beginPath();
-  ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+  ctx.arc(
+    player.x,
+    player.y,
+    player.radius * (crouched ? CROUCHED_SCALE : 1),
+    0,
+    Math.PI * 2,
+  );
   ctx.fill();
 
   drawFacing(ctx, player, player.aim, player.radius * 1.5);
@@ -165,14 +206,14 @@ function drawStamina(
   ctx.fillRect(x, y, (width * value) / max, 4);
 }
 
-/** A red health bar at `barY`, shown only once the body has taken damage. */
-function drawHealthBar(
-  ctx: CanvasRenderingContext2D,
+/** A red health bar at `barY`, shown only once a body that can fall has taken damage. */
+export function drawHealthBar(
+  ctx: Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
   body: Entity,
   barY: number,
 ): void {
   const { health, maxHealth, radius } = body;
-  if (health >= maxHealth || health <= 0) return;
+  if (!Number.isFinite(health) || health >= maxHealth || health <= 0) return;
 
   const width = radius * 2;
   const x = body.x - radius;
@@ -201,27 +242,58 @@ function drawHeldItem(
   ctx.restore();
 }
 
+/** What drawing filled and stroked paths needs of a context. */
+type PathContext = Pick<
+  CanvasRenderingContext2D,
+  | "fillStyle"
+  | "strokeStyle"
+  | "lineWidth"
+  | "beginPath"
+  | "moveTo"
+  | "lineTo"
+  | "closePath"
+  | "fill"
+  | "stroke"
+>;
+
+const LIT_WALL = { fill: "#4b525a", edge: "#5f6871" };
+
+/**
+ * Remembered floor and wall faces, drawn faint under everything: what is in sight is drawn over
+ * them as usual.
+ */
+export function drawRemembered(
+  ctx: PathContext &
+    Pick<CanvasRenderingContext2D, "save" | "restore" | "globalAlpha" | "rect">,
+  terrain: RememberedTerrain,
+  { floor, wall }: MapMemoryConfig,
+  cell: number,
+): void {
+  ctx.save();
+  ctx.globalAlpha = floor.alpha;
+  ctx.beginPath();
+  for (const { x, y } of terrain.floor) ctx.rect(x, y, cell, cell);
+  ctx.fillStyle = floor.fill;
+  ctx.fill();
+  ctx.strokeStyle = floor.grid;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.globalAlpha = wall.alpha;
+  drawLitWalls(ctx, terrain.walls, wall);
+  ctx.restore();
+}
+
 /**
  * Lit wall faces, drawn outside the darkness clip: rays stop at wall faces, so walls are never
  * inside a visibility polygon. Shallow bands distinguish walls from both floor and darkness.
  */
 export function drawLitWalls(
-  ctx: Pick<
-    CanvasRenderingContext2D,
-    | "fillStyle"
-    | "strokeStyle"
-    | "lineWidth"
-    | "beginPath"
-    | "moveTo"
-    | "lineTo"
-    | "closePath"
-    | "fill"
-    | "stroke"
-  >,
+  ctx: PathContext,
   walls: VisibilityPolygon["walls"],
+  colours: { readonly fill: string; readonly edge: string } = LIT_WALL,
 ): void {
   const depth = 4;
-  ctx.fillStyle = "#4b525a";
+  ctx.fillStyle = colours.fill;
   ctx.beginPath();
   for (const faces of walls.values()) {
     for (const { from, to, normal } of faces) {
@@ -234,7 +306,7 @@ export function drawLitWalls(
   }
   ctx.fill();
 
-  ctx.strokeStyle = "#5f6871";
+  ctx.strokeStyle = colours.edge;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (const faces of walls.values()) {
@@ -244,6 +316,67 @@ export function drawLitWalls(
     }
   }
   ctx.stroke();
+}
+
+/**
+ * Each noise the local player heard lately, as of `now` in ms, as a ring spreading from where it
+ * seemed to come from.
+ */
+/** Draws each flash as of `time` in ms: a filled disc and its ring, fading out. */
+export function drawFlashes(
+  ctx: Pick<
+    CanvasRenderingContext2D,
+    | "save"
+    | "restore"
+    | "beginPath"
+    | "arc"
+    | "fill"
+    | "stroke"
+    | "fillStyle"
+    | "strokeStyle"
+    | "lineWidth"
+    | "globalAlpha"
+  >,
+  flashes: Pick<Flashes, "config" | "list">,
+  time: number,
+): void {
+  const { config } = flashes;
+  for (const flash of flashes.list) {
+    const disc = flashDisc(flash, time, config);
+    if (disc === null) continue;
+    ctx.save();
+    ctx.fillStyle = disc.colour;
+    ctx.strokeStyle = disc.colour;
+    ctx.lineWidth = config.width;
+    ctx.beginPath();
+    ctx.arc(disc.x, disc.y, disc.radius, 0, Math.PI * 2);
+    ctx.globalAlpha = disc.fade * config.fill;
+    ctx.fill();
+    ctx.globalAlpha = disc.fade;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawRipples(
+  ctx: CanvasRenderingContext2D,
+  ripples: Ripples,
+  now: number,
+  camera: Camera,
+): void {
+  const { config } = ripples;
+  ctx.save();
+  ctx.strokeStyle = config.colour;
+  for (const ripple of ripples.list) {
+    const ring = rippleRing(ripple, now, config);
+    if (ring === null || !inView(ring, camera)) continue;
+    ctx.globalAlpha = ring.alpha;
+    ctx.lineWidth = ring.width;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** Visibility polygons for the sources that can reach the view, cut off at its far corner. */
@@ -328,7 +461,9 @@ export function interpolatedView(
 
 /**
  * Draws the session as of `alpha` (0..1) through the current fixed step, with each remote
- * player `isAway` picks out drawn as away and `held` (an item glyph) in front of the local one.
+ * player `isAway` picks out drawn as away, the blows seen landing as `flashes`, and what the
+ * local player heard as `ripples`. What
+ * the local player sees is added to `memory`, and what it remembers out of sight is drawn faint.
  */
 export function draw(
   ctx: CanvasRenderingContext2D,
@@ -338,7 +473,9 @@ export function draw(
   alpha: number,
   mouse: Point,
   isAway: (id: string) => boolean,
-  held: string | null,
+  flashes: Flashes,
+  ripples: Ripples,
+  memory: MapMemory,
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
   const viewer = game.local;
@@ -348,6 +485,9 @@ export function draw(
   const { rays } = game.config.vision;
   const seen = tracePolygons(map, sources, camera, rays);
   const lit = tracePolygons(map, lights, camera, rays);
+  const walls = litWalls(seen, lit);
+  const area = viewArea(camera);
+  memory.see({ seen, lit, walls }, area);
 
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, camera.view.width, camera.view.height);
@@ -355,6 +495,7 @@ export function draw(
   const scale = 1 / camera.zoom;
   ctx.scale(scale, scale);
   ctx.translate(-camera.x, -camera.y);
+  drawRemembered(ctx, memory.within(area), memory.config, map.cell);
 
   // Inside the darkness: only what is both seen and lit.
   ctx.save();
@@ -376,18 +517,17 @@ export function draw(
   game.players.forEach((player) => {
     if (player === viewer || !inView(player, camera)) return;
     if (!isVisible(map, sources, lights, player)) return;
-    drawPlayer(ctx, player, false, isAway(player.id));
+    drawPlayer(ctx, game, player, false, isAway(player.id));
     drawHealthBar(ctx, player, player.y - player.radius - 26);
   });
+  drawFlashes(ctx, flashes, now);
   ctx.restore();
 
-  // Above the darkness: lit wall faces, then the local player and its HUD.
-  drawLitWalls(ctx, litWalls(seen, lit));
-  drawPlayer(ctx, viewer, true);
+  // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.
+  drawLitWalls(ctx, walls);
+  drawRipples(ctx, ripples, now, camera);
+  drawPlayer(ctx, game, viewer, true);
   drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
-  if (viewer.use !== null)
-    game.items.get(viewer.use.item)?.draw(ctx, viewer.use, game.time);
-  if (held !== null) drawHeldItem(ctx, viewer, held);
   drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();
 }

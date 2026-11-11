@@ -3,10 +3,10 @@ import alertUrl from "./sfx/alert.mp3";
 import attackUrl from "./sfx/attack.mp3";
 import barkUrl from "./sfx/bark.mp3";
 import {
-  testMonsterConfig,
+  testEntitiesConfig,
   testSfx,
   testSimConfig,
-} from "../integration/sim-config.js";
+} from "../../integration/sim-config.js";
 import {
   applyEntitySnapshot,
   applyRemoteState,
@@ -14,23 +14,25 @@ import {
   cueEntities,
   entitySnapshot,
   isAreaFree,
+  registerContent,
   spawnEntity,
   updateSession,
-} from "../sim/index.js";
-import type { Session, WorldEntity } from "../sim/index.js";
-import type { ChaserConfig } from "./chaser.js";
-import { ChaserState, freshChaser } from "./chaser.js";
-import { MonsterKind, createMonsters } from "./index.js";
+} from "../../sim/index.js";
+import type { Session, WorldEntity } from "../../sim/index.js";
+import type { ChaserConfig } from "./index.js";
+import { ChaserState, chaser as chaserContent, freshChaser } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
   sprint: false,
+  crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
-const { chaser: config } = testMonsterConfig;
+const { chaser: config } = testEntitiesConfig;
 
 /** The sounds a session's chasers have played, oldest first. */
 function played(game: Session): string[] {
@@ -51,7 +53,7 @@ function world(
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  createMonsters({ ...testMonsterConfig, chaser }).register(game);
+  registerContent(game, [chaserContent.create({ chaser })]);
   return game;
 }
 
@@ -60,7 +62,7 @@ function standAt(game: Session, x: number, y: number): void {
 }
 
 function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
-  return spawnEntity(game, MonsterKind.CHASER, x, y, freshChaser(seed));
+  return spawnEntity(game, "chaser", x, y, freshChaser(seed, config));
 }
 
 const stateOf = (entity: WorldEntity): ChaserState =>
@@ -274,14 +276,15 @@ describe("wandering", () => {
 describe("sounds", () => {
   const blind = { ...config, sightRange: 0 };
 
-  test("barks for the first time after 6 to 12 seconds", () => {
+  test("barks for the first time within its bark gap", () => {
+    const { min, max } = config.barkGap;
     const game = world(blind);
     chaserAt(game, 450, 300);
 
-    run(game, 6 - DT);
+    run(game, min - DT);
     expect(played(game)).toEqual([]);
 
-    expect(runUntil(game, 6, () => played(game).length > 0)).toBe(true);
+    expect(runUntil(game, max - min, () => played(game).length > 0)).toBe(true);
     expect(played(game)).toEqual([barkUrl]);
   });
 
@@ -309,7 +312,7 @@ describe("sounds", () => {
     ).toBeGreaterThanOrEqual(zombie.radius + game.local.radius - 1e-5);
   });
 
-  test("attacks on reaching its target, at most every 2 seconds", () => {
+  test("attacks on reaching its target, at most once per cooldown", () => {
     const game = world();
     standAt(game, 300, 400);
     chaserAt(game, 100, 400);
@@ -317,7 +320,7 @@ describe("sounds", () => {
       played(game).filter((url) => url === attackUrl).length;
 
     expect(runUntil(game, 3, () => attacks() > 0)).toBe(true);
-    run(game, 1.9);
+    run(game, config.attackCooldown - 0.1);
     expect(attacks()).toBe(1);
     run(game, 0.2);
     expect(attacks()).toBe(2);
@@ -374,12 +377,120 @@ describe("sounds", () => {
       y: 400,
       aim: 0,
       health: 100,
+      content: {},
     });
     chaserAt(game, 100, 400);
-    expect(runUntil(game, 3, () => game.strikes.length > 0)).toBe(true);
-    expect(game.strikes).toEqual([
-      { target: "them", amount: config.attackDamage },
+    expect(runUntil(game, 3, () => game.outbox.length > 0)).toBe(true);
+    expect(game.outbox).toEqual([
+      {
+        content: "core/health",
+        event: "damage",
+        route: "player",
+        to: "them",
+        payload: { amount: config.attackDamage },
+      },
     ]);
     expect(game.players.get("them")?.health).toBe(100);
+  });
+});
+
+describe("hearing", () => {
+  const blind = { ...config, sightRange: 0 };
+
+  /** A remote player at (x, y) reporting it moves in `mode`. */
+  function moverAt(
+    game: Session,
+    x: number,
+    y: number,
+    mode: "walk" | "sprint" | "crouch",
+  ): void {
+    applyRemoteState(game, {
+      id: "them",
+      name: "THEM",
+      x,
+      y,
+      aim: 0,
+      health: 100,
+      content: { "core/movement": { mode, moving: true } },
+    });
+  }
+
+  const distanceTo = (zombie: WorldEntity, x: number, y: number): number =>
+    Math.hypot(zombie.x - x, zombie.y - y);
+
+  test("a wandering chaser turns towards a player it hears sprinting, placing it roughly", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    moverAt(game, 750, 300, "sprint");
+    const zombie = chaserAt(game, 450, 300);
+    run(game, DT);
+
+    const state = stateOf(zombie);
+    if (state.mode !== "wander" || state.noiseTarget === null)
+      throw new Error("heard nothing");
+    const { noiseTarget } = state;
+    const spread = 300 * testSimConfig.noise.blur;
+    expect(
+      Math.hypot(noiseTarget.x - 750, noiseTarget.y - 300),
+    ).toBeLessThanOrEqual(spread);
+    expect(zombie.vx).toBeGreaterThan(0);
+
+    run(game, 2);
+    expect(distanceTo(zombie, 750, 300)).toBeLessThan(300 - 80);
+  });
+
+  test("a player walking beyond its footsteps' reach is not heard", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    moverAt(game, 750, 300, "walk");
+    const zombie = chaserAt(game, 450, 300);
+    run(game, 2);
+    expect(stateOf(zombie)).toMatchObject({ noiseTarget: null });
+  });
+
+  test("a player crouching where its walking is heard goes unheard", () => {
+    const heard = (mode: "walk" | "crouch"): boolean => {
+      const game = world(blind);
+      standAt(game, 100, 500);
+      moverAt(game, 570, 300, mode);
+      const zombie = chaserAt(game, 450, 300);
+      return runUntil(game, 1, () => {
+        const state = stateOf(zombie);
+        return state.mode === "wander" && state.noiseTarget !== null;
+      });
+    };
+    expect(heard("walk")).toBe(true);
+    expect(heard("crouch")).toBe(false);
+  });
+
+  test("standing at the noise, it forgets it and wanders on", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    moverAt(game, 600, 300, "sprint");
+    const zombie = chaserAt(game, 450, 300);
+    run(game, DT);
+    expect(stateOf(zombie)).not.toMatchObject({ noiseTarget: null });
+
+    game.players.delete("them");
+    run(game, 5);
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "wander",
+      noiseTarget: null,
+    });
+  });
+
+  test("sight overrides hearing", () => {
+    const game = world();
+    standAt(game, 450, 450);
+    moverAt(game, 650, 300, "sprint");
+    const zombie = chaserAt(game, 450, 300);
+    Object.assign(zombie, {
+      data: { ...stateOf(zombie), facing: Math.PI / 2 },
+    });
+    run(game, DT);
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "chase",
+      target: { x: 450, y: 450 },
+    });
   });
 });

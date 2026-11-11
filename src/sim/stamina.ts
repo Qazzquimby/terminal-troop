@@ -50,3 +50,13 @@ export function updateStamina(
     rested,
   };
 }
+
+/**
+ * `stamina` less `amount`, spent at once, which restarts the wait before regeneration; null
+ * when there is not that much to spend.
+ */
+export function spendStamina(stamina: Stamina, amount: number): Stamina | null {
+  if (stamina.value < amount) return null;
+  const value = stamina.value - amount;
+  return { value, exhausted: stamina.exhausted || value === 0, rested: 0 };
+}

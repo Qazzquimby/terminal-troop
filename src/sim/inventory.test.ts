@@ -3,7 +3,6 @@ import type { ItemDefinition } from "./inventory.js";
 import {
   addItem,
   createInventory,
-  heldEmoji,
   heldItem,
   removeItem,
   selectSlot,
@@ -70,19 +69,15 @@ test("keeps different item types separate", () => {
 test("selects slots by number, including empty ones", () => {
   const inventory = createInventory(3);
   addItem(inventory, material, 1);
-  expect(heldItem(inventory, selectSlot(inventory, 0))?.item.id).toBe(
+  expect(heldItem(inventory, selectSlot(inventory, 2, 0))?.item.id).toBe(
     "material",
   );
-  expect(heldItem(inventory, selectSlot(inventory, 2))).toBeNull();
-  expect(heldItem(inventory, selectSlot(inventory, null))).toBeNull();
-  expect(() => selectSlot(inventory, 3)).toThrow(RangeError);
-  expect(() => selectSlot(inventory, -1)).toThrow(RangeError);
+  expect(heldItem(inventory, selectSlot(inventory, 0, 2))).toBeNull();
 });
 
-test("reports the glyph of the held item", () => {
-  const inventory = createInventory(2);
-  addItem(inventory, material, 1);
-  expect(heldEmoji(inventory, 0)).toBe(material.emoji);
-  expect(heldEmoji(inventory, 1)).toBeNull();
-  expect(heldEmoji(inventory, null)).toBeNull();
+test("a slot number past either end keeps the held slot", () => {
+  const inventory = createInventory(3);
+  expect(selectSlot(inventory, 1, 3)).toBe(1);
+  expect(selectSlot(inventory, 1, -1)).toBe(1);
+  expect(selectSlot(inventory, null, 8)).toBeNull();
 });

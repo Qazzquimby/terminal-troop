@@ -3,6 +3,7 @@ import type { Stamina, StaminaConfig } from "./stamina.js";
 import {
   canSprint,
   createStamina as createFrom,
+  spendStamina,
   updateStamina as updateWith,
 } from "./stamina.js";
 
@@ -79,4 +80,22 @@ test("stamina never leaves [0, max]", () => {
     expect(current.value).toBeGreaterThanOrEqual(0);
     expect(current.value).toBeLessThanOrEqual(config.max);
   }
+});
+
+test("spending takes the amount at once and restarts the wait to regenerate", () => {
+  const spent = spendStamina(createStamina(), 15);
+  expect(spent).toEqual({ value: 85, exhausted: false, rested: 0 });
+  if (spent === null) return;
+  expect(step(spent, false, 0.5).value).toBe(85);
+  expect(step(spent, false, 1).value).toBeGreaterThan(85);
+});
+
+test("spending more than there is spends nothing", () => {
+  const low = { value: 10, exhausted: false, rested: 0.6 };
+  expect(spendStamina(low, 15)).toBeNull();
+});
+
+test("spending the last of it exhausts", () => {
+  const spent = spendStamina({ value: 15, exhausted: false, rested: 0 }, 15);
+  expect(spent).toEqual({ value: 0, exhausted: true, rested: 0 });
 });

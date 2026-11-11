@@ -1,15 +1,36 @@
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
-import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import type { Session } from "../sim/index.js";
+import {
+  testFlashConfig,
+  testMapMemoryConfig,
+  testSfx,
+  testSimConfig,
+} from "../integration/sim-config.js";
+import type { Session, VisionSource } from "../sim/index.js";
 import {
   createPlayer,
   createSession,
+  heldItemId,
+  heldItemOf,
+  isVisible,
+  lightSources,
+  litWalls,
+  registerItem,
   registerEntityType,
   spawnEntity,
   updateSession,
+  visibilityPolygon,
+  visionOrigins,
 } from "../sim/index.js";
-import { drawLitWalls, interpolatedView } from "./render.js";
+import { createMapMemory } from "./map-memory.js";
+import type { MapMemory } from "./map-memory.js";
+import {
+  drawFlashes,
+  drawHealthBar,
+  drawLitWalls,
+  drawRemembered,
+  interpolatedView,
+} from "./render.js";
 
 test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
   const ctx = {
@@ -61,8 +82,10 @@ const walkRight = {
   move: { x: 1, y: 0 },
   aim: { x: 0, y: 0 },
   sprint: false,
+  crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 function session(): Session {
@@ -76,20 +99,31 @@ function session(): Session {
   );
 }
 
+test.each([
+  ["a hurt body", 30, 40, true],
+  ["an unhurt body", 40, 40, false],
+  ["an unbreakable body, however hit", Infinity, Infinity, false],
+])("%s shows a health bar: %s", (_label, health, maxHealth, shown) => {
+  const ctx = { fillStyle: "", fillRect: vi.fn() };
+  const body = { x: 100, y: 100, vx: 0, vy: 0, radius: 10, health, maxHealth };
+  drawHealthBar(ctx, body, 80);
+  expect(ctx.fillRect.mock.calls.length > 0).toBe(shown);
+});
+
 const degrees = (value: number): number => (value * Math.PI) / 180;
 
 const origin = { x: 0, y: 0 };
 
 test("entities record their pre-step position", () => {
   const game = session();
-  registerEntityType(game, 1, {
+  registerEntityType(game, "thing", {
     radius: 5,
     maxHealth: 10,
     collides: false,
     data: z.object({}),
     draw: () => undefined,
   });
-  const entity = spawnEntity(game, 1, 100, 200, {});
+  const entity = spawnEntity(game, "thing", 100, 200, {});
   expect(entity).toMatchObject({ prevX: 100, prevY: 200 });
 
   entity.vx = 10 / FIXED_DT;
@@ -136,6 +170,29 @@ test("the view's remote aim is interpolated by alpha along the shortest arc", ()
   expect(remote.aim).toBeCloseTo(degrees(-160));
 });
 
+test("the view's players hold what the simulation's do", () => {
+  const game = session();
+  const torch = { id: "torch", name: "Torch", maxStack: 1, emoji: "🔦" };
+  registerItem(game, torch, {
+    cooldown: 1,
+    apply: () => undefined,
+    show: (_game, at) => ({ center: at, hit: false }),
+    draw: () => undefined,
+  });
+  game.local.inventory[0] = { item: torch, quantity: 1 };
+  const remote = createPlayer("them", "THEM", game.world, game.config);
+  game.players.set("them", remote);
+  heldItemId.set(remote, "torch");
+  remote.use = { item: "torch", center: origin, hit: false, startedAt: 0 };
+
+  const view = interpolatedView(game, 0.5, origin);
+  const them = view.players.get("them");
+
+  expect(heldItemOf(view, view.local)).toBe(torch);
+  expect(them === undefined ? undefined : heldItemOf(view, them)).toBe(torch);
+  expect(them?.use).toBe(remote.use);
+});
+
 test("the view's local aim points from the interpolated position to the mouse", () => {
   const game = session();
   Object.assign(game.local, { prevX: 300, x: 320, prevY: 200, y: 200, aim: 2 });
@@ -145,4 +202,116 @@ test("the view's local aim points from the interpolated position to the mouse", 
   expect(view.local.aim).toBeCloseTo(Math.PI / 2);
   expect(view.players.get("me")?.aim).toBeCloseTo(Math.PI / 2);
   expect(game.local.aim).toBe(2);
+});
+
+const everywhere = { x: 0, y: 0, width: 900, height: 600 };
+
+/** Traces what the local player sees and lights facing `aim`, as `draw` does, and remembers it. */
+function look(game: Session, memory: MapMemory, aim: number): boolean {
+  const viewer = { ...game.local, aim };
+  const sources = visionOrigins(game, viewer);
+  const lights = lightSources(game, viewer);
+  const { map } = game.world;
+  const trace = (source: VisionSource) =>
+    visibilityPolygon(map, source, 64, 900);
+  const seen = sources.map(trace);
+  const lit = lights.map(trace);
+  memory.see({ seen, lit, walls: litWalls(seen, lit) }, everywhere);
+  const [thing] = game.entities.values();
+  return thing !== undefined && isVisible(map, sources, lights, thing);
+}
+
+test("terrain seen before is drawn out of sight, and nothing that stood on it", () => {
+  const game = createSession(
+    "me",
+    "ME",
+    "MEMORY",
+    "dev",
+    testSfx(),
+    testSimConfig,
+  );
+  Object.assign(game.local, { x: 175, y: 325 });
+  registerEntityType(game, "thing", {
+    radius: 5,
+    maxHealth: 10,
+    collides: false,
+    data: z.object({}),
+    draw: () => undefined,
+  });
+  spawnEntity(game, "thing", 325, 325, {});
+  const memory = createMapMemory(testMapMemoryConfig, {
+    get: () => null,
+    set: () => undefined,
+    remove: () => undefined,
+  });
+  memory.enter(
+    { room: "MEMORY", world: "dev", seed: game.seed },
+    game.world.map,
+  );
+
+  expect(look(game, memory, 0)).toBe(true);
+  expect(look(game, memory, Math.PI)).toBe(false);
+
+  const rects: number[][] = [];
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    rect: (...args: number[]) => {
+      rects.push(args);
+    },
+  };
+  drawRemembered(ctx, memory.within(everywhere), testMapMemoryConfig, 50);
+
+  expect(rects).toContainEqual([300, 300, 50, 50]);
+});
+
+test("a flash is drawn as a filled disc and its ring on the blow, fading as it swells", () => {
+  const calls: unknown[][] = [];
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    arc: (x: number, y: number, radius: number, from: number, to: number) =>
+      calls.push(["arc", x, y, radius, from, to]),
+    fill() {
+      calls.push(["fill", this.fillStyle, this.globalAlpha]);
+    },
+    stroke() {
+      calls.push(["stroke", this.strokeStyle, this.globalAlpha]);
+    },
+  };
+  const flash = {
+    at: { x: 40, y: 60 },
+    radius: 20,
+    hit: true,
+    startedAt: 1000,
+  };
+  const { duration, start, fill, colour } = testFlashConfig;
+  drawFlashes(ctx, { config: testFlashConfig, list: [flash] }, 1000);
+  expect(calls).toEqual([
+    ["arc", 40, 60, 20 * start, 0, Math.PI * 2],
+    ["fill", colour.hit, fill],
+    ["stroke", colour.hit, 1],
+  ]);
+  calls.length = 0;
+  drawFlashes(
+    ctx,
+    { config: testFlashConfig, list: [flash] },
+    1000 + duration * 1000,
+  );
+  expect(calls).toEqual([]);
 });

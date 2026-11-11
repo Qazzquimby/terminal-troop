@@ -1,11 +1,19 @@
-import { moveWithCollision } from "./collision.js";
+import type { CollisionBody } from "./collision.js";
+import {
+  distanceToContact,
+  lastFreePointAlong,
+  moveWithCollision,
+} from "./collision.js";
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
-import { selectSlot } from "./inventory.js";
+import { createInventory, selectSlot } from "./inventory.js";
+import { movement } from "./movement.js";
+import type { MovementMode } from "./movement.js";
+import type { PlayerData } from "./player-data.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
@@ -21,8 +29,11 @@ interface PlayerConfig {
   readonly acceleration: number;
   /** Top sprinting speed as a multiple of `speed`. */
   readonly sprintMultiplier: number;
+  /** Top crouching speed as a multiple of `speed`. */
+  readonly crouchMultiplier: number;
   /** Health when at full. */
   readonly maxHealth: number;
+  /** How many slots a player's inventory has. */
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
@@ -38,12 +49,23 @@ export interface Controls {
   readonly move: Point;
   readonly aim: Point;
   readonly sprint: boolean;
+  /** Whether to toggle crouching this step. */
+  readonly crouch: boolean;
   /** The inventory slot to select this step, or null to keep the current one. */
   readonly select: number | null;
   /** Whether to use the held item this step. */
   readonly use: boolean;
-  /** Whether to pick up a nearby ground item this step. */
-  readonly pickup: boolean;
+  /** Whether the secondary action was pressed this step. */
+  readonly secondary: boolean;
+}
+
+/** A quick move a player makes on top of walking: a fixed velocity, for a while. */
+interface Dash {
+  /** Velocity, in pixels per second. */
+  readonly vx: number;
+  readonly vy: number;
+  /** Seconds it has left. */
+  readonly seconds: number;
 }
 
 export interface Player extends Entity, Interpolated, Facing, Tracked {
@@ -52,14 +74,28 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   name: string;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
-  /** Empty until the room's items stock the local player's; never sent over the network. */
+  /**
+   * The local player's items, every slot empty until the room's items stock it; never sent
+   * over the network. A remote player's stays empty: what it holds is in its content state.
+   */
   inventory: Inventory;
-  /** The selected inventory slot, or null for holding nothing; never sent over the network. */
+  /** The local player's selected slot, or null for holding nothing; unused for remote players. */
   held: HeldSlot;
+  /**
+   * Each content entry's state for this player, in its wire form, read and written through the
+   * entry's `PlayerData`. An entry with nothing here reads as its initial value.
+   */
+  readonly content: Map<PlayerData<unknown>, unknown>;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
-  /** The local player's latest item use; never sent over the network. */
+  /** The player's latest item use, as this client saw it; never sent over the network. */
   use: ItemUse | null;
+  /** Seconds until the player's next footstep while it moves; never sent over the network. */
+  stride: number;
+  /** Whether the local player is crouching; unused for remote players. */
+  crouched: boolean;
+  /** The local player's dash under way, if any; unused for remote players. */
+  dash: Dash | null;
 }
 
 export interface PlayerState {
@@ -69,6 +105,8 @@ export interface PlayerState {
   readonly y: number;
   readonly aim: number;
   readonly health: number;
+  /** Each content entry's state, encoded by the entry's schema, by the entry's name. */
+  readonly content: Readonly<Record<string, unknown>>;
 }
 
 export function createPlayer(
@@ -93,13 +131,47 @@ export function createPlayer(
     prevAim: 0,
     taim: 0,
     radius: rules.player.radius,
-    inventory: [],
+    inventory: createInventory(rules.player.inventorySlots),
     held: 0,
+    content: new Map(),
     stamina: createStamina(rules.stamina),
     use: null,
+    stride: 0,
+    crouched: false,
+    dash: null,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };
+}
+
+/**
+ * Steps `player`'s gait under `controls`: a crouch press toggles crouching, and sprinting,
+ * which needs moving with stamina to spend, stands it up. A crouching player crouches whether
+ * it moves or not.
+ */
+function stepGait(
+  player: Player,
+  controls: Controls,
+  moving: boolean,
+): MovementMode {
+  if (controls.crouch) player.crouched = !player.crouched;
+  if (controls.sprint && moving && canSprint(player.stamina)) {
+    player.crouched = false;
+    return "sprint";
+  }
+  return player.crouched ? "crouch" : "walk";
+}
+
+/** A gait's top speed as a multiple of the walking speed. */
+function speedFactor(mode: MovementMode, config: PlayerConfig): number {
+  switch (mode) {
+    case "walk":
+      return 1;
+    case "sprint":
+      return config.sprintMultiplier;
+    case "crouch":
+      return config.crouchMultiplier;
+  }
 }
 
 export function updatePlayer(
@@ -111,14 +183,18 @@ export function updatePlayer(
 ): void {
   const { player: config } = rules;
   if (controls.select !== null)
-    player.held = selectSlot(player.inventory, controls.select);
+    player.held = selectSlot(player.inventory, player.held, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
-  const sprinting = controls.sprint && moving && canSprint(player.stamina);
-  player.stamina = updateStamina(player.stamina, sprinting, dt, rules.stamina);
+  const mode = stepGait(player, controls, moving);
+  player.stamina = updateStamina(
+    player.stamina,
+    mode === "sprint",
+    dt,
+    rules.stamina,
+  );
+  movement.set(player, { mode, moving });
 
-  const speed = sprinting
-    ? config.speed * config.sprintMultiplier
-    : config.speed;
+  const speed = config.speed * speedFactor(mode, config);
   const targetX = controls.move.x * speed;
   const targetY = controls.move.y * speed;
   const dx = targetX - player.vx;
@@ -135,6 +211,59 @@ export function updatePlayer(
   moveWithCollision(player, player.radius, dt, map, rules.world.wallBounce);
 }
 
+/**
+ * Starts `player` dashing `distance` pixels towards `aim` (radians) over `seconds`, and returns
+ * where it stops if `others` and the walls stay where they are.
+ */
+export function startDash(
+  player: Player,
+  aim: number,
+  distance: number,
+  seconds: number,
+  map: TileMap,
+  others: readonly CollisionBody[],
+): Point {
+  const direction = { x: Math.cos(aim), y: Math.sin(aim) };
+  const speed = distance / seconds;
+  player.dash = { vx: direction.x * speed, vy: direction.y * speed, seconds };
+  const free = Math.min(distance, distanceToContact(player, direction, others));
+  return lastFreePointAlong(map, player.radius, player, {
+    x: player.x + direction.x * free,
+    y: player.y + direction.y * free,
+  });
+}
+
+/**
+ * Moves `player` along its dash for `dt`, stopping at walls and short of touching any of
+ * `others`, and ends the dash once its time has run.
+ */
+export function stepDash(
+  player: Player,
+  dt: number,
+  map: TileMap,
+  others: readonly CollisionBody[],
+): void {
+  const { dash } = player;
+  if (dash === null) return;
+  const speed = Math.hypot(dash.vx, dash.vy);
+  const direction = { x: dash.vx / speed, y: dash.vy / speed };
+  const travel = Math.min(
+    speed * Math.min(dt, dash.seconds),
+    distanceToContact(player, direction, others),
+  );
+  const body = {
+    x: player.x,
+    y: player.y,
+    vx: direction.x * travel,
+    vy: direction.y * travel,
+  };
+  moveWithCollision(body, player.radius, 1, map, 0);
+  player.x = body.x;
+  player.y = body.y;
+  const seconds = dash.seconds - dt;
+  player.dash = seconds > 0 ? { ...dash, seconds } : null;
+}
+
 /** The facing, in radians, from `from` towards `target`. */
 export function aimAt(from: Point, target: Point): number {
   return Math.atan2(target.y - from.y, target.x - from.x);
@@ -145,15 +274,4 @@ export function smoothPlayer(player: Player, dt: number, rate: number): void {
   const amount = 1 - Math.exp(-rate * dt);
   easeToTarget(player, amount);
   player.aim = lerpAngle(player.aim, player.taim, amount);
-}
-
-export function playerState(player: Player): PlayerState {
-  return {
-    id: player.id,
-    name: player.name,
-    x: player.x,
-    y: player.y,
-    aim: player.aim,
-    health: player.health,
-  };
 }

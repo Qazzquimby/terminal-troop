@@ -1,64 +1,36 @@
 import type { HeldSlot, Inventory } from "../sim/index.js";
 
-export interface Hud {
-  inventory(inventory: Inventory, selected: HeldSlot): void;
-  credit(credit: number): void;
-}
+export function createInventoryHud(
+  container: HTMLElement,
+  list: HTMLElement,
+): (inventory: Inventory, selected: HeldSlot, visible: boolean) => void {
+  let previous = "";
 
-/**
- * The bottom toolbar: every inventory slot with the selected one highlighted, and the credit
- * count beside it. Built here rather than looked up so it is always on screen.
- */
-export function createHud(): Hud {
-  const bar = document.createElement("div");
-  bar.className = "hud-bar";
+  return function updateInventory(inventory, selected, visible) {
+    container.hidden = !visible;
+    if (!visible) return;
 
-  const list = document.createElement("ol");
-  list.className = "hud-slots";
+    const signature = JSON.stringify([inventory, selected]);
+    if (signature === previous) return;
+    previous = signature;
 
-  const credit = document.createElement("span");
-  credit.className = "hud-credit";
+    list.replaceChildren(
+      ...inventory.map((stack, index) => {
+        const slot = document.createElement("li");
+        const number = document.createElement("span");
+        const contents = document.createElement("span");
 
-  bar.append(list, credit);
-  document.body.append(bar);
+        if (index === selected) slot.className = "selected";
+        number.className = "slot-number";
+        number.textContent = String(index + 1);
+        contents.textContent =
+          stack === null
+            ? "Empty"
+            : `${stack.item.emoji} ${stack.item.name} × ${String(stack.quantity)}`;
 
-  let inventoryShown = "";
-  let creditShown = -1;
-
-  return {
-    inventory(inventory, selected) {
-      const signature = JSON.stringify([inventory, selected]);
-      if (signature === inventoryShown) return;
-      inventoryShown = signature;
-
-      list.replaceChildren(
-        ...inventory.map((item, index) => {
-          const slot = document.createElement("li");
-          slot.className = "hud-slot";
-          slot.classList.toggle("selected", index === selected);
-
-          const number = document.createElement("span");
-          number.className = "slot-number";
-          number.textContent = String(index + 1);
-
-          const glyph = document.createElement("span");
-          glyph.className = "hud-slot-glyph";
-          if (item !== null) glyph.textContent = item.emoji;
-
-          const name = document.createElement("span");
-          name.className = "hud-slot-name";
-          if (item !== null) name.textContent = item.name;
-
-          slot.append(number, glyph, name);
-          return slot;
-        }),
-      );
-    },
-    credit(value) {
-      if (value === creditShown) return;
-      creditShown = value;
-      credit.textContent = `${String(value)}$`;
-    },
+        slot.append(number, contents);
+        return slot;
+      }),
+    );
   };
 }
-

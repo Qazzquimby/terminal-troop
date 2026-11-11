@@ -7,14 +7,26 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
-export { kindId } from "./kinds.js";
-export type { EntityKind } from "./kinds.js";
-export { CruiserKind, createCruiser } from "./cruiser.js";
-export type { CruiserConfig } from "./cruiser.js";
+export {
+  defineEntity,
+  defineItem,
+  entityKind,
+  registerContent,
+} from "./content.js";
+export { contentEvent, receiveEvent } from "./content-event.js";
+export type { OutgoingEvent } from "./content-event.js";
+export type {
+  Content,
+  ContentConfig,
+  ContentName,
+  EntitySpec,
+  Scatter,
+  SpawnRule,
+  WorldContent,
+} from "./content.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export { addItem, createInventory, heldEmoji } from "./inventory.js";
-export type { HeldSlot, Inventory, ItemDefinition } from "./inventory.js";
+export type { HeldSlot, Inventory } from "./inventory.js";
 export {
   isAreaFree,
   mulberry32,
@@ -31,17 +43,28 @@ export type {
   WorldKind,
 } from "./map.js";
 export { applyDamage } from "./entity.js";
+export { showFlash } from "./flashes.js";
+export { knockBack } from "./knockback.js";
+export { circleAhead, entitiesIn } from "./reach.js";
+export type { Circle } from "./reach.js";
+export { spendStamina } from "./stamina.js";
 export type { Entity } from "./entity.js";
-export { aimAt, createPlayer, playerState } from "./player.js";
+export { aimAt, createPlayer, startDash } from "./player.js";
+export { playerData } from "./player-data.js";
+export { movement } from "./movement.js";
+export { broadcastNoise, noisesHeardBy } from "./noise.js";
+export type { Heard } from "./noise.js";
 export type { Controls, Player } from "./player.js";
-export { registerItem, requestUse, showUse } from "./use.js";
-export type { ItemBehaviour, ItemUse, UseRequest } from "./use.js";
+export { heldItemId, heldItemOf, hostAccepts, registerItem } from "./use.js";
+export type { ItemUse } from "./use.js";
 
 export {
   applyRemoteState,
   createSession,
+  playerState,
   remotePlayers,
   removePlayer,
+  solidBodiesBut,
   updateSession,
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { ActionSink } from "./actions.js";
-import { createKeyboardSource } from "./keyboard.js";
+import { createButtonSource } from "./buttons.js";
 
 /** Made-up actions, keys and contexts: `pause` works in both contexts, the rest only in `field`. */
 const TEST_BINDINGS = {
@@ -27,7 +27,7 @@ function recorder(context: TestContext = "field") {
   };
   return {
     calls,
-    keyboard: createKeyboardSource<TestAction, TestContext>(
+    buttons: createButtonSource<TestAction, TestContext>(
       sink,
       TEST_BINDINGS,
       context,
@@ -36,10 +36,10 @@ function recorder(context: TestContext = "field") {
 }
 
 test("a key maps to its action, passing the event time through", () => {
-  const { calls, keyboard } = recorder();
-  expect(keyboard.actionsFor("right-key")).toEqual(["right"]);
-  expect(keyboard.keyDown("right-key", false, 10)).toEqual(["right"]);
-  expect(keyboard.keyUp("right-key", 20)).toEqual(["right"]);
+  const { calls, buttons } = recorder();
+  expect(buttons.actionsFor("right-key")).toEqual(["right"]);
+  expect(buttons.keyDown("right-key", false, 10)).toEqual(["right"]);
+  expect(buttons.keyUp("right-key", 20)).toEqual(["right"]);
   expect(calls).toEqual([
     ["press", "right", 10],
     ["release", "right", 20],
@@ -47,12 +47,12 @@ test("a key maps to its action, passing the event time through", () => {
 });
 
 test("two keys on one action press on the first and release on the last", () => {
-  const { calls, keyboard } = recorder();
-  expect(keyboard.keyDown("dash-a", false, 1)).toEqual(["dash"]);
-  expect(keyboard.keyDown("dash-b", false, 2)).toEqual([]);
-  expect(keyboard.keyUp("dash-a", 3)).toEqual([]);
+  const { calls, buttons } = recorder();
+  expect(buttons.keyDown("dash-a", false, 1)).toEqual(["dash"]);
+  expect(buttons.keyDown("dash-b", false, 2)).toEqual([]);
+  expect(buttons.keyUp("dash-a", 3)).toEqual([]);
   expect(calls).toEqual([["press", "dash", 1]]);
-  expect(keyboard.keyUp("dash-b", 4)).toEqual(["dash"]);
+  expect(buttons.keyUp("dash-b", 4)).toEqual(["dash"]);
   expect(calls).toEqual([
     ["press", "dash", 1],
     ["release", "dash", 4],
@@ -60,48 +60,48 @@ test("two keys on one action press on the first and release on the last", () => 
 });
 
 test("key repeat does not press again", () => {
-  const { calls, keyboard } = recorder();
-  keyboard.keyDown("up-key", false, 1);
-  expect(keyboard.keyDown("up-key", true, 2)).toEqual([]);
-  expect(keyboard.keyDown("up-key", true, 3)).toEqual([]);
+  const { calls, buttons } = recorder();
+  buttons.keyDown("up-key", false, 1);
+  expect(buttons.keyDown("up-key", true, 2)).toEqual([]);
+  expect(buttons.keyDown("up-key", true, 3)).toEqual([]);
   expect(calls).toEqual([["press", "up", 1]]);
 });
 
 test("a key still held after blur is restored by auto-repeat without a press", () => {
-  const { calls, keyboard } = recorder();
-  keyboard.keyDown("right-key", false, 1);
-  keyboard.blur(2);
-  expect(keyboard.keyDown("right-key", true, 3)).toEqual([]);
+  const { calls, buttons } = recorder();
+  buttons.keyDown("right-key", false, 1);
+  buttons.blur(2);
+  expect(buttons.keyDown("right-key", true, 3)).toEqual([]);
   expect(calls).toEqual([
     ["press", "right", 1],
     ["release", "right", 2],
     ["clear", 2],
     ["resume", "right", 3],
   ]);
-  expect(keyboard.keyUp("right-key", 4)).toEqual(["right"]);
+  expect(buttons.keyUp("right-key", 4)).toEqual(["right"]);
 });
 
 test("unbound keys are ignored", () => {
-  const { calls, keyboard } = recorder();
-  expect(keyboard.actionsFor("other-key")).toEqual([]);
-  expect(keyboard.keyDown("other-key", false, 1)).toEqual([]);
-  expect(keyboard.keyDown("other-key", true, 2)).toEqual([]);
-  expect(keyboard.keyUp("other-key", 3)).toEqual([]);
+  const { calls, buttons } = recorder();
+  expect(buttons.actionsFor("other-key")).toEqual([]);
+  expect(buttons.keyDown("other-key", false, 1)).toEqual([]);
+  expect(buttons.keyDown("other-key", true, 2)).toEqual([]);
+  expect(buttons.keyUp("other-key", 3)).toEqual([]);
   expect(calls).toEqual([]);
 });
 
 test("a key up without a key down releases nothing", () => {
-  const { calls, keyboard } = recorder();
-  expect(keyboard.keyUp("pause-key", 1)).toEqual([]);
+  const { calls, buttons } = recorder();
+  expect(buttons.keyUp("pause-key", 1)).toEqual([]);
   expect(calls).toEqual([]);
 });
 
 test("blur releases held actions, forgets held keys and clears the sink", () => {
-  const { calls, keyboard } = recorder();
-  keyboard.keyDown("up-key", false, 1);
-  keyboard.blur(2);
-  expect(keyboard.keyUp("up-key", 3)).toEqual([]);
-  expect(keyboard.keyDown("up-key", false, 4)).toEqual(["up"]);
+  const { calls, buttons } = recorder();
+  buttons.keyDown("up-key", false, 1);
+  buttons.blur(2);
+  expect(buttons.keyUp("up-key", 3)).toEqual([]);
+  expect(buttons.keyDown("up-key", false, 4)).toEqual(["up"]);
   expect(calls).toEqual([
     ["press", "up", 1],
     ["release", "up", 2],
@@ -111,42 +111,42 @@ test("blur releases held actions, forgets held keys and clears the sink", () => 
 });
 
 test("only keys whose action is active in the context are claimed and forwarded", () => {
-  const { calls, keyboard } = recorder("paused");
+  const { calls, buttons } = recorder("paused");
   // `actionsFor` decides whether the key is kept from the page.
-  expect(keyboard.actionsFor("right-key")).toEqual([]);
-  expect(keyboard.actionsFor("pause-key")).toEqual(["pause"]);
-  expect(keyboard.keyDown("right-key", false, 1)).toEqual([]);
-  expect(keyboard.keyUp("right-key", 2)).toEqual([]);
-  expect(keyboard.keyDown("pause-key", false, 3)).toEqual(["pause"]);
+  expect(buttons.actionsFor("right-key")).toEqual([]);
+  expect(buttons.actionsFor("pause-key")).toEqual(["pause"]);
+  expect(buttons.keyDown("right-key", false, 1)).toEqual([]);
+  expect(buttons.keyUp("right-key", 2)).toEqual([]);
+  expect(buttons.keyDown("pause-key", false, 3)).toEqual(["pause"]);
   expect(calls).toEqual([["press", "pause", 3]]);
 });
 
 test("a context with no actions claims no keys", () => {
-  const { calls, keyboard } = recorder("typing");
+  const { calls, buttons } = recorder("typing");
   for (const code of ["up-key", "right-key", "dash-a", "pause-key"]) {
-    expect(keyboard.actionsFor(code)).toEqual([]);
-    expect(keyboard.keyDown(code, false, 1)).toEqual([]);
+    expect(buttons.actionsFor(code)).toEqual([]);
+    expect(buttons.keyDown(code, false, 1)).toEqual([]);
   }
   expect(calls).toEqual([]);
 });
 
 test("claimed keys follow a context switch", () => {
-  const { keyboard } = recorder("field");
-  expect(keyboard.actionsFor("up-key")).toEqual(["up"]);
-  keyboard.setContext("paused", 1);
-  expect(keyboard.actionsFor("up-key")).toEqual([]);
-  keyboard.setContext("field", 2);
-  expect(keyboard.actionsFor("up-key")).toEqual(["up"]);
+  const { buttons } = recorder("field");
+  expect(buttons.actionsFor("up-key")).toEqual(["up"]);
+  buttons.setContext("paused", 1);
+  expect(buttons.actionsFor("up-key")).toEqual([]);
+  buttons.setContext("field", 2);
+  expect(buttons.actionsFor("up-key")).toEqual(["up"]);
 });
 
 test("a context switch releases held actions it deactivates, at the switch time", () => {
-  const { calls, keyboard } = recorder("field");
-  keyboard.keyDown("right-key", false, 1);
-  keyboard.keyDown("pause-key", false, 2);
-  keyboard.setContext("paused", 5);
-  expect(keyboard.keyUp("right-key", 6)).toEqual([]);
-  expect(keyboard.keyUp("pause-key", 7)).toEqual(["pause"]);
-  keyboard.setContext("field", 8);
+  const { calls, buttons } = recorder("field");
+  buttons.keyDown("right-key", false, 1);
+  buttons.keyDown("pause-key", false, 2);
+  buttons.setContext("paused", 5);
+  expect(buttons.keyUp("right-key", 6)).toEqual([]);
+  expect(buttons.keyUp("pause-key", 7)).toEqual(["pause"]);
+  buttons.setContext("field", 8);
   expect(calls).toEqual([
     ["press", "right", 1],
     ["press", "pause", 2],
@@ -156,11 +156,11 @@ test("a context switch releases held actions it deactivates, at the switch time"
 });
 
 test("a key still down when its action becomes active again is held without a press", () => {
-  const { calls, keyboard } = recorder("field");
-  keyboard.keyDown("up-key", false, 1);
-  keyboard.setContext("paused", 2);
-  keyboard.setContext("field", 3);
-  expect(keyboard.keyUp("up-key", 4)).toEqual(["up"]);
+  const { calls, buttons } = recorder("field");
+  buttons.keyDown("up-key", false, 1);
+  buttons.setContext("paused", 2);
+  buttons.setContext("field", 3);
+  expect(buttons.keyUp("up-key", 4)).toEqual(["up"]);
   expect(calls).toEqual([
     ["press", "up", 1],
     ["release", "up", 2],

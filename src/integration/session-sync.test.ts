@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "vitest";
 import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
 import { createScope } from "../lib/scope/index.js";
-import { createItems } from "../items/index.js";
-import { createMonsters } from "../monsters/index.js";
+import { itemContent } from "../items/index.js";
+import { entityContent } from "../entities/index.js";
 import { NetEvent } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
@@ -11,9 +11,9 @@ import type { Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import { createManualClock, testRoomConfig } from "./room-helpers.js";
 import {
-  testMonsterConfig,
+  testEntitiesConfig,
   testSfx,
-  testShovelConfig,
+  testItemsConfig,
   testSimConfig,
 } from "./sim-config.js";
 
@@ -43,8 +43,10 @@ function client(id: string): Room {
     clock,
     config: testRoomConfig,
     sim: testSimConfig,
-    monsters: createMonsters(testMonsterConfig),
-    items: createItems({ shovel: testShovelConfig }),
+    content: [
+      ...entityContent(testEntitiesConfig),
+      ...itemContent(testItemsConfig),
+    ],
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange: () => undefined,
     onPeerFailed: () => undefined,
@@ -73,8 +75,10 @@ const idle = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
   sprint: false,
+  crouch: false,
   select: null,
   use: false,
+  secondary: false,
 };
 
 test("clients in the same room build the same world", async () => {
@@ -165,10 +169,11 @@ async function hosted(): Promise<{ a: Room; b: Room }> {
   return rooms;
 }
 
-test("the host's monsters reach the other client, ids, spots and state alike", async () => {
+test("the host's entities reach the other client, ids, kinds, spots and state alike", async () => {
   const { a, b } = await hosted();
   expect(a.hostId()).toBe("a");
-  expect(sessionOf(a).entities.size).toBe(3);
+  // Three chasers, then the cruiser, numbered by the content list on both clients.
+  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([1, 1, 1, 2]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 
   for (let step = 0; step < 60; step++)
@@ -178,14 +183,14 @@ test("the host's monsters reach the other client, ids, spots and state alike", a
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 });
 
-test("when the host leaves, the other client runs the same monsters on", async () => {
+test("when the host leaves, the other client runs the same entities on", async () => {
   const { a, b } = await hosted();
   const handed = snapshotOf(b);
   await a.leave();
   await flush();
   clock.advance(2000);
   expect(b.hostId()).toBe("b");
-  expect(sessionOf(b).entities.size).toBe(3);
+  expect(sessionOf(b).entities.size).toBe(4);
   expect([...sessionOf(b).entities.keys()]).toEqual(handed.map(({ id }) => id));
 
   for (let step = 0; step < 120; step++)
