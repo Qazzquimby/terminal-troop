@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { createBroadcastChannelTransport } from "../adapters/broadcast-channel-transport/index.js";
 import { createScope } from "../lib/scope/index.js";
+import { createItems } from "../items/index.js";
 import { createMonsters } from "../monsters/index.js";
 import { NetEvent } from "../net/index.js";
 import { createRoom } from "../room/index.js";
@@ -9,7 +10,12 @@ import { randomFreePosition, updateSession } from "../sim/index.js";
 import type { Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import { createManualClock, testRoomConfig } from "./room-helpers.js";
-import { testMonsterConfig, testSfx, testSimConfig } from "./sim-config.js";
+import {
+  testMonsterConfig,
+  testSfx,
+  testShovelConfig,
+  testSimConfig,
+} from "./sim-config.js";
 
 const ROOM = "SYNC1";
 const SEND_GAP = 1000 / 15;
@@ -38,6 +44,7 @@ function client(id: string): Room {
     config: testRoomConfig,
     sim: testSimConfig,
     monsters: createMonsters(testMonsterConfig),
+    items: createItems({ shovel: testShovelConfig }),
     falloff: { full: 100, silent: 600, pan: 300 },
     onChange: () => undefined,
     onPeerFailed: () => undefined,

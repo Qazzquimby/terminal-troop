@@ -5,7 +5,7 @@ export {
   registerEntityType,
   spawnEntity,
 } from "./entities.js";
-export type { EntityDefinition, WorldEntity } from "./entities.js";
+export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export { heldEmoji, heldItem, selectSlot } from "./inventory.js";
@@ -30,7 +30,9 @@ export { applyDamage } from "./entity.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";
-export type { ItemUse } from "./use.js";
+export { registerItem, requestUse } from "./use.js";
+export type { ItemEffect, ItemUse, UseRequest } from "./use.js";
+
 export {
   applyRemoteState,
   createSession,

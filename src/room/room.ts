@@ -7,10 +7,17 @@ import {
   applyRemoteState,
   createSession,
   entitySnapshot,
+  applyDamage,
   playerState,
   removePlayer,
+  requestUse,
 } from "../sim/index.js";
-import type { Session, SimConfig, WorldKind } from "../sim/index.js";
+import type {
+  Session,
+  SimConfig,
+  UseRequest,
+  WorldKind,
+} from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 import type { z } from "zod";
 import { adopt, elect } from "./host.js";
@@ -45,6 +52,12 @@ export interface Monsters {
   register(session: Session): void;
   /** Spawns the ones a new world starts with. */
   populate(session: Session): void;
+}
+
+/** The usable items a room's players hold. */
+export interface Items {
+  /** Registers what each one does with a new session. */
+  register(session: Session): void;
 }
 
 /**
@@ -82,6 +95,7 @@ export interface RoomDeps {
   readonly config: RoomConfig;
   readonly sim: SimConfig;
   readonly monsters: Monsters;
+  readonly items: Items;
   readonly falloff: VoiceFalloff;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
@@ -100,8 +114,13 @@ export interface Room {
   join(rawCode: string, name: string): Promise<JoinResult>;
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
-  /** Runs after the simulation steps of a frame: sends state, then mixes voice. */
+  /** Runs after the simulation steps of a frame: sends state and the damage dealt, then mixes voice. */
   frame(now: number): void;
+  /**
+   * Hands the local player's item use to the host: queued for this client's next step while
+   * hosting, sent to the host otherwise, and dropped while no host is known.
+   */
+  use(request: UseRequest): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
   setHidden(hidden: boolean): void;
   /** Undefined for a remote player who is gone, or outside a room. */
@@ -173,6 +192,12 @@ export function createRoom(deps: RoomDeps): Room {
     room.lastSent = now;
     room.forceState = false;
     void send(NetEvent.STATE, playerState(room.session.local));
+  }
+
+  /** Sends each remote player the damage dealt to it since the last frame. */
+  function sendStrikes(room: Link): void {
+    for (const { target, amount } of room.session.strikes.splice(0))
+      void send(NetEvent.DAMAGE, { host: localId, target, amount });
   }
 
   function sendEntities(room: Link, now: number, force = false): void {
@@ -281,6 +306,17 @@ export function createRoom(deps: RoomDeps): Room {
         applyEntitySnapshot(room.session, message.entities);
         room.populated = true;
       }),
+      [NetEvent.USE]: on(NetEvent.USE, (message) => {
+        if (room.host?.id !== localId) return;
+        if (room.roster.get(message.by) === undefined) return;
+        requestUse(room.session, message);
+      }),
+      [NetEvent.DAMAGE]: on(NetEvent.DAMAGE, (message) => {
+        if (message.target !== localId) return;
+        if (message.host === localId || message.host !== room.host?.id) return;
+        applyDamage(room.session.local, message.amount);
+        room.forceState = true;
+      }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
         hear(room, message.id, { kind: "hello" });
         sendState(room, clock.now(), true);
@@ -345,6 +381,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.sim,
     );
     deps.monsters.register(session);
+    deps.items.register(session);
     session.hosting = false;
     const room: Link = {
       scope,
@@ -453,6 +490,7 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       const room = link;
       sendState(room, now, room.forceState);
+      sendStrikes(room);
       if (room.host?.id === localId) sendEntities(room, now);
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
@@ -464,6 +502,13 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       sendHeartbeat(link);
       if (shown) link.forceState = true;
+    },
+
+    use(request) {
+      if (link === null) return;
+      const host = link.host?.id;
+      if (host === localId) requestUse(link.session, request);
+      else if (host !== undefined) void send(NetEvent.USE, request);
     },
 
     presenceOf: (id) => link?.roster.get(id),

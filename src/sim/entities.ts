@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { moveWithCollision } from "./collision.js";
 import type { Entity } from "./entity.js";
-import { isDead } from "./entity.js";
+import { applyDamage, isDead } from "./entity.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
@@ -16,6 +16,12 @@ export interface WorldEntity extends Entity, Interpolated, Tracked {
   ownerId: string | null;
   /** Per-kind state, parsed by the kind's `data` schema wherever the kind reads it. */
   data: unknown;
+}
+
+/** Damage an entity deals to the player `target`. */
+export interface Strike {
+  readonly target: string;
+  readonly amount: number;
 }
 
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
@@ -33,6 +39,12 @@ export interface EntityDefinition<S> {
     dt: number,
     game: Session,
   ) => S;
+  /** The damage the entity deals in a step, given the state `update` returned. Runs only while hosting. */
+  readonly strikes?: (
+    entity: WorldEntity,
+    data: S,
+    game: Session,
+  ) => readonly Strike[];
   readonly draw: (
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -50,6 +62,7 @@ export interface EntityType {
   readonly data: z.ZodType;
   light(entity: WorldEntity): LightEmission | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
+  strikes(entity: WorldEntity, game: Session): readonly Strike[];
   draw(
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -64,6 +77,7 @@ export interface EntitySnapshot {
   readonly kind: number;
   readonly x: number;
   readonly y: number;
+  readonly health: number;
   readonly data: unknown;
 }
 
@@ -83,6 +97,11 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (parsed.success && definition.update !== undefined)
         entity.data = definition.update(entity, parsed.data, dt, game);
+    },
+    strikes(entity, game) {
+      const parsed = schema.safeParse(entity.data);
+      if (!parsed.success) return [];
+      return definition.strikes?.(entity, parsed.data, game) ?? [];
     },
     draw(ctx, entity, now, game) {
       const parsed = schema.safeParse(entity.data);
@@ -109,6 +128,7 @@ function placeEntity(
   type: EntityType,
   x: number,
   y: number,
+  health: number,
   data: unknown,
 ): WorldEntity {
   const entity: WorldEntity = {
@@ -123,7 +143,7 @@ function placeEntity(
     vx: 0,
     vy: 0,
     radius: type.radius,
-    health: type.maxHealth,
+    health: Math.min(health, type.maxHealth),
     maxHealth: type.maxHealth,
     collides: type.collides,
     grantsVision: false,
@@ -153,7 +173,7 @@ export function spawnEntity(
   let id = `${game.localId}:${String(game.nextEntityId++)}`;
   while (game.entities.has(id))
     id = `${game.localId}:${String(game.nextEntityId++)}`;
-  return placeEntity(game, id, kind, type, x, y, parsed);
+  return placeEntity(game, id, kind, type, x, y, type.maxHealth, parsed);
 }
 
 /**
@@ -166,8 +186,12 @@ export function updateEntities(game: Session, dt: number): void {
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
 
-    game.entityTypes.get(entity.kind)?.update(entity, dt, game);
+    const type = game.entityTypes.get(entity.kind);
+    type?.update(entity, dt, game);
     if (!game.entities.has(entity.id)) return;
+    type?.strikes(entity, game).forEach((strike) => {
+      strikePlayer(game, strike);
+    });
 
     if (entity.collides) {
       moveWithCollision(
@@ -184,6 +208,15 @@ export function updateEntities(game: Session, dt: number): void {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
+}
+
+/**
+ * Deals `strike` to its player: the local player takes it at once, and a remote one is sent
+ * it, since each player keeps its own health.
+ */
+function strikePlayer(game: Session, strike: Strike): void {
+  if (strike.target === game.localId) applyDamage(game.local, strike.amount);
+  else if (game.players.has(strike.target)) game.strikes.push(strike);
 }
 
 /** Removes every entity that has been destroyed. */
@@ -203,18 +236,14 @@ export function followEntities(game: Session, dt: number): void {
 
 /** Every entity in the session, as a host sends them. */
 export function entitySnapshot(game: Session): EntitySnapshot[] {
-  return [...game.entities.values()].map(({ id, kind, x, y, data }) => ({
-    id,
-    kind,
-    x,
-    y,
-    data,
-  }));
+  return [...game.entities.values()].map(
+    ({ id, kind, x, y, health, data }) => ({ id, kind, x, y, health, data }),
+  );
 }
 
 /**
  * Makes the session's entities those of a host's snapshot. Known entities ease towards their
- * new positions and take the new state; new ones appear where the snapshot puts them; the
+ * new positions and take the new health and state; new ones appear where the snapshot puts them; the
  * rest are removed. An entry of an unregistered kind, with data its kind rejects, or inside
  * a wall is left out.
  */
@@ -223,7 +252,7 @@ export function applyEntitySnapshot(
   snapshot: readonly EntitySnapshot[],
 ): void {
   const kept = new Set<string>();
-  for (const { id, kind, x, y, data } of snapshot) {
+  for (const { id, kind, x, y, health, data } of snapshot) {
     const type = game.entityTypes.get(kind);
     if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
       continue;
@@ -234,9 +263,10 @@ export function applyEntitySnapshot(
     if (known?.kind === kind) {
       known.tx = x;
       known.ty = y;
+      known.health = Math.min(health, known.maxHealth);
       known.data = parsed.data;
     } else {
-      placeEntity(game, id, kind, type, x, y, parsed.data);
+      placeEntity(game, id, kind, type, x, y, health, parsed.data);
     }
     kept.add(id);
   }
