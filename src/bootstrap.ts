@@ -3,7 +3,6 @@ import {
   heldEmoji,
   remotePlayers,
   renderPosition,
-  selectSlot,
   updateSession,
 } from "./sim/index.js";
 import { NetEvent, createCountingTransport } from "./net/index.js";
@@ -22,7 +21,12 @@ import {
   trackInputContext,
   element,
 } from "./ui/index.js";
-import { draw, createCamera, updateCamera } from "./render/index.js";
+import {
+  draw,
+  createCamera,
+  screenToWorld,
+  updateCamera,
+} from "./render/index.js";
 import { createSfx } from "./audio/index.js";
 import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
@@ -147,7 +151,6 @@ app.defer(settings.subscribe(applySettings));
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
 let inventoryOpen = false;
-const items = createItems(config);
 
 const room = createRoom({
   localId: playerId,
@@ -169,7 +172,7 @@ const room = createRoom({
   sim: config,
   monsters: createMonsters(config.monsters),
   cruiser: createCruiser(config.cruiser),
-  items,
+  items: createItems(config),
   falloff: config.voice,
   onChange() {
     refreshPeers(room.state());
@@ -194,7 +197,7 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 
 const input = createInput(
   canvas,
-  camera,
+  (point) => screenToWorld(camera, point),
   config.view,
   {
     toggleInventory: {
@@ -294,11 +297,7 @@ function frame(): void {
   if (session !== null) {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
-      const { controls, slot } = input.getStep(until);
-      if (slot !== undefined) {
-        session.local.held = selectSlot(session.local.inventory, slot);
-      }
-      updateSession(session, controls, clock.dt);
+      updateSession(session, input.getControls(until), clock.dt);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
@@ -338,18 +337,6 @@ on(createBtn, "click", () => {
 on(settingsBtn, "click", (event) => {
   settingsMenu.open(event.timeStamp);
 });
-
-canvas.addEventListener(
-  "pointerdown",
-  (event) => {
-    if (event.button !== 0) return;
-    const session = joinedSession(room.state());
-    if (session === null) return;
-    const request = items.use(session, performance.now());
-    if (request !== null) room.use(request);
-  },
-  { signal: app.signal },
-);
 
 on(joinBtn, "click", () => {
   voice.requestMic();

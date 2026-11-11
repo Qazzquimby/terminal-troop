@@ -54,8 +54,9 @@ export const testShovelConfig: ShovelConfig = {
   reach: 40,
   damage: 25,
   knockback: 20,
-  cooldownMs: 500,
-  durationMs: 100,
+  cooldown: 0.5,
+  duration: 0.1,
+  volume: 1,
 };
 
 /** Sound effects for sessions under test; nothing plays. */

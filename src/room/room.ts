@@ -5,12 +5,14 @@ import type { Transport } from "../net/index.js";
 import {
   applyEntitySnapshot,
   applyRemoteState,
+  cueEntities,
   createSession,
   entitySnapshot,
   applyDamage,
   playerState,
   removePlayer,
   requestUse,
+  showUse,
 } from "../sim/index.js";
 import type {
   Session,
@@ -56,7 +58,7 @@ export interface Monsters {
 
 /** The usable items a room's players hold. */
 export interface Items {
-  /** Registers what each one does with a new session. */
+  /** Registers what each one does with a new session, and stocks its local player's inventory. */
   register(session: Session): void;
 }
 
@@ -118,13 +120,11 @@ export interface Room {
   join(rawCode: string, name: string): Promise<JoinResult>;
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
-  /** Runs after the simulation steps of a frame: sends state and the damage dealt, then mixes voice. */
-  frame(now: number): void;
   /**
-   * Hands the local player's item use to the host: queued for this client's next step while
-   * hosting, sent to the host otherwise, and dropped while no host is known.
+   * Runs after the simulation steps of a frame: sends state, sends the local player's item uses,
+   * sends the damage dealt, plays the entities' sound cues, then mixes voice.
    */
-  use(request: UseRequest): void;
+  frame(now: number): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
   setHidden(hidden: boolean): void;
   /** Undefined for a remote player who is gone, or outside a room. */
@@ -196,6 +196,17 @@ export function createRoom(deps: RoomDeps): Room {
     room.lastSent = now;
     room.forceState = false;
     void send(NetEvent.STATE, playerState(room.session.local));
+  }
+
+  /**
+   * Sends an item use to the room, for the host to apply and everyone else to hear, and
+   * queues it for this client's next step while hosting. Dropped while no host is known.
+   */
+  function handUse(room: Link, request: UseRequest): void {
+    const host = room.host?.id;
+    if (host === undefined) return;
+    if (host === localId) requestUse(room.session, request);
+    void send(NetEvent.USE, request);
   }
 
   /** Sends each remote player the damage dealt to it since the last frame. */
@@ -312,9 +323,10 @@ export function createRoom(deps: RoomDeps): Room {
         room.populated = true;
       }),
       [NetEvent.USE]: on(NetEvent.USE, (message) => {
-        if (room.host?.id !== localId) return;
+        if (message.by === localId) return;
         if (room.roster.get(message.by) === undefined) return;
-        requestUse(room.session, message);
+        showUse(room.session, message);
+        if (room.host?.id === localId) requestUse(room.session, message);
       }),
       [NetEvent.DAMAGE]: on(NetEvent.DAMAGE, (message) => {
         if (message.target !== localId) return;
@@ -496,8 +508,11 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       const room = link;
       sendState(room, now, room.forceState);
+      for (const request of room.session.localUses.splice(0))
+        handUse(room, request);
       sendStrikes(room);
       if (room.host?.id === localId) sendEntities(room, now);
+      cueEntities(room.session);
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     },
@@ -508,13 +523,6 @@ export function createRoom(deps: RoomDeps): Room {
       if (link === null) return;
       sendHeartbeat(link);
       if (shown) link.forceState = true;
-    },
-
-    use(request) {
-      if (link === null) return;
-      const host = link.host?.id;
-      if (host === localId) requestUse(link.session, request);
-      else if (host !== undefined) void send(NetEvent.USE, request);
     },
 
     presenceOf: (id) => link?.roster.get(id),

@@ -98,6 +98,8 @@ const idle = {
   move: { x: 0, y: 0 },
   aim: { x: 500, y: 300 },
   sprint: false,
+  select: null,
+  use: false,
 };
 
 function collisionSession() {

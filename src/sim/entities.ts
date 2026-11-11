@@ -16,6 +16,8 @@ export interface WorldEntity extends Entity, Interpolated, Tracked {
   ownerId: string | null;
   /** Per-kind state, parsed by the kind's `data` schema wherever the kind reads it. */
   data: unknown;
+  /** `data` as of this client's last cue. */
+  cued: unknown;
 }
 
 /** Damage an entity deals to the player `target`. */
@@ -39,6 +41,16 @@ export interface EntityDefinition<S> {
     dt: number,
     game: Session,
   ) => S;
+  /**
+   * Plays what changed from `previous` to `next` for this client's listener. Runs on every
+   * client, at most once a frame, however many steps or snapshots the change spans.
+   */
+  readonly cue?: (
+    entity: WorldEntity,
+    previous: S,
+    next: S,
+    game: Session,
+  ) => void;
   /** The damage the entity deals in a step, given the state `update` returned. Runs only while hosting. */
   readonly strikes?: (
     entity: WorldEntity,
@@ -63,6 +75,7 @@ export interface EntityType {
   light(entity: WorldEntity): LightEmission | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
+  cue(entity: WorldEntity, game: Session): void;
   draw(
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -102,6 +115,13 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return [];
       return definition.strikes?.(entity, parsed.data, game) ?? [];
+    },
+    cue(entity, game) {
+      if (definition.cue === undefined) return;
+      const previous = schema.safeParse(entity.cued);
+      const next = schema.safeParse(entity.data);
+      if (previous.success && next.success)
+        definition.cue(entity, previous.data, next.data, game);
     },
     draw(ctx, entity, now, game) {
       const parsed = schema.safeParse(entity.data);
@@ -149,6 +169,7 @@ function placeEntity(
     grantsVision: false,
     ownerId: null,
     data,
+    cued: data,
   };
   game.entities.set(id, entity);
   return entity;
@@ -231,6 +252,14 @@ export function followEntities(game: Session, dt: number): void {
   const amount = 1 - Math.exp(-game.config.net.smoothing * dt);
   game.entities.forEach((entity) => {
     easeToTarget(entity, amount);
+  });
+}
+
+/** Plays what changed in each entity since the last call, then takes its state as heard. */
+export function cueEntities(game: Session): void {
+  game.entities.forEach((entity) => {
+    game.entityTypes.get(entity.kind)?.cue(entity, game);
+    entity.cued = entity.data;
   });
 }
 

@@ -5,7 +5,7 @@ import { easeToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, World, WorldConfig } from "./map.js";
 import { randomFreePosition } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
-import { startingInventory } from "./items.js";
+import { selectSlot } from "./inventory.js";
 import type { ItemUse } from "./use.js";
 import type { Stamina, StaminaConfig } from "./stamina.js";
 import { canSprint, createStamina, updateStamina } from "./stamina.js";
@@ -38,6 +38,10 @@ export interface Controls {
   readonly move: Point;
   readonly aim: Point;
   readonly sprint: boolean;
+  /** The inventory slot to select this step, or null to keep the current one. */
+  readonly select: number | null;
+  /** Whether to use the held item this step. */
+  readonly use: boolean;
 }
 
 export interface Player extends Entity, Interpolated, Facing, Tracked {
@@ -46,12 +50,13 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   name: string;
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
+  /** Empty until the room's items stock the local player's; never sent over the network. */
   inventory: Inventory;
   /** The selected inventory slot, or null for holding nothing; never sent over the network. */
   held: HeldSlot;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
-  /** Only meaningful for the local player; never sent over the network. */
+  /** The local player's latest item use; never sent over the network. */
   use: ItemUse | null;
 }
 
@@ -86,7 +91,7 @@ export function createPlayer(
     prevAim: 0,
     taim: 0,
     radius: rules.player.radius,
-    inventory: startingInventory(),
+    inventory: [],
     held: 0,
     stamina: createStamina(rules.stamina),
     use: null,
@@ -103,6 +108,8 @@ export function updatePlayer(
   rules: PlayerRules,
 ): void {
   const { player: config } = rules;
+  if (controls.select !== null)
+    player.held = selectSlot(player.inventory, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
   const sprinting = controls.sprint && moving && canSprint(player.stamina);
   player.stamina = updateStamina(player.stamina, sprinting, dt, rules.stamina);

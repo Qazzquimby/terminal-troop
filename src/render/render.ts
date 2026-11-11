@@ -385,7 +385,8 @@ export function draw(
   drawLitWalls(ctx, litWalls(seen, lit));
   drawPlayer(ctx, viewer, true);
   drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
-  viewer.use?.draw(ctx, now);
+  if (viewer.use !== null)
+    game.items.get(viewer.use.item)?.draw(ctx, viewer.use, game.time);
   if (held !== null) drawHeldItem(ctx, viewer, held);
   drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();

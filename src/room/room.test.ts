@@ -16,7 +16,7 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import type { Point } from "../sim/index.js";
+import type { Point, UseRequest } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
@@ -27,7 +27,13 @@ import type { Items, Monsters, Room, RoomState } from "./room.js";
 type Handlers = Parameters<Transport["join"]>[1];
 
 const SEND_GAP = 1000 / 15;
-const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const idle = {
+  move: { x: 0, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT
 ];
@@ -136,7 +142,7 @@ const BITER = 2;
 
 /**
  * Monsters that start as three blobs across the dev square, each drifting right at 20px/s
- * with 10 health. Biters are registered too.
+ * with 10 health, and heard stepping. Biters are registered too.
  */
 const blobs: Monsters = {
   register(session) {
@@ -162,6 +168,10 @@ const blobs: Monsters = {
         entity.vx = 20;
         return { steps: data.steps + 1 };
       },
+      cue(entity, previous, next, game) {
+        if (next.steps > previous.steps)
+          void game.sfx.play("step", entity, game.local);
+      },
       draw: () => undefined,
     });
   },
@@ -171,11 +181,13 @@ const blobs: Monsters = {
   },
 };
 
+const POKE = { id: "poke", name: "Poke", maxStack: 1, emoji: "👉" };
+
 /** A poke: 4 damage to every entity within 30px of a point 20px ahead, at most twice a second. */
 const poke: Items = {
   register(session) {
     registerItem(session, "poke", {
-      cooldownMs: 500,
+      cooldown: 0.5,
       apply(game, at, aim) {
         const x = at.x + Math.cos(aim) * 20;
         const y = at.y + Math.sin(aim) * 20;
@@ -184,6 +196,11 @@ const poke: Items = {
             applyDamage(entity, 4);
         }
       },
+      show(game, at) {
+        void game.sfx.play("poke", at, game.local);
+        return { center: { x: at.x, y: at.y }, hit: false };
+      },
+      draw: () => undefined,
     });
   },
 };
@@ -217,11 +234,19 @@ function recordingVoice(
   };
 }
 
+/** A sound played: where from, and who heard it. */
+interface Sound {
+  readonly url: string;
+  readonly origin: Point | null;
+  readonly listener: Point | null;
+}
+
 function setup(hub = createHub(), id = "me", clock = createManualClock()) {
   const log: string[] = [];
   const failures: { peerFailed: (id: string) => void }[] = [];
   const transport = hub.transport(id, log);
   let changes = 0;
+  const sounds: Sound[] = [];
   const room = createRoom({
     localId: id,
     world: "dev",
@@ -229,6 +254,18 @@ function setup(hub = createHub(), id = "me", clock = createManualClock()) {
     voice: recordingVoice(log, failures),
     sfx: {
       ...testSfx(),
+      play(url, origin, listener) {
+        sounds.push({
+          url,
+          origin: origin === null ? null : { x: origin.x, y: origin.y },
+          listener,
+        });
+        return Promise.resolve({
+          stop: () => undefined,
+          setVolume: () => undefined,
+          setPosition: () => undefined,
+        });
+      },
       stopAll() {
         log.push("sfx stop");
       },
@@ -265,6 +302,8 @@ function setup(hub = createHub(), id = "me", clock = createManualClock()) {
       failures.at(-1)?.peerFailed(id);
     },
     changes: () => changes,
+    /** Every sound played, oldest first. */
+    sounds,
   };
 }
 
@@ -1064,6 +1103,27 @@ describe("host", () => {
       expect(targets(get("b"))).toEqual(placed(get("a")));
     });
 
+    test("every client hears each entity's cues at most once a frame, from where it stands", async () => {
+      const { clock, get } = await gather(["a", "b"]);
+      const steps = (player: Player) =>
+        player.sounds.filter(({ url }) => url === "step");
+      clock.advance(1000);
+      play(get("a"), 0);
+      get("b").room.frame(clock.now());
+      expect(steps(get("a"))).toEqual([]);
+      expect(steps(get("b"))).toEqual([]);
+
+      clock.advance(2000);
+      play(get("a"), 1);
+      expect(steps(get("a"))).toHaveLength(3);
+      get("b").room.frame(clock.now());
+      expect(steps(get("b")).map(({ listener }) => listener)).toEqual(
+        Array(3).fill(sessionOf(get("b")).local),
+      );
+      get("b").room.frame(clock.now());
+      expect(steps(get("b"))).toHaveLength(3);
+    });
+
     describe("health", () => {
       /** Two players, `a` hosting with its blobs sent to `b`. */
       async function hosted() {
@@ -1080,11 +1140,17 @@ describe("host", () => {
         player.room.frame(player.clock.now());
       };
 
+      /** Hands `request` to the room as the local player's use, skipping its own cooldown. */
+      const sendUse = (player: Player, request: UseRequest) => {
+        sessionOf(player).localUses.push(request);
+        player.room.frame(player.clock.now());
+      };
+
       /** `player` pokes from 20px left of `target`, after standing there. */
       const pokeAt = (player: Player, target: Point) => {
         const at = { x: target.x - 20, y: target.y };
         standAt(player, at);
-        player.room.use({
+        sendUse(player, {
           by: sessionOf(player).localId,
           item: "poke",
           ...at,
@@ -1121,6 +1187,51 @@ describe("host", () => {
         expect(ids(b)).toEqual(["a:1", "a:3"]);
       });
 
+      test("a player selects and uses its held item through its controls", async () => {
+        const { clock, a, b } = await hosted();
+        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        standAt(b, { x: blob.x - 20, y: blob.y });
+        const local = sessionOf(b).local;
+        local.inventory[1] = { item: POKE, quantity: 1 };
+        const use = { ...idle, aim: blob, select: 1, use: true };
+        updateSession(sessionOf(b), use, 1 / 60);
+        b.room.frame(b.clock.now());
+        expect(local.held).toBe(1);
+        expect(local.use?.item).toBe("poke");
+        clock.advance(clock.now() + 200);
+        play(a, 1 / 60);
+        expect(healthOf(a, "a:2")).toBe(6);
+      });
+
+      test("every client hears a use once, from where it was made", async () => {
+        const { a, b } = await hosted();
+        const pokes = (player: Player) =>
+          player.sounds.filter(({ url }) => url === "poke");
+        const swing = (player: Player) => {
+          const { local } = sessionOf(player);
+          local.inventory[1] = { item: POKE, quantity: 1 };
+          updateSession(
+            sessionOf(player),
+            { ...idle, select: 1, use: true },
+            1 / 60,
+          );
+          player.room.frame(player.clock.now());
+          return { x: local.x, y: local.y };
+        };
+
+        const from = swing(b);
+        expect(pokes(b)).toEqual([
+          { url: "poke", origin: from, listener: sessionOf(b).local },
+        ]);
+        expect(pokes(a)).toEqual([
+          { url: "poke", origin: from, listener: sessionOf(a).local },
+        ]);
+
+        swing(a);
+        expect(pokes(a)).toHaveLength(2);
+        expect(pokes(b)).toHaveLength(2);
+      });
+
       test("the host applies its own use through the same checks", async () => {
         const { clock, a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
@@ -1135,7 +1246,7 @@ describe("host", () => {
         const { a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 200, y: blob.y });
-        b.room.use({
+        sendUse(b, {
           by: "b",
           item: "poke",
           x: blob.x - 20,
