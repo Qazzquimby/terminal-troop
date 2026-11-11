@@ -1,4 +1,6 @@
 import { nearestFreePoint } from "./collision.js";
+import { registerEvents } from "./content-event.js";
+import type { ContentEvents } from "./content-event.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
 import { placeItem } from "./inventory.js";
@@ -19,13 +21,16 @@ export type ContentName = `entity/${string}` | `item/${string}`;
 
 /**
  * What a room's world holds: kinds of entity and item, the entities a new world starts with,
- * the items each player starts with, and the state each player keeps.
+ * the items each player starts with, the state each player keeps, and the events its clients
+ * send each other.
  */
 export interface WorldContent {
-  /** Unique in a content list; the key its player state travels under. */
+  /** Unique in a content list; the key its player state and events travel under. */
   readonly name: ContentName;
   /** The state it keeps on every player, if any. */
   readonly player?: PlayerData<unknown> | undefined;
+  /** The events it sends and receives, by the key each travels under. */
+  readonly events?: ContentEvents | undefined;
   /**
    * Registers its kinds and items with a new session, and stocks its local player's inventory,
    * before any snapshot reaches it.
@@ -36,8 +41,8 @@ export interface WorldContent {
 }
 
 /**
- * Registers each of `contents` with a new session, in order: first its player state, then the
- * rest. Throws on a name used twice.
+ * Registers each of `contents` with a new session, in order: first its player state and events,
+ * then the rest. Throws on a name used twice.
  */
 export function registerContent(
   game: Session,
@@ -50,6 +55,8 @@ export function registerContent(
     names.add(content.name);
     if (content.player !== undefined)
       registerPlayerData(game, content.name, content.player);
+    if (content.events !== undefined)
+      registerEvents(game, content.name, content.events);
     content.register(game);
   }
 }
@@ -129,6 +136,8 @@ export interface EntitySpec<S> extends EntityDefinition<S> {
   readonly spawn?: SpawnRule<S>;
   /** The state the kind keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
+  /** The events the kind sends and receives, by key. */
+  readonly events?: ContentEvents;
 }
 
 /** Random spots tried for each scattered entity before taking the one furthest from the players. */
@@ -221,6 +230,7 @@ export function defineEntity<N extends string, C, S>(
       return {
         name: `entity/${name}`,
         player: spec.player,
+        events: spec.events,
         register(game) {
           kind.register(game);
         },
@@ -249,6 +259,8 @@ export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
   readonly starting?: StartingStack;
   /** The state the item keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
+  /** The events the item sends and receives, by key. */
+  readonly events?: ContentEvents;
 }
 
 /**
@@ -273,6 +285,7 @@ export function defineItem<N extends string, C>(
       return {
         name: `item/${name}`,
         player: spec.player,
+        events: spec.events,
         register(game) {
           registerItem(game, item, spec);
           if (spec.starting !== undefined) {

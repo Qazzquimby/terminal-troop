@@ -96,17 +96,12 @@ describe("the message table", () => {
         data: unknown;
       }[];
     }>();
-    expectTypeOf<Message<"use">>().toEqualTypeOf<{
-      by: string;
-      item: string;
-      x: number;
-      y: number;
-      aim: number;
-    }>();
-    expectTypeOf<Message<"damage">>().toEqualTypeOf<{
-      host: string;
-      target: string;
-      amount: number;
+    expectTypeOf<Message<"content">>().toEqualTypeOf<{
+      from: string;
+      to: string | null;
+      content: string;
+      event: string;
+      payload: unknown;
     }>();
     expectTypeOf<Message<"signal">>().toBeUnknown();
   });
@@ -128,6 +123,34 @@ describe("the message table", () => {
   });
 
   test.each([
+    { from: "a", to: null, content: "core/items", event: "use", payload: 1 },
+    {
+      from: "a",
+      to: "b",
+      content: "core/health",
+      event: "damage",
+      payload: {},
+    },
+    {
+      from: "a",
+      to: null,
+      content: "item/lamp",
+      event: "toggle",
+      payload: null,
+    },
+  ])("a CONTENT's payload %o parses as is, left to its event", (message) => {
+    expect(messages.content.safeParse(message).data).toEqual(message);
+  });
+
+  const content = {
+    from: "a",
+    to: null,
+    content: "core/items",
+    event: "use",
+    payload: {},
+  };
+
+  test.each([
     [NetEvent.HELLO, { id: "" }],
     [NetEvent.BYE, { id: 7 }],
     [NetEvent.STATE, { ...state, x: Number.NaN }],
@@ -138,11 +161,12 @@ describe("the message table", () => {
     [NetEvent.STATE, { ...state, content: null }],
     [NetEvent.STATE, { ...state, content: "shovel" }],
     [NetEvent.STATE, { ...state, content: ["shovel"] }],
-    [NetEvent.USE, { by: "x", item: "", x: 0, y: 0, aim: 0 }],
-    [NetEvent.USE, { by: "x", item: "shovel", x: 0, y: Infinity, aim: 0 }],
-    [NetEvent.DAMAGE, { host: "x", target: "y", amount: 0 }],
-    [NetEvent.DAMAGE, { host: "x", target: "y", amount: Number.NaN }],
-    [NetEvent.DAMAGE, { host: "x", target: "", amount: 5 }],
+    [NetEvent.CONTENT, { ...content, from: "" }],
+    [NetEvent.CONTENT, omit(content, "to")],
+    [NetEvent.CONTENT, { ...content, to: "" }],
+    [NetEvent.CONTENT, { ...content, content: "" }],
+    [NetEvent.CONTENT, { ...content, event: "x".repeat(65) }],
+    [NetEvent.CONTENT, { ...content, event: 7 }],
     [NetEvent.HEARTBEAT, { id: "x", hidden: false }],
     [
       NetEvent.HEARTBEAT,

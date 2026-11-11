@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { contentEvent } from "./content-event.js";
 import { heldItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
@@ -15,16 +16,6 @@ export interface ItemUse {
   readonly hit: boolean;
   /** When it started, in sim seconds. */
   readonly startedAt: number;
-}
-
-/** A player's use of an item, as the host receives it: where the player stood and faced. */
-export interface UseRequest {
-  /** The id of the player using the item. */
-  readonly by: string;
-  readonly item: string;
-  readonly x: number;
-  readonly y: number;
-  readonly aim: number;
 }
 
 /** What a usable item does; each usable item registers one under its id. */
@@ -62,6 +53,9 @@ export function registerItem(
   game.items.set(item.id, behaviour);
 }
 
+/** An item's id, as a player reports it. */
+const ItemId = z.string().min(1).max(32);
+
 /** The id of the item in `player`'s selected slot, or null for nothing. */
 function selectedItemId(player: Player): string | null {
   return heldItem(player.inventory, player.held)?.item.id ?? null;
@@ -73,7 +67,7 @@ function selectedItemId(player: Player): string | null {
  * not know.
  */
 export const heldItemId = playerData({
-  schema: z.string().min(1).max(32).nullable(),
+  schema: ItemId.nullable(),
   initial: selectedItemId,
 });
 
@@ -91,24 +85,57 @@ export function heldItemOf(
   return id === null ? null : (game.itemDefinitions.get(id) ?? null);
 }
 
-/** Queues a use for the host's next step. */
-export function requestUse(game: Session, request: UseRequest): void {
-  game.uses.push(request);
-}
+/** A player's use of an item: which item, and where the player stood and faced. */
+const ItemUsed = z.object({
+  item: ItemId,
+  x: z.number(),
+  y: z.number(),
+  aim: z.number(),
+});
 
-/** Shows a remote player's use as this client sees it, and keeps it on the player to draw. */
-export function showUse(game: Session, request: UseRequest): void {
-  const behaviour = game.items.get(request.item);
-  if (behaviour === undefined) return;
-  const shown = behaviour.show(game, request, request.aim);
-  const player = game.players.get(request.by);
-  if (player !== undefined && player !== game.local)
-    player.use = { item: request.item, ...shown, startedAt: game.time };
+/** Whether the host accepts a use by `by`: near where its player was last reported, and off cooldown. */
+function accepts(
+  game: Session,
+  by: string,
+  at: Point,
+  behaviour: ItemBehaviour,
+): boolean {
+  const player = game.players.get(by);
+  if (player === undefined) return false;
+  const known = player === game.local ? player : { x: player.tx, y: player.ty };
+  const { distance, seconds } = game.config.net.useSlack;
+  if (Math.hypot(at.x - known.x, at.y - known.y) > distance) return false;
+  const readyAt = game.readyAt.get(by) ?? -Infinity;
+  if (game.time < readyAt - seconds) return false;
+  game.readyAt.set(by, game.time + behaviour.cooldown);
+  return true;
 }
 
 /**
- * Starts the local player's use of its held item, if it is usable and off cooldown, and
- * queues the request for the room to hand to the host.
+ * A player's item use, sent to everyone: each other client shows it on the player, and the host
+ * applies it if it accepts it.
+ */
+export const itemUsed = contentEvent({
+  schema: ItemUsed,
+  to: "all",
+  receive(game, use, by) {
+    const behaviour = game.items.get(use.item);
+    if (behaviour === undefined) return;
+    const player = game.players.get(by);
+    if (player !== undefined && player !== game.local)
+      player.use = {
+        item: use.item,
+        ...behaviour.show(game, use, use.aim),
+        startedAt: game.time,
+      };
+    if (game.hosting && accepts(game, by, use, behaviour))
+      behaviour.apply(game, use, use.aim);
+  },
+});
+
+/**
+ * Starts the local player's use of its held item, if it is usable and off cooldown, and sends
+ * it to everyone.
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
@@ -126,40 +153,10 @@ export function useHeldItem(game: Session): void {
     ...behaviour.show(game, local, local.aim),
     startedAt: game.time,
   };
-  game.localUses.push({
-    by: local.id,
+  itemUsed.send(game, {
     item: stack.item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,
   });
-}
-
-/** Whether the host accepts `request`: near where its player was last reported, and off cooldown. */
-function accepts(
-  game: Session,
-  request: UseRequest,
-  behaviour: ItemBehaviour,
-): boolean {
-  const player = game.players.get(request.by);
-  if (player === undefined) return false;
-  const known = player === game.local ? player : { x: player.tx, y: player.ty };
-  const { distance, seconds } = game.config.net.useSlack;
-  if (Math.hypot(request.x - known.x, request.y - known.y) > distance)
-    return false;
-  const readyAt = game.readyAt.get(request.by) ?? -Infinity;
-  if (game.time < readyAt - seconds) return false;
-  game.readyAt.set(request.by, game.time + behaviour.cooldown);
-  return true;
-}
-
-/** Applies every queued use the host accepts, then empties the queue. */
-export function applyUses(game: Session): void {
-  const requests = game.uses.splice(0);
-  if (!game.hosting) return;
-  for (const request of requests) {
-    const behaviour = game.items.get(request.item);
-    if (behaviour === undefined || !accepts(game, request, behaviour)) continue;
-    behaviour.apply(game, request, request.aim);
-  }
 }
