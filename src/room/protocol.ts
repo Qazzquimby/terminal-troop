@@ -16,9 +16,6 @@ export const Health = z.codec(
   },
 );
 
-/** An item's id. The room knows no items, so any well-formed id passes. */
-const ItemId = z.string().min(1).max(32);
-
 /**
  * A STATE payload, its name cut to `nameMax` characters when heard. `content` holds each content
  * entry's state for the sender by the entry's name; each entry parses its own, so a value its
@@ -81,23 +78,20 @@ const EntitiesMessage = z.object({
     .max(MAX_ENTITIES),
 });
 
-/**
- * A player's item use, sent to the whole room for the host to apply and everyone to hear: who
- * used which item, standing where and facing which way.
- */
-const UseMessage = z.object({
-  by: PlayerId,
-  item: ItemId,
-  x: z.number(),
-  y: z.number(),
-  aim: z.number(),
-});
+/** A content entry's name, or an event's key within its entry. */
+const ContentKey = z.string().min(1).max(64);
 
-/** Damage the sender, as host, deals to the player `target`. */
-const DamageMessage = z.object({
-  host: PlayerId,
-  target: PlayerId,
-  amount: z.number().positive(),
+/**
+ * A content entry's event: the sender's id, the player it is for (null unless it is for one
+ * player), the entry's name, the event's key and its payload. The event's own schema parses the
+ * payload, so one it rejects, or of an event this client lacks, is dropped where it is received.
+ */
+const ContentMessage = z.object({
+  from: PlayerId,
+  to: PlayerId.nullable(),
+  content: ContentKey,
+  event: ContentKey,
+  payload: z.unknown(),
 });
 
 /** Every event's payload schema; a missing event fails to compile. */
@@ -108,8 +102,7 @@ export function roomMessages(nameMax: number) {
     [NetEvent.BYE]: PresenceMessage,
     [NetEvent.HEARTBEAT]: HeartbeatMessage,
     [NetEvent.ENTITIES]: EntitiesMessage,
-    [NetEvent.USE]: UseMessage,
-    [NetEvent.DAMAGE]: DamageMessage,
+    [NetEvent.CONTENT]: ContentMessage,
 
     // The voice room parses its own signals.
     [NetEvent.SIGNAL]: z.unknown(),

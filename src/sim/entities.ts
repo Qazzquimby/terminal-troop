@@ -1,5 +1,6 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { moveWithCollision } from "./collision.js";
+import { contentEvent } from "./content-event.js";
 import type { Entity } from "./entity.js";
 import { applyDamage, isDead } from "./entity.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
@@ -239,13 +240,26 @@ export function updateEntities(game: Session, dt: number): void {
   });
 }
 
+/** Damage the host deals to one player, for that player's own client to apply. */
+export const damaged = contentEvent({
+  schema: z.object({ amount: z.number().positive() }),
+  to: "player",
+  from: "host",
+  receive(game, { amount }) {
+    applyDamage(game.local, amount);
+    game.reportNow = true;
+  },
+});
+
 /**
  * Deals `strike` to its player: the local player takes it at once, and a remote one is sent
- * it, since each player keeps its own health.
+ * it, since each player keeps its own health. A strike of no damage does nothing.
  */
 function strikePlayer(game: Session, strike: Strike): void {
+  if (!(strike.amount > 0)) return;
   if (strike.target === game.localId) applyDamage(game.local, strike.amount);
-  else if (game.players.has(strike.target)) game.strikes.push(strike);
+  else if (game.players.has(strike.target))
+    damaged.send(game, strike.target, { amount: strike.amount });
 }
 
 /** Removes every entity that has been destroyed. */

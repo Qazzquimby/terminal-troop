@@ -9,6 +9,8 @@ import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
   applyDamage,
+  contentEvent,
+  health,
   heldItemId,
   heldItemOf,
   inventory,
@@ -20,7 +22,7 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import type { Point, UseRequest, WorldContent } from "../sim/index.js";
+import type { Point, Session, WorldContent } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
@@ -261,7 +263,7 @@ function setup(
   hub = createHub(),
   id = "me",
   clock = createManualClock(),
-  content: readonly WorldContent[] = [blobs, biters, inventory, poke],
+  content: readonly WorldContent[] = [blobs, biters, health, inventory, poke],
 ) {
   const log: string[] = [];
   const failures: { peerFailed: (id: string) => void }[] = [];
@@ -1138,6 +1140,10 @@ describe("host", () => {
         x: tx,
         y: ty,
       }));
+    /** Runs one step of simulation on `player`, without letting it send. */
+    const step = (player: Player) => {
+      updateSession(sessionOf(player), idle, 1 / 60);
+    };
     /** Runs `seconds` of simulation on `player`, then lets it send. */
     const play = (player: Player, seconds: number) => {
       for (let step = 0; step < seconds * 60; step++)
@@ -1376,9 +1382,15 @@ describe("host", () => {
         player.room.frame(player.clock.now());
       };
 
-      /** Hands `request` to the room as the local player's use, skipping its own cooldown. */
-      const sendUse = (player: Player, request: UseRequest) => {
-        sessionOf(player).localUses.push(request);
+      /** Hands `use` to the room as the local player's use, skipping its own cooldown. */
+      const sendUse = (player: Player, use: Point & { aim: number }) => {
+        sessionOf(player).outbox.push({
+          content: "inventory",
+          event: "use",
+          route: "all",
+          to: null,
+          payload: { item: "poke", ...use },
+        });
         player.room.frame(player.clock.now());
       };
 
@@ -1386,12 +1398,7 @@ describe("host", () => {
       const pokeAt = (player: Player, target: Point) => {
         const at = { x: target.x - 20, y: target.y };
         standAt(player, at);
-        sendUse(player, {
-          by: sessionOf(player).localId,
-          item: "poke",
-          ...at,
-          aim: 0,
-        });
+        sendUse(player, { ...at, aim: 0 });
       };
 
       const healthOf = (player: Player, id: string) =>
@@ -1439,6 +1446,8 @@ describe("host", () => {
         b.room.frame(b.clock.now());
         expect(local.held).toBe(1);
         expect(local.use?.item).toBe("poke");
+        expect(sessionOf(a).players.get("b")?.use).toBeNull();
+        step(a);
         const seen = sessionOf(a).players.get("b");
         expect(seen?.use).toMatchObject({ item: "poke", hit: false });
         expect(a.sounds.filter(({ url }) => url === "poke")).toHaveLength(1);
@@ -1472,6 +1481,8 @@ describe("host", () => {
         };
 
         const from = swing(b);
+        expect(pokes(a)).toEqual([]);
+        step(a);
         expect(pokes(b)).toEqual([
           { url: "poke", origin: from, listener: sessionOf(b).local },
         ]);
@@ -1480,6 +1491,7 @@ describe("host", () => {
         ]);
 
         swing(a);
+        step(b);
         expect(pokes(a)).toHaveLength(2);
         expect(pokes(b)).toHaveLength(2);
       });
@@ -1487,7 +1499,9 @@ describe("host", () => {
       test("a remote use is kept on its player to draw, from where it was made", async () => {
         const { a, b } = await hosted();
         standAt(b, { x: 400, y: 500 });
-        sendUse(b, { by: "b", item: "poke", x: 400, y: 500, aim: 0 });
+        sendUse(b, { x: 400, y: 500, aim: 0 });
+        step(a);
+        step(b);
         expect(sessionOf(a).players.get("b")?.use).toEqual({
           item: "poke",
           center: { x: 400, y: 500 },
@@ -1511,13 +1525,7 @@ describe("host", () => {
         const { a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 200, y: blob.y });
-        sendUse(b, {
-          by: "b",
-          item: "poke",
-          x: blob.x - 20,
-          y: blob.y,
-          aim: 0,
-        });
+        sendUse(b, { x: blob.x - 20, y: blob.y, aim: 0 });
         play(a, 1 / 60);
         expect(healthOf(a, "a:2")).toBe(10);
       });
@@ -1537,6 +1545,8 @@ describe("host", () => {
         expect(host.players.get("b")?.health).toBe(100);
         a.clock.advance(a.clock.now() + 200);
         a.room.frame(a.clock.now());
+        expect(sessionOf(b).local.health).toBe(100);
+        step(b);
         expect(sessionOf(b).local.health).toBe(95);
         expect(sessionOf(b).players.get("a")?.health).toBe(95);
 
@@ -1544,16 +1554,164 @@ describe("host", () => {
         expect(host.players.get("b")?.health).toBe(95);
       });
 
-      test("damage said to come from anyone but the host is ignored", async () => {
+      test("damage said to come from anyone but the host, or for another player, is ignored", async () => {
         const { hub, a, b } = await hosted();
         const listener = hub.listener("dev:ABC");
-        listener.send(NetEvent.DAMAGE, { host: "b", target: "a", amount: 5 });
-        listener.send(NetEvent.DAMAGE, { host: "z", target: "b", amount: 5 });
+        const damage = (from: string, to: string) => {
+          listener.send(NetEvent.CONTENT, {
+            from,
+            to,
+            content: "health",
+            event: "damage",
+            payload: { amount: 5 },
+          });
+          step(a);
+          step(b);
+        };
+        damage("b", "a");
+        damage("z", "b");
+        damage("a", "a");
         expect(sessionOf(a).local.health).toBe(100);
         expect(sessionOf(b).local.health).toBe(100);
-        listener.send(NetEvent.DAMAGE, { host: "a", target: "b", amount: 5 });
+        damage("a", "b");
+        expect(sessionOf(a).local.health).toBe(100);
         expect(sessionOf(b).local.health).toBe(95);
       });
+    });
+  });
+  describe("content events", () => {
+    const sessionOf = (player: Player) => joined(player.room).session;
+    const step = (player: Player) => {
+      updateSession(sessionOf(player), idle, 1 / 60);
+    };
+
+    /** An entry with an event of each route, and one only the host may send, each logging what it hears. */
+    function signals() {
+      const log: string[] = [];
+      const Signal = z.object({ n: z.number().int() });
+      const note =
+        (name: string) =>
+        (game: Session, { n }: z.infer<typeof Signal>, sender: string) => {
+          log.push(`${game.localId} ${name} ${String(n)} from ${sender}`);
+        };
+      const toHost = contentEvent({
+        schema: Signal,
+        to: "host",
+        receive: note("host"),
+      });
+      const toAll = contentEvent({
+        schema: Signal,
+        to: "all",
+        receive: note("all"),
+      });
+      const toPlayer = contentEvent({
+        schema: Signal,
+        to: "player",
+        receive: note("player"),
+      });
+      const fromHost = contentEvent({
+        schema: Signal,
+        to: "all",
+        from: "host",
+        receive: note("from-host"),
+      });
+      const content: WorldContent = {
+        name: "signal",
+        events: { toHost, toAll, toPlayer, fromHost },
+        register: () => undefined,
+        populate: () => undefined,
+      };
+      return { log, content, toHost, toAll, toPlayer, fromHost };
+    }
+
+    /** Three players hosted by `a`, each with the signals. */
+    async function signalling() {
+      const signal = signals();
+      const { hub, clock, get } = await gather(
+        ["a", "b", "c"],
+        [],
+        [signal.content],
+      );
+      clock.advance(1000);
+      const [a, b, c] = [get("a"), get("b"), get("c")];
+      const stepAll = () => {
+        for (const player of [a, b, c]) step(player);
+      };
+      return { ...signal, hub, a, b, c, stepAll };
+    }
+
+    test("each event reaches only the clients its route names, inside their next step", async () => {
+      const { log, b, toHost, toAll, toPlayer, stepAll } = await signalling();
+      toHost.send(sessionOf(b), { n: 1 });
+      toAll.send(sessionOf(b), { n: 2 });
+      toPlayer.send(sessionOf(b), "c", { n: 3 });
+      b.room.frame(b.clock.now());
+      expect(log).toEqual([]);
+      stepAll();
+      expect(log).toEqual([
+        "a host 1 from b",
+        "a all 2 from b",
+        "b all 2 from b",
+        "c all 2 from b",
+        "c player 3 from b",
+      ]);
+    });
+
+    test("the host's own event for the host, and a player's for itself, stay on its client", async () => {
+      const { log, a, b, toHost, toPlayer, stepAll } = await signalling();
+      const sent = (player: Player) =>
+        player.log.filter((line) => line === "send content");
+      toHost.send(sessionOf(a), { n: 1 });
+      a.room.frame(a.clock.now());
+      toPlayer.send(sessionOf(b), "b", { n: 2 });
+      b.room.frame(b.clock.now());
+      stepAll();
+      expect(log).toEqual(["a host 1 from a", "b player 2 from b"]);
+      expect(sent(a)).toEqual([]);
+      expect(sent(b)).toEqual([]);
+    });
+
+    test("an event only the host may send is dropped from anyone else, its sender included", async () => {
+      const { log, a, b, fromHost, stepAll } = await signalling();
+      fromHost.send(sessionOf(b), { n: 1 });
+      b.room.frame(b.clock.now());
+      fromHost.send(sessionOf(a), { n: 2 });
+      a.room.frame(a.clock.now());
+      stepAll();
+      expect(log).toEqual([
+        "a from-host 2 from a",
+        "b from-host 2 from a",
+        "c from-host 2 from a",
+      ]);
+    });
+
+    test("an unknown entry or event, a payload its event rejects, or a sender not in the room is dropped, and the rest apply", async () => {
+      const { log, hub, stepAll } = await signalling();
+      const listener = hub.listener("dev:ABC");
+      const signal = (fields: Record<string, unknown>) => {
+        listener.send(NetEvent.CONTENT, {
+          from: "b",
+          to: null,
+          content: "signal",
+          event: "toAll",
+          payload: { n: 1 },
+          ...fields,
+        });
+      };
+      signal({ content: "ghost" });
+      signal({ event: "ghost" });
+      signal({ payload: { n: "1" } });
+      signal({ payload: { n: 2 } });
+      signal({ from: "z", payload: { n: 3 } });
+      signal({ from: "", payload: { n: 4 } });
+      signal({ payload: { n: 5 } });
+      stepAll();
+      expect(log).toEqual([
+        "a all 2 from b",
+        "a all 5 from b",
+        "c all 2 from b",
+        "c all 5 from b",
+      ]);
     });
   });
 });

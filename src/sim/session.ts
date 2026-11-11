@@ -1,7 +1,14 @@
 import type { Sfx } from "../audio/index.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies } from "./collision.js";
-import type { EntityType, Strike, WorldEntity } from "./entities.js";
+import type {
+  ContentEvent,
+  Delivery,
+  EventAddress,
+  OutgoingEvent,
+} from "./content-event.js";
+import { applyEvents } from "./content-event.js";
+import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
@@ -12,8 +19,8 @@ import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
 import type { PlayerData } from "./player-data.js";
 import { applyContentState, contentState } from "./player-data.js";
-import type { ItemBehaviour, UseRequest, UseSlack } from "./use.js";
-import { applyUses, reportHeld, useHeldItem } from "./use.js";
+import type { ItemBehaviour, UseSlack } from "./use.js";
+import { reportHeld, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 
 /** How remote players follow the state they report. */
@@ -56,14 +63,21 @@ export interface Session {
   readonly itemDefinitions: Map<string, ItemDefinition>;
   /** The state each content entry keeps on every player, by the entry's name. */
   readonly playerData: Map<string, PlayerData<unknown>>;
-  /** Uses waiting for the host's next step. */
-  readonly uses: UseRequest[];
-  /** The local player's uses, waiting for the room to hand them to the host. */
-  readonly localUses: UseRequest[];
+  /** Each content entry's events, by the entry's name, then by key. */
+  readonly events: Map<string, Map<string, ContentEvent<unknown>>>;
+  /** Where each registered event travels. */
+  readonly eventAddresses: Map<ContentEvent<unknown>, EventAddress>;
+  /** Events received, waiting for the next step. */
+  readonly inbox: Delivery[];
+  /** Events sent, waiting for the room to route them. */
+  readonly outbox: OutgoingEvent[];
   /** When, in sim seconds, the host lets each player use an item again. */
   readonly readyAt: Map<string, number>;
-  /** Damage the host has dealt to remote players, waiting to be sent to them. */
-  readonly strikes: Strike[];
+  /**
+   * The local player's state changed in a way the others should hear at once; the room sends
+   * it in its next frame, and clears this.
+   */
+  reportNow: boolean;
 }
 
 function roomSeed(code: string, base: number): number {
@@ -112,10 +126,12 @@ export function createSession(
     items: new Map(),
     itemDefinitions: new Map(),
     playerData: new Map(),
-    uses: [],
-    localUses: [],
+    events: new Map(),
+    eventAddresses: new Map(),
+    inbox: [],
+    outbox: [],
     readyAt: new Map(),
-    strikes: [],
+    reportNow: false,
   };
 }
 
@@ -164,7 +180,7 @@ export function updateSession(
     smoothPlayer(player, dt, game.config.net.smoothing);
   }
 
-  applyUses(game);
+  applyEvents(game);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
 

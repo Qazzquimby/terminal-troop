@@ -220,7 +220,7 @@ describe("damage", () => {
     spawnEntity(game, "striker", 100, 300, {});
     updateSession(game, idle, DT);
     expect(game.local.health).toBe(0);
-    expect(game.strikes).toEqual([]);
+    expect(game.outbox).toEqual([]);
   });
 });
 

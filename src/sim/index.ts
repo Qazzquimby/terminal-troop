@@ -11,9 +11,12 @@ export {
   defineEntity,
   defineItem,
   entityKind,
+  health,
   inventory,
   registerContent,
 } from "./content.js";
+export { contentEvent, receiveEvent } from "./content-event.js";
+export type { OutgoingEvent } from "./content-event.js";
 export type {
   Content,
   ContentConfig,
@@ -45,14 +48,8 @@ export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
 export type { Controls, Player } from "./player.js";
-export {
-  heldItemId,
-  heldItemOf,
-  registerItem,
-  requestUse,
-  showUse,
-} from "./use.js";
-export type { ItemUse, UseRequest } from "./use.js";
+export { heldItemId, heldItemOf, registerItem } from "./use.js";
+export type { ItemUse } from "./use.js";
 
 export {
   applyRemoteState,

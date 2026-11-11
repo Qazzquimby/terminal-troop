@@ -7,9 +7,9 @@ import {
   applyRemoteState,
   heldItemOf,
   playerState,
+  receiveEvent,
   registerContent,
   registerEntityType,
-  requestUse,
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
@@ -72,11 +72,21 @@ function standAt(game: Session, at: Point): void {
   Object.assign(game.local, { ...at, prevX: at.x, prevY: at.y });
 }
 
+/** Hands each event the session sent back to it, as the room does while it hosts. */
+function deliverOwn(game: Session): void {
+  for (const { content, event, to, payload } of game.outbox.splice(0))
+    receiveEvent(
+      game,
+      { from: game.localId, to, content, event, payload },
+      game.localId,
+    );
+}
+
 /** Swings facing right, and hands the swing to the session's host step as the room would. */
 function swingRight(game: Session): void {
   const { local } = game;
   updateSession(game, { ...swing, aim: { x: local.x + 100, y: local.y } }, DT);
-  for (const request of game.localUses.splice(0)) requestUse(game, request);
+  deliverOwn(game);
   updateSession(game, idle, DT);
 }
 
@@ -142,7 +152,7 @@ test("selecting a slot past the last keeps the held one", () => {
   expect(game.local.held).toBe(2);
 });
 
-test("the use control swings the held shovel at the step's sim time and queues it for the host", () => {
+test("the use control swings the held shovel at the step's sim time and sends it to everyone", () => {
   const game = session();
   wait(game, 0.5);
   updateSession(game, swing, DT);
@@ -150,13 +160,18 @@ test("the use control swings the held shovel at the step's sim time and queues i
     item: "shovel",
     startedAt: game.time,
   });
-  expect(game.localUses).toEqual([
+  expect(game.outbox).toEqual([
     {
-      by: "me",
-      item: "shovel",
-      x: game.local.x,
-      y: game.local.y,
-      aim: game.local.aim,
+      content: "inventory",
+      event: "use",
+      route: "all",
+      to: null,
+      payload: {
+        item: "shovel",
+        x: game.local.x,
+        y: game.local.y,
+        aim: game.local.aim,
+      },
     },
   ]);
 });
@@ -168,18 +183,18 @@ test("a swing waits out the cooldown in sim seconds", () => {
   wait(game, shovel.cooldown - 2 * DT);
   updateSession(game, swing, DT);
   expect(game.local.use).toBe(first);
-  expect(game.localUses).toHaveLength(1);
+  expect(game.outbox).toHaveLength(1);
   wait(game, DT);
   updateSession(game, swing, DT);
   expect(game.local.use).not.toBe(first);
-  expect(game.localUses).toHaveLength(2);
+  expect(game.outbox).toHaveLength(2);
 });
 
 test("using an empty hand does nothing", () => {
   const game = session();
   updateSession(game, { ...swing, select: 3 }, DT);
   expect(game.local.use).toBeNull();
-  expect(game.localUses).toEqual([]);
+  expect(game.outbox).toEqual([]);
 });
 
 test("a swing damages what is in its hitbox and knocks it away from the hitbox's centre", () => {

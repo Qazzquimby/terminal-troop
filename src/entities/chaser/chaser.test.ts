@@ -13,7 +13,9 @@ import {
   createSession,
   cueEntities,
   entitySnapshot,
+  health,
   isAreaFree,
+  registerContent,
   spawnEntity,
   updateSession,
 } from "../../sim/index.js";
@@ -50,7 +52,7 @@ function world(
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  chaserContent.create({ chaser }).register(game);
+  registerContent(game, [chaserContent.create({ chaser }), health]);
   return game;
 }
 
@@ -377,9 +379,15 @@ describe("sounds", () => {
       content: {},
     });
     chaserAt(game, 100, 400);
-    expect(runUntil(game, 3, () => game.strikes.length > 0)).toBe(true);
-    expect(game.strikes).toEqual([
-      { target: "them", amount: config.attackDamage },
+    expect(runUntil(game, 3, () => game.outbox.length > 0)).toBe(true);
+    expect(game.outbox).toEqual([
+      {
+        content: "health",
+        event: "damage",
+        route: "player",
+        to: "them",
+        payload: { amount: config.attackDamage },
+      },
     ]);
     expect(game.players.get("them")?.health).toBe(100);
   });
