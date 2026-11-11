@@ -6,7 +6,11 @@ import {
 } from "../integration/sim-config.js";
 import { createSession, litWalls, visibilityPolygon } from "../sim/index.js";
 import type { Point, TileMap, VisionSource } from "../sim/index.js";
-import { createMapMemory, mapMemoryKey } from "./map-memory.js";
+import {
+  MAP_MEMORY_INDEX,
+  createMapMemory,
+  mapMemoryKey,
+} from "./map-memory.js";
 import type {
   Area,
   MapMemory,
@@ -28,7 +32,7 @@ const map = devMap();
 const everywhere: Area = { x: 0, y: 0, width: 900, height: 600 };
 const here: MapPlace = { room: "ROOM1", world: "dev", seed: 1 };
 
-/** Storage held in a map, counting writes. */
+/** Storage held in a map, counting writes of remembered terrain. */
 function memoryStorage(): MapMemoryStorage & {
   readonly saved: Map<string, string>;
   writes: number;
@@ -39,8 +43,11 @@ function memoryStorage(): MapMemoryStorage & {
     writes: 0,
     get: (key) => saved.get(key) ?? null,
     set(key, value) {
-      this.writes++;
+      if (key !== MAP_MEMORY_INDEX) this.writes++;
       saved.set(key, value);
+    },
+    remove: (key) => {
+      saved.delete(key);
     },
   };
 }
@@ -139,7 +146,7 @@ describe("persistence", () => {
 
     expect(again.within(everywhere)).toEqual(first.within(everywhere));
     expect(remembers(again, 3, 1)).toBe(true);
-    expect([...storage.saved.keys()]).toEqual([mapMemoryKey(here, map)]);
+    expect(storage.saved.has(mapMemoryKey(here, map))).toBe(true);
   });
 
   test.each([
@@ -191,6 +198,9 @@ describe("persistence", () => {
       set: () => {
         throw new Error("full");
       },
+      remove: () => {
+        throw new Error("denied");
+      },
     };
     const memory = entered(broken);
     memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
@@ -201,4 +211,70 @@ describe("persistence", () => {
     }).not.toThrow();
     expect(remembers(memory, 3, 1)).toBe(true);
   });
+});
+
+describe("keeping only recent worlds", () => {
+  const room = (n: number): MapPlace => ({ ...here, room: `ROOM${String(n)}` });
+  const saved = (storage: ReturnType<typeof memoryStorage>, n: number) =>
+    storage.saved.has(mapMemoryKey(room(n), map));
+
+  /** Enters each room in turn, seeing something in each and saving it on leaving. */
+  function visit(memory: MapMemory, rooms: readonly number[]): void {
+    for (const n of rooms) {
+      memory.enter(room(n), map);
+      memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    }
+    memory.flush();
+  }
+
+  test("entering one more world than are kept deletes the one entered longest ago", () => {
+    const storage = memoryStorage();
+    const memory = createMapMemory(config, storage);
+    visit(memory, [1, 2, 3]);
+    expect([1, 2, 3].map((n) => saved(storage, n))).toEqual([true, true, true]);
+
+    visit(memory, [4]);
+
+    expect([1, 2, 3, 4].map((n) => saved(storage, n))).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+    expect(JSON.parse(storage.saved.get(MAP_MEMORY_INDEX) ?? "")).toEqual([
+      mapMemoryKey(room(4), map),
+      mapMemoryKey(room(3), map),
+      mapMemoryKey(room(2), map),
+    ]);
+  });
+
+  test("entering an old world again makes it the most recent", () => {
+    const storage = memoryStorage();
+    const memory = createMapMemory(config, storage);
+    visit(memory, [1, 2, 3, 1, 4]);
+
+    expect([1, 2, 3, 4].map((n) => saved(storage, n))).toEqual([
+      true,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  test.each([["not json {"], ['{"rooms": 3}'], ["[1, 2]"]])(
+    "a corrupt index (%s) starts again",
+    (corrupt) => {
+      const storage = memoryStorage();
+      storage.saved.set(MAP_MEMORY_INDEX, corrupt);
+      const memory = createMapMemory(config, storage);
+
+      expect(() => {
+        visit(memory, [1]);
+      }).not.toThrow();
+      expect(JSON.parse(storage.saved.get(MAP_MEMORY_INDEX) ?? "")).toEqual([
+        mapMemoryKey(room(1), map),
+      ]);
+      expect(saved(storage, 1)).toBe(true);
+    },
+  );
 });

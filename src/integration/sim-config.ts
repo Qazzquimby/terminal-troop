@@ -46,9 +46,10 @@ export const testRippleConfig: RippleConfig = {
   colour: "#fff",
 };
 
-/** Remembered terrain is saved at most once a second. */
+/** Remembered terrain is saved at most once a second, for the three worlds entered last. */
 export const testMapMemoryConfig: MapMemoryConfig = {
   saveInterval: 1,
+  maxRooms: 3,
   floor: { fill: "#111", grid: "#222", alpha: 0.5 },
   wall: { fill: "#333", edge: "#444", alpha: 0.5 },
 };

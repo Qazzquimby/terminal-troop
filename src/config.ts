@@ -47,6 +47,7 @@ export const config = {
   // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
   mapMemory: {
     saveInterval: 5,
+    maxRooms: 50,
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
   },

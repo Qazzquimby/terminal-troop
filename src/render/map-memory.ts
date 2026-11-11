@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   Point,
   TileMap,
@@ -9,6 +10,8 @@ import type {
 export interface MapMemoryConfig {
   /** How often, in seconds, newly seen terrain is saved while it keeps changing. */
   readonly saveInterval: number;
+  /** How many of the most recently entered worlds are kept in storage; older ones are deleted. */
+  readonly maxRooms: number;
   /** Remembered floor: each cell filled and outlined, at `alpha`. */
   readonly floor: {
     readonly fill: string;
@@ -27,7 +30,13 @@ export interface MapMemoryConfig {
 export interface MapMemoryStorage {
   get: (key: string) => string | null;
   set: (key: string, value: string) => void;
+  remove: (key: string) => void;
 }
+
+/** The storage key of the saved worlds' keys, most recently entered first. */
+export const MAP_MEMORY_INDEX = "terminal-troop:map-memory:index";
+
+const IndexSchema = z.array(z.string());
 
 /** A world as a room builds it: the same room code and world kind always build the same map. */
 export interface MapPlace {
@@ -271,11 +280,38 @@ export function createMapMemory(
     }
   }
 
+  /** The saved worlds' keys, most recent first; none if the index is missing or unreadable. */
+  function readIndex(): string[] {
+    try {
+      const raw = storage.get(MAP_MEMORY_INDEX);
+      if (raw === null) return [];
+      const parsed = IndexSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Puts `key` first in the index, and deletes the worlds that fall past `maxRooms`. */
+  function touch(): void {
+    const order = [key, ...readIndex().filter((other) => other !== key)];
+    try {
+      for (const old of order.slice(config.maxRooms)) storage.remove(old);
+      storage.set(
+        MAP_MEMORY_INDEX,
+        JSON.stringify(order.slice(0, config.maxRooms)),
+      );
+    } catch {
+      // Tried again on the next world entered.
+    }
+  }
+
   return {
     config,
     enter(place, map) {
       write();
       key = mapMemoryKey(place, map);
+      touch();
       grid = new Grid(map, read(map));
       dirty = false;
       nextSaveAt = 0;

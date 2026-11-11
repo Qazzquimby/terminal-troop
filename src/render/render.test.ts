@@ -239,6 +239,7 @@ test("terrain seen before is drawn out of sight, and nothing that stood on it", 
   const memory = createMapMemory(testMapMemoryConfig, {
     get: () => null,
     set: () => undefined,
+    remove: () => undefined,
   });
   memory.enter(
     { room: "MEMORY", world: "dev", seed: game.seed },

@@ -122,6 +122,9 @@ const mapMemory = createMapMemory(config.mapMemory, {
   set: (key, value) => {
     localStorage.setItem(key, value);
   },
+  remove: (key) => {
+    localStorage.removeItem(key);
+  },
 });
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
