@@ -72,10 +72,23 @@ describe("registering", () => {
     }).toThrow(/already registered/);
   });
 
-  test("a kind without finite health throws, since snapshots could not carry it", () => {
-    expect(() => {
-      registerEntityType(session(), "rock", { ...still, maxHealth: Infinity });
-    }).toThrow(/finite/);
+  test.each([0, -5, Number.NaN])(
+    "a kind with %d health throws",
+    (maxHealth) => {
+      expect(() => {
+        registerEntityType(session(), "rock", { ...still, maxHealth });
+      }).toThrow(/positive/);
+    },
+  );
+
+  test("an unbreakable kind takes damage and stays whole", () => {
+    const game = session();
+    registerEntityType(game, "rock", { ...still, maxHealth: Infinity });
+    const rock = spawnEntity(game, "rock", 100, 300, null);
+    applyDamage(rock, 1_000_000);
+    updateSession(game, idle, DT);
+    expect(rock.health).toBe(Infinity);
+    expect(game.entities.has(rock.id)).toBe(true);
   });
 
   test("spawning a name never registered throws", () => {

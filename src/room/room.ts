@@ -34,7 +34,7 @@ import type {
   Roster,
 } from "./presence.js";
 import { roomMessages } from "./protocol.js";
-import type { Message, MessageInput } from "./protocol.js";
+import type { Message, WireMessage } from "./protocol.js";
 import { INVALID_ROOM_CODE, parseRoomCode, roomKey } from "./room-code.js";
 import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 
@@ -165,15 +165,12 @@ export function createRoom(deps: RoomDeps): Room {
   let hidden = false;
   /** Mapped over each event, so indexing it with a generic event keeps that event's types. */
   const messages: {
-    [E in NetEvent]: z.ZodType<Message<E>, MessageInput<E>>;
+    [E in NetEvent]: z.ZodType<Message<E>, WireMessage<E>>;
   } = roomMessages(deps.sim.player.nameMax);
 
-  /** Sends `msg` as `event` to the rest of the room. */
-  function send<E extends NetEvent>(
-    event: E,
-    msg: MessageInput<E>,
-  ): Promise<void> {
-    return transport.send(event, msg);
+  /** Encodes `msg` for the wire and sends it as `event` to the rest of the room. */
+  function send<E extends NetEvent>(event: E, msg: Message<E>): Promise<void> {
+    return transport.send(event, messages[event].encode(msg));
   }
 
   function setState(next: RoomState): void {

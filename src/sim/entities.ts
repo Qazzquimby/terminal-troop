@@ -141,8 +141,8 @@ export function registerEntityType<S>(
 ): void {
   if (game.kindIds.has(name))
     throw new Error(`Entity kind already registered: ${name}`);
-  if (!Number.isFinite(definition.maxHealth))
-    throw new Error(`Entity kind ${name} needs a finite maxHealth to be sent.`);
+  if (!(definition.maxHealth > 0))
+    throw new Error(`Entity kind ${name} needs a positive maxHealth.`);
   const kind = game.entityTypes.size + 1;
   game.kindIds.set(name, kind);
   game.entityTypes.set(kind, entityType(definition));

@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
+import { worldContent } from "../entities/index.js";
 import { createItems } from "../items/index.js";
 import {
   applyRemoteState,
@@ -12,7 +13,12 @@ import {
 } from "../sim/index.js";
 import { createSession } from "../sim/index.js";
 import type { Controls, Point, Session } from "../sim/index.js";
-import { testSfx, testShovelConfig, testSimConfig } from "./sim-config.js";
+import {
+  testEntitiesConfig,
+  testSfx,
+  testShovelConfig,
+  testSimConfig,
+} from "./sim-config.js";
 
 const DT = 1 / 60;
 const idle: Controls = {
@@ -204,6 +210,19 @@ test("a wall in the way stops the knockback but not the damage", () => {
     x: 575,
     y: 500,
   });
+});
+
+test("a swing at the cruiser leaves it whole", () => {
+  const game = session();
+  for (const content of worldContent(testEntitiesConfig))
+    content.register(game);
+  standAt(game, { x: 450, y: 300 });
+  const cruiser = spawnEntity(game, "cruiser", 500, 300, {});
+  swingRight(game);
+  expect(game.local.use?.hit).toBe(true);
+  expect(cruiser.health).toBe(Infinity);
+  updateSession(game, idle, DT);
+  expect(game.entities.has(cruiser.id)).toBe(true);
 });
 
 test("a swing that kills removes its target", () => {

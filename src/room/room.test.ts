@@ -42,7 +42,14 @@ const heartbeat = roomMessages(testSimConfig.player.nameMax)[
 /** Lets pending promise callbacks run, so a held join is waiting on its gate. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** Transports that deliver to every other member of the same room, synchronously. */
+/** A payload as it arrives after travelling as JSON, as over the real transport. */
+const overJson = (payload: unknown): unknown =>
+  payload === undefined ? undefined : JSON.parse(JSON.stringify(payload));
+
+/**
+ * Transports that deliver to every other member of the same room, synchronously, each payload
+ * through JSON.
+ */
 function createHub() {
   const members = new Map<string, { room: string; handlers: Handlers }>();
   /** While set, members hear only those in their own group; members in no group hear everyone. */
@@ -81,7 +88,7 @@ function createHub() {
         if (self === undefined) return Promise.resolve();
         for (const [other, member] of members) {
           if (other !== name && member.room === self.room && hears(name, other))
-            member.handlers[event]?.(payload);
+            member.handlers[event]?.(overJson(payload));
         }
         return Promise.resolve();
       },
@@ -1059,6 +1066,36 @@ describe("host", () => {
       expect(kinds(reversed.get("c"))).toEqual([
         ["biter", 1],
         ["blob", 2],
+      ]);
+    });
+
+    test("an unbreakable entity reaches the other players whole", async () => {
+      const rocks: WorldContent = {
+        register(session) {
+          registerEntityType(session, "rock", {
+            radius: 10,
+            maxHealth: Infinity,
+            data: z.object({}),
+            draw: () => undefined,
+          });
+        },
+        populate(session) {
+          spawnEntity(session, "rock", 450, 300, {});
+        },
+      };
+      const { clock, get } = await gather(["a", "b"], [], [blobs, rocks]);
+      clock.advance(1000);
+      play(get("a"), 0);
+      expect(
+        [...sessionOf(get("b")).entities.values()].map(({ id, health }) => ({
+          id,
+          health,
+        })),
+      ).toEqual([
+        { id: "a:1", health: 10 },
+        { id: "a:2", health: 10 },
+        { id: "a:3", health: 10 },
+        { id: "a:4", health: Infinity },
       ]);
     });
 

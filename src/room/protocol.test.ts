@@ -1,8 +1,8 @@
 import { omit } from "lodash-es";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { NetEvent } from "../net/index.js";
-import { roomMessages } from "./protocol.js";
-import type { Message, MessageInput, RoomMessages } from "./protocol.js";
+import { Health, roomMessages } from "./protocol.js";
+import type { Message, RoomMessages, WireMessage } from "./protocol.js";
 
 const messages = roomMessages(3);
 
@@ -17,6 +17,45 @@ const state = {
   held: null,
 };
 
+describe("health", () => {
+  test.each([0, 12.5, Infinity])(
+    "%d survives encoding and decoding",
+    (health) => {
+      expect(Health.decode(Health.encode(health))).toBe(health);
+    },
+  );
+
+  test("Infinity travels as a string, and other health as itself", () => {
+    expect(Health.encode(Infinity)).toBe("Infinity");
+    expect(Health.encode(40)).toBe(40);
+    expect(Health.parse("Infinity")).toBe(Infinity);
+  });
+
+  test.each([Number.NaN, -1, -Infinity, Infinity, "infinity", "40", null])(
+    "%s is rejected on the wire",
+    (wire) => {
+      expect(Health.safeParse(wire).success).toBe(false);
+    },
+  );
+
+  test.each([Number.NaN, -1, -Infinity])("%d cannot be sent", (health) => {
+    expect(() => Health.encode(health)).toThrow();
+  });
+
+  test("an encoded snapshot with unbreakable health survives JSON", () => {
+    const snapshot: Message<"entities"> = {
+      host: "h",
+      entities: [
+        { id: "h:1", kind: 1, x: 10, y: 20, health: 40, data: {} },
+        { id: "h:2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
+      ],
+    };
+    const schema = messages[NetEvent.ENTITIES];
+    const wire: unknown = JSON.parse(JSON.stringify(schema.encode(snapshot)));
+    expect(schema.parse(wire)).toEqual(snapshot);
+  });
+});
+
 describe("the message table", () => {
   test("covers every event", () => {
     expectTypeOf<keyof RoomMessages>().toEqualTypeOf<NetEvent>();
@@ -28,15 +67,16 @@ describe("the message table", () => {
   test("types each payload by its event", () => {
     expectTypeOf<Message<"bye">>().toEqualTypeOf<{ id: string }>();
     expectTypeOf<Message<"hello">>().toEqualTypeOf<{ id: string }>();
-    expectTypeOf<MessageInput<"state">>().toEqualTypeOf<{
+    expectTypeOf<WireMessage<"state">>().toEqualTypeOf<{
       id: string;
       name: string;
       x: number;
       y: number;
       aim: number;
-      health: number;
+      health: number | "Infinity";
       held: string | null;
     }>();
+    expectTypeOf<Message<"state">["health"]>().toEqualTypeOf<number>();
     expectTypeOf<Message<"beat">>().toEqualTypeOf<{
       id: string;
       hidden: boolean;

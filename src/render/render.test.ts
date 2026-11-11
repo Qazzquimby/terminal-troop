@@ -11,7 +11,7 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import { drawLitWalls, interpolatedView } from "./render.js";
+import { drawHealthBar, drawLitWalls, interpolatedView } from "./render.js";
 
 test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
   const ctx = {
@@ -77,6 +77,17 @@ function session(): Session {
     testSimConfig,
   );
 }
+
+test.each([
+  ["a hurt body", 30, 40, true],
+  ["an unhurt body", 40, 40, false],
+  ["an unbreakable body, however hit", Infinity, Infinity, false],
+])("%s shows a health bar: %s", (_label, health, maxHealth, shown) => {
+  const ctx = { fillStyle: "", fillRect: vi.fn() };
+  const body = { x: 100, y: 100, vx: 0, vy: 0, radius: 10, health, maxHealth };
+  drawHealthBar(ctx, body, 80);
+  expect(ctx.fillRect.mock.calls.length > 0).toBe(shown);
+});
 
 const degrees = (value: number): number => (value * Math.PI) / 180;
 

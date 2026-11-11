@@ -15,13 +15,10 @@ const BODY_RADIUS = 10;
 
 const CRUISER_GLYPH = "🚗";
 
-/** More health than any fight takes, and still a number snapshots can carry. */
-const UNBREAKABLE = Number.MAX_SAFE_INTEGER;
-
 /** A car that starts beside the first host's player, lighting a wide circle round it. */
 export const cruiser = defineEntity("cruiser", (config: CruiserConfig) => ({
   radius: BODY_RADIUS,
-  maxHealth: UNBREAKABLE,
+  maxHealth: Infinity,
   collides: false,
   data: z.object({}),
   light: () => ({ range: config.lightRadius }),
