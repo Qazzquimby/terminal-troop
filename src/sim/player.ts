@@ -37,6 +37,15 @@ export interface Controls {
   readonly sprint: boolean;
 }
 
+/** A swing of the held tool: shown by the renderer, never sent over the network. */
+export interface Swing {
+  readonly startedAt: number;
+  readonly endsAt: number;
+  readonly hit: boolean;
+  readonly center: Point;
+  readonly radius: number;
+}
+
 export interface Player extends Body, Interpolated, Facing, Tracked {
   readonly id: string;
   readonly kind: typeof EntityKind.PLAYER;
@@ -49,6 +58,8 @@ export interface Player extends Body, Interpolated, Facing, Tracked {
   held: HeldSlot;
   /** Only meaningful for the local player; never sent over the network. */
   stamina: Stamina;
+  /** Only meaningful for the local player; never sent over the network. */
+  swing: Swing | null;
 }
 
 export interface PlayerState {
@@ -84,6 +95,7 @@ export function createPlayer(
     inventory: startingInventory(),
     held: 0,
     stamina: createStamina(rules.stamina),
+    swing: null,
   };
 }
 

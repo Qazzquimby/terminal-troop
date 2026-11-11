@@ -168,6 +168,36 @@ function drawHeldItem(
   ctx.restore();
 }
 
+/** The swing's hitbox, fading out over its duration; green when it connected. */
+function drawSwing(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  now: number,
+): void {
+  const { swing } = player;
+  if (swing === null) return;
+  const progress = (now - swing.startedAt) / (swing.endsAt - swing.startedAt);
+  if (progress < 0 || progress > 1) return;
+
+  const color = swing.hit ? "#8fd694" : "#e1bd83";
+  const fade = 1 - progress;
+
+  ctx.save();
+  ctx.globalAlpha = fade * 0.4;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(swing.center.x, swing.center.y, swing.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = fade;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(swing.center.x, swing.center.y, swing.radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /**
  * Lit wall faces, drawn outside the darkness clip: rays stop at wall faces, so walls are never
  * inside a visibility polygon. Shallow bands distinguish walls from both floor and darkness.
@@ -349,6 +379,7 @@ export function draw(
   // Above the darkness: lit wall faces, then the local player and its HUD.
   drawLitWalls(ctx, litWalls(seen, lit));
   drawPlayer(ctx, viewer, true);
+  drawSwing(ctx, viewer, now);
   if (held !== null) drawHeldItem(ctx, viewer, held);
   drawStamina(ctx, viewer, game.config.stamina.max);
   ctx.restore();
