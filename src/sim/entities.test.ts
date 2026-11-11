@@ -26,6 +26,7 @@ function session(localId = "me"): Session {
   );
   registerEntityType(game, KIND, {
     radius: 10,
+    maxHealth: 10,
     data: z.object({ steps: z.number().int() }),
     update(entity, data) {
       entity.vx = 60;

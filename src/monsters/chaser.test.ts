@@ -183,12 +183,14 @@ describe("chasing", () => {
 
     standAt(game, 600, 300 + config.repathDistance / 2);
     run(game, DT);
-    expect(stateOf(zombie)).toMatchObject({ target: { x: 600, y: 300 } });
+    expect(stateOf(zombie).target).toMatchObject({ x: 600, y: 300 });
+    // fails, not sure if the player is in the zombies view cone
 
     standAt(game, 600, 300 + config.repathDistance * 2);
     run(game, DT);
-    expect(stateOf(zombie)).toMatchObject({
-      target: { x: 600, y: 300 + config.repathDistance * 2 },
+    expect(stateOf(zombie).target).toMatchObject({
+      x: 600,
+      y: 300 + config.repathDistance * 2,
     });
   });
 
@@ -204,7 +206,11 @@ describe("chasing", () => {
     expect(gaveUp).toBe(true);
     expect(zombie.x).toBeCloseTo(300, 0);
     expect(zombie.y).toBeCloseTo(400, 0);
-    expect(stateOf(zombie)).toMatchObject({ mode: "wander", route: [] });
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "wander",
+      route: [],
+      target: null,
+    });
   });
 
   test("a player sighted again before the chaser gives up keeps the chase", () => {

@@ -49,12 +49,17 @@ const Seed = z
   .min(-(2 ** 31))
   .max(2 ** 31 - 1);
 
-/** The sound timers a chaser keeps whichever mode it is in. */
-const SoundTimers = {
+/** What a chaser keeps whichever mode it is in. */
+const Shared = {
   /** Seconds until the next bark. */
   nextBark: z.number().min(0),
   /** Seconds until the chaser may attack again. */
   attackCooldown: z.number().min(0),
+  seed: Seed,
+  route: Route,
+  /** Where a chase is headed, or null while wandering. */
+  target: Waypoint.nullable(),
+  facing: z.number(),
 };
 
 /**
@@ -62,22 +67,8 @@ const SoundTimers = {
  * - chase: heads along `route` for `target`, where a player was last seen
  */
 export const ChaserState = z.discriminatedUnion("mode", [
-  z.object({
-    ...SoundTimers,
-    mode: z.literal("wander"),
-    seed: Seed,
-    route: Route,
-    pause: z.number().min(0),
-    facing: z.number(),
-  }),
-  z.object({
-    ...SoundTimers,
-    mode: z.literal("chase"),
-    seed: Seed,
-    route: Route,
-    target: Waypoint,
-    facing: z.number(),
-  }),
+  z.object({ ...Shared, mode: z.literal("wander"), pause: z.number().min(0) }),
+  z.object({ ...Shared, mode: z.literal("chase") }),
 ]);
 
 export type ChaserState = z.output<typeof ChaserState>;
@@ -107,6 +98,7 @@ export function freshChaser(seed: number): ChaserState {
     mode: "wander",
     seed: next,
     route: [],
+    target: null,
     pause: 0,
     nextBark: result,
     attackCooldown: 0,
@@ -206,11 +198,11 @@ function pursue(
   map: TileMap,
   config: ChaserConfig,
 ): ChaserState {
+  const { target } = state;
   if (
-    state.mode === "chase" &&
+    target !== null &&
     state.route.length > 0 &&
-    Math.hypot(state.target.x - seen.x, state.target.y - seen.y) <=
-      config.repathDistance
+    Math.hypot(target.x - seen.x, target.y - seen.y) <= config.repathDistance
   )
     return state;
   return {
@@ -233,6 +225,7 @@ function giveUp(state: ChaserState, config: ChaserConfig): Wander {
     mode: "wander",
     seed,
     route: [],
+    target: null,
     pause: result,
     nextBark: state.nextBark,
     attackCooldown: state.attackCooldown,
@@ -282,10 +275,11 @@ function voice(
     at.radius + game.config.player.radius + 1,
   );
   let attackCooldown = Math.max(0, next.attackCooldown - dt);
+  const { target } = next;
   if (
     attackCooldown === 0 &&
-    next.mode === "chase" &&
-    Math.hypot(next.target.x - at.x, next.target.y - at.y) <= attackRange
+    target !== null &&
+    Math.hypot(target.x - at.x, target.y - at.y) <= attackRange
   ) {
     play(SOUNDS.attack);
     for (const player of game.players.values()) {

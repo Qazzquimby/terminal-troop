@@ -119,6 +119,7 @@ function collisionSession() {
   Object.assign(game.local, { x: 400, y: 300 });
   const definition = {
     radius: 14,
+    maxHealth: 10,
     data: z.null(),
     draw: () => undefined,
   };

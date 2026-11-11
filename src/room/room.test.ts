@@ -133,6 +133,7 @@ const blobs: Monsters = {
   register(session) {
     registerEntityType(session, 1, {
       radius: 10,
+      maxHealth: 10,
       data: z.object({ steps: z.number().int() }),
       update(entity, data) {
         entity.vx = 20;

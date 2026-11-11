@@ -78,6 +78,7 @@ test("entities record their pre-step position", () => {
   const game = session();
   registerEntityType(game, 1, {
     radius: 5,
+    maxHealth: 10,
     collides: false,
     data: z.object({}),
     draw: () => undefined,
