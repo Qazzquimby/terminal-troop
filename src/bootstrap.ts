@@ -38,7 +38,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { createMonsters } from "./monsters/index.js";
-import { createItems, useHeldItem } from "./items/index.js";
+import { createItems } from "./items/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -146,6 +146,7 @@ app.defer(settings.subscribe(applySettings));
 const updateInventory = createInventoryHud(inventoryEl, inventoryList);
 
 let inventoryOpen = false;
+const items = createItems(config);
 
 const room = createRoom({
   localId: playerId,
@@ -166,6 +167,7 @@ const room = createRoom({
   config: config.room,
   sim: config,
   monsters: createMonsters(config.monsters),
+  items,
   falloff: config.voice,
   onChange() {
     refreshPeers(room.state());
@@ -335,15 +337,14 @@ on(settingsBtn, "click", (event) => {
   settingsMenu.open(event.timeStamp);
 });
 
-const items = createItems(config);
-
 canvas.addEventListener(
   "pointerdown",
   (event) => {
     if (event.button !== 0) return;
     const session = joinedSession(room.state());
     if (session === null) return;
-    useHeldItem(session, performance.now(), items);
+    const request = items.use(session, performance.now());
+    if (request !== null) room.use(request);
   },
   { signal: app.signal },
 );

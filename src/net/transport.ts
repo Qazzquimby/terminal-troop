@@ -6,6 +6,11 @@ export const NetEvent = {
   HEARTBEAT: "beat",
   /** The host's full set of entities. */
   ENTITIES: "entities",
+  /** A player's item use, for the host to apply. */
+  USE: "use",
+  /** Damage the host deals to one player, for that player to apply. */
+  DAMAGE: "damage",
+
   /** Voice connection setup: addressed to one player, but broadcast to the room. */
   SIGNAL: "signal",
 } as const;

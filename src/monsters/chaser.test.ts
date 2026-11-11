@@ -8,6 +8,7 @@ import {
   testSimConfig,
 } from "../integration/sim-config.js";
 import {
+  applyRemoteState,
   createSession,
   isAreaFree,
   spawnEntity,
@@ -308,5 +309,34 @@ describe("sounds", () => {
     expect(attacks()).toBe(1);
     run(game, 0.2);
     expect(attacks()).toBe(2);
+  });
+
+  test("each attack strikes the local player in range for its damage", () => {
+    const game = world();
+    standAt(game, 300, 400);
+    chaserAt(game, 100, 400);
+    const full = game.local.health;
+    expect(runUntil(game, 3, () => game.local.health < full)).toBe(true);
+    expect(game.local.health).toBe(full - config.attackDamage);
+    expect(played(game)).toContain(attackUrl);
+  });
+
+  test("an attack on a remote player waits to be sent to it", () => {
+    const game = world();
+    standAt(game, 100, 100);
+    applyRemoteState(game, {
+      id: "them",
+      name: "THEM",
+      x: 300,
+      y: 400,
+      aim: 0,
+      health: 100,
+    });
+    chaserAt(game, 100, 400);
+    expect(runUntil(game, 3, () => game.strikes.length > 0)).toBe(true);
+    expect(game.strikes).toEqual([
+      { target: "them", amount: config.attackDamage },
+    ]);
+    expect(game.players.get("them")?.health).toBe(100);
   });
 });

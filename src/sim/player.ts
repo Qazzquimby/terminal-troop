@@ -61,6 +61,7 @@ export interface PlayerState {
   readonly x: number;
   readonly y: number;
   readonly aim: number;
+  readonly health: number;
 }
 
 export function createPlayer(
@@ -144,5 +145,6 @@ export function playerState(player: Player): PlayerState {
     x: player.x,
     y: player.y,
     aim: player.aim,
+    health: player.health,
   };
 }
