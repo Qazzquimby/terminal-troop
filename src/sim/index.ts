@@ -9,9 +9,8 @@ export {
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export { heldEmoji } from "./inventory.js";
-export type { HeldSlot, Inventory } from "./inventory.js";
-export { SHOVEL } from "./items.js";
+export { addItem, createInventory, heldEmoji } from "./inventory.js";
+export type { HeldSlot, Inventory, ItemDefinition } from "./inventory.js";
 export {
   isAreaFree,
   mulberry32,
