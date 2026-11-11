@@ -7,17 +7,11 @@ import {
   entitiesIn,
   hostAccepts,
   knockBack,
-  showEffect,
+  showFlash,
   spendStamina,
   startDash,
 } from "../../sim/index.js";
-import type {
-  Circle,
-  Content,
-  Effect,
-  Point,
-  Session,
-} from "../../sim/index.js";
+import type { Circle, Content, Point, Session } from "../../sim/index.js";
 
 /** How a kick works. Distances in pixels unless said otherwise, times in sim seconds. */
 export interface KickConfig {
@@ -39,8 +33,6 @@ export interface KickConfig {
     readonly lengths: number;
     readonly seconds: number;
   };
-  /** How long a kick is shown. */
-  readonly duration: number;
   /** How loud a kick is, as a multiple of a listener's hearing range. */
   readonly loudness: number;
 }
@@ -63,41 +55,8 @@ const Shown = z.object({
   hit: z.boolean(),
 });
 
-/** A flash over the hitbox that swells and fades; orange when it connected. */
-function kickEffect(
-  area: Circle,
-  hit: boolean,
-  startedAt: number,
-  duration: number,
-): Effect {
-  const { center, radius } = area;
-  const color = hit ? "#f0a35e" : "#cfd6dd";
-  return {
-    startedAt,
-    duration,
-    draw(ctx, progress) {
-      const fade = 1 - progress;
-      ctx.globalAlpha = fade * 0.35;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(
-        center.x,
-        center.y,
-        radius * (0.6 + 0.4 * progress),
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-      ctx.globalAlpha = fade;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    },
-  };
-}
-
 /**
- * The kick: what every player can do empty-handed, whatever it holds. The kicker lunges a little
+ * The kick: what every player can do empty-handed, whatever it holds, on the secondary action. The kicker lunges a little
  * and spends stamina on its own client; the host checks the kick, then hurts and knocks back
  * every world entity in front of the kicker, never a player, and makes a noise.
  */
@@ -108,7 +67,7 @@ export const kick: Content<"kick", KickConfig> = {
     const hitbox = (at: Point, aim: number): Circle =>
       circleAhead(at, aim, config.reach, config.radius);
     const show = (game: Session, area: Circle, hit: boolean): void => {
-      showEffect(game, kickEffect(area, hit, game.time, config.duration));
+      showFlash(game, { at: area.center, radius: area.radius, hit });
     };
 
     const shown = contentEvent({
@@ -148,7 +107,7 @@ export const kick: Content<"kick", KickConfig> = {
       register: () => undefined,
       populate: () => undefined,
       act(game, controls) {
-        if (!controls.kick) return;
+        if (!controls.secondary) return;
         const { local } = game;
         if (game.time < (game.localReadyAt.get(NAME) ?? -Infinity)) return;
         const stamina = spendStamina(local.stamina, config.stamina);

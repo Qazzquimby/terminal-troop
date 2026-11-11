@@ -43,8 +43,7 @@ export type {
   WorldKind,
 } from "./map.js";
 export { applyDamage } from "./entity.js";
-export { drawEffects, showEffect } from "./effects.js";
-export type { Effect } from "./effects.js";
+export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
 export { circleAhead, entitiesIn } from "./reach.js";
 export type { Circle } from "./reach.js";

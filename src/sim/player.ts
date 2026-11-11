@@ -50,8 +50,8 @@ export interface Controls {
   readonly select: number | null;
   /** Whether to use the held item this step. */
   readonly use: boolean;
-  /** Whether to kick this step. */
-  readonly kick: boolean;
+  /** Whether the secondary action was pressed this step. */
+  readonly secondary: boolean;
 }
 
 /** A quick move a player makes on top of walking: a fixed velocity, for a while. */

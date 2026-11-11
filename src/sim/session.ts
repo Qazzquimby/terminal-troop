@@ -10,8 +10,7 @@ import type {
 } from "./content-event.js";
 import { applyEvents } from "./content-event.js";
 import type { WorldContent } from "./content.js";
-import type { Effect } from "./effects.js";
-import { pruneEffects } from "./effects.js";
+import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
@@ -91,8 +90,8 @@ export interface Session {
   readonly localReadyAt: Map<string, number>;
   /** The content registered with it, in order. */
   readonly contents: WorldContent[];
-  /** What this client is showing over the world for now. */
-  readonly effects: Effect[];
+  /** The flashes shown in the latest step; each step starts by clearing them. */
+  readonly flashes: Flash[];
   /**
    * The local player's state changed in a way the others should hear at once; the room sends
    * it in its next frame, and clears this.
@@ -155,7 +154,7 @@ export function createSession(
     readyAt: new Map(),
     localReadyAt: new Map(),
     contents: [],
-    effects: [],
+    flashes: [],
     reportNow: false,
   };
   registerBuiltIns(game);
@@ -199,12 +198,12 @@ export function updateSession(
 ): void {
   game.time += dt;
   game.noises.length = 0;
+  game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
   for (const content of game.contents) content.act?.(game, controls);
-  pruneEffects(game);
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);

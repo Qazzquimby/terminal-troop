@@ -24,6 +24,7 @@ import {
   draw,
   createCamera,
   createMapMemory,
+  createFlashes,
   createRipples,
   screenToWorld,
   updateCamera,
@@ -118,6 +119,7 @@ const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
+const flashes = createFlashes(config.flashes);
 const mapMemory = createMapMemory(config.mapMemory, {
   get: (key) => localStorage.getItem(key),
   set: (key, value) => {
@@ -195,8 +197,8 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence, ripples and map memory from the console or a test browser.
-if (debug) Object.assign(window, { voice, room, ripples, mapMemory });
+// Debug hook for driving voice and reading presence, ripples, flashes and map memory from the console or a test browser.
+if (debug) Object.assign(window, { voice, room, ripples, flashes, mapMemory });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -285,6 +287,7 @@ async function enterRoom(rawCode: string): Promise<void> {
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
   clock.reset(performance.now());
   ripples.clear();
+  flashes.clear();
   mapMemory.enter(
     { room: state.code, world: env.world, seed: state.session.seed },
     state.session.world.map,
@@ -323,6 +326,7 @@ function frame(): void {
     const { steps, alpha } = clock.advance(now, (until) => {
       updateSession(session, input.getControls(until), clock.dt);
       ripples.hear(session, until);
+      flashes.see(session, until);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
@@ -337,6 +341,7 @@ function frame(): void {
       alpha,
       input.mouseWorld(),
       isAway,
+      flashes,
       ripples,
       mapMemory,
     );

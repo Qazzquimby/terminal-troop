@@ -101,7 +101,7 @@ const idle = {
   crouch: false,
   select: null,
   use: false,
-  kick: false,
+  secondary: false,
 };
 
 function collisionSession() {

@@ -2,6 +2,7 @@ import type { SpatialFalloff } from "./audio/index.js";
 import type { EntitiesConfig } from "./entities/index.js";
 import type {
   CameraConfig,
+  FlashConfig,
   MapMemoryConfig,
   RippleConfig,
 } from "./render/index.js";
@@ -18,6 +19,7 @@ interface AppConfig extends SimConfig {
   readonly room: RoomConfig;
   readonly camera: CameraConfig;
   readonly ripples: RippleConfig;
+  readonly flashes: FlashConfig;
   readonly mapMemory: MapMemoryConfig;
   readonly entities: EntitiesConfig;
   readonly items: ItemsConfig;
@@ -52,6 +54,14 @@ export const config = {
     maxRooms: 50,
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
+  },
+  // A kick's flash: 60% of its size at first, swelling to full as it fades over 0.15s.
+  flashes: {
+    duration: 0.15,
+    start: 0.6,
+    fill: 0.35,
+    width: 3,
+    colour: { hit: "#f0a35e", miss: "#cfd6dd" },
   },
   player: {
     radius: 14,
@@ -142,7 +152,6 @@ export const config = {
       cooldown: 0.8,
       stamina: STAMINA_MAX * 0.15,
       lunge: { lengths: 1, seconds: 0.08 },
-      duration: 0.15,
       loudness: 1,
     },
   },

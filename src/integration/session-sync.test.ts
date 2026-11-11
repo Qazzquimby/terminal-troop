@@ -78,7 +78,7 @@ const idle = {
   crouch: false,
   select: null,
   use: false,
-  kick: false,
+  secondary: false,
 };
 
 test("clients in the same room build the same world", async () => {

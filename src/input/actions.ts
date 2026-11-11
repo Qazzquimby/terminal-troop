@@ -13,7 +13,7 @@ export const ACTIONS = {
   sprint: { keys: ["ShiftLeft", "ShiftRight"], contexts: ["play"] },
   crouch: { keys: ["KeyC"], contexts: ["play"] },
   useItem: { keys: ["MouseLeft"], contexts: ["play"] },
-  kick: { keys: ["MouseRight"], contexts: ["play"] },
+  secondary: { keys: ["MouseRight"], contexts: ["play"] },
   toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
@@ -258,6 +258,6 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     crouch: frame.pressed.has("crouch"),
     select: pressedSlot(frame),
     use: frame.pressed.has("useItem"),
-    kick: frame.pressed.has("kick"),
+    secondary: frame.pressed.has("secondary"),
   };
 }

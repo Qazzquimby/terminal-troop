@@ -3,7 +3,11 @@ import type { Sfx } from "../audio/index.js";
 import type { EntitiesConfig } from "../entities/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import type { MovesConfig } from "../moves/index.js";
-import type { MapMemoryConfig, RippleConfig } from "../render/index.js";
+import type {
+  FlashConfig,
+  MapMemoryConfig,
+  RippleConfig,
+} from "../render/index.js";
 import type { SimConfig } from "../sim/index.js";
 
 /**
@@ -108,9 +112,17 @@ export const testMovesConfig: MovesConfig = {
     cooldown: 0.5,
     stamina: 30,
     lunge: { lengths: 1, seconds: 0.1 },
-    duration: 0.1,
     loudness: 1,
   },
+};
+
+/** A flash lasts 0.5s, swelling from half its size. */
+export const testFlashConfig: FlashConfig = {
+  duration: 0.5,
+  start: 0.5,
+  fill: 0.3,
+  width: 2,
+  colour: { hit: "#f00", miss: "#888" },
 };
 
 /** Sound effects for sessions under test; nothing plays. */

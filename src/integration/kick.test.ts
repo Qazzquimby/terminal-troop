@@ -3,6 +3,7 @@ import { z } from "zod";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { moveContent } from "../moves/index.js";
+import { createFlashes } from "../render/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "./room-helpers.js";
 import {
   testEntitiesConfig,
+  testFlashConfig,
   testMovesConfig,
   testSfx,
   testSimConfig,
@@ -38,7 +40,7 @@ const idle: Controls = {
   crouch: false,
   select: null,
   use: false,
-  kick: false,
+  secondary: false,
 };
 
 /** A kind that stands still with 40 health and a radius of 15. */
@@ -59,7 +61,7 @@ const entities = {
 /** Kicks facing right of where `game`'s local player stands. */
 const kickRight = (game: Session): Controls => ({
   ...idle,
-  kick: true,
+  secondary: true,
   aim: { x: game.local.x + 1000, y: game.local.y },
 });
 
@@ -158,7 +160,7 @@ test("without the stamina for it, there is no kick: no lunge, nothing sent", () 
   game.local.stamina = { value: kick.stamina - 1, exhausted: false, rested: 0 };
   updateSession(game, kickRight(game), DT);
   expect(game.outbox).toEqual([]);
-  expect(game.effects).toEqual([]);
+  expect(game.flashes).toEqual([]);
   expect(game.local.dash).toBeNull();
   expect(game.local.stamina.value).toBe(kick.stamina - 1);
 });
@@ -261,16 +263,25 @@ async function pair() {
   await b.join("KICK", "B");
   clock.advance(1000);
   expect(a.hostId()).toBe("a");
-  /** Runs one step on each client and lets every message through, `ms` later. */
+  /** What each client draws of the blows it sees land, as its frames would. */
+  const seen = {
+    a: createFlashes(testFlashConfig),
+    b: createFlashes(testFlashConfig),
+  };
+  const step = (room: Room, controls: Controls): void => {
+    updateSession(sessionOf(room), controls, DT);
+    seen[room === a ? "a" : "b"].see(sessionOf(room), clock.now());
+  };
+  /** Runs one step on each client and lets every message through, 200ms later. */
   const exchange = (controls: { a?: Controls; b?: Controls } = {}): void => {
-    updateSession(sessionOf(b), controls.b ?? idle, DT);
+    step(b, controls.b ?? idle);
     b.frame(clock.now());
-    updateSession(sessionOf(a), controls.a ?? idle, DT);
+    step(a, controls.a ?? idle);
     clock.advance(clock.now() + 200);
     a.frame(clock.now());
-    updateSession(sessionOf(b), idle, DT);
+    step(b, idle);
   };
-  return { a, b, exchange };
+  return { a, b, exchange, seen, step };
 }
 
 /** Puts `room`'s local player at `at`, still. */
@@ -296,7 +307,7 @@ async function lineUp() {
 }
 
 test("a guest's kick hurts and knocks back on the host, and both clients see it", async () => {
-  const { a, b, exchange } = await lineUp();
+  const { a, b, exchange, seen, step } = await lineUp();
   const guest = sessionOf(b);
   exchange({ b: kickRight(guest) });
 
@@ -306,9 +317,10 @@ test("a guest's kick hurts and knocks back on the host, and both clients see it"
     DUMMY_LENGTH * kick.knockback - 5,
   );
   expect(chaserOf(b)).toMatchObject({ health: onHost.health, tx: onHost.x });
-  updateSession(sessionOf(a), idle, DT);
-  expect(sessionOf(a).effects).toHaveLength(1);
-  expect(guest.effects).toHaveLength(1);
+  step(a, idle);
+  const flash = { at: TARGET, radius: kick.radius, hit: true };
+  expect(seen.a.list).toEqual([expect.objectContaining(flash)]);
+  expect(seen.b.list).toEqual([expect.objectContaining(flash)]);
 });
 
 test("the host turns down a kick still on cooldown, however the guest's client counts", async () => {

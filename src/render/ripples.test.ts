@@ -25,7 +25,7 @@ const idle: Controls = {
   crouch: false,
   select: null,
   use: false,
-  kick: false,
+  secondary: false,
 };
 const walking: Controls = { ...idle, move: { x: 1, y: 0 } };
 

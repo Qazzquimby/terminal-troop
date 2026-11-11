@@ -50,7 +50,7 @@ function hold(
     crouch: false,
     select: null,
     use: false,
-    kick: false,
+    secondary: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {
