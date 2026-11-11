@@ -9,8 +9,8 @@ import type { ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
-import type { ItemEffect, UseRequest, UseSlack } from "./use.js";
-import { applyUses } from "./use.js";
+import type { ItemBehaviour, UseRequest, UseSlack } from "./use.js";
+import { applyUses, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 
 /** How remote players follow the state they report. */
@@ -46,9 +46,11 @@ export interface Session {
   /** Sim seconds stepped since the session began. */
   time: number;
   /** What each usable item does, by item id. */
-  readonly items: Map<string, ItemEffect>;
+  readonly items: Map<string, ItemBehaviour>;
   /** Uses waiting for the host's next step. */
   readonly uses: UseRequest[];
+  /** The local player's uses, waiting for the room to hand them to the host. */
+  readonly localUses: UseRequest[];
   /** When, in sim seconds, the host lets each player use an item again. */
   readonly readyAt: Map<string, number>;
   /** Damage the host has dealt to remote players, waiting to be sent to them. */
@@ -99,6 +101,7 @@ export function createSession(
     time: 0,
     items: new Map(),
     uses: [],
+    localUses: [],
     readyAt: new Map(),
     strikes: [],
   };
@@ -142,6 +145,7 @@ export function updateSession(
   game.time += dt;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
+  if (controls.use) useHeldItem(game);
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);

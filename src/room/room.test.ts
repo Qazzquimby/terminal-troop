@@ -16,7 +16,7 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import type { Point } from "../sim/index.js";
+import type { Point, UseRequest } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
@@ -27,7 +27,13 @@ import type { Items, Monsters, Room, RoomState } from "./room.js";
 type Handlers = Parameters<Transport["join"]>[1];
 
 const SEND_GAP = 1000 / 15;
-const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const idle = {
+  move: { x: 0, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT
 ];
@@ -171,11 +177,13 @@ const blobs: Monsters = {
   },
 };
 
+const POKE = { id: "poke", name: "Poke", maxStack: 1, emoji: "👉" };
+
 /** A poke: 4 damage to every entity within 30px of a point 20px ahead, at most twice a second. */
 const poke: Items = {
   register(session) {
     registerItem(session, "poke", {
-      cooldownMs: 500,
+      cooldown: 0.5,
       apply(game, at, aim) {
         const x = at.x + Math.cos(aim) * 20;
         const y = at.y + Math.sin(aim) * 20;
@@ -184,6 +192,8 @@ const poke: Items = {
             applyDamage(entity, 4);
         }
       },
+      show: ({ local }) => ({ center: { x: local.x, y: local.y }, hit: false }),
+      draw: () => undefined,
     });
   },
 };
@@ -1080,11 +1090,17 @@ describe("host", () => {
         player.room.frame(player.clock.now());
       };
 
+      /** Hands `request` to the room as the local player's use, skipping its own cooldown. */
+      const sendUse = (player: Player, request: UseRequest) => {
+        sessionOf(player).localUses.push(request);
+        player.room.frame(player.clock.now());
+      };
+
       /** `player` pokes from 20px left of `target`, after standing there. */
       const pokeAt = (player: Player, target: Point) => {
         const at = { x: target.x - 20, y: target.y };
         standAt(player, at);
-        player.room.use({
+        sendUse(player, {
           by: sessionOf(player).localId,
           item: "poke",
           ...at,
@@ -1121,6 +1137,22 @@ describe("host", () => {
         expect(ids(b)).toEqual(["a:1", "a:3"]);
       });
 
+      test("a player selects and uses its held item through its controls", async () => {
+        const { clock, a, b } = await hosted();
+        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        standAt(b, { x: blob.x - 20, y: blob.y });
+        const local = sessionOf(b).local;
+        local.inventory[1] = { item: POKE, quantity: 1 };
+        const use = { ...idle, aim: blob, select: 1, use: true };
+        updateSession(sessionOf(b), use, 1 / 60);
+        b.room.frame(b.clock.now());
+        expect(local.held).toBe(1);
+        expect(local.use?.item).toBe("poke");
+        clock.advance(clock.now() + 200);
+        play(a, 1 / 60);
+        expect(healthOf(a, "a:2")).toBe(6);
+      });
+
       test("the host applies its own use through the same checks", async () => {
         const { clock, a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
@@ -1135,7 +1167,7 @@ describe("host", () => {
         const { a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 200, y: blob.y });
-        b.room.use({
+        sendUse(b, {
           by: "b",
           item: "poke",
           x: blob.x - 20,

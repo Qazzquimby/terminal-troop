@@ -8,7 +8,7 @@ export {
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export { heldEmoji, heldItem, selectSlot } from "./inventory.js";
+export { heldEmoji } from "./inventory.js";
 export type { HeldSlot, Inventory } from "./inventory.js";
 export { SHOVEL } from "./items.js";
 export {
@@ -31,7 +31,7 @@ export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, playerState } from "./player.js";
 export type { Controls, Player } from "./player.js";
 export { registerItem, requestUse } from "./use.js";
-export type { ItemEffect, ItemUse, UseRequest } from "./use.js";
+export type { ItemBehaviour, ItemUse, UseRequest } from "./use.js";
 
 export {
   applyRemoteState,

@@ -10,7 +10,13 @@ import { createSession, applyRemoteState, updateSession } from "./session.js";
 const FIXED_DT = 1 / 60;
 const PLAYER_RADIUS = testSimConfig.player.radius;
 
-const walkRight = { move: { x: 1, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const walkRight = {
+  move: { x: 1, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 
 function session(): Session {
   return createSession(

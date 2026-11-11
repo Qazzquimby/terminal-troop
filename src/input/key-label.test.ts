@@ -8,6 +8,7 @@ test.each([
   ["ShiftLeft", "Shift"],
   ["ShiftRight", "Shift"],
   ["Escape", "Esc"],
+  ["MouseLeft", "Click"],
   ["F1", "F1"],
   ["F12", "F12"],
   ["ArrowUp", "↑"],

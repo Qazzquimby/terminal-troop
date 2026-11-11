@@ -34,7 +34,13 @@ function openWorld(): World {
 }
 
 function run(player: Player, world: World, sprint: boolean, steps: number) {
-  const controls = { move: { x: 1, y: 0 }, aim: { x: 0, y: 0 }, sprint };
+  const controls = {
+    move: { x: 1, y: 0 },
+    aim: { x: 0, y: 0 },
+    sprint,
+    select: null,
+    use: false,
+  };
   for (let i = 0; i < steps; i++) {
     updatePlayer(player, controls, STEP, world.map, rules);
   }
@@ -77,7 +83,13 @@ test("releasing sprint decelerates back to normal speed", () => {
 test("holding sprint while standing still does not drain stamina", () => {
   const world = openWorld();
   const player = startPlayer(world);
-  const controls = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: true };
+  const controls = {
+    move: { x: 0, y: 0 },
+    aim: { x: 0, y: 0 },
+    sprint: true,
+    select: null,
+    use: false,
+  };
   for (let i = 0; i < 300; i++) {
     updatePlayer(player, controls, STEP, world.map, rules);
   }

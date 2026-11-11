@@ -93,7 +93,13 @@ test("blur releases held actions and drops pending presses", () => {
   expect(frame.held.size).toBe(0);
   expect(frame.pressed.size).toBe(0);
   expect(frame.released).toEqual(actions("moveUp", "sprint"));
-  expect(controls).toEqual({ move: { x: 0, y: 0 }, aim: AIM, sprint: false });
+  expect(controls).toEqual({
+    move: { x: 0, y: 0 },
+    aim: AIM,
+    sprint: false,
+    select: null,
+    use: false,
+  });
 });
 
 test("an event after the step's end stays queued for a later step", () => {
@@ -167,6 +173,21 @@ test("sprint follows the held sprint action", () => {
   expect(step(holding("moveRight", "sprint")).controls.sprint).toBe(true);
 });
 
+test("a press of useItem uses the held item in that step only, even while held", () => {
+  const state = holding("useItem");
+  expect(step(state).controls.use).toBe(true);
+  expect(step(state).controls.use).toBe(false);
+});
+
+test("a number key selects its slot for one step, and the last one pressed wins", () => {
+  const state = createActionState();
+  expect(step(state).controls.select).toBeNull();
+  state.press("select3", 1);
+  state.press("select5", 2);
+  expect(step(state).controls.select).toBe(4);
+  expect(step(state).controls.select).toBeNull();
+});
+
 const CONTEXTS: InputContext[] = ["play", "menu", "text"];
 
 test.each<[Action, InputContext[]]>([
@@ -175,6 +196,8 @@ test.each<[Action, InputContext[]]>([
   ["moveDown", ["play"]],
   ["moveRight", ["play"]],
   ["sprint", ["play"]],
+  ["useItem", ["play"]],
+  ["select1", ["play"]],
   ["toggleInventory", ["play"]],
   ["toggleSettings", ["play", "menu"]],
   ["toggleDebug", ["play", "menu"]],

@@ -12,7 +12,13 @@ import { createSession, updateSession } from "./session.js";
 
 const DT = 1 / 60;
 const KIND = 1;
-const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const idle = {
+  move: { x: 0, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 
 /** A dev-square session whose one kind counts its updates and drifts right at 60px/s. */
 function session(localId = "me"): Session {

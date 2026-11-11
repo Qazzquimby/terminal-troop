@@ -69,7 +69,13 @@ async function pair(): Promise<{ a: Room; b: Room }> {
   return { a, b };
 }
 
-const idle = { move: { x: 0, y: 0 }, aim: { x: 0, y: 0 }, sprint: false };
+const idle = {
+  move: { x: 0, y: 0 },
+  aim: { x: 0, y: 0 },
+  sprint: false,
+  select: null,
+  use: false,
+};
 
 test("clients in the same room build the same world", async () => {
   const { a, b } = await pair();
