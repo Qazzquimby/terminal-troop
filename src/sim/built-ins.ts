@@ -2,6 +2,7 @@ import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
 import { damaged } from "./entities.js";
 import { movement } from "./movement.js";
+import { noiseMade } from "./noise.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { Session } from "./session.js";
@@ -22,6 +23,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/items": { player: heldItemId, events: { use: itemUsed } },
   /** How each player moves, which its footsteps follow. */
   "core/movement": { player: movement },
+  /** Each noise the host makes, made again on every client. */
+  "core/noise": { events: { made: noiseMade } },
   /** The damage the host deals each player, sent to that player's own client. */
   "core/health": { events: { damage: damaged } },
 };

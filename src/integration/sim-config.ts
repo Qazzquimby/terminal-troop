@@ -8,7 +8,8 @@ import type { SimConfig } from "../sim/index.js";
  * Tuning for tests that build a whole session. A full stamina bar lasts 3s of sprinting and
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
  * where it was made. Walking steps every 0.5s at loudness 0.5; sprinting every 0.25s at 1.5;
- * crouching, at half speed, every 0.75s at 0.2.
+ * crouching, at half speed, every 0.75s at 0.2. A player hears a noise of loudness 1 from 300px,
+ * and sees it ripple for 0.5s.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -32,6 +33,14 @@ export const testSimConfig: SimConfig = {
     walk: { interval: 0.5, loudness: 0.5 },
     sprint: { interval: 0.25, loudness: 1.5 },
     crouch: { interval: 0.75, loudness: 0.2 },
+  },
+  ripples: {
+    hearingRange: 300,
+    duration: 0.5,
+    radius: { min: 10, perLoudness: 50 },
+    width: { sharp: 2, soft: 10 },
+    alpha: { sharp: 1, soft: 0.2 },
+    colour: "#fff",
   },
 };
 
@@ -70,6 +79,7 @@ export const testItemsConfig: ItemsConfig = {
     cooldown: 0.5,
     duration: 0.1,
     volume: 1,
+    hitLoudness: 1,
   },
 };
 

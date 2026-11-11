@@ -58,6 +58,15 @@ export const config = {
     sprint: { interval: 0.3, loudness: 1.6 },
     crouch: { interval: 0.7, loudness: 0.15 },
   },
+  // A player hears a walking step 3.5 cells off and a sprinting one 11 cells off.
+  ripples: {
+    hearingRange: CELL * 7,
+    duration: 0.9,
+    radius: { min: 12, perLoudness: 40 },
+    width: { sharp: 1.5, soft: 7 },
+    alpha: { sharp: 0.85, soft: 0.2 },
+    colour: "#9fd3ff",
+  },
   room: {
     sendHz: 15,
     entityHz: 10,
@@ -103,6 +112,7 @@ export const config = {
       cooldown: 1,
       duration: 0.18,
       volume: 0.8,
+      hitLoudness: 1.2,
     },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
