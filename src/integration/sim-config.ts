@@ -28,7 +28,8 @@ export const testSimConfig: SimConfig = {
 
 /**
  * Three chasers in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
- * 200px/s, see 300px, have 40 health and hit for 25.
+ * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
+ * seconds.
  */
 export const testMonsterConfig: MonsterConfig = {
   chaserDensity: 0.25,
@@ -45,6 +46,9 @@ export const testMonsterConfig: MonsterConfig = {
     wanderRange: 200,
     wanderPause: { min: 0.5, max: 1 },
     repathDistance: 25,
+    barkGap: { min: 4, max: 8 },
+    attackRange: 32,
+    attackCooldown: 1.5,
   },
 };
 

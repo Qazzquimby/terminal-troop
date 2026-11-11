@@ -60,7 +60,7 @@ function standAt(game: Session, x: number, y: number): void {
 }
 
 function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
-  return spawnEntity(game, MonsterKind.CHASER, x, y, freshChaser(seed));
+  return spawnEntity(game, MonsterKind.CHASER, x, y, freshChaser(seed, config));
 }
 
 const stateOf = (entity: WorldEntity): ChaserState =>
@@ -274,14 +274,15 @@ describe("wandering", () => {
 describe("sounds", () => {
   const blind = { ...config, sightRange: 0 };
 
-  test("barks for the first time after 6 to 12 seconds", () => {
+  test("barks for the first time within its bark gap", () => {
+    const { min, max } = config.barkGap;
     const game = world(blind);
     chaserAt(game, 450, 300);
 
-    run(game, 6 - DT);
+    run(game, min - DT);
     expect(played(game)).toEqual([]);
 
-    expect(runUntil(game, 6, () => played(game).length > 0)).toBe(true);
+    expect(runUntil(game, max - min, () => played(game).length > 0)).toBe(true);
     expect(played(game)).toEqual([barkUrl]);
   });
 
@@ -309,7 +310,7 @@ describe("sounds", () => {
     ).toBeGreaterThanOrEqual(zombie.radius + game.local.radius - 1e-5);
   });
 
-  test("attacks on reaching its target, at most every 2 seconds", () => {
+  test("attacks on reaching its target, at most once per cooldown", () => {
     const game = world();
     standAt(game, 300, 400);
     chaserAt(game, 100, 400);
@@ -317,7 +318,7 @@ describe("sounds", () => {
       played(game).filter((url) => url === attackUrl).length;
 
     expect(runUntil(game, 3, () => attacks() > 0)).toBe(true);
-    run(game, 1.9);
+    run(game, config.attackCooldown - 0.1);
     expect(attacks()).toBe(1);
     run(game, 0.2);
     expect(attacks()).toBe(2);

@@ -76,7 +76,7 @@ function spawnMonsters(game: Session, config: MonsterConfig): void {
       MonsterKind.CHASER,
       at.x,
       at.y,
-      freshChaser(Math.floor(rng() * 2 ** 32)),
+      freshChaser(Math.floor(rng() * 2 ** 32), config.chaser),
     );
   }
 }

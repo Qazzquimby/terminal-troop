@@ -7,6 +7,7 @@ import {
   registerEntityType,
   spawnEntity,
 } from "./entities.js";
+import { applyDamage } from "./entity.js";
 import type { Session } from "./session.js";
 import { createSession, updateSession } from "./session.js";
 
@@ -94,6 +95,58 @@ describe("hosting", () => {
     expect(entity?.x).toBeGreaterThan(100);
     expect(entity?.x).toBeLessThan(200);
     expect(entity?.data).toEqual({ steps: 5 });
+  });
+
+  test("a hosting session removes entities whose health has run out, before running them", () => {
+    const game = session();
+    const dead = spawnEntity(game, KIND, 100, 300, { steps: 0 });
+    const alive = spawnEntity(game, KIND, 400, 300, { steps: 0 });
+    applyDamage(dead, 10);
+    applyDamage(alive, 9);
+    updateSession(game, idle, DT);
+    expect([...game.entities.keys()]).toEqual([alive.id]);
+    expect(dead.data).toEqual({ steps: 0 });
+  });
+
+  test("a session that does not host keeps a dead entity until the host's snapshot drops it", () => {
+    const game = session();
+    game.hosting = false;
+    const entry = { id: "h:1", kind: KIND, x: 100, y: 300, data: { steps: 0 } };
+    applyEntitySnapshot(game, [{ ...entry, health: 0 }]);
+    updateSession(game, idle, DT);
+    expect([...game.entities.keys()]).toEqual(["h:1"]);
+    applyEntitySnapshot(game, []);
+    expect([...game.entities.keys()]).toEqual([]);
+  });
+});
+
+describe("damage", () => {
+  test("takes health down to zero and no further, and says how much it took", () => {
+    const game = session();
+    const entity = spawnEntity(game, KIND, 100, 300, { steps: 0 });
+    expect(applyDamage(entity, 4)).toBe(4);
+    expect(applyDamage(entity, -3)).toBe(0);
+    expect(applyDamage(entity, 50)).toBe(6);
+    expect(entity.health).toBe(0);
+  });
+
+  test("a strike on the local player lands at once, and one on a player not in the session is dropped", () => {
+    const game = session();
+    registerEntityType(game, 2, {
+      radius: 10,
+      maxHealth: 10,
+      data: z.object({}),
+      update: (_entity, data) => data,
+      strikes: () => [
+        { target: "me", amount: 150 },
+        { target: "ghost", amount: 5 },
+      ],
+      draw: () => undefined,
+    });
+    spawnEntity(game, 2, 100, 300, {});
+    updateSession(game, idle, DT);
+    expect(game.local.health).toBe(0);
+    expect(game.strikes).toEqual([]);
   });
 });
 

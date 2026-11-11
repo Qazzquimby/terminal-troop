@@ -1205,6 +1205,10 @@ describe("host", () => {
 
       test("every client hears a use once, from where it was made", async () => {
         const { a, b } = await hosted();
+        standAt(a, { x: 100, y: 500 });
+        standAt(b, { x: 400, y: 500 });
+        play(a, 1);
+        play(b, 1);
         const pokes = (player: Player) =>
           player.sounds.filter(({ url }) => url === "poke");
         const swing = (player: Player) => {

@@ -1,5 +1,6 @@
 import type { SpatialFalloff } from "./audio/index.js";
 import type { MonsterConfig } from "./monsters/index.js";
+import type { CameraConfig } from "./render/index.js";
 import type { CruiserConfig } from "./vehicles/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
@@ -11,6 +12,7 @@ import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
+  readonly camera: CameraConfig;
   readonly monsters: MonsterConfig;
   readonly cruiser: CruiserConfig;
   readonly shovel: ShovelConfig;
@@ -26,13 +28,15 @@ const STAMINA_MAX = 100;
 export const config = {
   world: { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
+  // Eases out from 1:1 by a fifth of the gap each 60Hz frame.
+  camera: { zoom: 1.25, zoomRate: 13.4 },
   player: {
     radius: 14,
     speed: 120,
     acceleration: 1100,
     sprintMultiplier: 1.8,
     maxHealth: 100,
-    inventorySlots: 6,
+    inventorySlots: 9,
     nameMax: 8,
   },
   stamina: {
@@ -72,6 +76,9 @@ export const config = {
       wanderRange: CELL * 5,
       wanderPause: { min: 0.4, max: 1.5 },
       repathDistance: CELL / 2,
+      barkGap: { min: 6, max: 12 },
+      attackRange: 30,
+      attackCooldown: 2,
     },
   },
   cruiser: {

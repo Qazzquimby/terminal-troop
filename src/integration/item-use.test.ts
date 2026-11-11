@@ -1,7 +1,14 @@
 import { expect, test, vi } from "vitest";
+import { z } from "zod";
 import { createItems } from "../items/index.js";
-import { createSession, updateSession } from "../sim/index.js";
-import type { Controls } from "../sim/index.js";
+import {
+  registerEntityType,
+  requestUse,
+  spawnEntity,
+  updateSession,
+} from "../sim/index.js";
+import { createSession } from "../sim/index.js";
+import type { Controls, Point, Session } from "../sim/index.js";
 import { testSfx, testShovelConfig, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
@@ -13,6 +20,9 @@ const idle: Controls = {
   use: false,
 };
 const swing: Controls = { ...idle, use: true };
+
+/** A kind that stands still with 40 health. */
+const DUMMY = 1;
 
 /** A dev-square session holding the starting shovel, with the test items registered and sound muted. */
 function session() {
@@ -30,13 +40,32 @@ function session() {
     setPosition: () => undefined,
   });
   createItems({ shovel: testShovelConfig }).register(game);
+  registerEntityType(game, DUMMY, {
+    radius: 15,
+    maxHealth: 40,
+    data: z.object({}),
+    update: (_entity, data) => data,
+    draw: () => undefined,
+  });
   return game;
 }
 
 /** Steps `game` `seconds` with no input. */
-function wait(game: ReturnType<typeof session>, seconds: number): void {
+function wait(game: Session, seconds: number): void {
   for (let step = 0; step < Math.round(seconds / DT); step++)
     updateSession(game, idle, DT);
+}
+
+function standAt(game: Session, at: Point): void {
+  Object.assign(game.local, { ...at, prevX: at.x, prevY: at.y });
+}
+
+/** Swings facing right, and hands the swing to the session's host step as the room would. */
+function swingRight(game: Session): void {
+  const { local } = game;
+  updateSession(game, { ...swing, aim: { x: local.x + 100, y: local.y } }, DT);
+  for (const request of game.localUses.splice(0)) requestUse(game, request);
+  updateSession(game, idle, DT);
 }
 
 test("the select control picks a slot, and null keeps the current one", () => {
@@ -46,6 +75,30 @@ test("the select control picks a slot, and null keeps the current one", () => {
   expect(game.local.held).toBe(3);
   updateSession(game, idle, DT);
   expect(game.local.held).toBe(3);
+});
+
+test("the inventory has the configured slots, the shovel in the first", () => {
+  const game = session();
+  expect(game.local.inventory).toHaveLength(
+    testSimConfig.player.inventorySlots,
+  );
+  expect(game.local.inventory.map((stack) => stack?.item.id ?? null)).toEqual([
+    "shovel",
+    null,
+    null,
+    null,
+  ]);
+});
+
+test("selecting a slot past the last keeps the held one", () => {
+  const game = session();
+  updateSession(game, { ...idle, select: 2 }, DT);
+  updateSession(
+    game,
+    { ...idle, select: testSimConfig.player.inventorySlots },
+    DT,
+  );
+  expect(game.local.held).toBe(2);
 });
 
 test("the use control swings the held shovel at the step's sim time and queues it for the host", () => {
@@ -83,7 +136,49 @@ test("a swing waits out the cooldown in sim seconds", () => {
 
 test("using an empty hand does nothing", () => {
   const game = session();
-  updateSession(game, { ...swing, select: 4 }, DT);
+  updateSession(game, { ...swing, select: 3 }, DT);
   expect(game.local.use).toBeNull();
   expect(game.localUses).toEqual([]);
+});
+
+test("a swing damages what is in its hitbox and knocks it away from the hitbox's centre", () => {
+  const game = session();
+  standAt(game, { x: 450, y: 300 });
+  const hit = spawnEntity(game, DUMMY, 500, 300, {});
+  const missed = spawnEntity(game, DUMMY, 450, 380, {});
+
+  swingRight(game);
+  expect(game.local.use?.hit).toBe(true);
+  expect(hit.health).toBe(40 - testShovelConfig.damage);
+  expect(hit.x).toBeCloseTo(500 + testShovelConfig.knockback);
+  expect(hit.y).toBeCloseTo(300);
+  expect(missed).toMatchObject({ health: 40, x: 450, y: 380 });
+});
+
+test("a swing that hits nothing shows a miss", () => {
+  const game = session();
+  standAt(game, { x: 450, y: 300 });
+  swingRight(game);
+  expect(game.local.use?.hit).toBe(false);
+});
+
+test("a wall in the way stops the knockback but not the damage", () => {
+  const game = session();
+  standAt(game, { x: 500, y: 500 });
+  const pinned = spawnEntity(game, DUMMY, 575, 500, {});
+  swingRight(game);
+  expect(pinned).toMatchObject({
+    health: 40 - testShovelConfig.damage,
+    x: 575,
+    y: 500,
+  });
+});
+
+test("a swing that kills removes its target", () => {
+  const game = session();
+  standAt(game, { x: 450, y: 300 });
+  const target = spawnEntity(game, DUMMY, 500, 300, {});
+  target.health = testShovelConfig.damage;
+  swingRight(game);
+  expect(game.entities.has(target.id)).toBe(false);
 });

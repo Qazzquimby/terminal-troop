@@ -6,7 +6,7 @@ import {
   toControls,
   withUiHandlers,
 } from "./actions.js";
-import { createKeyboardSource } from "./keyboard.js";
+import { createButtonSource } from "./buttons.js";
 import type { Point, Controls, ViewConfig } from "../sim/index.js";
 
 /**
@@ -27,7 +27,7 @@ export function createInput(
   setContext: (context: InputContext, time: number) => void;
 } {
   const state = createActionState();
-  const buttons = createKeyboardSource<Action, InputContext>(
+  const buttons = createButtonSource<Action, InputContext>(
     withUiHandlers(state, uiActions),
     ACTIONS,
     context,
