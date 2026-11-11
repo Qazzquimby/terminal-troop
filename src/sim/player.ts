@@ -44,7 +44,7 @@ export interface Controls {
   readonly move: Point;
   readonly aim: Point;
   readonly sprint: boolean;
-  /** Whether to crouch, which overrides sprint. */
+  /** Whether to toggle crouching this step. */
   readonly crouch: boolean;
   /** The inventory slot to select this step, or null to keep the current one. */
   readonly select: number | null;
@@ -76,6 +76,8 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   use: ItemUse | null;
   /** Seconds until the player's next footstep while it moves; never sent over the network. */
   stride: number;
+  /** Whether the local player is crouching; unused for remote players. */
+  crouched: boolean;
 }
 
 export interface PlayerState {
@@ -117,23 +119,28 @@ export function createPlayer(
     stamina: createStamina(rules.stamina),
     use: null,
     stride: 0,
+    crouched: false,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };
 }
 
 /**
- * The gait `controls` ask of `player`: crouch whenever crouch is held, moving or not, even with
- * sprint held; sprint only while moving with stamina to spend; otherwise walk.
+ * Steps `player`'s gait under `controls`: a crouch press toggles crouching, and sprinting,
+ * which needs moving with stamina to spend, stands it up. A crouching player crouches whether
+ * it moves or not.
  */
-function gait(
+function stepGait(
   player: Player,
   controls: Controls,
   moving: boolean,
 ): MovementMode {
-  if (controls.crouch) return "crouch";
-  if (controls.sprint && moving && canSprint(player.stamina)) return "sprint";
-  return "walk";
+  if (controls.crouch) player.crouched = !player.crouched;
+  if (controls.sprint && moving && canSprint(player.stamina)) {
+    player.crouched = false;
+    return "sprint";
+  }
+  return player.crouched ? "crouch" : "walk";
 }
 
 /** A gait's top speed as a multiple of the walking speed. */
@@ -159,7 +166,7 @@ export function updatePlayer(
   if (controls.select !== null)
     player.held = selectSlot(player.inventory, player.held, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
-  const mode = gait(player, controls, moving);
+  const mode = stepGait(player, controls, moving);
   player.stamina = updateStamina(
     player.stamina,
     mode === "sprint",

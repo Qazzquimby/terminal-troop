@@ -102,32 +102,54 @@ test("holding sprint while standing still does not drain stamina", () => {
   expect(player.stamina.value).toBe(STAMINA_MAX);
 });
 
+const STILL = { move: { x: 0, y: 0 } };
+
+/** Presses crouch for one step, standing still. */
+function pressCrouch(player: Player, world: World) {
+  hold(player, world, { ...STILL, crouch: true }, 1);
+}
+
+test("a crouch press crouches, standing still too, until the next press stands it up", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  pressCrouch(player, world);
+  expect(movement.get(player)).toEqual({ mode: "crouch", moving: false });
+  hold(player, world, STILL, 30);
+  expect(movement.get(player)).toEqual({ mode: "crouch", moving: false });
+
+  pressCrouch(player, world);
+  expect(movement.get(player)).toEqual({ mode: "walk", moving: false });
+});
+
 test("crouching moves at the lower top speed, and reports it crouches", () => {
   const world = openWorld();
   const player = startPlayer(world);
-  hold(player, world, { crouch: true }, 60);
+  pressCrouch(player, world);
+  hold(player, world, {}, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * CROUCH_MULTIPLIER);
   expect(movement.get(player)).toEqual({ mode: "crouch", moving: true });
 });
 
-test("a player crouches standing still too", () => {
+test("sprinting stands a crouching player up, and it stays up after", () => {
   const world = openWorld();
   const player = startPlayer(world);
-  hold(player, world, { move: { x: 0, y: 0 }, crouch: true }, 1);
-  expect(movement.get(player)).toEqual({ mode: "crouch", moving: false });
-});
-
-test("crouch wins over sprint, which then spends no stamina", () => {
-  const world = openWorld();
-  const player = startPlayer(world);
-  hold(player, world, { sprint: true, crouch: true }, 120);
-  expect(player.vx).toBeCloseTo(PLAYER_SPEED * CROUCH_MULTIPLIER);
-  expect(movement.get(player).mode).toBe("crouch");
-  expect(player.stamina.value).toBe(STAMINA_MAX);
-
+  pressCrouch(player, world);
   hold(player, world, { sprint: true }, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * SPRINT_MULTIPLIER);
   expect(movement.get(player).mode).toBe("sprint");
+
+  hold(player, world, {}, 60);
+  expect(player.vx).toBeCloseTo(PLAYER_SPEED);
+  expect(movement.get(player).mode).toBe("walk");
+});
+
+test("holding sprint while crouched and standing still keeps it crouched", () => {
+  const world = openWorld();
+  const player = startPlayer(world);
+  pressCrouch(player, world);
+  hold(player, world, { ...STILL, sprint: true }, 30);
+  expect(movement.get(player).mode).toBe("crouch");
+  expect(player.stamina.value).toBe(STAMINA_MAX);
 });
 
 test("running out of stamina drops sprint to walk speed until recovered", () => {

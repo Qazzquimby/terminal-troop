@@ -66,13 +66,10 @@ describe("the local player's footsteps", () => {
     expect(sprint.loudness).toBeGreaterThan(walk.loudness);
   });
 
-  test("crouching steps less often and quieter, sprint held or not", () => {
+  test("crouching steps less often and quieter", () => {
     const game = session();
-    const steps = noisesOver(
-      game,
-      { ...controls(true, true), crouch: true },
-      2,
-    );
+    updateSession(game, { ...idle, crouch: true }, DT);
+    const steps = noisesOver(game, controls(true, false), 2);
     expect(steps).toHaveLength(Math.ceil(2 / crouch.interval));
     expect(steps.every(({ loudness }) => loudness === crouch.loudness)).toBe(
       true,
