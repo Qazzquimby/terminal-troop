@@ -48,7 +48,6 @@ export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
 export { movement } from "./movement.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
-export { rippleRing } from "./ripples.js";
 export type { Heard } from "./noise.js";
 export type { Controls, Player } from "./player.js";
 export { heldItemId, heldItemOf, registerItem } from "./use.js";

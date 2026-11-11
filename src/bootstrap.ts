@@ -23,6 +23,7 @@ import {
 import {
   draw,
   createCamera,
+  createRipples,
   screenToWorld,
   updateCamera,
 } from "./render/index.js";
@@ -113,6 +114,8 @@ const debug = params.has("debug");
 const playerId = crypto.randomUUID();
 const defaultName = playerId.slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
+/** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
+const ripples = createRipples(config.ripples, Math.random);
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
@@ -177,8 +180,8 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence from the console or a test browser.
-if (debug) Object.assign(window, { voice, room });
+// Debug hook for driving voice and reading presence and ripples from the console or a test browser.
+if (debug) Object.assign(window, { voice, room, ripples });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -266,6 +269,7 @@ async function enterRoom(rawCode: string): Promise<void> {
   url.set("room", state.code);
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
   clock.reset(performance.now());
+  ripples.clear();
   updateCamera(camera, state.session.local, 0);
 }
 
@@ -299,13 +303,14 @@ function frame(): void {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
       updateSession(session, input.getControls(until), clock.dt);
+      ripples.hear(session, until);
     });
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
     updateCamera(camera, renderPosition(session.local, alpha), frameSeconds);
     const drawStart = performance.now();
-    draw(ctx, session, camera, now, alpha, input.mouseWorld(), isAway);
+    draw(ctx, session, camera, now, alpha, input.mouseWorld(), isAway, ripples);
     frameStats.drawMs = performance.now() - drawStart;
     updateInventory(session.local.inventory, session.local.held, inventoryOpen);
   } else {

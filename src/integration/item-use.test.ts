@@ -2,10 +2,12 @@ import { expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 import { entityContent } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
+import { createRipples } from "../render/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import {
   applyRemoteState,
   heldItemOf,
+  mulberry32,
   playerState,
   receiveEvent,
   registerContent,
@@ -19,6 +21,7 @@ import {
   testEntitiesConfig,
   testSfx,
   testItemsConfig,
+  testRippleConfig,
   testSimConfig,
 } from "./sim-config.js";
 
@@ -240,7 +243,9 @@ test("a swing that hits sends its noise to everyone, which the host then makes a
   deliverOwn(game);
   updateSession(game, idle, DT);
   expect(game.noises).toEqual([{ at: center, loudness: shovel.hitLoudness }]);
-  expect(game.ripples.list).toEqual([
+  const ripples = createRipples(testRippleConfig, mulberry32(1));
+  ripples.hear(game, game.time * 1000);
+  expect(ripples.list).toEqual([
     expect.objectContaining({ loudness: shovel.hitLoudness }),
   ]);
 });
