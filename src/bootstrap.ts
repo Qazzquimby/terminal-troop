@@ -27,6 +27,7 @@ import {
   createFlashes,
   createRipples,
   screenToWorld,
+  snapCamera,
   updateCamera,
 } from "./render/index.js";
 import { createSfx } from "./audio/index.js";
@@ -292,7 +293,7 @@ async function enterRoom(rawCode: string): Promise<void> {
     { room: state.code, world: env.world, seed: state.session.seed },
     state.session.world.map,
   );
-  updateCamera(camera, state.session.local, 0);
+  snapCamera(camera, state.session.local);
 }
 
 function debugInfo(): DebugInfo {

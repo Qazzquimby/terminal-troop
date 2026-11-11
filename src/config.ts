@@ -36,8 +36,15 @@ const STAMINA_MAX = 100;
 export const config = {
   world: { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
-  // Eases out from 1:1 by a fifth of the gap each 60Hz frame.
-  camera: { zoom: 1.25, zoomRate: 13.4 },
+  // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
+  // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads
+  // it. A jump of more than 4 cells, such as a respawn, is cut to rather than panned across.
+  camera: {
+    zoom: 1.25,
+    zoomRate: 13.4,
+    followRate: 18,
+    snapDistance: CELL * 4,
+  },
   // What the local player hears, drawn as ripples: a walking step 3.5 cells off and a sprinting
   // one 11 cells off.
   ripples: {

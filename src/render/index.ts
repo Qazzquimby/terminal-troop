@@ -1,4 +1,9 @@
-export { createCamera, screenToWorld, updateCamera } from "./camera.js";
+export {
+  createCamera,
+  screenToWorld,
+  snapCamera,
+  updateCamera,
+} from "./camera.js";
 export type { CameraConfig } from "./camera.js";
 export { createMapMemory } from "./map-memory.js";
 export type { MapMemoryConfig } from "./map-memory.js";
