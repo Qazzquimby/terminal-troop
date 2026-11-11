@@ -1,34 +1,83 @@
 import type { HeldSlot, Inventory } from "../sim/index.js";
 
-export function createInventoryHud(
-  container: HTMLElement,
-  list: HTMLElement,
-): (inventory: Inventory, selected: HeldSlot, visible: boolean) => void {
-  let previous = "";
+/** What the toolbar shows while in a room. */
+export interface HudState {
+  readonly inventory: Inventory;
+  readonly held: HeldSlot;
+  /** The team's credit. */
+  readonly credit: number;
+}
 
-  return function updateInventory(inventory, selected, visible) {
-    container.hidden = !visible;
-    if (!visible) return;
+/** One slot of the toolbar: its key number, and its item's glyph and name, blank when empty. */
+interface SlotView {
+  readonly number: string;
+  readonly glyph: string;
+  readonly name: string;
+  readonly selected: boolean;
+}
 
-    const signature = JSON.stringify([inventory, selected]);
-    if (signature === previous) return;
-    previous = signature;
+/** Each inventory slot as the toolbar shows it. */
+export function slotViews(inventory: Inventory, held: HeldSlot): SlotView[] {
+  return inventory.map((item, index) => ({
+    number: String(index + 1),
+    glyph: item?.emoji ?? "",
+    name: item?.name ?? "",
+    selected: index === held,
+  }));
+}
 
-    list.replaceChildren(
-      ...inventory.map((item, index) => {
-        const slot = document.createElement("li");
-        const number = document.createElement("span");
-        const contents = document.createElement("span");
+export function creditText(credit: number): string {
+  return `${String(credit)}$`;
+}
 
-        if (index === selected) slot.className = "selected";
-        number.className = "slot-number";
-        number.textContent = String(index + 1);
-        contents.textContent =
-          item === null ? "Empty" : `${item.emoji} ${item.name}`;
+interface HudElements {
+  readonly bar: Pick<HTMLElement, "hidden">;
+  readonly slots: Pick<HTMLOListElement, "replaceChildren">;
+  readonly credit: Pick<HTMLElement, "textContent">;
+}
 
-        slot.append(number, contents);
-        return slot;
-      }),
-    );
+function slotElement(view: SlotView): HTMLLIElement {
+  const slot = document.createElement("li");
+  slot.className = "hud-slot";
+  slot.classList.toggle("selected", view.selected);
+  const parts = [
+    ["slot-number", view.number],
+    ["hud-slot-glyph", view.glyph],
+    ["hud-slot-name", view.name],
+  ] as const;
+  slot.append(
+    ...parts.map(([className, text]) => {
+      const span = document.createElement("span");
+      span.className = className;
+      span.textContent = text;
+      return span;
+    }),
+  );
+  return slot;
+}
+
+/**
+ * The bottom toolbar: every inventory slot, the held one highlighted, and the team's credit
+ * beside them. Shown while in a room; hidden by showing null.
+ */
+export function createHud(elements: HudElements) {
+  let shownSlots = "";
+  let shownCredit = "";
+  return {
+    show(state: HudState | null): void {
+      elements.bar.hidden = state === null;
+      if (state === null) return;
+      const views = slotViews(state.inventory, state.held);
+      const signature = JSON.stringify(views);
+      if (signature !== shownSlots) {
+        shownSlots = signature;
+        elements.slots.replaceChildren(...views.map(slotElement));
+      }
+      const credit = creditText(state.credit);
+      if (credit !== shownCredit) {
+        shownCredit = credit;
+        elements.credit.textContent = credit;
+      }
+    },
   };
 }

@@ -85,7 +85,7 @@ canvas {
 }
 .controls-hint {
   position: absolute;
-  bottom: 8px;
+  bottom: 88px;
   left: 50%;
   transform: translateX(-50%);
   margin: 0;
@@ -140,47 +140,69 @@ canvas {
   color: #6b7785;
   border-style: dashed;
 }
-.inventory {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: min(320px, calc(100% - 24px));
-  max-height: calc(100% - 24px);
-  overflow-y: auto;
-  padding: 16px;
-  border: 1px solid #4b5662;
-  border-radius: 8px;
-  background: #12171ff2;
+.hud-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 6px 12px;
+  border: 1px solid #333c46;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: #12171fee;
 }
-.inventory h2 {
-  margin: 0 0 12px;
-  font-size: 18px;
-}
-#inventory-slots {
-  display: grid;
+.hud-slots {
+  display: flex;
   gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-#inventory-slots li {
+.hud-slot {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border: 1px solid transparent;
-  background: #222a33;
+  gap: 2px;
+  width: 58px;
+  padding: 6px 4px 4px;
+  border: 1px solid #333c46;
+  border-radius: 6px;
+  background: #1d2228;
 }
-#inventory-slots li.selected {
+.hud-slot.selected {
   border-color: #73cfff;
-  background: #1d3442;
+  background: #223140;
+  box-shadow: 0 0 0 1px #73cfff;
 }
-.slot-number {
-  width: 20px;
+.hud-slot .slot-number {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: auto;
+  font-size: 10px;
   color: #8795a5;
 }
-.selected .slot-number {
-  color: #73cfff;
+.hud-slot-glyph {
+  min-height: 1.1em;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.hud-slot-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #aaa;
+}
+.hud-credit {
+  padding-bottom: 6px;
+  font-size: 14px;
+  color: #ffd166;
 }
 [hidden] {
   display: none !important;

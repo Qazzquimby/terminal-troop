@@ -15,7 +15,6 @@ export const ACTIONS = {
   useItem: { keys: ["MouseLeft"], contexts: ["play"] },
   secondary: { keys: ["MouseRight"], contexts: ["play"] },
   interact: { keys: ["KeyE"], contexts: ["play"] },
-  toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
   pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },

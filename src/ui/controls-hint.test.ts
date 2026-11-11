@@ -11,8 +11,7 @@ const rebind = (changes: Partial<Bindings>): Bindings => ({
 test("the hint matches the default bindings", () => {
   expect(controlsHintText(CONTROLS_HINT)).toBe(
     "WASD / ↑←↓→ to move · Shift to sprint · C to toggle crouch · " +
-      "Right click to kick · E to pick up or drop · Tab to toggle inventory · " +
-      "Esc for settings",
+      "Right click to kick · E to pick up or drop · Esc for settings",
   );
 });
 

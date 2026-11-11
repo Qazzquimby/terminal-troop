@@ -105,15 +105,10 @@
             <p class="controls-hint"></p>
           </div>
         </div>
-        <aside
-          id="inventory"
-          class="inventory"
-          hidden
-          aria-labelledby="inventory-title"
-        >
-          <h2 id="inventory-title">Inventory</h2>
-          <ol id="inventory-slots"></ol>
-        </aside>
+        <div id="hud" class="hud-bar" hidden>
+          <ol id="hud-slots" class="hud-slots" aria-label="Inventory"></ol>
+          <span id="hud-credit" class="hud-credit" aria-label="Credit"></span>
+        </div>
       </section>
     </main>
     <script type="module" src="/src/bootstrap.ts"></script>
