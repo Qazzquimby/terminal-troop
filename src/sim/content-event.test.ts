@@ -145,6 +145,7 @@ describe("content events", () => {
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
       ["core/items", ["use"]],
+      ["core/noise", ["made"]],
       ["core/health", ["damage"]],
     ]);
   });

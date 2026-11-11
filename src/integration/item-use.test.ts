@@ -214,11 +214,35 @@ test("a swing damages what is in its hitbox and knocks it away from the hitbox's
   expect(missed).toMatchObject({ health: 40, x: 450, y: 380 });
 });
 
-test("a swing that hits nothing shows a miss", () => {
+test("a swing that hits nothing shows a miss, and makes no noise", () => {
   const game = session();
   standAt(game, { x: 450, y: 300 });
   swingRight(game);
   expect(game.local.use?.hit).toBe(false);
+  expect(game.outbox).toEqual([]);
+});
+
+test("a swing that hits sends its noise to everyone, which the host then makes and hears", () => {
+  const game = session();
+  standAt(game, { x: 450, y: 300 });
+  spawnEntity(game, DUMMY, 500, 300, {});
+  swingRight(game);
+  const center = { x: 450 + shovel.reach, y: 300 };
+  expect(game.outbox).toEqual([
+    {
+      content: "core/noise",
+      event: "made",
+      route: "all",
+      to: null,
+      payload: { ...center, loudness: shovel.hitLoudness, source: null },
+    },
+  ]);
+  deliverOwn(game);
+  updateSession(game, idle, DT);
+  expect(game.noises).toEqual([{ at: center, loudness: shovel.hitLoudness }]);
+  expect(game.ripples.list).toEqual([
+    expect.objectContaining({ loudness: shovel.hitLoudness }),
+  ]);
 });
 
 test("a wall in the way stops the knockback but not the damage", () => {

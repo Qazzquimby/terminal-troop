@@ -18,6 +18,7 @@ import {
   movement,
   renderAim,
   renderPosition,
+  rippleRing,
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
@@ -267,6 +268,27 @@ export function drawLitWalls(
   ctx.stroke();
 }
 
+/** Each noise the local player heard lately, as a ring spreading from where it seemed to come from. */
+function drawRipples(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+): void {
+  const { ripples } = game.config;
+  ctx.save();
+  ctx.strokeStyle = ripples.colour;
+  for (const ripple of game.ripples.list) {
+    const ring = rippleRing(ripple, game.time, ripples);
+    if (ring === null || !inView(ring, camera)) continue;
+    ctx.globalAlpha = ring.alpha;
+    ctx.lineWidth = ring.width;
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /** Visibility polygons for the sources that can reach the view, cut off at its far corner. */
 function tracePolygons(
   map: TileMap,
@@ -401,8 +423,9 @@ export function draw(
   });
   ctx.restore();
 
-  // Above the darkness: lit wall faces, then the local player and its HUD.
+  // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.
   drawLitWalls(ctx, litWalls(seen, lit));
+  drawRipples(ctx, game, camera);
   drawPlayer(ctx, game, viewer, true);
   drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
   drawStamina(ctx, viewer, game.config.stamina.max);

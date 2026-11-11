@@ -1,4 +1,9 @@
-import { applyDamage, defineItem, isAreaFree } from "../../sim/index.js";
+import {
+  applyDamage,
+  broadcastNoise,
+  defineItem,
+  isAreaFree,
+} from "../../sim/index.js";
 import type {
   Entity,
   ItemUse,
@@ -25,6 +30,8 @@ export interface ShovelConfig {
   readonly duration: number;
   /** Volume of a swing's sound, 0..1. */
   readonly volume: number;
+  /** How loud a swing that hits is, as a multiple of a listener's hearing range. */
+  readonly hitLoudness: number;
 }
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
@@ -89,7 +96,10 @@ function drawHitbox(
   ctx.restore();
 }
 
-/** The shovel: a short melee attack in front of the player, held in the first slot from the start. */
+/**
+ * The shovel: a short melee attack in front of the player, held in the first slot from the start.
+ * A swing that hits makes a noise every client hears.
+ */
 export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   const hitbox = (at: Point, aim: number): Point => ({
     x: at.x + Math.cos(aim) * config.reach,
@@ -103,10 +113,13 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     cooldown: config.cooldown,
     apply(game, at, aim) {
       const center = hitbox(at, aim);
-      for (const entity of targets(game, center, config.radius)) {
+      const hit = targets(game, center, config.radius);
+      for (const entity of hit) {
         applyDamage(entity, config.damage);
         knockBack(entity, center, config.knockback, game.world.map);
       }
+      if (hit.length > 0)
+        broadcastNoise(game, { at: center, loudness: config.hitLoudness });
     },
     show(game, at, aim) {
       const center = hitbox(at, aim);

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { contentEvent } from "./content-event.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
 
@@ -34,6 +36,7 @@ export interface Heard {
   readonly at: Point;
   /** From 1 for a noise made where the listener stands, down towards 0 at the edge of its reach. */
   readonly clarity: number;
+  readonly loudness: number;
   readonly source: string | null;
 }
 
@@ -73,8 +76,45 @@ export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
     heard.push({
       at: blurred(noise.at, distance * game.config.noise.blur, listener.rng),
       clarity: 1 - distance / carries,
+      loudness: noise.loudness,
       source: noise.source ?? null,
     });
   }
   return heard;
+}
+
+/** A noise as it travels from the host. */
+const NoiseMade = z.object({
+  x: z.number(),
+  y: z.number(),
+  loudness: z.number().min(0),
+  source: z.string().min(1).max(64).nullable(),
+});
+
+/** A noise the host made, sent to every client, the host's own included, to make there. */
+export const noiseMade = contentEvent({
+  schema: NoiseMade,
+  to: "all",
+  from: "host",
+  receive(game, { x, y, loudness, source }) {
+    emitNoise(
+      game,
+      source === null
+        ? { at: { x, y }, loudness }
+        : { at: { x, y }, loudness, source },
+    );
+  },
+});
+
+/**
+ * Makes `noise` on every client, in the step after the room sends it: for noise that starts
+ * where only the host runs, such as an entity's update or an item's effect.
+ */
+export function broadcastNoise(game: Session, noise: Noise): void {
+  noiseMade.send(game, {
+    x: noise.at.x,
+    y: noise.at.y,
+    loudness: noise.loudness,
+    source: noise.source ?? null,
+  });
 }

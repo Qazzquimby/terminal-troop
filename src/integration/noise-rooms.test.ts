@@ -4,7 +4,7 @@ import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { isAreaFree, updateSession } from "../sim/index.js";
+import { broadcastNoise, isAreaFree, updateSession } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
@@ -72,7 +72,8 @@ function freeSpotNear(game: Session, from: Point, distance: number): Point {
   throw new Error("no free spot");
 }
 
-test("a chaser drawn by a remote player's sprinting keeps investigating when the host changes", async () => {
+/** Two clients joined to one room on the same hub, `a` hosting. */
+async function pair() {
   const hub = createHub();
   const clock = createManualClock();
   const client = (id: string): Room =>
@@ -97,6 +98,11 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   await b.join("NOISE", "B");
   clock.advance(1000);
   expect(a.hostId()).toBe("a");
+  return { a, b, clock };
+}
+
+test("a chaser drawn by a remote player's sprinting keeps investigating when the host changes", async () => {
+  const { a, b, clock } = await pair();
 
   const spot = freeSpotNear(sessionOf(b), chaserOf(a), 250);
   Object.assign(sessionOf(b).local, { ...spot, prevX: spot.x, prevY: spot.y });
@@ -121,4 +127,27 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   expect(
     Math.hypot(chaserOf(b).x - heard.x, chaserOf(b).y - heard.y),
   ).toBeLessThan(before);
+});
+
+test("each client sees the other's footsteps, worked out from its state, and the host's noise", async () => {
+  const { a, b, clock } = await pair();
+  const host = sessionOf(a);
+  const guest = sessionOf(b);
+  const spot = freeSpotNear(guest, host.local, 100);
+  Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
+  steps(b, { ...still, move: { x: 1, y: 0 } }, DT);
+  b.frame(clock.now());
+  steps(a, still, 1);
+  expect(host.ripples.list).toHaveLength(1);
+  expect(host.outbox).toEqual([]);
+
+  broadcastNoise(host, { at: host.local, loudness: 1 });
+  a.frame(clock.now());
+  steps(b, still, DT);
+  expect(guest.noises).toEqual([
+    { at: { x: host.local.x, y: host.local.y }, loudness: 1 },
+  ]);
+  expect(guest.ripples.list.at(-1)).toMatchObject({ loudness: 1 });
+  steps(a, still, DT);
+  expect(host.noises).toHaveLength(1);
 });

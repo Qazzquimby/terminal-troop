@@ -22,6 +22,8 @@ import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import { createPlayer, smoothPlayer, updatePlayer } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
+import { hearRipples } from "./ripples.js";
+import type { RippleConfig, Ripples } from "./ripples.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
@@ -42,6 +44,7 @@ export interface SimConfig extends PlayerRules {
   readonly net: SyncConfig;
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
+  readonly ripples: RippleConfig;
 }
 
 export interface Session {
@@ -79,6 +82,8 @@ export interface Session {
   readonly outbox: OutgoingEvent[];
   /** The noises made in the latest step; each step starts by clearing them. */
   readonly noises: Noise[];
+  /** The noises the local player has heard lately, drawn as ripples; never sent over the network. */
+  readonly ripples: Ripples;
   /** When, in sim seconds, the host lets each player use an item again. */
   readonly readyAt: Map<string, number>;
   /**
@@ -140,6 +145,7 @@ export function createSession(
     inbox: [],
     outbox: [],
     noises: [],
+    ripples: { list: [], rng: mulberry32(seed) },
     readyAt: new Map(),
     reportNow: false,
   };
@@ -197,6 +203,7 @@ export function updateSession(
   emitFootsteps(game, dt);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
+  hearRipples(game);
 
   separateSessionBodies(game);
 }
