@@ -1,25 +1,26 @@
 import { z } from "zod";
+import { drawEmoji } from "../render/render.js";
 import { nearestFreePoint } from "./collision.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
+import { kindId } from "./kinds.js";
 import { isAreaFree } from "./map.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 
-/** A light the world starts with beside the player, and how it is placed. */
+/** A car that starts beside the player, carrying a wide light. */
 export interface CruiserConfig {
+  /** How far the cruiser's light reaches, in pixels. */
   readonly lightRadius: number;
-  /** How far from the player the beacon starts, in pixels. */
+  /** How far from the player the cruiser starts, in pixels. */
   readonly offset: number;
 }
 
-/** Kinds are per-session integers; the chaser takes 1, so the beacon takes 2. */
-export const CruiserKind = 2;
+export const CruiserKind = kindId("cruiser");
 
-/** The beacon's body, independent of how far its light reaches. */
+/** The cruiser's body; its emoji is drawn to that size. */
 const BODY_RADIUS = 10;
 
-/** How many body radii the drawn glow spreads before fading out. */
-const GLOW_REACH = 6;
+const CRUISER_GLYPH = "🚗";
 
 const CruiserData = z.object({});
 
@@ -34,10 +35,10 @@ function spawnCruiser(game: Session, config: CruiserConfig): void {
   spawnEntity(game, CruiserKind, at.x, at.y, {});
 }
 
-/** The beacon of `config`, for a session to register and a new world to start with. */
+/** The cruiser of `config`, for a session to register and a new world to start with. */
 export function createCruiser(config: CruiserConfig) {
   return {
-    /** Registers the beacon kind with `game`. */
+    /** Registers the cruiser kind with `game`. */
     register(game: Session): void {
       registerEntityType(game, CruiserKind, {
         radius: BODY_RADIUS,
@@ -45,27 +46,12 @@ export function createCruiser(config: CruiserConfig) {
         collides: false,
         data: CruiserData,
         light: () => ({ range: config.lightRadius }),
-        draw(ctx, entity, _data, now) {
-          const reach =
-            BODY_RADIUS * GLOW_REACH * (1 + 0.1 * Math.sin(now / 500));
-          const glow = ctx.createRadialGradient(
-            entity.x,
-            entity.y,
-            0,
-            entity.x,
-            entity.y,
-            reach,
-          );
-          glow.addColorStop(0, "rgba(255, 224, 160, 0.9)");
-          glow.addColorStop(1, "rgba(255, 200, 120, 0)");
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(entity.x, entity.y, reach, 0, Math.PI * 2);
-          ctx.fill();
+        draw(ctx, entity) {
+          drawEmoji(ctx, entity, CRUISER_GLYPH, BODY_RADIUS * 2);
         },
       });
     },
-    /** Spawns the beacon a new world starts with, beside the player. */
+    /** Spawns the cruiser a new world starts with, beside the player. */
     populate(game: Session): void {
       spawnCruiser(game, config);
     },

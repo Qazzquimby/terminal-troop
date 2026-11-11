@@ -115,6 +115,21 @@ export function drawFacing(
   ctx.stroke();
 }
 
+/** Draws `glyph` centred on `at`, about `size` pixels tall. */
+export function drawEmoji(
+  ctx: CanvasRenderingContext2D,
+  at: Point,
+  glyph: string,
+  size: number,
+): void {
+  ctx.save();
+  ctx.font = `${String(size)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(glyph, at.x, at.y);
+  ctx.restore();
+}
+
 function drawBody(
   ctx: CanvasRenderingContext2D,
   player: Player,

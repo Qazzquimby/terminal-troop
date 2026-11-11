@@ -2,7 +2,7 @@ import { z } from "zod";
 import alertUrl from "../assets/sfx/zombie/alert.mp3";
 import attackUrl from "../assets/sfx/zombie/attack.mp3";
 import barkUrl from "../assets/sfx/zombie/bark.mp3";
-import { drawFacing } from "../render/render.js";
+import { drawEmoji, drawFacing } from "../render/render.js";
 import {
   applyDamage,
   canSeeFrom,
@@ -90,6 +90,8 @@ const ATTACK_COOLDOWN = 2;
 const SOUNDS = { bark: barkUrl, alert: alertUrl, attack: attackUrl } as const;
 
 const COLOURS = { wander: "#7d9a52", chase: "#d8473a" } as const;
+
+const CHASER_GLYPH = "🧟";
 
 /** A fresh chaser's state, its random draws seeded by `seed`. */
 export function freshChaser(seed: number): ChaserState {
@@ -320,12 +322,11 @@ export function chaser(config: ChaserConfig): EntityDefinition<ChaserState> {
       return { ...next, route, facing };
     },
     draw(ctx, entity, state) {
-      ctx.fillStyle = COLOURS[state.mode];
+      drawEmoji(ctx, entity, CHASER_GLYPH, entity.radius * 2);
+      ctx.strokeStyle = COLOURS[state.mode];
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#1a1d12";
-      ctx.lineWidth = 3;
+      ctx.arc(entity.x, entity.y, entity.radius + 2, 0, Math.PI * 2);
       ctx.stroke();
       drawFacing(ctx, entity, state.facing, entity.radius * 1.5);
     },
