@@ -9,6 +9,7 @@ import {
 } from "../../sim/index.js";
 import type { Player, Point, Scatter, Session } from "../../sim/index.js";
 import cashoutUrl from "./sfx/cashout.mp3";
+import dropUrl from "./sfx/drop.mp3";
 
 /** Scrap: picked up off the ground and sold at the cruiser for the team's credit. */
 export interface ScrapConfig {
@@ -20,7 +21,7 @@ export interface ScrapConfig {
   readonly sellInterval: number;
   /** How long a sale waits for the host before it asks again, in sim seconds. */
   readonly sellTimeout: number;
-  /** Volume of a sale's sound, 0..1. */
+  /** Volume of its sounds, a sale and a drop, 0..1. */
   readonly volume: number;
   /** Where a new world lays scrap on the ground, one per spot. */
   readonly scatter: Scatter;
@@ -154,6 +155,7 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
   return {
     name: "Scrap",
     emoji: "🔩",
+    drop: { url: dropUrl, volume: config.volume },
     scatter: config.scatter,
     world: credit,
     events: { sell, sold, refused, cashedOut },

@@ -302,6 +302,7 @@ export function defineItem<N extends string, C>(
         id: name,
         name: spec.name,
         emoji: spec.emoji,
+        ...(spec.drop === undefined ? {} : { drop: spec.drop }),
       };
       const { scatter } = spec;
       return {

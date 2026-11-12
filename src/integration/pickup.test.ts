@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { createRoom } from "../room/index.js";
@@ -32,10 +32,13 @@ const idle: Controls = {
 };
 const reach: Controls = { ...idle, interact: true };
 
-/** A bolt: an item that does nothing, lying about to be picked up. */
+const BOLT_DROP = "bolt-drop.mp3";
+
+/** A bolt: an item that does nothing, lying about to be picked up, and clinks when dropped. */
 const bolt = defineItem("bolt", () => ({
   name: "Bolt",
   emoji: "🔩",
+  drop: { url: BOLT_DROP, volume: 1 },
 }));
 
 /** No chasers, so nothing moves; the cruiser beside the first host. */
@@ -82,6 +85,11 @@ async function crew(...ids: string[]) {
       onPeerFailed: () => undefined,
     });
     await room.join("BOLTS", id.toUpperCase());
+    vi.spyOn(sessionOf(room).sfx, "play").mockResolvedValue({
+      stop: () => undefined,
+      setVolume: () => undefined,
+      setPosition: () => undefined,
+    });
     rooms.set(id, room);
   }
   clock.advance(1000);
@@ -297,7 +305,13 @@ function holdBolt(room: Room): void {
   game.local.held = 1;
 }
 
-test("with nothing in reach, E drops the held item where the player stands, on every client", async () => {
+/** Whether `room`'s client played the bolt's drop sound. */
+const clinked = (room: Room): boolean =>
+  vi
+    .mocked(sessionOf(room).sfx.play)
+    .mock.calls.some(([url]) => url === BOLT_DROP);
+
+test("with nothing in reach, E drops the held item where the player stands, on every client, with its sound", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   holdBolt(b);
@@ -307,6 +321,9 @@ test("with nothing in reach, E drops the held item where the player stands, on e
   expect(carried(b)).toEqual([null, null, null, null]);
   expect(boltsAt(host, SPOT)).toBe(1);
   expect(boltsAt(b, SPOT)).toBe(1);
+  exchange();
+  expect(clinked(host)).toBe(true);
+  expect(clinked(b)).toBe(true);
 });
 
 test("E picks up what is in reach rather than drop the held item", async () => {
