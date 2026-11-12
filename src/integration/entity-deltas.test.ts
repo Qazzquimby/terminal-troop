@@ -13,6 +13,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  messages,
   testRoomConfig,
 } from "./room-helpers.js";
 import {
@@ -63,8 +64,9 @@ function setup() {
     const recording: Transport = {
       ...port,
       send(event, payload) {
-        if (event === NetEvent.ENTITIES) {
-          const message = Snapshot.parse(payload);
+        for (const sent of messages(event, payload)) {
+          if (sent.event !== NetEvent.ENTITIES) continue;
+          const message = Snapshot.parse(sent.payload);
           log.push({
             full: message.full,
             ids: message.entities.map(({ id }) => id),

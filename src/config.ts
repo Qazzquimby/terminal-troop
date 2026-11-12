@@ -104,8 +104,7 @@ export const config = {
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2 },
   room: {
-    sendHz: 15,
-    entityHz: 10,
+    sendHz: 10,
     fullSnapshotMs: 5000,
     heartbeatMs: 1000,
     presence: {
