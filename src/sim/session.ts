@@ -31,7 +31,7 @@ import {
 } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
-import type { WorldData } from "./world-data.js";
+import type { HeldWorldValue, WorldData } from "./world-data.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
@@ -87,8 +87,10 @@ export interface Session {
   readonly playerData: Map<string, PlayerData<unknown>>;
   /** The state each content entry keeps once for the world, by the entry's name. */
   readonly worldData: Map<string, WorldData<unknown>>;
-  /** Each entry's world state, in its wire form; an entry with nothing here reads as its initial value. */
-  readonly worldValues: Map<WorldData<unknown>, unknown>;
+  /** Each entry's world state as held; an entry with nothing here reads as its initial value. */
+  readonly worldValues: Map<WorldData<unknown>, HeldWorldValue>;
+  /** The world entries set while hosting since the room last took them to send. */
+  readonly worldChanged: Set<WorldData<unknown>>;
   /** Each content entry's events, by the entry's name, then by key. */
   readonly events: Map<string, Map<string, ContentEvent<unknown>>>;
   /** Where each registered event travels. */
@@ -192,6 +194,7 @@ export function createSession(
     playerData: new Map(),
     worldData: new Map(),
     worldValues: new Map(),
+    worldChanged: new Set(),
     events: new Map(),
     eventAddresses: new Map(),
     inbox: [],

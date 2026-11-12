@@ -222,7 +222,7 @@ test("the host refuses a sale from a player not holding scrap, or not by the cru
   const forge = (at: Point): void => {
     const event = guest.events.get("item/scrap")?.get("sell");
     if (event?.to !== "host") throw new Error("no event");
-    event.send(guest, { asked: guest.time, ...at });
+    event.send(guest, { sale: 1, ...at });
     exchange();
     exchange();
   };
@@ -301,4 +301,60 @@ test("a new world lays its configured scrap about, the same on every client", as
   expect(lying(get("a"))).toHaveLength(3);
   expect(lying(get("a"))[0]?.data).toEqual({ item: "scrap" });
   expect(lying(get("b"))).toEqual(lying(get("a")));
+});
+
+/** The latest sale each player sold, as `room`'s client holds the world. */
+function salesOn(room: Room): unknown {
+  const game = sessionOf(room);
+  return game.worldData.get("item/scrap.sales")?.get(game);
+}
+
+test("a new host knows which sales the last one sold", async () => {
+  const { get, exchange, clock } = await crew("a", "b", "c");
+  const c = get("c");
+  stock(c, 2);
+  place(c, byCruiser(c, 60));
+  exchange();
+  exchange();
+  expect(salesOn(get("b"))).toEqual({ c: 1 });
+
+  await get("a").leave();
+  clock.advance(clock.now() + 3000);
+  expect(get("b").hostId()).toBe("b");
+  expect(salesOn(get("b"))).toEqual({ c: 1 });
+  sessionOf(c).local.held = 2;
+  for (let round = 0; round < 20; round++) exchange();
+  expect(salesOn(c)).toEqual({ c: 2 });
+  expect(credit.get(sessionOf(c))).toBe(scrap.value * 2);
+});
+
+test("a sale whose answer is lost as the host goes is credited once by the next host", async () => {
+  const { get, exchange, hub, clock } = await crew("a", "b", "c");
+  const a = get("a");
+  const c = get("c");
+  stock(c, 2);
+  place(c, byCruiser(c, scrap.cashoutRadius + 60));
+  exchange();
+  place(c, byCruiser(c, 60));
+  updateSession(sessionOf(c), idle, DT);
+  c.frame(clock.now());
+  // The host sells, but only b hears it: c never learns its sale went through.
+  hub.partition(["a", "b"], ["c"]);
+  updateSession(sessionOf(a), idle, DT);
+  a.frame(clock.now() + 200);
+  hub.heal();
+  expect(credit.get(sessionOf(get("b")))).toBe(scrap.value);
+  expect(credit.get(sessionOf(c))).toBe(0);
+  expect(scrapCarried(c)).toBe(2);
+
+  await a.leave();
+  clock.advance(clock.now() + 3000);
+  expect(get("b").hostId()).toBe("b");
+  for (let step = 0; step < scrap.sellTimeout / DT + 1; step++)
+    updateSession(sessionOf(c), idle, DT);
+  exchange();
+  exchange();
+  expect(credit.get(sessionOf(get("b")))).toBe(scrap.value);
+  expect(credit.get(sessionOf(c))).toBe(scrap.value);
+  expect(scrapCarried(c)).toBe(1);
 });
