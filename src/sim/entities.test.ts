@@ -10,6 +10,7 @@ import {
 } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { entityDelta } from "./entity-delta.js";
+import { nextAction, predict, settlePredictions } from "./prediction.js";
 import { rounded } from "./rounded.js";
 import type { Session } from "./session.js";
 import { createSession, updateSession } from "./session.js";
@@ -394,6 +395,36 @@ describe("changes", () => {
         data,
       })),
     );
+  });
+
+  test("a change without health leaves the host's as it was under a guest's prediction", () => {
+    const game = session();
+    game.hosting = false;
+    applyEntitySnapshot(game, [
+      {
+        id: "1",
+        kind: KIND_ID,
+        x: 100,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
+    ]);
+    const [entity] = game.entities.values();
+    if (entity === undefined) throw new Error("no entity");
+    predict(game, nextAction(game), [entity], (hit) => {
+      hit.health = 4;
+    });
+    applyEntityChanges(game, {
+      added: [],
+      changed: [{ id: "1", x: 110 }],
+      removed: [],
+    });
+    expect(entity.health).toBe(4);
+
+    game.time += game.config.net.predictionHold + 1;
+    settlePredictions(game);
+    expect(entity.health).toBe(10);
   });
 
   test("a change to an entity the client lacks is left out", () => {

@@ -8,7 +8,7 @@ import { hurtPlayer } from "./health.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
-import { hearHealth, isHeld } from "./prediction.js";
+import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import type { LightEmission } from "./vision.js";
 
@@ -344,7 +344,7 @@ function changedEntry(
     kind: known.kind,
     x: change.x ?? known.tx,
     y: change.y ?? known.ty,
-    health: change.health ?? known.health,
+    health: change.health ?? heardHealth(game, known),
     data: changedData(encoded.data, change),
   };
 }

@@ -76,6 +76,10 @@ export function hearHealth(
   else held.health = health;
 }
 
+/** `entity`'s health as the host last sent it, whether or not a prediction holds it. */
+export const heardHealth = (game: Session, entity: WorldEntity): number =>
+  game.predictions.get(entity.id)?.health ?? entity.health;
+
 /** Whether a prediction holds `entity`'s position against the host's snapshots. */
 export const isHeld = (game: Session, entity: WorldEntity): boolean =>
   game.predictions.has(entity.id);
