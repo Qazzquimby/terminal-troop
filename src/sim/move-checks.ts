@@ -2,9 +2,8 @@ import { isSweepFree } from "./collision.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import {
-  keepsPace,
-  notePace,
-  rebasePace,
+  couldSprintSince,
+  noteFast,
   restartStaminaChecks,
 } from "./stamina-checks.js";
 
@@ -13,10 +12,15 @@ export interface MoveCheckConfig {
   /** Pixels a report may stray past what the rules allow, for rounding and bodies pushed apart. */
   readonly slack: number;
   /**
-   * Seconds of top speed a report may carry past the time since the last report taken, for
+   * Seconds of top speed a report may carry past the time since an earlier report taken, for
    * reports that arrive late or several at once.
    */
   readonly lateSeconds: number;
+  /**
+   * Seconds over which the host holds a player to its top speed: long enough that the lateness
+   * and slack are small beside it, so that a player kept even a little too fast falls behind.
+   */
+  readonly windowSeconds: number;
   /**
    * Seconds after a player joins, comes back to its page or falls silent and returns, or a new
    * host takes over, in which its reports are taken as they come.
@@ -32,12 +36,25 @@ interface Allowance {
   readonly until: number;
 }
 
+/**
+ * Where a player stood in the last report the host took at one time, in sim seconds, or where the
+ * host put it, and how far it had gone by then in the reports taken since its check started.
+ */
+interface Mark {
+  readonly at: Point;
+  readonly time: number;
+  readonly travelled: number;
+}
+
 /** What the host knows of one remote player's moves. Times are in sim seconds. */
 export interface MoveCheck {
-  /** Where the player last stood in a report the host took, or where the host put it. */
-  at: Point;
-  /** When the host took that report, or put the player there. */
-  time: number;
+  /**
+   * Where the player stood over the last window, oldest first, one for each time reports were
+   * taken: the first is the newest at least a window old, where there is one, and the last is the
+   * latest. Never empty. Reports taken at one time may have been sent well apart and held up on
+   * the way, so only the last of them, sent most recently, marks when the player stood there.
+   */
+  marks: Mark[];
   /** Until when every report is taken as it comes. */
   settleUntil: number;
   allowances: Allowance[];
@@ -69,74 +86,129 @@ function hasPath(game: Session, from: Point, to: Point): boolean {
   );
 }
 
-/** Pixels of pushes and lunges `check` allows on top of the player's own speed. */
-function allowed(check: MoveCheck): number {
+/** Pixels of pushes and lunges `check` allows on top of the player's own speed since `time`. */
+function allowedSince(check: MoveCheck, time: number): number {
   let distance = 0;
-  for (const allowance of check.allowances) distance += allowance.distance;
+  for (const allowance of check.allowances)
+    if (allowance.until >= time) distance += allowance.distance;
   return distance;
 }
 
+/** A mark of standing at `at` now, `travelled` pixels along. */
+function markOf(game: Session, at: Point, travelled: number): Mark {
+  return { at: { x: at.x, y: at.y }, time: game.time, travelled };
+}
+
 /**
- * Whether the player `playerId`, which stood as `check` says, can stand at `to` now, and has
- * the stamina for the pace it went at, with `more` pixels on top of the pushes and lunges allowed.
+ * Whether going `distance` pixels since `time` is within `speed`, with `allowed` pixels of pushes
+ * and lunges, the lateness and the slack on top.
  */
-function withinReach(
+function withinPace(
   game: Session,
-  playerId: string,
-  check: MoveCheck,
-  to: Point,
-  more = 0,
+  time: number,
+  distance: number,
+  speed: number,
+  allowed: number,
 ): boolean {
-  const { player, net } = game.config;
-  const { slack, lateSeconds } = net.moves;
-  const topSpeed =
-    player.speed *
-    Math.max(1, player.sprintMultiplier, player.crouchMultiplier);
-  const extra = allowed(check) + more;
-  const reach =
-    topSpeed * (game.time - check.time + lateSeconds) + slack + extra;
-  return (
-    Math.hypot(to.x - check.at.x, to.y - check.at.y) <= reach &&
-    hasPath(game, check.at, to) &&
-    keepsPace(game, playerId, to, extra)
+  const { slack, lateSeconds } = game.config.net.moves;
+  return distance <= speed * (game.time - time + lateSeconds) + slack + allowed;
+}
+
+/**
+ * The fastest the player `playerId` may have gone since `time`: a sprint if the host reckoned it
+ * had the stamina for one at any time since, a walk otherwise.
+ */
+function topSpeed(game: Session, playerId: string, time: number): number {
+  const { speed, sprintMultiplier, crouchMultiplier } = game.config.player;
+  const sprint = couldSprintSince(game, playerId, time) ? sprintMultiplier : 1;
+  return speed * Math.max(1, sprint, crouchMultiplier);
+}
+
+/** Notes in `check` that the player stood at `to`, forgetting what fell out of the window. */
+function remember(game: Session, check: MoveCheck, to: Mark): void {
+  const since = game.time - game.config.net.moves.windowSeconds;
+  const kept = check.marks.filter((mark) => mark.time < to.time);
+  const marks = [...kept, to];
+  let first = 0;
+  while ((marks[first + 1]?.time ?? Infinity) <= since) first++;
+  check.marks = marks.slice(first);
+  const oldest = check.marks[0]?.time ?? to.time;
+  check.allowances = check.allowances.filter(
+    (allowance) => allowance.until >= oldest,
   );
 }
 
 /**
- * Checks, as the host, a remote player's reported position against the last one taken: it must
- * lie within the player's top speed over the time since, plus any push or lunge allowed and the
- * configured slack, with no wall in the way, and keep to a walk while the host reckons the player
- * too spent to sprint. A player with no check yet starts one there.
+ * Checks, as the host, a remote player's reported position: the way from the last one taken must
+ * be clear of walls, and from each taken over the last window the player must have gone, along
+ * the reports taken since, within its top speed over the time since, plus any push or lunge
+ * allowed then, the lateness and the slack. Its top speed is a sprint while the host reckons it
+ * has the stamina, a walk otherwise. A player with no check yet starts one there.
  */
 export function checkMove(
   game: Session,
   playerId: string,
   to: Point,
 ): MoveVerdict {
-  const { time } = game;
   const check = game.moveChecks.get(playerId);
   if (check === undefined) {
     game.moveChecks.set(playerId, {
-      at: { x: to.x, y: to.y },
-      time,
-      settleUntil: time + game.config.net.moves.settleSeconds,
+      marks: [markOf(game, to, 0)],
+      settleUntil: game.time + game.config.net.moves.settleSeconds,
       allowances: [],
     });
-    rebasePace(game, playerId, to);
     return { kind: "take" };
   }
-  const settling = time < check.settleUntil;
-  if (settling || withinReach(game, playerId, check, to)) {
-    if (settling) rebasePace(game, playerId, to);
-    else notePace(game, playerId, to, allowed(check));
-    check.at = { x: to.x, y: to.y };
-    check.time = time;
-    check.allowances = check.allowances.filter(
-      (allowance) => allowance.until >= time,
-    );
+  if (game.time < check.settleUntil) {
+    check.marks = [markOf(game, to, 0)];
     return { kind: "take" };
   }
-  return { kind: "correct", to: check.at };
+  const measured = measure(game, playerId, check, to, 0);
+  if (measured === null) return { kind: "correct", to: lastMark(check).at };
+  const { now, fastSince } = measured;
+  if (fastSince > -Infinity) noteFast(game, playerId, fastSince);
+  remember(game, check, now);
+  return { kind: "take" };
+}
+
+function lastMark(check: MoveCheck): Mark {
+  const last = check.marks[check.marks.length - 1];
+  if (last === undefined) throw new Error("a move check with no marks");
+  return last;
+}
+
+/**
+ * How a report from `playerId` of standing at `to` now measures against `check`, with `more`
+ * pixels allowed on top: the mark it makes, and since when the player went faster than a walk to
+ * get there; null when it went faster than its top speed or the way from the last report taken
+ * is walled off.
+ */
+function measure(
+  game: Session,
+  playerId: string,
+  check: MoveCheck,
+  to: Point,
+  more: number,
+): { readonly now: Mark; readonly fastSince: number } | null {
+  const last = lastMark(check);
+  const now = markOf(
+    game,
+    to,
+    last.travelled + Math.hypot(to.x - last.at.x, to.y - last.at.y),
+  );
+  const { speed, crouchMultiplier } = game.config.player;
+  const walk = speed * Math.max(1, crouchMultiplier);
+  let fastSince = -Infinity;
+  for (const from of check.marks) {
+    const distance = now.travelled - from.travelled;
+    const allowed = allowedSince(check, from.time) + more;
+    const top = topSpeed(game, playerId, from.time);
+    if (!withinPace(game, from.time, distance, top, allowed)) return null;
+    if (!withinPace(game, from.time, distance, walk, allowed))
+      fastSince = from.time;
+  }
+  if (!hasPath(game, last.at, to)) return null;
+  return { now, fastSince };
 }
 
 /**
@@ -152,7 +224,7 @@ export function couldStand(
 ): boolean {
   const check = game.moveChecks.get(playerId);
   if (check === undefined || game.time < check.settleUntil) return true;
-  return withinReach(game, playerId, check, at, more);
+  return measure(game, playerId, check, at, more) !== null;
 }
 
 /**
@@ -181,12 +253,10 @@ export function allowMove(
 export function rebaseMoves(game: Session, playerId: string, at: Point): void {
   const check = game.moveChecks.get(playerId);
   game.moveChecks.set(playerId, {
-    at: { x: at.x, y: at.y },
-    time: game.time,
+    marks: [markOf(game, at, 0)],
     settleUntil: -Infinity,
     allowances: check?.allowances ?? [],
   });
-  rebasePace(game, playerId, at);
 }
 
 /**

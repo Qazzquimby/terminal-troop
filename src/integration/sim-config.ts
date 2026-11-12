@@ -15,7 +15,8 @@ import type { SimConfig } from "../sim/index.js";
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
  * where it was made. Walking steps every 0.5s, heard 150px off; sprinting every 0.25s, 450px off;
  * crouching, at half speed, every 0.75s, 60px off. A player new to a world starts within 100px of its
- * rally point. The host reckons each player's stamina with 0.3s of sprinting over a full bar.
+ * rally point. The host holds each player to its top speed over the last 1.5s of its reports, and
+ * reckons its stamina with 0.3s of sprinting over a full bar.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -42,6 +43,7 @@ export const testSimConfig: SimConfig = {
     moves: {
       slack: 10,
       lateSeconds: 0.2,
+      windowSeconds: 1.5,
       settleSeconds: 1,
       roundTripSeconds: 0.5,
     },
