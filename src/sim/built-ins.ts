@@ -7,6 +7,7 @@ import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { Session } from "./session.js";
 import { heldItemId, itemUsed } from "./use.js";
+import { dropped, granted, pickedUp } from "./world-items.js";
 
 /** State the engine itself keeps on every player, and events it sends, under one name. */
 interface BuiltIn {
@@ -27,6 +28,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/noise": { events: { made: noiseMade } },
   /** The blows the host deals each player, damage and any push, sent to that player's own client. */
   "core/health": { events: { damage: damaged } },
+  /** Items lying in the world: each pickup and drop the host checks, and the item it grants. */
+  "core/world-items": { events: { pickedUp, granted, dropped } },
 };
 
 /** Registers the engine's own player state and events with a new session. */

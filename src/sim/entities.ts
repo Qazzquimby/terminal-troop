@@ -304,3 +304,13 @@ export function applyEntitySnapshot(
     if (!kept.has(id)) game.entities.delete(id);
   }
 }
+
+/**
+ * Takes the entity `id` out of the world, as when something carries it off rather than destroys
+ * it; the host's snapshots carry the removal to everyone. Only the host removes entities: false
+ * on any other client, and when there is no such entity.
+ */
+export function removeEntity(game: Session, id: string): boolean {
+  if (!game.hosting) return false;
+  return game.entities.delete(id);
+}

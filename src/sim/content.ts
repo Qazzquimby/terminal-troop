@@ -13,6 +13,7 @@ import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
 import { registerItem } from "./use.js";
 import type { ItemBehaviour } from "./use.js";
+import { registerWorldItems, spawnWorldItem } from "./world-items.js";
 
 /**
  * A content entry's name, in the namespace of where it comes from: `entity/` for kinds of entity,
@@ -257,17 +258,29 @@ interface StartingStack {
   readonly quantity: number;
 }
 
-/**
- * An item's definition, less its id, which is its content name; what using it does; and where
- * each player starts with it, if anywhere.
- */
-export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
+/** What every item spec has, usable or not. */
+interface ItemBase extends Omit<ItemDefinition, "id"> {
   readonly starting?: StartingStack;
+  /** Where a new world lays it on the ground, one item each, if anywhere. */
+  readonly scatter?: Scatter;
   /** The state the item keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
   /** The events the item sends and receives, by key. */
   readonly events?: ContentEvents;
+  /** Acts on the local player's controls, each step, once the player has moved. */
+  act?(game: Session, controls: Controls): void;
 }
+
+/** An item that does nothing when used. */
+interface Unusable {
+  readonly cooldown?: undefined;
+}
+
+/**
+ * An item's definition, less its id, which is its content name; what using it does, if it is
+ * usable; where each player starts with it, and where a new world lays it, if anywhere.
+ */
+export type ItemSpec = ItemBase & (ItemBehaviour | Unusable);
 
 /**
  * A content entry of one item, registered as the item id `name` and configured by the slice
@@ -288,18 +301,37 @@ export function defineItem<N extends string, C>(
         maxStack: spec.maxStack,
         emoji: spec.emoji,
       };
+      const { scatter } = spec;
       return {
         name: `item/${name}`,
         player: spec.player,
         events: spec.events,
         register(game) {
-          registerItem(game, item, spec);
+          registerItem(
+            game,
+            item,
+            spec.cooldown === undefined ? undefined : spec,
+          );
+          registerWorldItems(game);
           if (spec.starting !== undefined) {
             const { slot, quantity } = spec.starting;
             placeItem(game.local.inventory, slot, item, quantity);
           }
         },
-        populate: () => undefined,
+        populate(game) {
+          if (scatter === undefined) return;
+          const rule: SpawnRule<null> = {
+            ...scatter,
+            at: "scatter",
+            data: () => null,
+          };
+          spawnByRule(game, rule, game.config.worldItems.radius, (at) =>
+            spawnWorldItem(game, at, name),
+          );
+        },
+        act(game, controls) {
+          spec.act?.(game, controls);
+        },
       };
     },
   };

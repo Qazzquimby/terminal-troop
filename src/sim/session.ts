@@ -33,6 +33,8 @@ import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
+import { interact } from "./world-items.js";
+import type { WorldItemConfig } from "./world-items.js";
 
 /** How remote players follow the state they report. */
 interface SyncConfig {
@@ -49,6 +51,7 @@ export interface SimConfig extends PlayerRules {
   readonly net: SyncConfig;
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
+  readonly worldItems: WorldItemConfig;
 }
 
 export interface Session {
@@ -209,6 +212,7 @@ export function updateSession(
   stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
+  if (controls.interact) interact(game);
   for (const content of game.contents) content.act?.(game, controls);
 
   for (const player of remotePlayers(game)) {

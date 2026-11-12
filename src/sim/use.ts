@@ -46,20 +46,20 @@ export interface UseSlack {
   readonly seconds: number;
 }
 
-/** Registers `item` with `game`, and what using it does. */
+/** Registers `item` with `game`, and what using it does, if it is usable. */
 export function registerItem(
   game: Session,
   item: ItemDefinition,
-  behaviour: ItemBehaviour,
+  behaviour?: ItemBehaviour,
 ): void {
-  if (game.items.has(item.id))
+  if (game.itemDefinitions.has(item.id))
     throw new Error(`Item already registered: ${item.id}`);
   game.itemDefinitions.set(item.id, item);
-  game.items.set(item.id, behaviour);
+  if (behaviour !== undefined) game.items.set(item.id, behaviour);
 }
 
 /** An item's id, as a player reports it. */
-const ItemId = z.string().min(1).max(32);
+export const ItemId = z.string().min(1).max(32);
 
 /** The id of the item in `player`'s selected slot, or null for nothing. */
 function selectedItemId(player: Player): string | null {

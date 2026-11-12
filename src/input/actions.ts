@@ -14,6 +14,7 @@ export const ACTIONS = {
   crouch: { keys: ["KeyC"], contexts: ["play"] },
   useItem: { keys: ["MouseLeft"], contexts: ["play"] },
   secondary: { keys: ["MouseRight"], contexts: ["play"] },
+  interact: { keys: ["KeyE"], contexts: ["play"] },
   toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
@@ -291,5 +292,6 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     select: pressedSlot(frame),
     use: frame.pressed.has("useItem"),
     secondary: frame.pressed.has("secondary"),
+    interact: frame.pressed.has("interact"),
   };
 }
