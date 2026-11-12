@@ -9,6 +9,8 @@ import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
+import { registerWorldData } from "./world-data.js";
+import type { WorldData } from "./world-data.js";
 import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
 import { registerItem } from "./use.js";
@@ -33,6 +35,8 @@ export interface WorldContent {
   readonly name: ContentName;
   /** The state it keeps on every player, if any. */
   readonly player?: PlayerData<unknown> | undefined;
+  /** The state it keeps once for the world, if any. */
+  readonly world?: WorldData<unknown> | undefined;
   /** The events it sends and receives, by the key each travels under. */
   readonly events?: ContentEvents | undefined;
   /**
@@ -61,6 +65,8 @@ export function registerContent(
     names.add(content.name);
     if (content.player !== undefined)
       registerPlayerData(game, content.name, content.player);
+    if (content.world !== undefined)
+      registerWorldData(game, content.name, content.world);
     if (content.events !== undefined)
       registerEvents(game, content.name, content.events);
     content.register(game);
@@ -267,6 +273,8 @@ interface ItemBase extends Omit<ItemDefinition, "id"> {
   readonly player?: PlayerData<unknown>;
   /** The events the item sends and receives, by key. */
   readonly events?: ContentEvents;
+  /** The state the item keeps once for the world, if any. */
+  readonly world?: WorldData<unknown>;
   /** Acts on the local player's controls, each step, once the player has moved. */
   act?(game: Session, controls: Controls): void;
 }
@@ -305,6 +313,7 @@ export function defineItem<N extends string, C>(
       return {
         name: `item/${name}`,
         player: spec.player,
+        world: spec.world,
         events: spec.events,
         register(game) {
           registerItem(

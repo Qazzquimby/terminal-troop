@@ -61,9 +61,10 @@ const MAX_ENTITIES = 4096;
 const EntityId = z.string().min(1).max(80);
 
 /**
- * The entities the sender hosts, by the sender's id. A full snapshot carries every entity; any
- * other only those changed since the sender's last, and the ids of those gone. Each kind parses
- * its own data, so an entity whose data its kind rejects is dropped where it is applied.
+ * The entities the sender hosts, by the sender's id, and each content entry's world state by the
+ * entry's name. A full snapshot carries every entity; any other only those changed since the
+ * sender's last, and the ids of those gone. Each kind parses its own data, and each entry its own
+ * state, so an entity or a value its parser rejects is dropped where it is applied.
  */
 const EntitiesMessage = z.object({
   host: PlayerId,
@@ -81,6 +82,7 @@ const EntitiesMessage = z.object({
     )
     .max(MAX_ENTITIES),
   removed: z.array(EntityId).max(MAX_ENTITIES),
+  world: z.record(z.string(), z.unknown()),
 });
 
 /** A content entry's name, or an event's key within its entry. */

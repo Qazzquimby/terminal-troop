@@ -51,6 +51,7 @@ describe("health", () => {
         { id: "h:2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
       ],
       removed: [],
+      world: { "item/scrap": 3 },
     };
     const schema = messages[NetEvent.ENTITIES];
     const wire: unknown = JSON.parse(JSON.stringify(schema.encode(snapshot)));
@@ -99,6 +100,7 @@ describe("the message table", () => {
         data: unknown;
       }[];
       removed: string[];
+      world: Record<string, unknown>;
     }>();
     expectTypeOf<Message<"content">>().toEqualTypeOf<{
       from: string;

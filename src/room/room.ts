@@ -6,6 +6,7 @@ import {
   applyEntityChanges,
   applyEntitySnapshot,
   applyRemoteState,
+  applyWorldState,
   cueEntities,
   createSession,
   entitySnapshot,
@@ -13,6 +14,7 @@ import {
   receiveEvent,
   registerContent,
   removePlayer,
+  worldState,
 } from "../sim/index.js";
 import type {
   OutgoingEvent,
@@ -211,9 +213,9 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   /**
-   * Sends the entities, at most `entityHz` times a second unless forced: in full when forced, as
-   * this client's first while hosting, or every `fullSnapshotMs`; otherwise only the entities
-   * changed since the last send, and the ids of those gone.
+   * Sends the entities and the world state, at most `entityHz` times a second unless forced: in
+   * full when forced, as this client's first while hosting, or every `fullSnapshotMs`; otherwise
+   * only the entities changed since the last send, and the ids of those gone.
    */
   function sendEntities(room: Link, now: number, force = false): void {
     if (!force && now - room.lastEntitiesSent < 1000 / config.entityHz) return;
@@ -240,6 +242,7 @@ export function createRoom(deps: RoomDeps): Room {
       removed: full
         ? []
         : [...previous.keys()].filter((id) => !current.has(id)),
+      world: worldState(room.session),
     });
   }
 
@@ -341,6 +344,7 @@ export function createRoom(deps: RoomDeps): Room {
         if (message.full) applyEntitySnapshot(room.session, message.entities);
         else
           applyEntityChanges(room.session, message.entities, message.removed);
+        applyWorldState(room.session, message.world);
         room.populated = true;
       }),
       [NetEvent.CONTENT]: on(NetEvent.CONTENT, (message) => {
