@@ -80,8 +80,9 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   /** Network target facing; remote players turn towards it along the shortest arc. */
   taim: number;
   /**
-   * The local player's items, every slot empty until the room's items stock it; never sent
-   * over the network. A remote player's stays empty: what it holds is in its content state.
+   * The local player's items as its client shows them: the host's record of them, with its own
+   * actions not yet settled applied on top; never sent. A remote player's stays empty: the host
+   * keeps its items, and it reports the slot it holds.
    */
   inventory: Inventory;
   /** The local player's selected slot, or null for holding nothing; unused for remote players. */
@@ -119,7 +120,6 @@ export interface PlayerState {
   readonly x: number;
   readonly y: number;
   readonly aim: number;
-  readonly health: number;
   /** The latest forced move the player has taken. */
   readonly epoch: number;
   /** Each content entry's state, encoded by the entry's schema, by the entry's name. */

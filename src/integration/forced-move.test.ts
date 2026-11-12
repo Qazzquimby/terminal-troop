@@ -1,6 +1,4 @@
 import { expect, test } from "vitest";
-import { createScope } from "../lib/scope/index.js";
-import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
   correctPlayer,
@@ -8,30 +6,21 @@ import {
   hurtPlayer,
   isAreaFree,
   startDash,
-  updateSession,
 } from "../sim/index.js";
-import type { Controls, Player, Point, Session } from "../sim/index.js";
-import { createNullVoice } from "../voice/index.js";
+import type { Point } from "../sim/index.js";
 import {
-  createHub,
-  createManualClock,
-  testRoomConfig,
-} from "./room-helpers.js";
-import { testSfx, testSimConfig } from "./sim-config.js";
+  crew as crewAt,
+  DT,
+  idle,
+  playerOn,
+  sessionOf,
+  standAt,
+} from "./crew.js";
+import { testRoomConfig } from "./room-helpers.js";
+import { testSimConfig } from "./sim-config.js";
 
-const DT = 1 / 60;
 const { radius, knockbackSeconds } = testSimConfig.player;
-const idle: Controls = {
-  move: { x: 0, y: 0 },
-  aim: { x: 0, y: 0 },
-  sprint: false,
-  crouch: false,
-  select: null,
-  use: false,
-  secondary: false,
-  interact: false,
-};
-const walkUp: Controls = { ...idle, move: { x: 0, y: -1 } };
+const walkUp = { ...idle, move: { x: 0, y: -1 } };
 
 /** Where each client's player stands at first. */
 const SPOTS = {
@@ -39,89 +28,13 @@ const SPOTS = {
   b: { x: 450, y: 450 },
   c: { x: 750, y: 450 },
 } as const;
-const spots: Readonly<Record<string, Point>> = SPOTS;
 /** Free floor apart from every player, where the host puts one. */
 const THERE = { x: 300, y: 300 };
 /** How far the tests push a player. */
 const PUSH = 60;
 
-function sessionOf(room: Room): Session {
-  const state = room.state();
-  if (state.kind !== "joined") throw new Error(`not joined: ${state.kind}`);
-  return state.session;
-}
-
-function standAt(game: Session, at: Point): void {
-  Object.assign(game.local, { ...at, prevX: at.x, prevY: at.y });
-}
-
-/** The player `id` as `room` knows it. */
-function playerOn(room: Room, id: string): Player {
-  const player = sessionOf(room).players.get(id);
-  if (player === undefined) throw new Error(`no player ${id}`);
-  return player;
-}
-
 /** Clients `ids` joined to one room on a JSON hub, the first hosting, each at its spot. */
-async function crew(...ids: string[]) {
-  const hub = createHub();
-  const clock = createManualClock();
-  const client = (id: string): Room =>
-    createRoom({
-      localId: id,
-      world: "dev",
-      transport: hub.transport(id, []).port,
-      voice: createNullVoice({
-        mode: "open",
-        muted: false,
-        volume: 1,
-        inputDevice: null,
-      }),
-      sfx: testSfx(),
-      scope: createScope(),
-      clock,
-      config: testRoomConfig,
-      sim: testSimConfig,
-      content: [],
-      falloff: { full: 100, silent: 600, pan: 300 },
-      onChange: () => undefined,
-      onPeerFailed: () => undefined,
-    });
-  const rooms = new Map(ids.map((id) => [id, client(id)]));
-  const room = (id: string): Room => {
-    const found = rooms.get(id);
-    if (found === undefined) throw new Error(`no client ${id}`);
-    return found;
-  };
-  for (const [id, each] of rooms) await each.join("FRIEND", id.toUpperCase());
-  clock.advance(1000);
-  /** One sim step and frame on each client still in the room, `controls` by client id. */
-  const step = (controls: Readonly<Record<string, Controls>> = {}): void => {
-    for (const [id, each] of rooms) {
-      if (each.state().kind !== "joined") continue;
-      updateSession(sessionOf(each), controls[id] ?? idle, DT);
-      each.frame(clock.now());
-    }
-    clock.advance(clock.now() + DT * 1000);
-  };
-  /** Steps for `ms` of time. */
-  const run = (
-    ms: number,
-    controls: Readonly<Record<string, Controls>> = {},
-  ): void => {
-    for (let at = 0; at < ms; at += DT * 1000) step(controls);
-  };
-  // Copies easing from where each player first arrived can shove the others aside, so twice.
-  for (let round = 0; round < 2; round++) {
-    for (const [id, each] of rooms) {
-      const at = spots[id];
-      if (at !== undefined) standAt(sessionOf(each), at);
-    }
-    run(1000);
-  }
-  expect(room(ids[0] ?? "").hostId()).toBe(ids[0]);
-  return { hub, clock, rooms, room, client, step, run };
-}
+const crew = (...ids: string[]) => crewAt({ spots: SPOTS }, ...ids);
 
 /** Where every client in `rooms` sees player `id`: its own client where it is, others where it is headed. */
 function seenEverywhere(rooms: ReadonlyMap<string, Room>, id: string) {
@@ -420,9 +333,7 @@ test("a blow without a push, as a zombie strikes, moves no one", async () => {
   const { room, run } = await crew("a", "b");
   const game = sessionOf(room("a"));
   hurtPlayer(game, playerOn(room("a"), "b"), 7);
-  expect(game.outbox).toEqual([
-    expect.objectContaining({ content: "core/health", payload: { amount: 7 } }),
-  ]);
+  expect(game.outbox).toEqual([]);
   run(500);
   expect(sessionOf(room("b")).local).toMatchObject({
     ...SPOTS.b,

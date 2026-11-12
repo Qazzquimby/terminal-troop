@@ -63,7 +63,7 @@ export {
 } from "./forced-move.js";
 export { allowMove, restartMoveChecks } from "./move-checks.js";
 export { confirmAction, nextAction, predict } from "./prediction.js";
-export { hurtPlayer } from "./health.js";
+export { Health, hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export { spendStamina } from "./stamina.js";
@@ -82,7 +82,16 @@ export type { Heard } from "./noise.js";
 export { makeSound, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
-export { heldItemId, heldItemOf, hostAccepts, registerItem } from "./use.js";
+export { hostAccepts, registerItem } from "./use.js";
+export {
+  giveItem,
+  heldItemOf,
+  heldSlot,
+  itemIn,
+  predictInventory,
+  settleItemAction,
+  takeItem,
+} from "./inventories.js";
 export type { ItemUse } from "./use.js";
 
 export {

@@ -40,8 +40,8 @@ export interface WorldContent {
   /** The events it sends and receives, by the key each travels under. */
   readonly events?: ContentEvents | undefined;
   /**
-   * Registers its kinds and items with a new session, and stocks its local player's inventory,
-   * before any snapshot reaches it.
+   * Registers its kinds and items with a new session, and the items every player starts with,
+   * which its local player holds until the host's record of its items reaches it.
    */
   register(game: Session): void;
   /** Spawns what a new world starts with. Runs once a world, on the first client to host it. */
@@ -317,8 +317,9 @@ export function defineItem<N extends string, C>(
             spec.cooldown === undefined ? undefined : spec,
           );
           registerWorldItems(game);
-          if (spec.startingSlot !== undefined)
-            placeItem(game.local.inventory, spec.startingSlot, item);
+          if (spec.startingSlot === undefined) return;
+          placeItem(game.starting, spec.startingSlot, item);
+          placeItem(game.local.inventory, spec.startingSlot, item);
         },
         populate(game) {
           if (scatter === undefined) return;
