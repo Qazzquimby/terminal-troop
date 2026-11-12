@@ -35,7 +35,12 @@ function pages() {
       renewId: () => `${id}-${String(++renewals)}`,
       world: "dev",
       transport: hub.transport(page, []).port,
-      voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
+      voice: createNullVoice({
+        mode: "open",
+        muted: false,
+        volume: 1,
+        inputDevice: null,
+      }),
       sfx: testSfx(),
       scope: createScope(),
       clock,
