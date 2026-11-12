@@ -1,17 +1,18 @@
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
-import { corrected } from "./correction.js";
-import { damaged } from "./health.js";
+import { forcedMoveEvents, forcedMoves } from "./forced-move.js";
+import { playerHealth } from "./health.js";
 import { movement } from "./movement.js";
 import { noiseMade } from "./noise.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
-import { heldItemId, itemUsed } from "./use.js";
+import { heldSlot, inventories } from "./inventories.js";
+import { itemUsed } from "./use.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
-import { dropped, granted, landed, pickedUp } from "./world-items.js";
+import { dropped, landed, pickedUp } from "./world-items.js";
 
 /** State the engine itself keeps on every player or once for the world, and events it sends, under one name. */
 interface BuiltIn {
@@ -25,21 +26,30 @@ interface BuiltIn {
  * under `core/`, a namespace content names cannot take.
  */
 const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
-  /** The id of the item each player holds, and each use of it. */
-  "core/items": { player: heldItemId, events: { use: itemUsed } },
+  /** The slot each player holds, every player's items as the host keeps them, and each use of one. */
+  "core/items": {
+    player: heldSlot,
+    world: { inventories },
+    events: { use: itemUsed },
+  },
   /** How each player moves, which its footsteps follow. */
   "core/movement": { player: movement },
   /** Each noise the host makes, made again on every client. */
   "core/noise": { events: { made: noiseMade } },
-  /** The blows the host deals each player, damage and any push, sent to that player's own client. */
-  "core/health": { events: { damage: damaged } },
-  /** Where the host puts a player whose own client has it somewhere else. */
-  "core/position": { events: { corrected } },
+  /** Each player's health, which the host alone changes. */
+  "core/health": { world: { players: playerHealth } },
   /**
-   * Items lying in the world: each pickup and drop the host checks, the item it grants, and each
-   * item it lays down.
+   * Each move the host forces on a player, a correction or a knockback, and the latest on each
+   * player for clients that missed it.
    */
-  "core/world-items": { events: { pickedUp, granted, dropped, landed } },
+  "core/position": {
+    events: forcedMoveEvents,
+    world: { forced: forcedMoves },
+  },
+  /**
+   * Items lying in the world: each pickup and drop the host checks, and each item it lays down.
+   */
+  "core/world-items": { events: { pickedUp, dropped, landed } },
   /** The latest action the host has handled from each player, which ends what that player's client predicted. */
   "core/predictions": { world: { handled: handledActions } },
 };

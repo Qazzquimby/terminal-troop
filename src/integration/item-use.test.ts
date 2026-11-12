@@ -9,6 +9,7 @@ import type { Room } from "../room/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import {
   applyRemoteState,
+  giveItem,
   heldItemOf,
   mulberry32,
   playerState,
@@ -149,34 +150,34 @@ test("the inventory has the configured slots, the shovel in the first", () => {
   ]);
 });
 
-test("the local player holds its selected slot's item, and reports its id", () => {
+test("the local player holds its selected slot's item, and reports the slot", () => {
   const game = session();
   expect(heldItemOf(game, game.local)?.emoji).toBe("🪏");
-  expect(playerState(game).content).toMatchObject({
-    "core/items": "shovel",
-  });
+  expect(playerState(game).content).toMatchObject({ "core/items": 0 });
   updateSession(game, { ...idle, select: 1 }, DT);
   expect(heldItemOf(game, game.local)).toBeNull();
-  expect(playerState(game).content).toMatchObject({ "core/items": null });
+  expect(playerState(game).content).toMatchObject({ "core/items": 1 });
 });
 
-test("a remote player holds the item it reports, and nothing for an unknown or no item", () => {
+test("a remote player holds what the host's record has in the slot it reports, and nothing for an empty or no slot", () => {
   const game = session();
-  const report = (held: string | null) => {
+  giveItem(game, "them", "scrap", 2);
+  const report = (held: number | null) => {
     applyRemoteState(game, {
       id: "them",
       name: "THEM",
       x: 450,
       y: 300,
       aim: 0,
-      health: 100,
+      epoch: 0,
       content: { "core/items": held },
     });
     const remote = game.players.get("them");
     return remote === undefined ? undefined : heldItemOf(game, remote);
   };
-  expect(report("shovel")?.emoji).toBe("🪏");
-  expect(report("laser")).toBeNull();
+  expect(report(0)?.emoji).toBe("🪏");
+  expect(report(2)?.id).toBe("scrap");
+  expect(report(1)).toBeNull();
   expect(report(null)).toBeNull();
 });
 
@@ -196,6 +197,7 @@ test("the use control swings the held shovel at the step's sim time and sends it
       to: null,
       payload: {
         item: "shovel",
+        slot: 0,
         x: game.local.x,
         y: game.local.y,
         aim: game.local.aim,
@@ -426,16 +428,17 @@ test("a guest that takes out the shovel and swings between ticks is heard holdin
   expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth - shovel.damage);
 });
 
-test("the host ignores a guest's use of an item it does not hold", async () => {
+test("the host ignores a guest's use of an item its record does not have in the slot named", async () => {
   const { a, b, exchange } = await pair();
   exchange({ ...idle, select: 1 });
   const guest = sessionOf(b);
+  const { x, y } = guest.local;
   guest.outbox.push({
     content: "core/items",
     event: "use",
     route: "all",
     to: null,
-    payload: { item: "shovel", ...guest.local, aim: 0 },
+    payload: { item: "shovel", slot: 1, x, y, aim: 0, action: 1 },
   });
   exchange();
   const host = sessionOf(a);

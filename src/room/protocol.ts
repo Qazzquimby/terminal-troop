@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NetEvent } from "../net/index.js";
-import { rounded } from "../sim/index.js";
+import { Health, rounded } from "../sim/index.js";
 
 const PlayerId = z.string().min(1).max(64);
 
@@ -14,20 +14,8 @@ const Coordinate = rounded(1);
 const Angle = rounded(2);
 
 /**
- * Health: any number from 0 up, Infinity included. JSON has no Infinity, so it travels as the
- * string "Infinity". z.number() rejects NaN and ±Infinity.
- */
-export const Health = z.codec(
-  z.union([z.number().min(0), z.literal("Infinity")]),
-  z.union([z.number().min(0), z.literal(Infinity)]),
-  {
-    decode: (wire) => (wire === "Infinity" ? Infinity : wire),
-    encode: (health) => (health === Infinity ? "Infinity" : health),
-  },
-);
-
-/**
- * A STATE payload, its name cut to `nameMax` characters when heard. `content` holds each content
+ * A STATE payload, its name cut to `nameMax` characters when heard. `epoch` counts the moves the
+ * host has forced on the sender that it has taken. `content` holds each content
  * entry's state for the sender by the entry's name; each entry parses its own, so a value its
  * entry rejects, or of an entry this client lacks, is dropped where it is applied.
  */
@@ -41,7 +29,7 @@ function stateMessage(nameMax: number) {
     x: Coordinate,
     y: Coordinate,
     aim: Angle,
-    health: Health,
+    epoch: z.number().int().min(0),
     content: z.record(z.string(), z.unknown()),
   });
 }

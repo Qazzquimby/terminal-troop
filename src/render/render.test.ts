@@ -10,8 +10,9 @@ import type { Session, VisionSource } from "../sim/index.js";
 import {
   createPlayer,
   createSession,
-  heldItemId,
+  giveItem,
   heldItemOf,
+  heldSlot,
   isVisible,
   lightSources,
   litWalls,
@@ -183,7 +184,8 @@ test("the view's players hold what the simulation's do", () => {
   game.local.inventory[0] = torch;
   const remote = createPlayer("them", "THEM", game.local, game.config);
   game.players.set("them", remote);
-  heldItemId.set(remote, "torch");
+  giveItem(game, "them", "torch", 0);
+  heldSlot.set(remote, 0);
   remote.use = { item: "torch", center: origin, hit: false, startedAt: 0 };
 
   const view = interpolatedView(game, 0.5, origin);

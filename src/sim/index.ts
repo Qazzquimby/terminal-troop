@@ -56,13 +56,18 @@ export type {
 export { applyDamage } from "./entity.js";
 export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
-export { correctPlayer } from "./correction.js";
-export { allowMove, restartMoveChecks } from "./move-checks.js";
+export {
+  correctPlayer,
+  expectedEpoch,
+  takeOverForcedMoves,
+} from "./forced-move.js";
+export { allowMove, couldStand, restartMoveChecks } from "./move-checks.js";
 export { confirmAction, nextAction, predict } from "./prediction.js";
-export { hurtPlayer } from "./health.js";
+export { Health, hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export { spendStamina } from "./stamina.js";
+export { hostSpends } from "./stamina-checks.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, dashEnd, startDash } from "./player.js";
 export { playerData } from "./player-data.js";
@@ -74,8 +79,19 @@ export {
 export { movement } from "./movement.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
+export { makeSound, sound } from "./sound.js";
+export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
-export { heldItemId, heldItemOf, hostAccepts, registerItem } from "./use.js";
+export { hostAccepts, hostReady, registerItem } from "./use.js";
+export {
+  giveItem,
+  heldItemOf,
+  heldSlot,
+  itemIn,
+  predictInventory,
+  settleItemAction,
+  takeItem,
+} from "./inventories.js";
 export type { ItemUse } from "./use.js";
 
 export {

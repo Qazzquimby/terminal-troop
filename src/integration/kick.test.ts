@@ -139,7 +139,12 @@ test("a kick lunges the kicker one body length, spends its stamina and goes to t
       event: "kicked",
       route: "host",
       to: null,
-      payload: { x: 300 + PLAYER_LENGTH, y: 300, aim: 0, action: 1 },
+      payload: {
+        from: { x: 300, y: 300 },
+        to: { x: 300 + PLAYER_LENGTH, y: 300 },
+        aim: 0,
+        action: 1,
+      },
     },
   ]);
   wait(game, kick.lunge.seconds + DT);
@@ -176,7 +181,10 @@ test("kicking something close by, the lunge stops at it and the kick lands on it
   expect(game.flashes).toHaveLength(1);
   expect(game.flashes[0]?.at.x).toBeCloseTo(300 + 2 + kick.reach);
   expect(Math.abs((game.flashes[0]?.at.x ?? 0) - target.x)).toBeLessThan(5);
-  expect(game.outbox[0]?.payload).toMatchObject({ x: 302, y: 300 });
+  expect(game.outbox[0]?.payload).toMatchObject({
+    from: { x: 300, y: 300 },
+    to: { x: 302, y: 300 },
+  });
 });
 
 test("the lunge never runs into a player in the way", () => {
@@ -188,7 +196,7 @@ test("the lunge never runs into a player in the way", () => {
     x: 340,
     y: 300,
     aim: 0,
-    health: 100,
+    epoch: 0,
     content: {},
   });
   updateSession(game, kickRight(game), DT);
@@ -411,14 +419,17 @@ test("a kick makes a noise from its hitbox on every client, the kicker its sourc
   expect(sessionOf(a).noises).toEqual([noise]);
 });
 
-/** Sends a kick from `room`'s client as if it lunged to `at`, whatever its lunge did. */
-function forgeKick(room: Room, at: Point & { aim: number }): void {
+/** Sends a kick from `room`'s client as if it lunged `from` `to`, whatever its lunge did. */
+function forgeKick(
+  room: Room,
+  lunge: { from: Point; to: Point; aim: number },
+): void {
   sessionOf(room).outbox.push({
     content: "move/kick",
     event: "kicked",
     route: "host",
     to: null,
-    payload: { ...at, action: 1 },
+    payload: { ...lunge, action: 1 },
   });
 }
 
@@ -426,12 +437,24 @@ test("the host turns down a kick that says it lunged further than the host recko
   const { a, b, exchange, seen, step } = await lineUp();
   const facingRight = { ...idle, aim: { x: GUEST.x + 1000, y: GUEST.y } };
   exchange({ b: facingRight });
-  forgeKick(b, { x: GUEST.x, y: GUEST.y + 30, aim: 0 });
+  forgeKick(b, { from: GUEST, to: { x: GUEST.x, y: GUEST.y + 30 }, aim: 0 });
   exchange({ b: facingRight });
   step(a, idle);
   expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
   expect(seen.a.list).toEqual([]);
   expect(seen.b.list).toEqual([]);
+});
+
+test("the host turns down a kick that says it lunged further than a lunge goes", async () => {
+  const { a, b, exchange, seen, step } = await lineUp();
+  const facingRight = { ...idle, aim: { x: GUEST.x + 1000, y: GUEST.y } };
+  exchange({ b: facingRight });
+  const to = { x: GUEST.x + PLAYER_LENGTH + kick.lunge.slack + 10, y: GUEST.y };
+  forgeKick(b, { from: GUEST, to, aim: 0 });
+  exchange({ b: facingRight });
+  step(a, idle);
+  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
+  expect(seen.a.list).toEqual([]);
 });
 
 test("a kick whose lunge the host sees stopped by a wall lands where the host reckons", async () => {
@@ -443,7 +466,11 @@ test("a kick whose lunge the host sees stopped by a wall lands where the host re
   const facingWall = { ...idle, aim: { x: wall + 1000, y: start.y } };
   exchange({ b: facingWall });
   exchange({ b: facingWall });
-  forgeKick(b, { x: start.x + PLAYER_LENGTH, y: start.y, aim: 0 });
+  forgeKick(b, {
+    from: start,
+    to: { x: start.x + PLAYER_LENGTH, y: start.y },
+    aim: 0,
+  });
   exchange({ b: facingWall });
   step(a, idle);
   const flash = seen.a.list[0];

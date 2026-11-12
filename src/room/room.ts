@@ -17,6 +17,7 @@ import {
   removePlayer,
   restartMoveChecks,
   roomSeed,
+  takeOverForcedMoves,
   takeWorldEntries,
 } from "../sim/index.js";
 import type {
@@ -314,7 +315,8 @@ export function createRoom(deps: RoomDeps): Room {
   /**
    * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
    * no starting entities yet spawns them. A client that takes over sends its world state in full
-   * with its next tick, and checks every player's moves afresh.
+   * with its next tick, checks every player's moves afresh, and counts forced moves on from the
+   * highest it has heard of.
    */
   function holdView(room: Link, view: HostView | undefined): void {
     if (
@@ -325,8 +327,10 @@ export function createRoom(deps: RoomDeps): Room {
       room.worldFullDue = true;
     room.host = view;
     const hosting = view?.id === localId;
+    const takingOver = hosting && !room.session.hosting;
     if (room.session.hosting !== hosting) restartMoveChecks(room.session);
     room.session.hosting = hosting;
+    if (takingOver) takeOverForcedMoves(room.session);
     if (!hosting) room.sent.clear();
     if (hosting && room.origin === null) {
       for (const content of deps.content) content.populate(room.session);

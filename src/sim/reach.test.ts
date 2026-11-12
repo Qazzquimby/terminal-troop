@@ -62,7 +62,7 @@ test("finds every player touching the circle but the one left out, and no world 
       x,
       y: 300,
       aim: 0,
-      health: 100,
+      epoch: 0,
       content: {},
     });
     return game.players.get(id);
