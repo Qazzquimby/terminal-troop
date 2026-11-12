@@ -79,6 +79,7 @@ export const config = {
     maxHealth: 100,
     inventorySlots: 9,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: {
     max: STAMINA_MAX,

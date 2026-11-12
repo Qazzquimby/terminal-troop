@@ -1,5 +1,6 @@
 import type { Point, TileMap } from "./map.js";
 import { isAreaFree, isSolid } from "./map.js";
+import type { Session } from "./session.js";
 
 export interface Body extends Point {
   vx: number;
@@ -277,4 +278,15 @@ export function distanceToContact(
     );
   }
   return nearest;
+}
+
+/** Every body in the session that others collide with, but `body` itself. */
+export function solidBodiesBut(
+  game: Session,
+  body: CollisionBody,
+): CollisionBody[] {
+  return [
+    ...game.players.values(),
+    ...[...game.entities.values()].filter((entity) => entity.collides),
+  ].filter((other) => other !== body);
 }

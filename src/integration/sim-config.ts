@@ -28,6 +28,7 @@ export const testSimConfig: SimConfig = {
     inventorySlots: 4,
     maxHealth: 100,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },

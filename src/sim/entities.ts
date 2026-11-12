@@ -1,8 +1,8 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { moveWithCollision } from "./collision.js";
-import { contentEvent } from "./content-event.js";
 import type { Entity } from "./entity.js";
-import { applyDamage, isDead } from "./entity.js";
+import { isDead } from "./entity.js";
+import { hurtPlayer } from "./health.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
@@ -219,8 +219,9 @@ export function updateEntities(game: Session, dt: number): void {
     const type = game.entityTypes.get(entity.kind);
     type?.update(entity, dt, game);
     if (!game.entities.has(entity.id)) return;
-    type?.strikes(entity, game).forEach((strike) => {
-      strikePlayer(game, strike);
+    type?.strikes(entity, game).forEach(({ target, amount }) => {
+      const player = game.players.get(target);
+      if (player !== undefined) hurtPlayer(game, player, amount);
     });
 
     if (entity.collides) {
@@ -238,28 +239,6 @@ export function updateEntities(game: Session, dt: number): void {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
-}
-
-/** Damage the host deals to one player, for that player's own client to apply. */
-export const damaged = contentEvent({
-  schema: z.object({ amount: z.number().positive() }),
-  to: "player",
-  from: "host",
-  receive(game, { amount }) {
-    applyDamage(game.local, amount);
-    game.reportNow = true;
-  },
-});
-
-/**
- * Deals `strike` to its player: the local player takes it at once, and a remote one is sent
- * it, since each player keeps its own health. A strike of no damage does nothing.
- */
-function strikePlayer(game: Session, strike: Strike): void {
-  if (!(strike.amount > 0)) return;
-  if (strike.target === game.localId) applyDamage(game.local, strike.amount);
-  else if (game.players.has(strike.target))
-    damaged.send(game, strike.target, { amount: strike.amount });
 }
 
 /** Removes every entity that has been destroyed. */
