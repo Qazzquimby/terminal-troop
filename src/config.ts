@@ -36,7 +36,7 @@ const CELL = 50;
 const STAMINA_MAX = 100;
 
 export const config = {
-  world: { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 },
+  world: { cell: CELL, cols: 120, rows: 80, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
   // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
   // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads

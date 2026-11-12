@@ -131,7 +131,7 @@ const SPAWN_LAST_GAP = 3;
 /** How long the gap takes to fall from the first to the last, in seconds. */
 const SPAWN_RAMP_SECONDS = 300;
 /** Most chasers alive at once; spawning waits while the world holds this many. */
-const SPAWN_MAX_ALIVE = 40;
+const SPAWN_MAX_ALIVE = 120;
 /** Points tried for a passive spawn before skipping it this time. */
 const SPAWN_TRIES = 24;
 /** Least distance, in pixels, a passive spawn keeps from every player so none sees it appear. */
@@ -486,7 +486,8 @@ function spawner(config: ChaserConfig): (game: Session, dt: number) => void {
     if (countdown > 0) return;
     const ramp = Math.min(1, elapsed / SPAWN_RAMP_SECONDS);
     countdown = SPAWN_FIRST_GAP + (SPAWN_LAST_GAP - SPAWN_FIRST_GAP) * ramp;
-    if (aliveChasers(game) >= SPAWN_MAX_ALIVE) return;
+    const alive = aliveChasers(game);
+    if (alive >= SPAWN_MAX_ALIVE) return;
     const at = passiveSpawnPoint(game, config.radius);
     if (at === null) return;
     spawnEntity(
@@ -495,6 +496,9 @@ function spawner(config: ChaserConfig): (game: Session, dt: number) => void {
       at.x,
       at.y,
       freshChaser(Math.floor(Math.random() * 2 ** 32), config),
+    );
+    console.log(
+      `[chaser] spawn at ${elapsed.toFixed(0)}s; next in ${countdown.toFixed(1)}s; ${alive + 1}/${SPAWN_MAX_ALIVE} alive`,
     );
   };
 }
