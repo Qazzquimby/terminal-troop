@@ -4,8 +4,10 @@ export const NetEvent = {
   BYE: "bye",
   /** Says the sender is still in the room, and whether its page is hidden. */
   HEARTBEAT: "beat",
-  /** The host's full set of entities. */
+  /** The host's entities: all of them, or those changed since its last. */
   ENTITIES: "entities",
+  /** The host's world state: all of it, or the entries changed since its last. */
+  WORLD: "world",
   /** An event of a content entry's own, for the clients its route reaches. */
   CONTENT: "content",
 

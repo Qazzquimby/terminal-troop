@@ -40,7 +40,6 @@ describe("rounding", () => {
         { id: "h:1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} },
       ],
       removed: [],
-      world: {},
     });
     expect(wire.entities[0]).toMatchObject({ x: 10, y: 20 });
   });
@@ -80,7 +79,6 @@ describe("health", () => {
         { id: "h:2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
       ],
       removed: [],
-      world: { "item/scrap": 3 },
     };
     const schema = messages[NetEvent.ENTITIES];
     const wire: unknown = JSON.parse(JSON.stringify(schema.encode(snapshot)));
@@ -129,7 +127,11 @@ describe("the message table", () => {
         data: unknown;
       }[];
       removed: string[];
-      world: Record<string, unknown>;
+    }>();
+    expectTypeOf<Message<"world">>().toEqualTypeOf<{
+      host: string;
+      term: number;
+      entries: Record<string, unknown>;
     }>();
     expectTypeOf<Message<"content">>().toEqualTypeOf<{
       from: string;
