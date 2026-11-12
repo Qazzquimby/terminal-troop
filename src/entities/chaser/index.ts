@@ -51,8 +51,6 @@ export interface ChaserConfig {
   readonly attackRange: number;
   /** Seconds between attacks. */
   readonly attackCooldown: number;
-  /** How far a chaser hears a noise of loudness 1. */
-  readonly hearingRange: number;
 }
 
 /** A point, sent to a tenth of a pixel. */
@@ -219,15 +217,10 @@ function listen(
   state: Wander,
   at: Point,
   game: Session,
-  config: ChaserConfig,
 ): { result: Heard | null; seed: number } {
   return withSeed(state.seed, (rng) => {
     let clearest: Heard | null = null;
-    for (const heard of noisesHeardBy(game, {
-      at,
-      range: config.hearingRange,
-      rng,
-    })) {
+    for (const heard of noisesHeardBy(game, { at, rng })) {
       if (clearest === null || heard.clarity > clearest.clarity)
         clearest = heard;
     }
@@ -271,7 +264,7 @@ function wander(
   config: ChaserConfig,
 ): Wander {
   const { map } = game.world;
-  const { result: heard, seed } = listen(state, at, game, config);
+  const { result: heard, seed } = listen(state, at, game);
   if (heard !== null)
     return investigate({ ...state, seed }, at, heard.at, map, config);
   if (state.route.length > 0) return state;

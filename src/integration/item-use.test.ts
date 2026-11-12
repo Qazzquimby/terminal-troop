@@ -258,16 +258,16 @@ test("a swing that hits sends its noise to everyone, which the host then makes a
       event: "made",
       route: "all",
       to: null,
-      payload: { ...center, loudness: shovel.hitLoudness, source: null },
+      payload: { ...center, radius: shovel.hitNoiseRadius, source: null },
     },
   ]);
   deliverOwn(game);
   updateSession(game, idle, DT);
-  expect(game.noises).toEqual([{ at: center, loudness: shovel.hitLoudness }]);
+  expect(game.noises).toEqual([{ at: center, radius: shovel.hitNoiseRadius }]);
   const ripples = createRipples(testRippleConfig, mulberry32(1));
   ripples.hear(game, game.time * 1000);
   expect(ripples.list).toEqual([
-    expect.objectContaining({ loudness: shovel.hitLoudness }),
+    expect.objectContaining({ radius: shovel.hitNoiseRadius }),
   ]);
 });
 

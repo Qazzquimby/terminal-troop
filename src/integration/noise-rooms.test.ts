@@ -174,13 +174,13 @@ test("each client sees the other's footsteps, worked out from its state, and the
   expect(heardByHost.list).toHaveLength(1);
   expect(host.outbox).toEqual([]);
 
-  broadcastNoise(host, { at: host.local, loudness: 1 });
+  broadcastNoise(host, { at: host.local, radius: 300 });
   a.frame(clock.now());
   steps(b, still, DT, heardByGuest);
   expect(guest.noises).toEqual([
-    { at: { x: host.local.x, y: host.local.y }, loudness: 1 },
+    { at: { x: host.local.x, y: host.local.y }, radius: 300 },
   ]);
-  expect(heardByGuest.list.at(-1)).toMatchObject({ loudness: 1 });
+  expect(heardByGuest.list.at(-1)).toMatchObject({ radius: 300 });
   steps(a, still, DT);
   expect(host.noises).toHaveLength(1);
 });

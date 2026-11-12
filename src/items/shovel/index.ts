@@ -28,8 +28,8 @@ export interface ShovelConfig {
   readonly duration: number;
   /** Volume of a swing's sound, 0..1. */
   readonly volume: number;
-  /** How loud a swing that hits is, as a multiple of a listener's hearing range. */
-  readonly hitLoudness: number;
+  /** How far, in pixels, the noise of a swing that hits carries. */
+  readonly hitNoiseRadius: number;
 }
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
@@ -94,7 +94,7 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
           distance: config.knockback,
         });
       if (hit)
-        broadcastNoise(game, { at: center, loudness: config.hitLoudness });
+        broadcastNoise(game, { at: center, radius: config.hitNoiseRadius });
     },
     show(game, at, aim, by) {
       const area = hitbox(at, aim);
