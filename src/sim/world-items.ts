@@ -5,6 +5,7 @@ import { registerEntityType, removeEntity, spawnEntity } from "./entities.js";
 import { addItem, isFull, removeItem } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
+import { makeSound } from "./sound.js";
 import { hostAccepts, ItemId } from "./use.js";
 
 /** How items lie in the world. Distances in pixels, times in sim seconds. */
@@ -86,10 +87,7 @@ export const landed = contentEvent({
   from: "host",
   receive(game, { item, x, y }) {
     const sound = game.itemDefinitions.get(item)?.drop;
-    if (sound !== undefined)
-      void game.sfx.play(sound.url, { x, y }, game.local, {
-        volume: sound.volume,
-      });
+    if (sound !== undefined) makeSound(game, sound, { x, y });
   },
 });
 

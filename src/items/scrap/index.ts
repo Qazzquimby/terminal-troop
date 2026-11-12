@@ -4,7 +4,9 @@ import {
   defineItem,
   heldItemId,
   hostAccepts,
+  makeSound,
   removeItem,
+  sound,
   worldData,
 } from "../../sim/index.js";
 import type { Point, Scatter, Session } from "../../sim/index.js";
@@ -91,6 +93,7 @@ interface Pending {
  * Every client plays the sale's sound.
  */
 export const scrap = defineItem("scrap", (config: ScrapConfig) => {
+  const cashout = sound({ url: cashoutUrl, volume: config.volume });
   const pending = new WeakMap<Session, Pending>();
   /** The latest of the local player's sales its client heard sold. */
   const settled = new WeakMap<Session, number>();
@@ -107,9 +110,7 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
     to: "all",
     from: "host",
     receive(game, at) {
-      void game.sfx.play(cashoutUrl, at, game.local, {
-        volume: config.volume,
-      });
+      makeSound(game, cashout, at);
     },
   });
 
@@ -169,7 +170,7 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
   return {
     name: "Scrap",
     emoji: "🔩",
-    drop: { url: dropUrl, volume: config.volume },
+    drop: sound({ url: dropUrl, volume: config.volume }),
     scatter: config.scatter,
     world: { credit, sales },
     events: { sell, sold, refused, cashedOut },
