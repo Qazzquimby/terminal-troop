@@ -41,7 +41,12 @@ function client(id: string): Room {
     localId: id,
     world: "standard",
     transport: createBroadcastChannelTransport(NetEvent),
-    voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
+    voice: createNullVoice({
+      mode: "open",
+      muted: false,
+      volume: 1,
+      inputDevice: null,
+    }),
     sfx: testSfx(),
     scope: createScope(),
     clock,

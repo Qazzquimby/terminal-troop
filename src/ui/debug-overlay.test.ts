@@ -12,7 +12,7 @@ function withRemote() {
     testSfx(),
     testSimConfig,
   );
-  const remote = createPlayer("them", "THEM", game.world, game.config);
+  const remote = createPlayer("them", "THEM", game.local, game.config);
   game.players.set("them", remote);
   return game;
 }

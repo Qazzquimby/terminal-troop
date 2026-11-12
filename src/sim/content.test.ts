@@ -113,21 +113,19 @@ describe("scatter", () => {
   });
 });
 
-describe("host", () => {
-  test("puts one beside the hosting player at the offset", () => {
-    const game = session("HOST", "dev");
-    Object.assign(game.local, { x: 400, y: 300 });
-    rock({ at: "host", offset: { x: 60, y: -20 }, data: 7 }, game);
-    expect([...game.entities.values()]).toMatchObject([
-      { x: 460, y: 280, data: 7 },
-    ]);
+describe("rally", () => {
+  test("puts one at the rally point, wherever the hosting player is", () => {
+    const game = session("RALLY");
+    const { x, y } = game.rally;
+    rock({ at: "rally", data: 7 }, game);
+    expect([...game.entities.values()]).toMatchObject([{ x, y, data: 7 }]);
   });
 
-  test("moves it to the nearest free spot when the offset is inside a wall", () => {
+  test("moves it to the nearest free spot when the rally point has no room for it", () => {
     // The dev square's pillar fills x 200-300, y 50-150.
-    const game = session("HOST", "dev");
-    Object.assign(game.local, { x: 150, y: 100 });
-    rock({ at: "host", offset: { x: 100, y: 0 }, data: 0 }, game);
+    const game = session("RALLY", "dev");
+    Object.assign(game, { rally: { x: 250, y: 100 } });
+    rock({ at: "rally", data: 0 }, game);
     const [moved] = placed(game);
     expect(moved).toBeDefined();
     expect(

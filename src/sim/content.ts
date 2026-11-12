@@ -136,12 +136,12 @@ export interface Scatter {
 /**
  * Where a new world puts a kind's starting entities:
  * - scatter: at random free spots seeded by the room; `data` draws from the same generator
- * - host: one beside the hosting player, `offset` from it, or at the nearest free spot
+ * - rally: one at the world's rally point, where new players arrive, or at the nearest free spot
  * - a function: spawns them itself
  */
 export type SpawnRule<S> =
   | (Scatter & { readonly at: "scatter"; readonly data: (rng: Rng) => S })
-  | { readonly at: "host"; readonly offset: Point; readonly data: S }
+  | { readonly at: "rally"; readonly data: S }
   | ((spawn: (at: Point, data: S) => WorldEntity, game: Session) => void);
 
 /** A kind's definition, and where a new world puts its starting entities; none without `spawn`. */
@@ -204,16 +204,12 @@ function spawnByRule<S>(
 ): void {
   if (typeof rule === "function") {
     rule(spawn, game);
-  } else if (rule.at === "host") {
-    const target = {
-      x: game.local.x + rule.offset.x,
-      y: game.local.y + rule.offset.y,
-    };
-    const { map } = game.world;
+  } else if (rule.at === "rally") {
+    const { rally, world } = game;
     spawn(
-      isAreaFree(map, target.x, target.y, radius)
-        ? target
-        : nearestFreePoint(map, radius, target),
+      isAreaFree(world.map, rally.x, rally.y, radius)
+        ? rally
+        : nearestFreePoint(world.map, radius, rally),
       rule.data,
     );
   } else {

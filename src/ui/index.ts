@@ -8,4 +8,5 @@ export { createHud } from "./hud.js";
 export { CONTROLS_HINT, TALK_HINT, controlsHintText } from "./controls-hint.js";
 export { createMicIndicatorView } from "./mic-indicator-view.js";
 export { createSettingsMenu, menuPeers } from "./settings-menu.js";
+export { voiceDebugLines } from "./voice-diagnostics.js";
 export { createStatusView } from "./status.js";

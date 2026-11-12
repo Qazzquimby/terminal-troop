@@ -6,6 +6,7 @@ import type {
   MapMemoryConfig,
   RippleConfig,
 } from "./render/index.js";
+import type { PositionMemoryConfig } from "./position-memory/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
@@ -21,6 +22,7 @@ interface AppConfig extends SimConfig {
   readonly ripples: RippleConfig;
   readonly flashes: FlashConfig;
   readonly mapMemory: MapMemoryConfig;
+  readonly positionMemory: PositionMemoryConfig;
   readonly entities: EntitiesConfig;
   readonly items: ItemsConfig;
   readonly moves: MovesConfig;
@@ -62,6 +64,8 @@ export const config = {
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
   },
+  // Where the player stands, saved every 2s while it moves, so a reload puts it back there.
+  positionMemory: { saveInterval: 2, maxRooms: 50 },
   // A kick's flash: three quarters of its size at first, swelling to full as it fades over 0.3s.
   flashes: {
     duration: 0.3,
@@ -90,6 +94,8 @@ export const config = {
     regenDelay: 0.6,
     recover: STAMINA_MAX * 0.3,
   },
+  // A player new to a world starts within 2 cells of its rally point, where the cruiser waits.
+  arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
   net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
@@ -136,7 +142,6 @@ export const config = {
     },
     cruiser: {
       lightRadius: CELL * 12,
-      offset: CELL,
     },
   },
   items: {
@@ -182,6 +187,7 @@ export const config = {
     connectDeadlineMs: 15_000,
     pending: { cap: 32, ttlMs: 5000 },
     retry: { firstMs: 2000, maxMs: 60_000 },
+    statsIntervalMs: 1000,
   },
   audio: { full: 0, silent: 1000, pan: 500 },
   ui: { debugRefreshMs: 250 },

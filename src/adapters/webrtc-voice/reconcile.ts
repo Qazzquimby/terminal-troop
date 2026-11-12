@@ -1,15 +1,20 @@
 import type { SignalMessage } from "./signal.js";
 import { opensNegotiation } from "./signal.js";
 
-/** The peers to connect to and to hang up on to get from `current` to `desired`. */
+/**
+ * The peers to connect to and to hang up on to get from `current` to `desired`. Peers in
+ * `redo` that are both held and wanted are hung up on and connected again.
+ */
 export function diffPeers(
   current: Iterable<string>,
   desired: ReadonlySet<string>,
+  redo: ReadonlySet<string> = new Set(),
 ): { added: string[]; removed: string[] } {
   const have = new Set(current);
+  const again = (id: string): boolean => redo.has(id) && have.has(id);
   return {
-    added: [...desired].filter((id) => !have.has(id)),
-    removed: [...have].filter((id) => !desired.has(id)),
+    added: [...desired].filter((id) => !have.has(id) || again(id)),
+    removed: [...have].filter((id) => !desired.has(id) || redo.has(id)),
   };
 }
 

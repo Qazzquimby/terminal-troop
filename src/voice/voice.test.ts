@@ -66,7 +66,7 @@ describe("push-to-talk action", () => {
 describe("settings", () => {
   test.each<VoiceSettings>([
     DEFAULT_SETTINGS.voice,
-    { mode: "pushToTalk", muted: true, volume: 0.25 },
+    { mode: "pushToTalk", muted: true, volume: 0.25, inputDevice: "usb" },
   ])("%o reaches the status", (settings) => {
     const voice = createNullVoice(DEFAULT_SETTINGS.voice);
     voice.configure(settings);
@@ -101,7 +101,7 @@ describe("null voice", () => {
     room.setPeers(new Set(["player-a"]));
     room.receive({ from: "player-a", to: ME, description: OFFER });
     voice.setTalking(true);
-    voice.configure({ mode: "pushToTalk", muted: false, volume: 0.5 });
+    voice.configure({ ...DEFAULT_SETTINGS.voice, volume: 0.5 });
     room.setPeerMix("player-a", { volume: 0.2, pan: -1 });
     room.setPeers(new Set());
     room.leave();

@@ -127,7 +127,12 @@ function recordingVoice(
   log: string[],
   failures: { peerFailed: (id: string) => void }[],
 ): Voice {
-  const voice = createNullVoice({ mode: "open", muted: false, volume: 1 });
+  const voice = createNullVoice({
+    mode: "open",
+    muted: false,
+    volume: 1,
+    inputDevice: null,
+  });
   return {
     ...voice,
     join: (_id, _send, events) => {

@@ -80,7 +80,12 @@ function setup() {
       localId: id,
       world: "dev",
       transport: recording,
-      voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
+      voice: createNullVoice({
+        mode: "open",
+        muted: false,
+        volume: 1,
+        inputDevice: null,
+      }),
       sfx: testSfx(),
       scope: createScope(),
       clock,
