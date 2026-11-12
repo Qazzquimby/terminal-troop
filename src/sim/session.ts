@@ -251,7 +251,7 @@ export function updateSession(
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
   stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
-  reportHeld(game.local);
+  reportHeld(game);
   if (controls.use) useHeldItem(game);
   if (controls.interact) interact(game);
   for (const content of game.contents) content.act?.(game, controls);

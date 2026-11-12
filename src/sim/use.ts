@@ -76,9 +76,16 @@ export const heldItemId = playerData({
   initial: selectedItemId,
 });
 
-/** Keeps the local player's held item id in step with its selected slot. */
-export function reportHeld(local: Player): void {
-  heldItemId.set(local, selectedItemId(local));
+/**
+ * Keeps the local player's held item id in step with its selected slot. A change goes out at
+ * once, so it reaches the host ahead of a use of the newly held item.
+ */
+export function reportHeld(game: Session): void {
+  const { local } = game;
+  const id = selectedItemId(local);
+  if (local.content.has(heldItemId) && heldItemId.get(local) === id) return;
+  heldItemId.set(local, id);
+  game.reportNow = true;
 }
 
 /** The item `player` holds; null when it holds nothing, or an item this client does not know. */
@@ -128,7 +135,8 @@ export function hostAccepts(
 
 /**
  * A player's item use, sent to everyone: each other client shows it on the player, and the host
- * applies it if it accepts it.
+ * applies it if it accepts it. The host refuses outright a use of an item other than the one
+ * the player reports holding.
  */
 export const itemUsed = contentEvent({
   schema: ItemUsed,
@@ -137,7 +145,9 @@ export const itemUsed = contentEvent({
     const behaviour = game.items.get(use.item);
     if (behaviour === undefined) return;
     const player = game.players.get(by);
-    if (player !== undefined && player !== game.local)
+    if (player === undefined) return;
+    if (game.hosting && heldItemId.get(player) !== use.item) return;
+    if (player !== game.local)
       player.use = {
         item: use.item,
         ...behaviour.show(game, use, use.aim, by),

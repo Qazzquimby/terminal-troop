@@ -2,7 +2,10 @@ import { expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 import { entityContent } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
+import { createScope } from "../lib/scope/index.js";
 import { createRipples } from "../render/index.js";
+import { createRoom } from "../room/index.js";
+import type { Room } from "../room/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import {
   applyRemoteState,
@@ -16,7 +19,13 @@ import {
   updateSession,
 } from "../sim/index.js";
 import { createSession } from "../sim/index.js";
-import type { Controls, Point, Session } from "../sim/index.js";
+import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
+import { createNullVoice } from "../voice/index.js";
+import {
+  createHub,
+  createManualClock,
+  testRoomConfig,
+} from "./room-helpers.js";
 import {
   testEntitiesConfig,
   testSfx,
@@ -42,6 +51,14 @@ const swing: Controls = { ...idle, use: true };
 /** A kind that stands still with 40 health. */
 const DUMMY = "dummy";
 
+function mute(game: Session): void {
+  vi.spyOn(game.sfx, "play").mockResolvedValue({
+    stop: () => undefined,
+    setVolume: () => undefined,
+    setPosition: () => undefined,
+  });
+}
+
 /** A dev-square session holding the starting shovel, with the test items registered and sound muted. */
 function session() {
   const game = createSession(
@@ -52,11 +69,7 @@ function session() {
     testSfx(),
     testSimConfig,
   );
-  vi.spyOn(game.sfx, "play").mockResolvedValue({
-    stop: () => undefined,
-    setVolume: () => undefined,
-    setPosition: () => undefined,
-  });
+  mute(game);
   registerContent(game, itemContent(testItemsConfig));
   registerEntityType(game, DUMMY, {
     radius: 15,
@@ -307,4 +320,125 @@ test("a swing that kills removes its target", () => {
 test("the items config needs the shovel's slice", () => {
   expectTypeOf({}).not.toExtend<ItemsConfig>();
   expectTypeOf(testItemsConfig).toExtend<ItemsConfig>();
+});
+
+// Over a room: two clients on a hub that sends every payload through JSON.
+
+function sessionOf(room: Room): Session {
+  const state = room.state();
+  if (state.kind !== "joined") throw new Error(`not joined: ${state.kind}`);
+  return state.session;
+}
+
+function chaserOf(room: Room): WorldEntity {
+  const kind = sessionOf(room).kindIds.get("chaser");
+  const found = [...sessionOf(room).entities.values()].find(
+    (entity) => entity.kind === kind,
+  );
+  if (found === undefined) throw new Error("no chaser");
+  return found;
+}
+
+/** One blind chaser that stands still. */
+const stillChaser = {
+  ...testEntitiesConfig,
+  chaser: {
+    ...testEntitiesConfig.chaser,
+    sightRange: 0,
+    wanderSpeed: 0,
+    spawn: { ...testEntitiesConfig.chaser.spawn, count: 1 },
+  },
+};
+
+/** Where the guest stands, and the chaser in its swing to the right. */
+const GUEST = { x: 150, y: 300 };
+const TARGET = { x: GUEST.x + shovel.reach, y: GUEST.y };
+
+/** Two clients joined to one room on the same hub, `a` hosting, the chaser in the guest's swing. */
+async function pair() {
+  const hub = createHub();
+  const clock = createManualClock();
+  const client = (id: string): Room =>
+    createRoom({
+      localId: id,
+      world: "dev",
+      transport: hub.transport(id, []).port,
+      voice: createNullVoice({
+        mode: "open",
+        muted: false,
+        volume: 1,
+        inputDevice: null,
+      }),
+      sfx: testSfx(),
+      scope: createScope(),
+      clock,
+      config: testRoomConfig,
+      sim: testSimConfig,
+      content: [...entityContent(stillChaser), ...itemContent(testItemsConfig)],
+      falloff: { full: 100, silent: 600, pan: 300 },
+      onChange: () => undefined,
+      onPeerFailed: () => undefined,
+    });
+  const a = client("a");
+  const b = client("b");
+  await a.join("ITEMS", "A");
+  await b.join("ITEMS", "B");
+  for (const room of [a, b]) mute(sessionOf(room));
+  clock.advance(1000);
+  expect(a.hostId()).toBe("a");
+  /** Runs one step on each client and lets every message through, 200ms later. */
+  const exchange = (controls: Controls = idle): void => {
+    updateSession(sessionOf(b), controls, DT);
+    b.frame(clock.now());
+    updateSession(sessionOf(a), idle, DT);
+    clock.advance(clock.now() + 200);
+    a.frame(clock.now());
+    updateSession(sessionOf(b), idle, DT);
+  };
+  standAt(sessionOf(a), { x: 450, y: 150 });
+  standAt(sessionOf(b), GUEST);
+  Object.assign(chaserOf(a), { ...TARGET, tx: TARGET.x, ty: TARGET.y });
+  exchange();
+  exchange();
+  return { a, b, clock, exchange };
+}
+
+const swingRightOf = (game: Session): Controls => ({
+  ...swing,
+  aim: { x: game.local.x + 100, y: game.local.y },
+});
+
+test("the host applies a guest's swing of the item it holds", async () => {
+  const { a, b, exchange } = await pair();
+  exchange(swingRightOf(sessionOf(b)));
+  expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth - shovel.damage);
+});
+
+test("a guest that takes out the shovel and swings between ticks is heard holding it", async () => {
+  const { a, b, clock, exchange } = await pair();
+  exchange({ ...idle, select: 1 });
+  b.frame(clock.now());
+  const guest = sessionOf(b);
+  updateSession(guest, { ...swingRightOf(guest), select: 0 }, DT);
+  b.frame(clock.now());
+  updateSession(sessionOf(a), idle, DT);
+  expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth - shovel.damage);
+});
+
+test("the host ignores a guest's use of an item it does not hold", async () => {
+  const { a, b, exchange } = await pair();
+  exchange({ ...idle, select: 1 });
+  const guest = sessionOf(b);
+  guest.outbox.push({
+    content: "core/items",
+    event: "use",
+    route: "all",
+    to: null,
+    payload: { item: "shovel", ...guest.local, aim: 0 },
+  });
+  exchange();
+  const host = sessionOf(a);
+  expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth);
+  expect(host.players.get("b")?.use).toBeNull();
+  expect(host.noises).toEqual([]);
 });
