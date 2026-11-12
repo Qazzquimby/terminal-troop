@@ -33,6 +33,7 @@ import {
 import { createSfx } from "./audio/index.js";
 import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
+import { createPositionMemory } from "./position-memory/index.js";
 import type { DebugInfo } from "./ui/index.js";
 import type { Settings } from "./settings/index.js";
 import { createSettingsStore } from "./settings/index.js";
@@ -121,15 +122,18 @@ const camera = createCamera(config.view, config.camera);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
 const flashes = createFlashes(config.flashes);
-const mapMemory = createMapMemory(config.mapMemory, {
-  get: (key) => localStorage.getItem(key),
-  set: (key, value) => {
+/** The browser's storage, by key, for what the game remembers between visits. */
+const browserStorage = {
+  get: (key: string) => localStorage.getItem(key),
+  set: (key: string, value: string) => {
     localStorage.setItem(key, value);
   },
-  remove: (key) => {
+  remove: (key: string) => {
     localStorage.removeItem(key);
   },
-});
+};
+const mapMemory = createMapMemory(config.mapMemory, browserStorage);
+const positions = createPositionMemory(config.positionMemory, browserStorage);
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
@@ -191,6 +195,7 @@ const room = createRoom({
     ...moveContent(config.moves),
   ],
   falloff: config.voice,
+  savedPosition: (place) => positions.enter(place),
   onChange() {
     refreshPeers(room.state());
   },
@@ -198,8 +203,16 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence, ripples, flashes and map memory from the console or a test browser.
-if (debug) Object.assign(window, { voice, room, ripples, flashes, mapMemory });
+// Debug hook for driving voice and reading presence, ripples, flashes, map memory and positions from the console or a test browser.
+if (debug)
+  Object.assign(window, {
+    voice,
+    room,
+    ripples,
+    flashes,
+    mapMemory,
+    positions,
+  });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -347,6 +360,7 @@ function frame(): void {
       mapMemory,
     );
     mapMemory.save(now);
+    positions.save(session.local, now);
     frameStats.drawMs = performance.now() - drawStart;
     updateInventory(session.local.inventory, session.local.held, inventoryOpen);
   } else {
@@ -395,13 +409,17 @@ on(copyBtn, "click", () => {
 
 on(document, "visibilitychange", () => {
   room.setHidden(document.hidden);
-  if (document.hidden) mapMemory.flush();
+  if (document.hidden) {
+    mapMemory.flush();
+    positions.flush();
+  }
 });
 
 // Leaving sends BYE before anything else, while the page can still send.
 on(window, "beforeunload", () => {
   void room.leave();
   mapMemory.flush();
+  positions.flush();
 });
 
 requestAnimationFrame(frame);

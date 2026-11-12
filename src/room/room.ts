@@ -12,9 +12,11 @@ import {
   receiveEvent,
   registerContent,
   removePlayer,
+  roomSeed,
 } from "../sim/index.js";
 import type {
   OutgoingEvent,
+  Point,
   Session,
   SimConfig,
   WorldContent,
@@ -85,6 +87,15 @@ export interface RoomDeps {
   /** What the world holds. Every client registers it in this order, which numbers its kinds. */
   readonly content: readonly WorldContent[];
   readonly falloff: VoiceFalloff;
+  /**
+   * Where the local player stood when last in the world the room `room` builds from `seed`, if
+   * anywhere; it starts there if it can stand there, and by the rally point otherwise.
+   */
+  savedPosition?(place: {
+    readonly room: string;
+    readonly world: WorldKind;
+    readonly seed: number;
+  }): Point | undefined;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
   /** A voice connection to `id` stayed down past its deadline. */
@@ -365,6 +376,7 @@ export function createRoom(deps: RoomDeps): Room {
     scope.defer(() => {
       deps.sfx.stopAll();
     });
+    const seed = roomSeed(code, deps.sim.world.seed);
     const session = createSession(
       localId,
       name,
@@ -372,6 +384,7 @@ export function createRoom(deps: RoomDeps): Room {
       deps.world,
       deps.sfx,
       deps.sim,
+      { at: deps.savedPosition?.({ room: code, world: deps.world, seed }) },
     );
     registerContent(session, deps.content);
     session.hosting = false;

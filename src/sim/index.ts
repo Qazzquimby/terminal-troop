@@ -64,6 +64,7 @@ export {
   playerState,
   remotePlayers,
   removePlayer,
+  roomSeed,
   solidBodiesBut,
   updateSession,
 } from "./session.js";
