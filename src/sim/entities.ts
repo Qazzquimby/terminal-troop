@@ -1,8 +1,8 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { moveWithCollision } from "./collision.js";
-import { contentEvent } from "./content-event.js";
 import type { Entity } from "./entity.js";
-import { applyDamage, isDead } from "./entity.js";
+import { isDead } from "./entity.js";
+import { hurtPlayer } from "./health.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
@@ -219,8 +219,9 @@ export function updateEntities(game: Session, dt: number): void {
     const type = game.entityTypes.get(entity.kind);
     type?.update(entity, dt, game);
     if (!game.entities.has(entity.id)) return;
-    type?.strikes(entity, game).forEach((strike) => {
-      strikePlayer(game, strike);
+    type?.strikes(entity, game).forEach(({ target, amount }) => {
+      const player = game.players.get(target);
+      if (player !== undefined) hurtPlayer(game, player, amount);
     });
 
     if (entity.collides) {
@@ -238,28 +239,6 @@ export function updateEntities(game: Session, dt: number): void {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
-}
-
-/** Damage the host deals to one player, for that player's own client to apply. */
-export const damaged = contentEvent({
-  schema: z.object({ amount: z.number().positive() }),
-  to: "player",
-  from: "host",
-  receive(game, { amount }) {
-    applyDamage(game.local, amount);
-    game.reportNow = true;
-  },
-});
-
-/**
- * Deals `strike` to its player: the local player takes it at once, and a remote one is sent
- * it, since each player keeps its own health. A strike of no damage does nothing.
- */
-function strikePlayer(game: Session, strike: Strike): void {
-  if (!(strike.amount > 0)) return;
-  if (strike.target === game.localId) applyDamage(game.local, strike.amount);
-  else if (game.players.has(strike.target))
-    damaged.send(game, strike.target, { amount: strike.amount });
 }
 
 /** Removes every entity that has been destroyed. */
@@ -293,17 +272,16 @@ export function entitySnapshot(game: Session): EntitySnapshot[] {
 }
 
 /**
- * Makes the session's entities those of a host's snapshot. Known entities ease towards their
- * new positions and take the new health and state; new ones appear where the snapshot puts them; the
- * rest are removed. An entry of an unregistered kind, with data its kind rejects, or inside
- * a wall is left out.
+ * Takes the entities a host sent: known ones ease towards their new positions and take the new
+ * health and state, and new ones appear where the entry puts them. An entry of an unregistered
+ * kind, with data its kind rejects, or inside a wall is left out. Returns the ids taken.
  */
-export function applyEntitySnapshot(
+function takeEntries(
   game: Session,
-  snapshot: readonly EntitySnapshot[],
-): void {
-  const kept = new Set<string>();
-  for (const { id, kind, x, y, health, data } of snapshot) {
+  entries: readonly EntitySnapshot[],
+): Set<string> {
+  const taken = new Set<string>();
+  for (const { id, kind, x, y, health, data } of entries) {
     const type = game.entityTypes.get(kind);
     if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
       continue;
@@ -319,9 +297,44 @@ export function applyEntitySnapshot(
     } else {
       placeEntity(game, id, kind, type, x, y, health, parsed.data);
     }
-    kept.add(id);
+    taken.add(id);
   }
+  return taken;
+}
+
+/**
+ * Makes the session's entities those of a host's full snapshot: each entry taken as
+ * `takeEntries` does, and every other entity removed.
+ */
+export function applyEntitySnapshot(
+  game: Session,
+  snapshot: readonly EntitySnapshot[],
+): void {
+  const kept = takeEntries(game, snapshot);
   for (const id of [...game.entities.keys()]) {
     if (!kept.has(id)) game.entities.delete(id);
   }
+}
+
+/**
+ * Applies the entities a host changed since its last snapshot: each changed entry taken as
+ * `takeEntries` does, and each of `removed` removed. Every other entity stays as it is.
+ */
+export function applyEntityChanges(
+  game: Session,
+  changed: readonly EntitySnapshot[],
+  removed: readonly string[],
+): void {
+  takeEntries(game, changed);
+  for (const id of removed) game.entities.delete(id);
+}
+
+/**
+ * Takes the entity `id` out of the world, as when something carries it off rather than destroys
+ * it; the host's snapshots carry the removal to everyone. Only the host removes entities: false
+ * on any other client, and when there is no such entity.
+ */
+export function removeEntity(game: Session, id: string): boolean {
+  if (!game.hosting) return false;
+  return game.entities.delete(id);
 }

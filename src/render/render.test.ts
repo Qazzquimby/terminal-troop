@@ -86,6 +86,7 @@ const walkRight = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 function session(): Session {
@@ -172,14 +173,14 @@ test("the view's remote aim is interpolated by alpha along the shortest arc", ()
 
 test("the view's players hold what the simulation's do", () => {
   const game = session();
-  const torch = { id: "torch", name: "Torch", maxStack: 1, emoji: "🔦" };
+  const torch = { id: "torch", name: "Torch", emoji: "🔦" };
   registerItem(game, torch, {
     cooldown: 1,
     apply: () => undefined,
     show: (_game, at) => ({ center: at, hit: false }),
     draw: () => undefined,
   });
-  game.local.inventory[0] = { item: torch, quantity: 1 };
+  game.local.inventory[0] = torch;
   const remote = createPlayer("them", "THEM", game.local, game.config);
   game.players.set("them", remote);
   heldItemId.set(remote, "torch");

@@ -29,6 +29,7 @@ export const testSimConfig: SimConfig = {
     inventorySlots: 4,
     maxHealth: 100,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
@@ -41,6 +42,7 @@ export const testSimConfig: SimConfig = {
     sprint: { interval: 0.25, loudness: 1.5 },
     crouch: { interval: 0.75, loudness: 0.2 },
   },
+  worldItems: { radius: 8, cooldown: 0.2 },
 };
 
 /** The local player hears a noise of loudness 1 from 300px, and sees it ripple for 0.5s. */
@@ -86,7 +88,11 @@ export const testEntitiesConfig: EntitiesConfig = {
   cruiser: { lightRadius: 400 },
 };
 
-/** Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most twice a second. */
+/**
+ * Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most
+ * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
+ * second, asked for again after a second unanswered.
+ */
 export const testItemsConfig: ItemsConfig = {
   shovel: {
     radius: 20,
@@ -97,6 +103,14 @@ export const testItemsConfig: ItemsConfig = {
     duration: 0.1,
     volume: 1,
     hitLoudness: 1,
+  },
+  scrap: {
+    value: 2,
+    cashoutRadius: 150,
+    sellInterval: 0.25,
+    sellTimeout: 1,
+    volume: 1,
+    scatter: { count: 3, seed: 5, clearance: 200 },
   },
 };
 

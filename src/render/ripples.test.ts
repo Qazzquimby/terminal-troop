@@ -26,6 +26,7 @@ const idle: Controls = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 const walking: Controls = { ...idle, move: { x: 1, y: 0 } };
 

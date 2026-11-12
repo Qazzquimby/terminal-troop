@@ -65,7 +65,6 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
     }),
     defineItem("torch", () => ({
       name: "Torch",
-      maxStack: 1,
       emoji: "🔦",
       player: lit,
       cooldown: 1,
@@ -111,7 +110,6 @@ test("an entity and an item of the same name keep their own state", () => {
     })).create({ lamp: undefined }),
     defineItem("lamp", () => ({
       name: "Lamp",
-      maxStack: 1,
       emoji: "🪔",
       player: fuel,
       cooldown: 1,

@@ -36,6 +36,8 @@ interface PlayerConfig {
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
+  /** How long, in seconds, a knocked-back player slides to where the blow sends it. */
+  readonly knockbackSeconds: number;
 }
 
 /** The tuning a player's creation and step read. */
@@ -56,6 +58,8 @@ export interface Controls {
   readonly use: boolean;
   /** Whether the secondary action was pressed this step. */
   readonly secondary: boolean;
+  /** Whether to pick up the nearest item the player touches this step. */
+  readonly interact: boolean;
 }
 
 /** A quick move a player makes on top of walking: a fixed velocity, for a while. */
@@ -183,7 +187,7 @@ export function updatePlayer(
 ): void {
   const { player: config } = rules;
   if (controls.select !== null)
-    player.held = selectSlot(player.inventory, player.held, controls.select);
+    player.held = selectSlot(player.inventory, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
   const mode = stepGait(player, controls, moving);
   player.stamina = updateStamina(

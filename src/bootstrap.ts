@@ -10,7 +10,10 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
-  createInventoryHud,
+  CONTROLS_HINT,
+  TALK_HINT,
+  controlsHintText,
+  createHud,
   createDebugOverlay,
   createMicIndicatorView,
   createSettingsMenu,
@@ -46,7 +49,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { entityContent } from "./entities/index.js";
-import { itemContent } from "./items/index.js";
+import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 
 /** Owns everything that lives as long as the page. */
@@ -68,14 +71,16 @@ const roomInput = element("#room", HTMLInputElement);
 const createBtn = element("#create", HTMLButtonElement);
 const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
-const inventoryEl = element("#inventory", HTMLElement);
-const inventoryList = element("#inventory-slots", HTMLOListElement);
+const hud = createHud({
+  bar: element("#hud", HTMLDivElement),
+  slots: element("#hud-slots", HTMLOListElement),
+  credit: element("#hud-credit", HTMLSpanElement),
+});
 const debugEl = element("#debug", HTMLPreElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
-const baseHint = controlsHint.textContent.trim();
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -160,16 +165,14 @@ element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
   voice.configure(current.voice);
-  controlsHint.textContent =
+  controlsHint.textContent = controlsHintText(
     current.voice.mode === "pushToTalk"
-      ? `${baseHint} · ${talkKey} to talk`
-      : baseHint;
+      ? [...CONTROLS_HINT, TALK_HINT]
+      : CONTROLS_HINT,
+  );
 }
 applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
-const updateInventory = createInventoryHud(inventoryEl, inventoryList);
-
-let inventoryOpen = false;
 
 const room = createRoom({
   localId: playerId,
@@ -230,11 +233,6 @@ const input = createInput(
   (point) => screenToWorld(camera, point),
   config.view,
   {
-    toggleInventory: {
-      press() {
-        if (room.state().kind === "joined") inventoryOpen = !inventoryOpen;
-      },
-    },
     toggleSettings: {
       press(time) {
         settingsMenu.toggle(time);
@@ -295,7 +293,6 @@ async function enterRoom(rawCode: string): Promise<void> {
   nameInput.value = name;
   localStorage.setItem(nameKey, name);
   roomInput.value = state.code;
-  inventoryOpen = false;
   const url = new URLSearchParams(location.search);
   url.set("room", state.code);
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
@@ -362,9 +359,13 @@ function frame(): void {
     mapMemory.save(now);
     positions.save(session.local, now);
     frameStats.drawMs = performance.now() - drawStart;
-    updateInventory(session.local.inventory, session.local.held, inventoryOpen);
+    hud.show({
+      inventory: session.local.inventory,
+      held: session.local.held,
+      credit: credit.get(session),
+    });
   } else {
-    inventoryEl.hidden = true;
+    hud.show(null);
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }

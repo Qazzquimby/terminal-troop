@@ -81,8 +81,9 @@ export const config = {
     sprintMultiplier: 1.8,
     crouchMultiplier: 0.5,
     maxHealth: 100,
-    inventorySlots: 9,
+    inventorySlots: 6,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: {
     max: STAMINA_MAX,
@@ -106,9 +107,12 @@ export const config = {
     sprint: { interval: 0.3, loudness: 1.6 },
     crouch: { interval: 0.7, loudness: 0.15 },
   },
+  // Items lying about: a 16px glyph, picked up at most five times a second.
+  worldItems: { radius: 8, cooldown: 0.2 },
   room: {
     sendHz: 15,
     entityHz: 10,
+    fullSnapshotMs: 5000,
     heartbeatMs: 1000,
     presence: {
       awayAfterMs: 3500,
@@ -151,6 +155,16 @@ export const config = {
       duration: 0.18,
       volume: 0.8,
       hitLoudness: 1.2,
+    },
+    // 500 scrap about the world, none within 3 cells of the first players; each sells for 1 while
+    // its holder stands within 3 cells of the cruiser, one every quarter second.
+    scrap: {
+      value: 1,
+      cashoutRadius: CELL * 3,
+      sellInterval: 0.25,
+      sellTimeout: 2,
+      volume: 0.8,
+      scatter: { count: 500, seed: 2, clearance: CELL * 3 },
     },
   },
   moves: {

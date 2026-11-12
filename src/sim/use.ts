@@ -22,13 +22,18 @@ export interface ItemUse {
 export interface ItemBehaviour {
   /** Minimum time between uses, in sim seconds. */
   readonly cooldown: number;
-  /** Applies a use by a player standing at `at`, facing `aim`. Runs only on the host. */
-  apply(game: Session, at: Point, aim: number): void;
+  /** Applies a use by player `by` standing at `at`, facing `aim`. Runs only on the host. */
+  apply(game: Session, at: Point, aim: number, by: string): void;
   /**
-   * Starts a use by a player standing at `at`, facing `aim`, as this client sees it: plays its
-   * sound for this client's listener, and returns where it lands and whether it hits.
+   * Starts a use by player `by` standing at `at`, facing `aim`, as this client sees it: plays
+   * its sound for this client's listener, and returns where it lands and whether it hits.
    */
-  show(game: Session, at: Point, aim: number): Pick<ItemUse, "center" | "hit">;
+  show(
+    game: Session,
+    at: Point,
+    aim: number,
+    by: string,
+  ): Pick<ItemUse, "center" | "hit">;
   /** Draws `use` as of sim time `time`; does nothing once it has finished. */
   draw(ctx: CanvasRenderingContext2D, use: ItemUse, time: number): void;
 }
@@ -41,24 +46,24 @@ export interface UseSlack {
   readonly seconds: number;
 }
 
-/** Registers `item` with `game`, and what using it does. */
+/** Registers `item` with `game`, and what using it does, if it is usable. */
 export function registerItem(
   game: Session,
   item: ItemDefinition,
-  behaviour: ItemBehaviour,
+  behaviour?: ItemBehaviour,
 ): void {
-  if (game.items.has(item.id))
+  if (game.itemDefinitions.has(item.id))
     throw new Error(`Item already registered: ${item.id}`);
   game.itemDefinitions.set(item.id, item);
-  game.items.set(item.id, behaviour);
+  if (behaviour !== undefined) game.items.set(item.id, behaviour);
 }
 
 /** An item's id, as a player reports it. */
-const ItemId = z.string().min(1).max(32);
+export const ItemId = z.string().min(1).max(32);
 
 /** The id of the item in `player`'s selected slot, or null for nothing. */
 function selectedItemId(player: Player): string | null {
-  return heldItem(player.inventory, player.held)?.item.id ?? null;
+  return heldItem(player.inventory, player.held)?.id ?? null;
 }
 
 /**
@@ -135,14 +140,14 @@ export const itemUsed = contentEvent({
     if (player !== undefined && player !== game.local)
       player.use = {
         item: use.item,
-        ...behaviour.show(game, use, use.aim),
+        ...behaviour.show(game, use, use.aim, by),
         startedAt: game.time,
       };
     if (
       game.hosting &&
       hostAccepts(game, by, use, ITEM_COOLDOWN, behaviour.cooldown)
     )
-      behaviour.apply(game, use, use.aim);
+      behaviour.apply(game, use, use.aim, by);
   },
 });
 
@@ -152,9 +157,9 @@ export const itemUsed = contentEvent({
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
-  const stack = heldItem(local.inventory, local.held);
-  if (stack === null) return;
-  const behaviour = game.items.get(stack.item.id);
+  const item = heldItem(local.inventory, local.held);
+  if (item === null) return;
+  const behaviour = game.items.get(item.id);
   if (behaviour === undefined) return;
   if (
     local.use !== null &&
@@ -162,12 +167,12 @@ export function useHeldItem(game: Session): void {
   )
     return;
   local.use = {
-    item: stack.item.id,
-    ...behaviour.show(game, local, local.aim),
+    item: item.id,
+    ...behaviour.show(game, local, local.aim, local.id),
     startedAt: game.time,
   };
   itemUsed.send(game, {
-    item: stack.item.id,
+    item: item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,
