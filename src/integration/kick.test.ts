@@ -404,13 +404,3 @@ test("a kick makes a noise from its hitbox on every client, the kicker its sourc
   updateSession(sessionOf(a), idle, DT);
   expect(sessionOf(a).noises).toEqual([noise]);
 });
-
-test("a kick never hurts another player", async () => {
-  const { a, b, exchange } = await lineUp();
-  Object.assign(chaserOf(a), { x: 450, y: 450, tx: 450, ty: 450 });
-  place(a, TARGET);
-  exchange();
-  exchange({ b: kickRight(sessionOf(b)) });
-  exchange();
-  expect(sessionOf(a).local.health).toBe(testSimConfig.player.maxHealth);
-});

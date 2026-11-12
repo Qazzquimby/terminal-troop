@@ -37,6 +37,8 @@ interface PlayerConfig {
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
+  /** How long, in seconds, a knocked-back player slides to where the blow sends it. */
+  readonly knockbackSeconds: number;
 }
 
 /** The tuning a player's creation and step read. */

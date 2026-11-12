@@ -1,7 +1,7 @@
 import type { Sfx } from "../audio/index.js";
 import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
-import { separateBodies } from "./collision.js";
+import { separateBodies, solidBodiesBut } from "./collision.js";
 import type {
   ContentEvent,
   Delivery,
@@ -174,17 +174,6 @@ export function remotePlayers(game: Session): Player[] {
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
 function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
-}
-
-/** Every body in the session that others collide with, but `body` itself. */
-export function solidBodiesBut(
-  game: Session,
-  body: CollisionBody,
-): CollisionBody[] {
-  return [
-    ...game.players.values(),
-    ...[...game.entities.values()].filter((entity) => entity.collides),
-  ].filter((other) => other !== body);
 }
 
 function separateSessionBodies(game: Session): void {
