@@ -166,7 +166,9 @@ export const config = {
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
-    // kicks fell a chaser, each sending it 2.5 of its own body lengths away.
+    // kicks fell a chaser, each sending it 2.5 of its own body lengths away. The host takes a
+    // kicker's word for where its lunge ended to within 24px: a tenth of a second of sprinting,
+    // one STATE at 10Hz.
     kick: {
       reach: 32,
       radius: 18,
@@ -174,7 +176,7 @@ export const config = {
       knockback: 2.5,
       cooldown: 0.8,
       stamina: STAMINA_MAX * 0.15,
-      lunge: { lengths: 1, seconds: 0.08 },
+      lunge: { lengths: 1, seconds: 0.08, slack: 24 },
       loudness: 1,
     },
   },

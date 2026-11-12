@@ -54,7 +54,8 @@ function choose(candidates: readonly Candidate[], first: Candidate): string {
   return best.id;
 }
 
-function sameElection(a: HostView, b: HostView | null): boolean {
+/** Whether `b` is the same election as `a`: the same host chosen in the same term. */
+export function sameElection(a: HostView, b: HostView | null): boolean {
   return b !== null && a.id === b.id && a.term === b.term;
 }
 

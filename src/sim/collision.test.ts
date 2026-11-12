@@ -5,6 +5,7 @@ import { emptyMap, mapWithCenterWall } from "../integration/tile-maps.js";
 import {
   distanceToContact,
   moveWithCollision,
+  nearestFreePoint,
   separateBodies,
 } from "./collision.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
@@ -221,5 +222,29 @@ describe("distanceToContact", () => {
 
   test("is zero for a body already touching ahead", () => {
     expect(distanceToContact(body, right, [at(14, 0)])).toBe(0);
+  });
+});
+
+describe("nearestFreePoint", () => {
+  test("is the closest point with room for the body", () => {
+    const point = nearestFreePoint(mapWithCenterWall(), 10, { x: 125, y: 125 });
+    expect(isAreaFree(mapWithCenterWall(), point.x, point.y, 10)).toBe(true);
+    expect(Math.hypot(point.x - 125, point.y - 125)).toBeLessThan(40);
+  });
+
+  test("gives back a point that is not finite rather than searching forever", () => {
+    for (const from of [
+      { x: Number.NaN, y: 100 },
+      { x: 100, y: Number.POSITIVE_INFINITY },
+      { x: Number.NEGATIVE_INFINITY, y: Number.NaN },
+    ])
+      expect(nearestFreePoint(emptyMap(), 10, from)).toBe(from);
+  });
+
+  test("gives back the start when the map has no room anywhere", () => {
+    const map = emptyMap();
+    map.solid.fill(1);
+    const from = { x: 125, y: 125 };
+    expect(nearestFreePoint(map, 10, from)).toBe(from);
   });
 });

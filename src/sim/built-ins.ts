@@ -1,5 +1,6 @@
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
+import { corrected } from "./correction.js";
 import { damaged } from "./health.js";
 import { movement } from "./movement.js";
 import { noiseMade } from "./noise.js";
@@ -28,6 +29,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/noise": { events: { made: noiseMade } },
   /** The blows the host deals each player, damage and any push, sent to that player's own client. */
   "core/health": { events: { damage: damaged } },
+  /** Where the host puts a player whose own client has it somewhere else. */
+  "core/position": { events: { corrected } },
   /**
    * Items lying in the world: each pickup and drop the host checks, the item it grants, and each
    * item it lays down.

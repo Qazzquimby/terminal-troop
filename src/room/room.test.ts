@@ -1292,14 +1292,12 @@ describe("host", () => {
         host: "b",
         full: true,
         entities: [{ ...entity, data }],
-        world: {},
         removed: [],
       });
       listener.send(NetEvent.ENTITIES, {
         host: "z",
         full: true,
         entities: [{ ...entity, data }],
-        world: {},
         removed: [],
       });
       expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
@@ -1309,7 +1307,6 @@ describe("host", () => {
         host: "a",
         full: true,
         entities: [{ ...entity, data }],
-        world: {},
         removed: [],
       });
       expect(ids(get("b"))).toEqual(["z:1"]);
