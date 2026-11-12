@@ -106,6 +106,7 @@ export const config = {
   room: {
     sendHz: 15,
     entityHz: 10,
+    fullSnapshotMs: 5000,
     heartbeatMs: 1000,
     presence: {
       awayAfterMs: 3500,
