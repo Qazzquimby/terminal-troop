@@ -11,6 +11,7 @@ import type {
 } from "../sim/index.js";
 import {
   aimAt,
+  emittedLights,
   heldItemOf,
   isVisible,
   lightSources,
@@ -408,25 +409,108 @@ function tracePolygons(
   return polygons;
 }
 
-/** Restricts drawing to the union of `polygons`. */
-function clipTo(
+/** A canvas to composite into, kept between frames. */
+interface Layer {
+  readonly canvas: HTMLCanvasElement;
+  readonly ctx: CanvasRenderingContext2D;
+}
+
+/** How many pixels the edges of sight and light fade out over. */
+const EDGE_FADE = 16;
+
+/** A warm tint laid over the ground an emissive light reaches, faded at its edge. */
+const LIGHT_TINT = "rgba(255, 217, 138, 0.22)";
+
+let sceneCache: Layer | null = null;
+let maskCache: Layer | null = null;
+
+function createLayer(): Layer {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) throw new Error("no 2d canvas context");
+  return { canvas, ctx };
+}
+
+function sized(layer: Layer, width: number, height: number): Layer {
+  if (layer.canvas.width !== width || layer.canvas.height !== height) {
+    layer.canvas.width = width;
+    layer.canvas.height = height;
+  }
+  return layer;
+}
+
+/** Runs `render` with the context transformed from world space to view space. */
+function applyCamera(
+  ctx: CanvasRenderingContext2D,
+  camera: Camera,
+  render: () => void,
+): void {
+  ctx.save();
+  ctx.scale(1 / camera.zoom, 1 / camera.zoom);
+  ctx.translate(-camera.x, -camera.y);
+  render();
+  ctx.restore();
+}
+
+/** Fills the union of `polygons` in the current path. */
+function fillPolygons(
   ctx: CanvasRenderingContext2D,
   polygons: readonly VisibilityPolygon[],
 ): void {
-  const path = new Path2D();
-
+  ctx.beginPath();
   for (const { points } of polygons) {
     const [first, ...rest] = points;
     if (first === undefined) continue;
-
-    path.moveTo(first.x, first.y);
+    ctx.moveTo(first.x, first.y);
     rest.forEach((point) => {
-      path.lineTo(point.x, point.y);
+      ctx.lineTo(point.x, point.y);
     });
-    path.closePath();
+    ctx.closePath();
   }
+  ctx.fill();
+}
 
-  ctx.clip(path);
+/**
+ * Renders the union of `polygons` onto `layer` in `colour`, its edge faded over `EDGE_FADE`
+ * pixels. The canvas is padded so the fade does not bite into the view's border.
+ */
+function featheredMask(
+  layer: Layer,
+  polygons: readonly VisibilityPolygon[],
+  camera: Camera,
+  width: number,
+  height: number,
+  colour: string,
+): Layer {
+  const pad = EDGE_FADE;
+  const mask = sized(layer, width + pad * 2, height + pad * 2);
+  const { ctx } = mask;
+  ctx.clearRect(0, 0, mask.canvas.width, mask.canvas.height);
+  ctx.save();
+  ctx.filter = `blur(${String(EDGE_FADE / 2)}px)`;
+  ctx.translate(pad, pad);
+  ctx.scale(1 / camera.zoom, 1 / camera.zoom);
+  ctx.translate(-camera.x, -camera.y);
+  ctx.fillStyle = colour;
+  fillPolygons(ctx, polygons);
+  ctx.restore();
+  return mask;
+}
+
+/** Keeps `scene` only where `mask` reaches, its edge soft. */
+function keepWithin(scene: Layer, mask: Layer): void {
+  scene.ctx.save();
+  scene.ctx.globalCompositeOperation = "destination-in";
+  scene.ctx.drawImage(mask.canvas, -EDGE_FADE, -EDGE_FADE);
+  scene.ctx.restore();
+}
+
+/** Lays `mask`'s warm shapes over the scene, only where the scene still shows. */
+function layLight(scene: Layer, mask: Layer): void {
+  scene.ctx.save();
+  scene.ctx.globalCompositeOperation = "source-atop";
+  scene.ctx.drawImage(mask.canvas, -EDGE_FADE, -EDGE_FADE);
+  scene.ctx.restore();
 }
 
 /**
@@ -489,45 +573,65 @@ export function draw(
   const area = viewArea(camera);
   memory.see({ seen, lit, walls }, area);
 
+  const { width, height } = camera.view;
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, camera.view.width, camera.view.height);
-  ctx.save();
-  const scale = 1 / camera.zoom;
-  ctx.scale(scale, scale);
-  ctx.translate(-camera.x, -camera.y);
-  drawRemembered(ctx, memory.within(area), memory.config, map.cell);
+  ctx.fillRect(0, 0, width, height);
 
-  // Inside the darkness: only what is both seen and lit.
-  ctx.save();
-  clipTo(ctx, seen);
-  clipTo(ctx, lit);
-  drawTerrain(ctx, game.world, camera);
-
-  game.entities.forEach((entity) => {
-    const definition = game.entityTypes.get(entity.kind);
-    if (definition === undefined) return;
-    if (!inView(entity, camera) || !isVisible(map, sources, lights, entity))
-      return;
-    ctx.save();
-    definition.draw(ctx, entity, now, game);
-    ctx.restore();
-    drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+  applyCamera(ctx, camera, () => {
+    drawRemembered(ctx, memory.within(area), memory.config, map.cell);
   });
 
-  game.players.forEach((player) => {
-    if (player === viewer || !inView(player, camera)) return;
-    if (!isVisible(map, sources, lights, player)) return;
-    drawPlayer(ctx, game, player, false, isAway(player.id));
-    drawHealthBar(ctx, player, player.y - player.radius - 26);
+  // Inside the darkness: only what is both seen and lit, its edges faded, with the ground an
+  // emissive light such as a cruiser's lamp reaches warmed.
+  const scene = sized((sceneCache ??= createLayer()), width, height);
+  const sceneCtx = scene.ctx;
+  sceneCtx.clearRect(0, 0, width, height);
+  applyCamera(sceneCtx, camera, () => {
+    drawTerrain(sceneCtx, game.world, camera);
+
+    game.entities.forEach((entity) => {
+      const definition = game.entityTypes.get(entity.kind);
+      if (definition === undefined) return;
+      if (!inView(entity, camera) || !isVisible(map, sources, lights, entity))
+        return;
+      sceneCtx.save();
+      definition.draw(sceneCtx, entity, now, game);
+      sceneCtx.restore();
+      drawHealthBar(sceneCtx, entity, entity.y - entity.radius - 8);
+    });
+
+    game.players.forEach((player) => {
+      if (player === viewer || !inView(player, camera)) return;
+      if (!isVisible(map, sources, lights, player)) return;
+      drawPlayer(sceneCtx, game, player, false, isAway(player.id));
+      drawHealthBar(sceneCtx, player, player.y - player.radius - 26);
+    });
+    drawFlashes(sceneCtx, flashes, now);
   });
-  drawFlashes(ctx, flashes, now);
-  ctx.restore();
+  const mask = (maskCache ??= createLayer());
+  keepWithin(scene, featheredMask(mask, seen, camera, width, height, "#fff"));
+  keepWithin(scene, featheredMask(mask, lit, camera, width, height, "#fff"));
+
+  const emitted = emittedLights(game);
+  if (emitted.length > 0) {
+    const tint = featheredMask(
+      mask,
+      tracePolygons(map, emitted, camera, rays),
+      camera,
+      width,
+      height,
+      LIGHT_TINT,
+    );
+    layLight(scene, tint);
+  }
+  ctx.drawImage(scene.canvas, 0, 0);
 
   // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.
-  drawLitWalls(ctx, walls);
-  drawRipples(ctx, ripples, now, camera);
-  drawPlayer(ctx, game, viewer, true);
-  drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
-  drawStamina(ctx, viewer, game.config.stamina.max);
-  ctx.restore();
+  applyCamera(ctx, camera, () => {
+    drawLitWalls(ctx, walls);
+    drawRipples(ctx, ripples, now, camera);
+    drawPlayer(ctx, game, viewer, true);
+    drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
+    drawStamina(ctx, viewer, game.config.stamina.max);
+  });
 }
