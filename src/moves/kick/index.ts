@@ -142,7 +142,7 @@ export const kick: Content<"kick", KickConfig> = {
           entitiesIn(game, area).length +
           playersIn(game, area, game.localId).length;
         show(game, area, hits > 0);
-        game.sfx.play(SOUNDS.use, at, game.local);
+        void game.sfx.play(SOUNDS.use, at, game.local);
         kicked.send(game, { x: at.x, y: at.y, aim: local.aim });
       },
     };
