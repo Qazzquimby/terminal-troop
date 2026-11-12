@@ -1396,9 +1396,12 @@ describe("host", () => {
         return { hub, clock, a: get("a"), b: get("b") };
       }
 
-      /** Moves `player` to `at`, facing right, and sends its state there. */
-      const standAt = (player: Player, at: Point) => {
-        Object.assign(sessionOf(player).local, { ...at, aim: 0 });
+      /**
+       * Moves `player` to `at`, facing right and holding slot `held` (its poke unless said
+       * otherwise), and sends its state there.
+       */
+      const standAt = (player: Player, at: Point, held: number | null = 1) => {
+        Object.assign(sessionOf(player).local, { ...at, aim: 0, held });
         player.clock.advance(player.clock.now() + 200);
         player.room.frame(player.clock.now());
       };
@@ -1454,7 +1457,7 @@ describe("host", () => {
       test("an item defined as content starts in its slot, and is selected, used, applied by the host and shown to the others", async () => {
         const { clock, a, b } = await hosted();
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
-        standAt(b, { x: blob.x - 20, y: blob.y });
+        standAt(b, { x: blob.x - 20, y: blob.y }, 0);
         const local = sessionOf(b).local;
         expect(local.inventory.map((item) => item?.id ?? null)).toEqual([
           null,
