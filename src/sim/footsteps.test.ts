@@ -47,37 +47,31 @@ describe("the local player's footsteps", () => {
     expect(noisesOver(game, controls(false, true), 2)).toEqual([]);
   });
 
-  test("walking steps at once, then each walking interval, at walking loudness, from where it is", () => {
+  test("walking steps at once, then each walking interval, carrying a walking radius, from where it is", () => {
     const game = session();
     const steps = noisesOver(game, controls(true, false), 2);
     expect(steps).toHaveLength(Math.floor(2 / walk.interval));
-    expect(steps.every(({ loudness }) => loudness === walk.loudness)).toBe(
-      true,
-    );
+    expect(steps.every(({ radius }) => radius === walk.radius)).toBe(true);
     expect(steps[0]).toMatchObject({ source: "me" });
     expect(steps.at(-1)?.at.x).toBeGreaterThan(100);
   });
 
-  test("sprinting steps more often and louder", () => {
+  test("sprinting steps more often and carry further", () => {
     const game = session();
     const steps = noisesOver(game, controls(true, true), 2);
     expect(steps).toHaveLength(Math.floor(2 / sprint.interval));
-    expect(steps.every(({ loudness }) => loudness === sprint.loudness)).toBe(
-      true,
-    );
-    expect(sprint.loudness).toBeGreaterThan(walk.loudness);
+    expect(steps.every(({ radius }) => radius === sprint.radius)).toBe(true);
+    expect(sprint.radius).toBeGreaterThan(walk.radius);
   });
 
-  test("crouching steps less often and quieter", () => {
+  test("crouching steps less often and carry less far", () => {
     const game = session();
     updateSession(game, { ...idle, crouch: true }, DT);
     const steps = noisesOver(game, controls(true, false), 2);
     expect(steps).toHaveLength(Math.ceil(2 / crouch.interval));
-    expect(steps.every(({ loudness }) => loudness === crouch.loudness)).toBe(
-      true,
-    );
+    expect(steps.every(({ radius }) => radius === crouch.radius)).toBe(true);
     expect(crouch.interval).toBeGreaterThan(walk.interval);
-    expect(crouch.loudness).toBeLessThan(walk.loudness);
+    expect(crouch.radius).toBeLessThan(walk.radius);
   });
 
   test("stopping ends them, and moving again steps at once", () => {
@@ -109,7 +103,7 @@ describe("a remote player's footsteps", () => {
     expect(steps).toHaveLength(Math.floor(1 / sprint.interval));
     expect(steps[0]).toEqual({
       at: { x: 700, y: 300 },
-      loudness: sprint.loudness,
+      radius: sprint.radius,
       source: "them",
     });
 

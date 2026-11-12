@@ -404,7 +404,7 @@ test("a kick makes a noise from its hitbox on every client, the kicker its sourc
   exchange({ b: kickRight(sessionOf(b)) });
   const noise = {
     at: { x: TARGET.x, y: TARGET.y },
-    loudness: kick.loudness,
+    radius: kick.noiseRadius,
     source: "b",
   };
   expect(sessionOf(b).noises).toEqual([noise]);

@@ -36,13 +36,16 @@ describe("rounding", () => {
   test("a snapshot sends each entity's position to a tenth of a pixel", () => {
     const wire = messages[NetEvent.ENTITIES].encode({
       host: "h",
-      full: true,
-      entities: [
-        { id: "h:1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} },
-      ],
+      origin: "o",
+      full: false,
+      time: 12.345,
+      entities: [{ id: "1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} }],
+      changed: [{ id: "2", x: 5.06 }],
       removed: [],
     });
     expect(wire.entities[0]).toMatchObject({ x: 10, y: 20 });
+    expect(wire.changed[0]).toEqual({ id: "2", x: 5.1 });
+    expect(wire.time).toBe(12.35);
   });
 });
 
@@ -74,11 +77,14 @@ describe("health", () => {
   test("an encoded snapshot with unbreakable health survives JSON", () => {
     const snapshot: Message<"entities"> = {
       host: "h",
-      full: true,
+      origin: "o",
+      full: false,
+      time: 3,
       entities: [
-        { id: "h:1", kind: 1, x: 10, y: 20, health: 40, data: {} },
-        { id: "h:2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
+        { id: "1", kind: 1, x: 10, y: 20, health: 40, data: {} },
+        { id: "2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
       ],
+      changed: [{ id: "3", health: Infinity, patch: { a: 1 } }],
       removed: [],
     };
     const schema = messages[NetEvent.ENTITIES];
@@ -119,7 +125,9 @@ describe("the message table", () => {
     }>();
     expectTypeOf<Message<"entities">>().toEqualTypeOf<{
       host: string;
+      origin: string;
       full: boolean;
+      time: number;
       entities: {
         id: string;
         kind: number;
@@ -127,6 +135,14 @@ describe("the message table", () => {
         y: number;
         health: number;
         data: unknown;
+      }[];
+      changed: {
+        id: string;
+        x?: number | undefined;
+        y?: number | undefined;
+        health?: number | undefined;
+        data?: unknown;
+        patch?: Record<string, unknown> | undefined;
       }[];
       removed: string[];
     }>();

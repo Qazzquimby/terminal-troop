@@ -63,7 +63,13 @@ function standAt(game: Session, x: number, y: number): void {
 }
 
 function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
-  return spawnEntity(game, "chaser", x, y, freshChaser(seed, config));
+  return spawnEntity(
+    game,
+    "chaser",
+    x,
+    y,
+    freshChaser(seed, game.worldTime, config),
+  );
 }
 
 const stateOf = (entity: WorldEntity): ChaserState =>
@@ -398,6 +404,7 @@ describe("sounds", () => {
 
 describe("hearing", () => {
   const blind = { ...config, sightRange: 0 };
+  const { footsteps } = testSimConfig;
 
   /** A remote player at (x, y) reporting it moves in `mode`. */
   function moverAt(
@@ -421,7 +428,8 @@ describe("hearing", () => {
   const distanceTo = (zombie: WorldEntity, x: number, y: number): number =>
     Math.hypot(zombie.x - x, zombie.y - y);
 
-  test("a wandering chaser turns towards a player it hears sprinting, placing it roughly", () => {
+  test("a wandering chaser turns towards a player sprinting within the sprint radius, placing it roughly", () => {
+    expect(footsteps.sprint.radius).toBeGreaterThan(300);
     const game = world(blind);
     standAt(game, 100, 500);
     moverAt(game, 750, 300, "sprint");
@@ -442,7 +450,8 @@ describe("hearing", () => {
     expect(distanceTo(zombie, 750, 300)).toBeLessThan(300 - 80);
   });
 
-  test("a player walking beyond its footsteps' reach is not heard", () => {
+  test("a player walking beyond the walk radius is not heard", () => {
+    expect(footsteps.walk.radius).toBeLessThan(300);
     const game = world(blind);
     standAt(game, 100, 500);
     moverAt(game, 750, 300, "walk");
@@ -451,7 +460,9 @@ describe("hearing", () => {
     expect(stateOf(zombie)).toMatchObject({ noiseTarget: null });
   });
 
-  test("a player crouching where its walking is heard goes unheard", () => {
+  test("a player crouching beyond the crouch radius, where its walking is heard, goes unheard", () => {
+    expect(footsteps.crouch.radius).toBeLessThan(120);
+    expect(footsteps.walk.radius).toBeGreaterThan(120);
     const heard = (mode: "walk" | "crouch"): boolean => {
       const game = world(blind);
       standAt(game, 100, 500);

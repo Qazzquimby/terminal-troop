@@ -17,7 +17,11 @@ import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
 import type { ForcedMove } from "./forced-move.js";
-import { followForcedMoves, positionHeld } from "./forced-move.js";
+import {
+  correctPlayer,
+  followForcedMoves,
+  positionHeld,
+} from "./forced-move.js";
 import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
@@ -32,6 +36,8 @@ import {
   updatePlayer,
 } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
+import { checkMove } from "./move-checks.js";
+import type { MoveCheck, MoveCheckConfig, MoveVerdict } from "./move-checks.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
 import type { Prediction } from "./prediction.js";
@@ -48,6 +54,7 @@ interface SyncConfig {
   /** Rate, per second, at which remote players ease towards their reported state. */
   readonly smoothing: number;
   readonly useSlack: UseSlack;
+  readonly moves: MoveCheckConfig;
   /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
   readonly predictionHold: number;
 }
@@ -80,11 +87,17 @@ export interface Session {
   readonly entityTypes: Map<number, EntityType>;
   /** The number each kind is registered and sent as, by name. */
   readonly kindIds: Map<string, number>;
+  /** The number the next entity spawned here takes, past that of every entity placed here. */
   nextEntityId: number;
   /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
   hosting: boolean;
   /** Sim seconds stepped since the session began. */
   time: number;
+  /**
+   * Sim seconds on the world's clock, which entities keep their deadlines by. Every client steps
+   * it, and takes the host's from each snapshot, so whoever hosts next goes on from it.
+   */
+  worldTime: number;
   /** What each usable item does, by item id. */
   readonly items: Map<string, ItemBehaviour>;
   /** Every item this client knows, by item id. */
@@ -114,6 +127,8 @@ export interface Session {
   readonly readyAt: Map<string, Map<string, number>>;
   /** When, in sim seconds, the local player may next act, by what the action is timed under. */
   readonly localReadyAt: Map<string, number>;
+  /** While hosting, how each remote player has moved, by player id. */
+  readonly moveChecks: Map<string, MoveCheck>;
   /** The content registered with it, in order. */
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
@@ -205,6 +220,7 @@ export function createSession(
     nextEntityId: 1,
     hosting: true,
     time: 0,
+    worldTime: 0,
     items: new Map(),
     itemDefinitions: new Map(),
     playerData: new Map(),
@@ -218,6 +234,7 @@ export function createSession(
     noises: [],
     readyAt: new Map(),
     localReadyAt: new Map(),
+    moveChecks: new Map(),
     contents: [],
     flashes: [],
     predictions: new Map(),
@@ -267,6 +284,7 @@ export function updateSession(
   dt: number,
 ): void {
   game.time += dt;
+  game.worldTime += dt;
   game.noises.length = 0;
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
@@ -314,13 +332,16 @@ export function playerState(game: Session): PlayerState {
 /** Drops a remote player; false when there is none by that id. */
 export function removePlayer(game: Session, id: string): boolean {
   if (id === game.localId) return false;
+  game.moveChecks.delete(id);
   return game.players.delete(id);
 }
 
 /**
  * Applies a remote player's reported state: "added" when the player is new to the session,
  * "rejected" for the local player's own id or a position inside a wall. A known player's position
- * stays put while `positionHeld` holds it back. The rest applies: forced moves only move players.
+ * stays put while `positionHeld` holds it back; the rest applies, since forced moves only move
+ * players. While hosting, a position beyond the player's reach is not taken: the player is
+ * corrected back where it last stood.
  */
 export function applyRemoteState(
   game: Session,
@@ -343,12 +364,16 @@ export function applyRemoteState(
   player.health = Math.min(state.health, player.maxHealth);
   applyContentState(game, player, state.content);
 
-  if (known === undefined || !positionHeld(game, state)) {
+  player.taim = state.aim;
+  player.heardEpoch = Math.max(player.heardEpoch, state.epoch);
+  if (known !== undefined && positionHeld(game, state)) return "updated";
+  const verdict: MoveVerdict = game.hosting
+    ? checkMove(game, player.id, state)
+    : { kind: "take" };
+  if (verdict.kind === "take") {
     player.tx = state.x;
     player.ty = state.y;
     player.epoch = state.epoch;
-  }
-  player.heardEpoch = Math.max(player.heardEpoch, state.epoch);
-  player.taim = state.aim;
+  } else correctPlayer(game, player, verdict.to);
   return known === undefined ? "added" : "updated";
 }

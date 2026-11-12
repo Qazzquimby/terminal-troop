@@ -1210,10 +1210,10 @@ describe("host", () => {
           health,
         })),
       ).toEqual([
-        { id: "a:1", health: 10 },
-        { id: "a:2", health: 10 },
-        { id: "a:3", health: 10 },
-        { id: "a:4", health: Infinity },
+        { id: "1", health: 10 },
+        { id: "2", health: 10 },
+        { id: "3", health: 10 },
+        { id: "4", health: Infinity },
       ]);
     });
 
@@ -1243,7 +1243,7 @@ describe("host", () => {
       await get("b").room.leave();
       clock.advance(5000);
       expect(get("c").room.hostId()).toBe("c");
-      expect(ids(get("c"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("c"))).toEqual(["1", "2", "3"]);
       expect(populated).toEqual(["a"]);
     });
 
@@ -1251,13 +1251,13 @@ describe("host", () => {
       const { clock, get, add } = await gather(["a"]);
       expect(ids(get("a"))).toEqual([]);
       clock.advance(1000);
-      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("a"))).toEqual(["1", "2", "3"]);
 
       const b = await add("b");
       expect(placed(b)).toEqual(placed(get("a")));
       clock.advance(10_000);
-      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
-      expect(ids(b)).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("a"))).toEqual(["1", "2", "3"]);
+      expect(ids(b)).toEqual(["1", "2", "3"]);
     });
 
     test("players that join together see only the host's", async () => {
@@ -1265,7 +1265,7 @@ describe("host", () => {
       clock.advance(1000);
       expect(ids(get("b"))).toEqual([]);
       play(get("a"), 0.5);
-      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("b"))).toEqual(["1", "2", "3"]);
     });
 
     test("only the host runs them; the others follow its snapshots", async () => {
@@ -1293,30 +1293,39 @@ describe("host", () => {
       const listener = hub.listener("dev:ABC");
       clock.advance(1000);
       play(get("a"), 0);
-      const entity = { id: "z:1", kind: 1, x: 450, y: 300, health: 10 };
+      const entity = { id: "z", kind: 1, x: 450, y: 300, health: 10 };
       const data = { steps: 0 };
       listener.send(NetEvent.ENTITIES, {
         host: "b",
+        origin: "a",
         full: true,
         entities: [{ ...entity, data }],
+        changed: [],
+        time: 0,
         removed: [],
       });
       listener.send(NetEvent.ENTITIES, {
         host: "z",
+        origin: "a",
         full: true,
         entities: [{ ...entity, data }],
+        changed: [],
+        time: 0,
         removed: [],
       });
-      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
-      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("a"))).toEqual(["1", "2", "3"]);
+      expect(ids(get("b"))).toEqual(["1", "2", "3"]);
 
       listener.send(NetEvent.ENTITIES, {
         host: "a",
+        origin: "a",
         full: true,
         entities: [{ ...entity, data }],
+        changed: [],
+        time: 0,
         removed: [],
       });
-      expect(ids(get("b"))).toEqual(["z:1"]);
+      expect(ids(get("b"))).toEqual(["z"]);
     });
 
     test("a new host runs on from its last snapshot, every id kept", async () => {
@@ -1327,11 +1336,11 @@ describe("host", () => {
       await get("a").room.leave();
       clock.advance(2000);
       expect(get("b").room.hostId()).toBe("b");
-      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("b"))).toEqual(["1", "2", "3"]);
 
       play(get("b"), 2);
       expect(placed(get("b"))).not.toEqual(handed);
-      expect(ids(get("c"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("c"))).toEqual(["1", "2", "3"]);
       expect(targets(get("c"))).toEqual(placed(get("b")));
     });
 
@@ -1342,15 +1351,22 @@ describe("host", () => {
       const c = await add("c");
       clock.advance(2000);
       expect(c.room.hostId()).toBe("c");
-      expect(ids(c)).toEqual(["c:1", "c:2", "c:3"]);
+      expect(ids(c)).toEqual(["1", "2", "3"]);
+      const own = [...sessionOf(c).entities.values()];
 
       hub.heal();
       clock.advance(4000);
-      play(get("a"), 0);
+      play(get("a"), 1);
       expect(c.room.hostId()).toBe("a");
-      expect(ids(c)).toEqual(["a:1", "a:2", "a:3"]);
-      expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
-      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(c)).toEqual(["1", "2", "3"]);
+      expect(
+        [...sessionOf(c).entities.values()].filter((entity) =>
+          own.includes(entity),
+        ),
+      ).toEqual([]);
+      expect(placed(c)).toEqual(placed(get("a")));
+      expect(ids(get("a"))).toEqual(["1", "2", "3"]);
+      expect(ids(get("b"))).toEqual(["1", "2", "3"]);
     });
 
     test("after a split, the side that keeps the host keeps its monsters", async () => {
@@ -1360,7 +1376,7 @@ describe("host", () => {
       hub.partition(["a"], ["b"]);
       clock.advance(6000);
       expect(get("b").room.hostId()).toBe("b");
-      expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
+      expect(ids(get("b"))).toEqual(["1", "2", "3"]);
       play(get("b"), 1);
 
       hub.heal();
@@ -1434,19 +1450,18 @@ describe("host", () => {
 
       test("a non-host's hit lands on the host, every client sees the health, and a kill removes it everywhere", async () => {
         const { clock, a, b } = await hosted();
-        const blob = () =>
-          sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        const blob = () => sessionOf(a).entities.get("2") ?? { x: NaN, y: NaN };
 
         pokeAt(b, blob());
-        expect(healthOf(b, "a:2")).toBe(10);
+        expect(healthOf(b, "2")).toBe(10);
         clock.advance(clock.now() + 200);
         play(a, 1 / 60);
-        expect(healthOf(a, "a:2")).toBe(6);
-        expect(healthOf(b, "a:2")).toBe(6);
+        expect(healthOf(a, "2")).toBe(6);
+        expect(healthOf(b, "2")).toBe(6);
 
         pokeAt(b, blob());
         play(a, 1 / 60);
-        expect(healthOf(a, "a:2")).toBe(6);
+        expect(healthOf(a, "2")).toBe(6);
 
         play(a, 0.5);
         pokeAt(b, blob());
@@ -1454,13 +1469,13 @@ describe("host", () => {
         pokeAt(b, blob());
         clock.advance(clock.now() + 200);
         play(a, 1 / 60);
-        expect(ids(a)).toEqual(["a:1", "a:3"]);
-        expect(ids(b)).toEqual(["a:1", "a:3"]);
+        expect(ids(a)).toEqual(["1", "3"]);
+        expect(ids(b)).toEqual(["1", "3"]);
       });
 
       test("an item defined as content starts in its slot, and is selected, used, applied by the host and shown to the others", async () => {
         const { clock, a, b } = await hosted();
-        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        const blob = sessionOf(a).entities.get("2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 20, y: blob.y }, 0);
         const local = sessionOf(b).local;
         expect(local.inventory.map((item) => item?.id ?? null)).toEqual([
@@ -1485,8 +1500,8 @@ describe("host", () => {
           "poke",
         );
         play(a, 1 / 60);
-        expect(healthOf(a, "a:2")).toBe(6);
-        expect(healthOf(b, "a:2")).toBe(6);
+        expect(healthOf(a, "2")).toBe(6);
+        expect(healthOf(b, "2")).toBe(6);
       });
 
       test("every client hears a use once, from where it was made", async () => {
@@ -1541,21 +1556,21 @@ describe("host", () => {
 
       test("the host applies its own use through the same checks", async () => {
         const { clock, a, b } = await hosted();
-        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        const blob = sessionOf(a).entities.get("2") ?? { x: NaN, y: NaN };
         pokeAt(a, blob);
         clock.advance(clock.now() + 200);
         play(a, 1 / 60);
-        expect(healthOf(a, "a:2")).toBe(6);
-        expect(healthOf(b, "a:2")).toBe(6);
+        expect(healthOf(a, "2")).toBe(6);
+        expect(healthOf(b, "2")).toBe(6);
       });
 
       test("a use far from where the host last saw its player does nothing", async () => {
         const { a, b } = await hosted();
-        const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
+        const blob = sessionOf(a).entities.get("2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 200, y: blob.y });
         sendUse(b, { x: blob.x - 20, y: blob.y, aim: 0 });
         play(a, 1 / 60);
-        expect(healthOf(a, "a:2")).toBe(10);
+        expect(healthOf(a, "2")).toBe(10);
       });
 
       test("a monster's strike hurts each player on its own client, and every client sees it", async () => {

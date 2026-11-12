@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  allowMove,
   applyDamage,
   broadcastNoise,
   circleAhead,
@@ -50,8 +51,8 @@ export interface KickConfig {
     /** How far, in pixels, a reported lunge's end may be from the host's own reckoning of it. */
     readonly slack: number;
   };
-  /** How loud a kick is, as a multiple of a listener's hearing range. */
-  readonly loudness: number;
+  /** How far, in pixels, a kick's noise carries. */
+  readonly noiseRadius: number;
 }
 
 /** What kicks are timed under, and the content entry's own name. */
@@ -144,6 +145,12 @@ export const kick: Content<"kick", KickConfig> = {
         const off = Math.hypot(reported.x - at.x, reported.y - at.y);
         if (off > config.lunge.slack) return;
         if (!hostAccepts(game, by, at, NAME, config.cooldown)) return;
+        allowMove(
+          game,
+          by,
+          Math.hypot(at.x - kicker.tx, at.y - kicker.ty) + config.lunge.slack,
+          config.lunge.seconds,
+        );
         const area = hitbox(at, aim);
         const entities = entitiesIn(game, area);
         for (const entity of entities) strike(game, entity, at);
@@ -156,7 +163,7 @@ export const kick: Content<"kick", KickConfig> = {
         const hit = entities.length + players.length;
         broadcastNoise(game, {
           at: area.center,
-          loudness: config.loudness,
+          radius: config.noiseRadius,
           source: by,
         });
         shown.send(game, { by, ...area.center, hit: hit > 0 });

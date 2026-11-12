@@ -38,11 +38,11 @@ function guest(): { game: Session; post: WorldEntity } {
     draw: () => undefined,
   });
   game.hosting = false;
-  applyEntityChanges(
-    game,
-    [{ id: "h:1", kind: 1, x: 300, y: 300, health: 10, data: {} }],
-    [],
-  );
+  applyEntityChanges(game, {
+    added: [{ id: "h:1", kind: 1, x: 300, y: 300, health: 10, data: {} }],
+    changed: [],
+    removed: [],
+  });
   const post = game.entities.get("h:1");
   if (post === undefined) throw new Error("no post");
   return { game, post };
@@ -56,11 +56,11 @@ const hit = (entity: WorldEntity): void => {
 
 /** The host's snapshot of the post at `x` with `health`. */
 const hear = (game: Session, x: number, health: number): void => {
-  applyEntityChanges(
-    game,
-    [{ id: "h:1", kind: 1, x, y: 300, health, data: {} }],
-    [],
-  );
+  applyEntityChanges(game, {
+    added: [],
+    changed: [{ id: "h:1", x, health }],
+    removed: [],
+  });
 };
 
 test("actions are numbered from 1", () => {

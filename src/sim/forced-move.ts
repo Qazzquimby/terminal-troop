@@ -4,6 +4,7 @@ import { nearestFreePoint } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { snapPrevious } from "./interpolation.js";
 import type { Point } from "./map.js";
+import { rebaseMoves } from "./move-checks.js";
 import type { Player, PlayerState } from "./player.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
@@ -183,6 +184,7 @@ export function forcePlayer(
     ...(slide !== undefined && { slide }),
   };
   takeForcedMove(game, player.id, move);
+  if (player !== game.local) rebaseMoves(game, player.id, move.to);
   forcedMoves.set(game, { ...forcedMoves.get(game), [player.id]: move });
   forced.send(game, { target: player.id, ...move });
 }

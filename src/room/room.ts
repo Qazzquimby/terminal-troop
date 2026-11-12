@@ -9,16 +9,19 @@ import {
   applyWorldEntries,
   cueEntities,
   createSession,
+  entityDelta,
   entitySnapshot,
   playerState,
   receiveEvent,
   registerContent,
   removePlayer,
+  restartMoveChecks,
   roomSeed,
   takeOverForcedMoves,
   takeWorldEntries,
 } from "../sim/index.js";
 import type {
+  EntitySnapshot,
   OutgoingEvent,
   Point,
   Session,
@@ -38,7 +41,7 @@ import type {
   PresenceTiming,
   Roster,
 } from "./presence.js";
-import { roomMessages } from "./protocol.js";
+import { asSent, roomMessages } from "./protocol.js";
 import type { Message, WireMessage } from "./protocol.js";
 import { INVALID_ROOM_CODE, parseRoomCode, roomKey } from "./room-code.js";
 import { applyProximity, syncVoicePeers } from "./voice-peers.js";
@@ -193,9 +196,12 @@ interface Link {
   /** The next tick sends the world state in full. */
   worldFullDue: boolean;
   /** Each entity as this client last sent it while hosting, by id; empty while not hosting. */
-  sent: Map<string, string>;
-  /** The world has its starting entities: this client spawned them or heard them from a host. */
-  populated: boolean;
+  sent: Map<string, EntitySnapshot>;
+  /**
+   * Who spawned the starting entities of the world this client holds: this client, or the one its
+   * hosts' snapshots name. Null before it has any.
+   */
+  origin: string | null;
 }
 
 const ALREADY_CONNECTING = "Already connecting.";
@@ -262,32 +268,27 @@ export function createRoom(deps: RoomDeps): Room {
 
   /**
    * Sends the entities: in full when forced, as this client's first while hosting, or every
-   * `fullSnapshotMs`; otherwise only the entities changed since the last send, and the ids of
-   * those gone.
+   * `fullSnapshotMs`; otherwise only what changed since the last send, as the others hold it.
    */
   function sendEntities(room: Link, now: number, force = false): void {
-    const entities = entitySnapshot(room.session);
-    const current = new Map(
-      entities.map((entity) => [entity.id, JSON.stringify(entity)]),
-    );
+    const entities = entitySnapshot(room.session).map(asSent);
     const full =
       force ||
       room.sent.size === 0 ||
       now - room.lastFullSent >= config.fullSnapshotMs;
-    const previous = room.sent;
-    room.sent = current;
+    const { added, changed, removed } = full
+      ? { added: entities, changed: [], removed: [] }
+      : entityDelta(room.sent, entities);
+    room.sent = new Map(entities.map((entity) => [entity.id, entity]));
     if (full) room.lastFullSent = now;
     void send(NetEvent.ENTITIES, {
       host: localId,
+      origin: room.origin ?? localId,
       full,
-      entities: full
-        ? entities
-        : entities.filter(
-            (entity) => previous.get(entity.id) !== current.get(entity.id),
-          ),
-      removed: full
-        ? []
-        : [...previous.keys()].filter((id) => !current.has(id)),
+      time: room.session.worldTime,
+      entities: added,
+      changed,
+      removed,
     });
   }
 
@@ -313,9 +314,9 @@ export function createRoom(deps: RoomDeps): Room {
 
   /**
    * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
-   * no starting entities yet spawns them. A client taking over counts forced moves on from the
-   * highest it has heard of. A client that takes over sends its world state in full
-   * with its next tick.
+   * no starting entities yet spawns them. A client that takes over sends its world state in full
+   * with its next tick, checks every player's moves afresh, and counts forced moves on from the
+   * highest it has heard of.
    */
   function holdView(room: Link, view: HostView | undefined): void {
     if (
@@ -327,12 +328,13 @@ export function createRoom(deps: RoomDeps): Room {
     room.host = view;
     const hosting = view?.id === localId;
     const takingOver = hosting && !room.session.hosting;
+    if (room.session.hosting !== hosting) restartMoveChecks(room.session);
     room.session.hosting = hosting;
     if (takingOver) takeOverForcedMoves(room.session);
     if (!hosting) room.sent.clear();
-    if (hosting && !room.populated) {
+    if (hosting && room.origin === null) {
       for (const content of deps.content) content.populate(room.session);
-      room.populated = true;
+      room.origin = localId;
     }
   }
 
@@ -391,9 +393,14 @@ export function createRoom(deps: RoomDeps): Room {
       );
   }
 
-  /** Drops the players `changes` made gone, then points voice at who is left. */
+  /**
+   * Drops the players `changes` made gone, checks the moves of those back from away afresh, then
+   * points voice at who is left.
+   */
   function settle(room: Link, changes: readonly PresenceChange[]): void {
     for (const change of changes) {
+      if (change.from === "away" && change.to === "present")
+        restartMoveChecks(room.session, change.id);
       if (change.to !== "gone") continue;
       removePlayer(room.session, change.id);
       room.views.delete(change.id);
@@ -434,9 +441,8 @@ export function createRoom(deps: RoomDeps): Room {
           clock.now(),
         );
         if (room.roster.get(message.id) === undefined) return;
-        const added = applyRemoteState(room.session, message) === "added";
         if (change !== null) settle(room, [change]);
-        else if (added) {
+        if (applyRemoteState(room.session, message) === "added") {
           syncVoice(room);
           deps.onChange();
         }
@@ -462,10 +468,17 @@ export function createRoom(deps: RoomDeps): Room {
       }),
       [NetEvent.ENTITIES]: on(NetEvent.ENTITIES, (message) => {
         if (message.host === localId || message.host !== room.host?.id) return;
+        // Entity ids are counted per world, so another world's entities share none with this one.
+        if (message.origin !== room.origin) room.session.entities.clear();
+        room.origin = message.origin;
+        room.session.worldTime = message.time;
         if (message.full) applyEntitySnapshot(room.session, message.entities);
         else
-          applyEntityChanges(room.session, message.entities, message.removed);
-        room.populated = true;
+          applyEntityChanges(room.session, {
+            added: message.entities,
+            changed: message.changed,
+            removed: message.removed,
+          });
       }),
       [NetEvent.WORLD]: on(NetEvent.WORLD, (message) => {
         const { host } = room;
@@ -487,6 +500,7 @@ export function createRoom(deps: RoomDeps): Room {
         if (message.id === localId) heardOwnId(room);
         else {
           hear(room, message.id, { kind: "hello" });
+          restartMoveChecks(room.session, message.id);
           // A host that says HELLO again has lost the world it ran, so the others take it over.
           if (room.host?.id === message.id) handOver(room, message.id);
         }
@@ -627,7 +641,7 @@ export function createRoom(deps: RoomDeps): Room {
       lastWorldFull: -Infinity,
       worldFullDue: false,
       sent: new Map(),
-      populated: false,
+      origin: null,
     };
     await transport.join(roomKey(code, deps.world), handlers(room));
     if (scope.disposed) {
