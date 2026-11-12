@@ -127,7 +127,7 @@ const CHASER_GLYPH = "🧟";
 
 /** Seconds between passive spawns at the world's start, and once it has grown old. */
 const SPAWN_FIRST_GAP = 12;
-const SPAWN_LAST_GAP = 3;
+const SPAWN_LAST_GAP = 1;
 /** How long the gap takes to fall from the first to the last, in seconds. */
 const SPAWN_RAMP_SECONDS = 300;
 /** Most chasers alive at once; spawning waits while the world holds this many. */

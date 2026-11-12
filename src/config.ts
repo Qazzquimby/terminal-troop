@@ -36,7 +36,7 @@ const CELL = 50;
 const STAMINA_MAX = 100;
 
 export const config = {
-  world: { cell: CELL, cols: 120, rows: 80, seed: 1, wallBounce: 0 },
+  world: { cell: CELL, cols: 100, rows: 80, seed: 1, wallBounce: 0 },
   view: { width: 900, height: 600 },
   // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
   // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads
@@ -52,9 +52,9 @@ export const config = {
   ripples: {
     hearingRange: CELL * 7,
     duration: 0.9,
-    radius: { min: 12, perLoudness: 40 },
+    radius: { min: 0, perLoudness: 40 },
     width: { sharp: 1.5, soft: 7 },
-    alpha: { sharp: 0.85, soft: 0.2 },
+    alpha: { sharp: 0.65, soft: 0.15 },
     colour: "#9fd3ff",
   },
   // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
@@ -155,15 +155,13 @@ export const config = {
       volume: 0.8,
       hitLoudness: 1.2,
     },
-    // 500 scrap about the world, none within 3 cells of the first players; each sells for 1 while
-    // its holder stands within 3 cells of the cruiser, one every quarter second.
     scrap: {
       value: 1,
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
       sellTimeout: 2,
       volume: 0.8,
-      scatter: { count: 500, seed: 2, clearance: CELL * 3 },
+      scatter: { count: 75, seed: 2, clearance: CELL * 3 },
     },
   },
   moves: {
