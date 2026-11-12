@@ -163,8 +163,34 @@ export function checkMove(
     check.marks = [markOf(game, to, 0)];
     return { kind: "take" };
   }
+  const measured = measure(game, playerId, check, to, 0);
+  if (measured === null) return { kind: "correct", to: lastMark(check).at };
+  const { now, fastSince } = measured;
+  if (fastSince > -Infinity) noteFast(game, playerId, fastSince);
+  remember(game, check, now);
+  return { kind: "take" };
+}
+
+function lastMark(check: MoveCheck): Mark {
   const last = check.marks[check.marks.length - 1];
   if (last === undefined) throw new Error("a move check with no marks");
+  return last;
+}
+
+/**
+ * How a report from `playerId` of standing at `to` now measures against `check`, with `more`
+ * pixels allowed on top: the mark it makes, and since when the player went faster than a walk to
+ * get there; null when it went faster than its top speed or the way from the last report taken
+ * is walled off.
+ */
+function measure(
+  game: Session,
+  playerId: string,
+  check: MoveCheck,
+  to: Point,
+  more: number,
+): { readonly now: Mark; readonly fastSince: number } | null {
+  const last = lastMark(check);
   const now = markOf(
     game,
     to,
@@ -175,17 +201,30 @@ export function checkMove(
   let fastSince = -Infinity;
   for (const from of check.marks) {
     const distance = now.travelled - from.travelled;
-    const allowed = allowedSince(check, from.time);
+    const allowed = allowedSince(check, from.time) + more;
     const top = topSpeed(game, playerId, from.time);
-    if (!withinPace(game, from.time, distance, top, allowed))
-      return { kind: "correct", to: last.at };
+    if (!withinPace(game, from.time, distance, top, allowed)) return null;
     if (!withinPace(game, from.time, distance, walk, allowed))
       fastSince = from.time;
   }
-  if (!hasPath(game, last.at, to)) return { kind: "correct", to: last.at };
-  if (fastSince > -Infinity) noteFast(game, playerId, fastSince);
-  remember(game, check, now);
-  return { kind: "take" };
+  if (!hasPath(game, last.at, to)) return null;
+  return { now, fastSince };
+}
+
+/**
+ * Whether, as the host, it would take a report from `playerId` of standing at `at` now, with
+ * `more` pixels on top of what its checks allow: what a move the player reports making lately
+ * may start from. True while its reports are taken as they come.
+ */
+export function couldStand(
+  game: Session,
+  playerId: string,
+  at: Point,
+  more: number,
+): boolean {
+  const check = game.moveChecks.get(playerId);
+  if (check === undefined || game.time < check.settleUntil) return true;
+  return measure(game, playerId, check, at, more) !== null;
 }
 
 /**

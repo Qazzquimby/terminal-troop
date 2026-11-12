@@ -95,8 +95,22 @@ export function hostAccepts(
   const player = game.players.get(by);
   if (player === undefined) return false;
   const known = player === game.local ? player : { x: player.tx, y: player.ty };
-  const { distance, seconds } = game.config.net.useSlack;
+  const { distance } = game.config.net.useSlack;
   if (Math.hypot(at.x - known.x, at.y - known.y) > distance) return false;
+  return hostReady(game, by, key, cooldown);
+}
+
+/**
+ * Whether the host takes an action by player `by`, timed under `key`, as off cooldown. A taken
+ * action starts `cooldown` seconds of it.
+ */
+export function hostReady(
+  game: Session,
+  by: string,
+  key: string,
+  cooldown: number,
+): boolean {
+  const { seconds } = game.config.net.useSlack;
   const timers = game.readyAt.get(key) ?? new Map<string, number>();
   const readyAt = timers.get(by) ?? -Infinity;
   if (game.time < readyAt - seconds) return false;
