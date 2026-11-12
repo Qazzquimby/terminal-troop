@@ -20,7 +20,7 @@ export interface ShovelConfig {
   readonly reach: number;
   /** Damage dealt to every world entity and other player in the hitbox. */
   readonly damage: number;
-  /** How far, in pixels, a hit entity or player is pushed away from the hitbox centre. */
+  /** How far, in pixels, a hit entity or player is pushed away from the swinger. */
   readonly knockback: number;
   /** Minimum time between swings. */
   readonly cooldown: number;
@@ -77,9 +77,8 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     entitiesIn(game, area).length + playersIn(game, area, by).length > 0;
   return {
     name: "Shovel",
-    maxStack: 1,
     emoji: "🪏",
-    starting: { slot: 0, quantity: 1 },
+    startingSlot: 0,
     cooldown: config.cooldown,
     apply(game, at, aim, by) {
       const area = hitbox(at, aim);
@@ -87,11 +86,11 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
       const hit = hits(game, area, by);
       for (const entity of entitiesIn(game, area)) {
         applyDamage(entity, config.damage);
-        knockBack(entity, center, config.knockback, game.world.map, "stay");
+        knockBack(entity, at, config.knockback, game.world.map, "stay");
       }
       for (const player of playersIn(game, area, by))
         hurtPlayer(game, player, config.damage, {
-          from: center,
+          from: at,
           distance: config.knockback,
         });
       if (hit)

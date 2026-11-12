@@ -151,7 +151,7 @@ function playerOn(room: Room, id: string) {
 const LEFT = { x: 150, y: 300 };
 /** Where a kick from LEFT, facing right, lands once its lunge is done. */
 const KICK_AT = { x: LEFT.x + PLAYER_LENGTH + kick.reach, y: LEFT.y };
-/** Inside a shovel's hitbox from LEFT facing right, past its centre so the push goes right. */
+/** Inside a shovel's hitbox from LEFT facing right, so the push, away from the swinger, goes right. */
 const SWING_AT = { x: LEFT.x + shovel.reach + 5, y: LEFT.y };
 
 test("the spots the tests use are clear of walls, push included", () => {
@@ -169,7 +169,7 @@ test("the spots the tests use are clear of walls, push included", () => {
     ).toBe(true);
 });
 
-test("a guest's swing hurts the host's player and pushes it away from the hitbox", async () => {
+test("a guest's swing hurts the host's player and pushes it away from the swinger", async () => {
   const { a, b, exchange, place, settle } = await pair();
   place(SWING_AT, LEFT);
   exchange({ b: swingRight(sessionOf(b)) });
@@ -290,7 +290,10 @@ test("one swing on the host hurts the world entity and the player it catches ali
       to: "them",
       payload: {
         amount: shovel.damage,
-        push: { aim: Math.atan2(10, 5), distance: shovel.knockback },
+        push: {
+          aim: Math.atan2(10, shovel.reach + 5),
+          distance: shovel.knockback,
+        },
       },
     }),
   );
