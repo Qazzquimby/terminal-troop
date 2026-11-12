@@ -50,6 +50,7 @@ export type {
 export { applyDamage } from "./entity.js";
 export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
+export { correctPlayer } from "./correction.js";
 export { hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";

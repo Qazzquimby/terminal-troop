@@ -115,13 +115,21 @@ export function isSweepFree(
   return true;
 }
 
-/** @public */
+/**
+ * @public The free point nearest `from` for a body of half-size `half`, searched out as far as
+ * the map reaches; `from` itself when it is not a finite point or the map has no room anywhere.
+ */
 export function nearestFreePoint(
   map: TileMap,
   half: number,
   from: Point,
 ): Point {
-  for (let radius = 0; ; radius += FREE_POINT_STEP) {
+  if (!Number.isFinite(from.x) || !Number.isFinite(from.y)) return from;
+  const reach = Math.hypot(
+    Math.abs(from.x) + map.cols * map.cell,
+    Math.abs(from.y) + map.rows * map.cell,
+  );
+  for (let radius = 0; radius <= reach; radius += FREE_POINT_STEP) {
     const samples = Math.max(
       1,
       Math.ceil((radius * 2 * Math.PI) / FREE_POINT_STEP),
@@ -135,6 +143,7 @@ export function nearestFreePoint(
       if (isAreaFree(map, point.x, point.y, half)) return point;
     }
   }
+  return from;
 }
 
 export function moveWithCollision(
