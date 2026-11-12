@@ -92,6 +92,11 @@ export function removeItem(
   return removed;
 }
 
+/** Whether every slot holds an item. */
+export function isFull(inventory: Inventory): boolean {
+  return !inventory.includes(null);
+}
+
 /** The slot whose item is held; null holds nothing. */
 export type HeldSlot = number | null;
 

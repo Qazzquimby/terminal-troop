@@ -18,6 +18,7 @@ const walkRight = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 function session(): Session {

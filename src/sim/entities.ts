@@ -272,17 +272,16 @@ export function entitySnapshot(game: Session): EntitySnapshot[] {
 }
 
 /**
- * Makes the session's entities those of a host's snapshot. Known entities ease towards their
- * new positions and take the new health and state; new ones appear where the snapshot puts them; the
- * rest are removed. An entry of an unregistered kind, with data its kind rejects, or inside
- * a wall is left out.
+ * Takes the entities a host sent: known ones ease towards their new positions and take the new
+ * health and state, and new ones appear where the entry puts them. An entry of an unregistered
+ * kind, with data its kind rejects, or inside a wall is left out. Returns the ids taken.
  */
-export function applyEntitySnapshot(
+function takeEntries(
   game: Session,
-  snapshot: readonly EntitySnapshot[],
-): void {
-  const kept = new Set<string>();
-  for (const { id, kind, x, y, health, data } of snapshot) {
+  entries: readonly EntitySnapshot[],
+): Set<string> {
+  const taken = new Set<string>();
+  for (const { id, kind, x, y, health, data } of entries) {
     const type = game.entityTypes.get(kind);
     if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
       continue;
@@ -298,9 +297,44 @@ export function applyEntitySnapshot(
     } else {
       placeEntity(game, id, kind, type, x, y, health, parsed.data);
     }
-    kept.add(id);
+    taken.add(id);
   }
+  return taken;
+}
+
+/**
+ * Makes the session's entities those of a host's full snapshot: each entry taken as
+ * `takeEntries` does, and every other entity removed.
+ */
+export function applyEntitySnapshot(
+  game: Session,
+  snapshot: readonly EntitySnapshot[],
+): void {
+  const kept = takeEntries(game, snapshot);
   for (const id of [...game.entities.keys()]) {
     if (!kept.has(id)) game.entities.delete(id);
   }
+}
+
+/**
+ * Applies the entities a host changed since its last snapshot: each changed entry taken as
+ * `takeEntries` does, and each of `removed` removed. Every other entity stays as it is.
+ */
+export function applyEntityChanges(
+  game: Session,
+  changed: readonly EntitySnapshot[],
+  removed: readonly string[],
+): void {
+  takeEntries(game, changed);
+  for (const id of removed) game.entities.delete(id);
+}
+
+/**
+ * Takes the entity `id` out of the world, as when something carries it off rather than destroys
+ * it; the host's snapshots carry the removal to everyone. Only the host removes entities: false
+ * on any other client, and when there is no such entity.
+ */
+export function removeEntity(game: Session, id: string): boolean {
+  if (!game.hosting) return false;
+  return game.entities.delete(id);
 }

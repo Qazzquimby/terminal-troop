@@ -13,6 +13,7 @@ export const CONTROLS_HINT: readonly HintEntry[] = [
   { actions: ["sprint"], does: "to sprint" },
   { actions: ["crouch"], does: "to toggle crouch" },
   { actions: ["secondary"], does: "to kick" },
+  { actions: ["interact"], does: "to pick up or drop" },
   { actions: ["toggleInventory"], does: "to toggle inventory" },
   { actions: ["toggleSettings"], does: "for settings" },
 ];

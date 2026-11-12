@@ -42,6 +42,7 @@ const idle: Controls = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 /** A kind that stands still with 40 health and a radius of 15. */

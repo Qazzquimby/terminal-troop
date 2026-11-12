@@ -53,6 +53,7 @@ function hold(
     select: null,
     use: false,
     secondary: false,
+    interact: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {

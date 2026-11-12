@@ -1,12 +1,15 @@
 export { isSweepFree, solidBodiesBut } from "./collision.js";
 export {
+  applyEntityChanges,
   applyEntitySnapshot,
   cueEntities,
   entitySnapshot,
   registerEntityType,
+  removeEntity,
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export { spawnWorldItem } from "./world-items.js";
 export {
   defineEntity,
   defineItem,
@@ -52,6 +55,7 @@ export { spendStamina } from "./stamina.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, startDash } from "./player.js";
 export { playerData } from "./player-data.js";
+export { applyWorldState, worldData, worldState } from "./world-data.js";
 export { movement } from "./movement.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
