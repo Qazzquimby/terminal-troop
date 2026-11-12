@@ -6,7 +6,7 @@ import {
   applyEntityChanges,
   applyEntitySnapshot,
   applyRemoteState,
-  applyWorldState,
+  applyWorldEntries,
   cueEntities,
   createSession,
   entitySnapshot,
@@ -15,7 +15,7 @@ import {
   registerContent,
   removePlayer,
   roomSeed,
-  worldState,
+  takeWorldEntries,
 } from "../sim/index.js";
 import type {
   OutgoingEvent,
@@ -27,7 +27,7 @@ import type {
 } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 import type { z } from "zod";
-import { adopt, elect } from "./host.js";
+import { adopt, elect, sameElection } from "./host.js";
 import type { HostView, RemoteCandidate } from "./host.js";
 import { createRoster } from "./presence.js";
 import type {
@@ -46,13 +46,15 @@ import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 export interface RoomConfig {
   /**
    * Network ticks per second. A tick sends, as one broadcast, the local player's state if it
-   * changed since it was last sent, and the entities while hosting.
+   * changed since it was last sent, and while hosting the world state that changed and the
+   * entities.
    */
   readonly sendHz: number;
   /**
-   * Milliseconds between full entity snapshots, while hosting. Between them a snapshot carries
-   * only the entities that changed and the ids of those gone; a full one, also sent to each
-   * newcomer and as a new host's first, mends what a lost snapshot missed.
+   * Milliseconds between full entity snapshots, and between full sends of the world state, while
+   * hosting. Between them a snapshot carries only the entities that changed and the ids of those
+   * gone, and the world state only the entries that changed; a full one, also sent to each
+   * newcomer and as a new host's first, mends what a lost one missed.
    */
   readonly fullSnapshotMs: number;
   /**
@@ -185,6 +187,10 @@ interface Link {
   lastPulse: number;
   /** When the last full entity snapshot went out. */
   lastFullSent: number;
+  /** When the world state last went out in full. */
+  lastWorldFull: number;
+  /** The next tick sends the world state in full. */
+  worldFullDue: boolean;
   /** Each entity as this client last sent it while hosting, by id; empty while not hosting. */
   sent: Map<string, string>;
   /** The world has its starting entities: this client spawned them or heard them from a host. */
@@ -254,9 +260,9 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   /**
-   * Sends the entities and the world state: in full when forced, as this client's first while
-   * hosting, or every `fullSnapshotMs`; otherwise only the entities changed since the last
-   * send, and the ids of those gone.
+   * Sends the entities: in full when forced, as this client's first while hosting, or every
+   * `fullSnapshotMs`; otherwise only the entities changed since the last send, and the ids of
+   * those gone.
    */
   function sendEntities(room: Link, now: number, force = false): void {
     const entities = entitySnapshot(room.session);
@@ -281,15 +287,41 @@ export function createRoom(deps: RoomDeps): Room {
       removed: full
         ? []
         : [...previous.keys()].filter((id) => !current.has(id)),
-      world: worldState(room.session),
     });
   }
 
   /**
+   * Sends the world state: in full when forced, due, or every `fullSnapshotMs`; otherwise the
+   * entries set since the last send, if any.
+   */
+  function sendWorld(room: Link, now: number, force = false): void {
+    const term = room.host?.term;
+    if (term === undefined) return;
+    const full =
+      force ||
+      room.worldFullDue ||
+      now - room.lastWorldFull >= config.fullSnapshotMs;
+    const entries = takeWorldEntries(room.session, full);
+    if (full) {
+      room.lastWorldFull = now;
+      room.worldFullDue = false;
+    }
+    if (entries !== null)
+      void send(NetEvent.WORLD, { host: localId, term, entries });
+  }
+
+  /**
    * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
-   * no starting entities yet spawns them.
+   * no starting entities yet spawns them. A client that takes over sends its world state in full
+   * with its next tick.
    */
   function holdView(room: Link, view: HostView | undefined): void {
+    if (
+      view === undefined ||
+      room.host === undefined ||
+      !sameElection(view, room.host)
+    )
+      room.worldFullDue = true;
     room.host = view;
     const hosting = view?.id === localId;
     room.session.hosting = hosting;
@@ -311,7 +343,10 @@ export function createRoom(deps: RoomDeps): Room {
     room.nextTick = Math.max(room.nextTick, now - interval / 2) + interval;
     if (room.beatDue) beatNow(room);
     else sendState(room, room.forceState || room.session.reportNow, true);
-    if (room.host?.id === localId) sendEntities(room, now);
+    if (room.host?.id === localId) {
+      sendWorld(room, now);
+      sendEntities(room, now);
+    }
   }
 
   /** A heartbeat, with the local player's state while the page is shown. */
@@ -409,16 +444,35 @@ export function createRoom(deps: RoomDeps): Room {
         }
         hear(room, message.id, { kind: "heard", hidden: message.hidden });
         if (room.roster.get(message.id) === undefined) return;
+        const before = room.views.get(message.id) ?? null;
         room.views.set(message.id, message.host);
         holdView(room, adopt(room.host, message.host));
+        // A player that has just come to follow this host, as after a split heals, needs its world.
+        const { host } = room;
+        if (
+          host?.id === localId &&
+          sameElection(host, message.host) &&
+          !sameElection(host, before)
+        )
+          room.worldFullDue = true;
       }),
       [NetEvent.ENTITIES]: on(NetEvent.ENTITIES, (message) => {
         if (message.host === localId || message.host !== room.host?.id) return;
         if (message.full) applyEntitySnapshot(room.session, message.entities);
         else
           applyEntityChanges(room.session, message.entities, message.removed);
-        applyWorldState(room.session, message.world);
         room.populated = true;
+      }),
+      [NetEvent.WORLD]: on(NetEvent.WORLD, (message) => {
+        const { host } = room;
+        if (
+          host === undefined ||
+          host.id === localId ||
+          message.host !== host.id ||
+          message.term !== host.term
+        )
+          return;
+        applyWorldEntries(room.session, message, message.entries);
       }),
       [NetEvent.CONTENT]: on(NetEvent.CONTENT, (message) => {
         if (message.from === localId) return;
@@ -436,7 +490,10 @@ export function createRoom(deps: RoomDeps): Room {
         sendState(room, true);
         // The newcomer learns the host view at once, and a hidden page undoes the visible STATE.
         sendHeartbeat(room);
-        if (room.host?.id === localId) sendEntities(room, clock.now(), true);
+        if (room.host?.id === localId) {
+          sendWorld(room, clock.now(), true);
+          sendEntities(room, clock.now(), true);
+        }
       }),
       [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
         if (id === localId) return;
@@ -563,6 +620,8 @@ export function createRoom(deps: RoomDeps): Room {
       views: new Map(),
       lastPulse: clock.now(),
       lastFullSent: -Infinity,
+      lastWorldFull: -Infinity,
+      worldFullDue: false,
       sent: new Map(),
       populated: false,
     };
