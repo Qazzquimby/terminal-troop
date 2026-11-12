@@ -281,8 +281,10 @@ export function updateSession(
   applyEvents(game);
   emitFootsteps(game, dt);
   settlePredictions(game);
-  if (game.hosting) updateEntities(game, dt);
-  else followEntities(game, dt);
+  if (game.hosting) {
+    updateEntities(game, dt);
+    for (const content of game.contents) content.step?.(game, dt);
+  } else followEntities(game, dt);
 
   separateSessionBodies(game);
 }

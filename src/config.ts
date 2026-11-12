@@ -129,6 +129,16 @@ export const config = {
         seed: 1,
         clearance: CELL * 10,
       },
+      // One more every 12 seconds as a world begins, the gap falling evenly to one a second over its
+      // first five minutes; never within 14 cells of a player, nor past 120 alive.
+      spawning: {
+        firstGap: 12,
+        lastGap: 1,
+        rampSeconds: 300,
+        maxAlive: 120,
+        tries: 24,
+        unseenDistance: 700,
+      },
       radius: 15,
       maxHealth: 40,
       attackDamage: 35,
