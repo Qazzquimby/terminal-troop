@@ -11,6 +11,7 @@ import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
+import type { GreetingConfig } from "./net/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
@@ -18,6 +19,8 @@ import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
+  /** For transports whose peers connect some time after joining. */
+  readonly greeting: GreetingConfig;
   readonly camera: CameraConfig;
   readonly ripples: RippleConfig;
   readonly flashes: FlashConfig;
@@ -95,11 +98,28 @@ export const config = {
   arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
-  // A guest holds a hit it predicted for up to a second before the host confirms it.
+  // A guest holds a hit it predicted for up to a second before the host confirms it. A player is
+  // held to its top speed over each stretch of the last 1.5s of its reports, with 12px and 0.3s
+  // more of sprinting to spare: one report late by that much then the next on time. A player kept
+  // 1.3 times too fast falls outside that within about 1.2s, 1.5 times within about 0.7s. Reports
+  // are taken as they come for 2s after a player joins or comes back, or the host changes, and one
+  // sent before a correction is held for a second rather than corrected again. The host reckons each player's stamina with a kick's worth over a
+  // full bar, 0.45s of sprinting, so late reports never leave it reckoning a player emptier than
+  // the player's own bar. A kick may borrow 0.3s of regeneration, half a kick's worth, that the
+  // host has not reckoned yet: the report that a player stopped sprinting waits up to 0.1s for
+  // its tick where a kick goes at once, and may take some 0.2s longer on the way.
   net: {
     smoothing: 12,
     useSlack: { distance: 80, seconds: 0.3 },
     predictionHold: 1,
+    moves: {
+      slack: 12,
+      lateSeconds: 0.3,
+      windowSeconds: 1.5,
+      settleSeconds: 2,
+      roundTripSeconds: 1,
+    },
+    stamina: { slack: STAMINA_MAX * 0.15, lateSeconds: 0.3 },
   },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
@@ -125,7 +145,7 @@ export const config = {
     interval: 0.5,
   },
   // Items lying about: a 16px glyph, picked up at most five times a second.
-  worldItems: { radius: 8, cooldown: 0.2 },
+  worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {
     sendHz: 10,
     fullSnapshotMs: 5000,
@@ -136,6 +156,8 @@ export const config = {
       goneHiddenMs: 180_000,
     },
   },
+  // Peers connect a second or two after joining; past this, a HELLO is news to no one.
+  greeting: { replayMs: 10_000 },
   entities: {
     chaser: {
       spawn: {
@@ -185,8 +207,8 @@ export const config = {
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
     // kicks fell a chaser, each sending it 2.5 of its own body lengths away. The host takes a
-    // kicker's word for where its lunge ended to within 24px: a tenth of a second of sprinting,
-    // one STATE at 10Hz.
+    // kicker's word for where its lunge ended to within 24px of where it reckons a lunge from the
+    // reported start would.
     kick: {
       reach: 32,
       radius: 18,

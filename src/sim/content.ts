@@ -40,8 +40,8 @@ export interface WorldContent {
   /** The events it sends and receives, by the key each travels under. */
   readonly events?: ContentEvents | undefined;
   /**
-   * Registers its kinds and items with a new session, and stocks its local player's inventory,
-   * before any snapshot reaches it.
+   * Registers its kinds and items with a new session, and the items every player starts with,
+   * which its local player holds until the host's record of its items reaches it.
    */
   register(game: Session): void;
   /** Spawns what a new world starts with. Runs once a world, on the first client to host it. */
@@ -135,12 +135,16 @@ export interface Scatter {
 
 /**
  * Where a new world puts a kind's starting entities:
- * - scatter: at random free spots seeded by the room; `data` draws from the same generator
+ * - scatter: at random free spots seeded by the room; `data` draws from the same generator, and
+ *   may read the session it spawns into
  * - rally: one at the world's rally point, where new players arrive, or at the nearest free spot
  * - a function: spawns them itself
  */
 export type SpawnRule<S> =
-  | (Scatter & { readonly at: "scatter"; readonly data: (rng: Rng) => S })
+  | (Scatter & {
+      readonly at: "scatter";
+      readonly data: (rng: Rng, game: Session) => S;
+    })
   | { readonly at: "rally"; readonly data: S }
   | ((spawn: (at: Point, data: S) => WorldEntity, game: Session) => void);
 
@@ -217,7 +221,7 @@ function spawnByRule<S>(
     const count = scatterCount(game, rule.count);
     for (let i = 0; i < count; i++) {
       const at = scatterPoint(game, rng, radius, rule.clearance);
-      spawn(at, rule.data(rng));
+      spawn(at, rule.data(rng, game));
     }
   }
 }
@@ -313,8 +317,9 @@ export function defineItem<N extends string, C>(
             spec.cooldown === undefined ? undefined : spec,
           );
           registerWorldItems(game);
-          if (spec.startingSlot !== undefined)
-            placeItem(game.local.inventory, spec.startingSlot, item);
+          if (spec.startingSlot === undefined) return;
+          placeItem(game.starting, spec.startingSlot, item);
+          placeItem(game.local.inventory, spec.startingSlot, item);
         },
         populate(game) {
           if (scatter === undefined) return;

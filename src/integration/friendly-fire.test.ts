@@ -270,7 +270,7 @@ test("one swing on the host hurts the world entity and the player it catches ali
     ...SWING_AT,
     y: SWING_AT.y + 10,
     aim: 0,
-    health: FULL,
+    epoch: 0,
     content: {},
   });
   updateSession(game, swingRight(game), DT);
@@ -282,19 +282,25 @@ test("one swing on the host hurts the world entity and the player it catches ali
     );
   updateSession(game, idle, DT);
   expect(dummy.health).toBe(40 - shovel.damage);
-  expect(game.outbox).toContainEqual(
-    expect.objectContaining({
-      content: "core/health",
-      event: "damage",
-      to: "them",
-      payload: {
-        amount: shovel.damage,
-        push: {
-          aim: Math.atan2(10, shovel.reach + 5),
-          distance: shovel.knockback,
-        },
-      },
-    }),
+  expect(game.players.get("them")?.health).toBe(FULL - shovel.damage);
+  const aim = Math.atan2(10, shovel.reach + 5);
+  const forced = game.outbox.find((sent) => sent.content === "core/position");
+  expect(forced).toMatchObject({
+    event: "forced",
+    route: "all",
+    payload: {
+      target: "them",
+      epoch: 1,
+      slide: { seconds: testSimConfig.player.knockbackSeconds },
+    },
+  });
+  const { to } = z
+    .object({ to: z.object({ x: z.number(), y: z.number() }) })
+    .parse(forced?.payload);
+  expect(to.x).toBeCloseTo(SWING_AT.x + Math.cos(aim) * shovel.knockback, 5);
+  expect(to.y).toBeCloseTo(
+    SWING_AT.y + 10 + Math.sin(aim) * shovel.knockback,
+    5,
   );
   expect(game.local.health).toBe(FULL);
 });

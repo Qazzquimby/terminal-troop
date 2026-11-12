@@ -122,7 +122,7 @@ test("a remote player's reported speech makes its noise on this client", () => {
     x: 300,
     y: 300,
     aim: 0,
-    health: 100,
+    epoch: 0,
     content: { "core/voice": loud },
   });
   const made = noisesOver(game, 0, 1);

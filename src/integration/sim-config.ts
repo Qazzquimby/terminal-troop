@@ -15,8 +15,12 @@ import type { SimConfig } from "../sim/index.js";
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
  * where it was made. Walking steps every 0.5s, heard 150px off; sprinting every 0.25s, 450px off;
  * crouching, at half speed, every 0.75s, 60px off. A player new to a world starts within 100px of its
- * rally point. Speech is judged by its loudest level over 0.5s: from 0.3 it carries 100px, up to
- * 500px from 0.8, in steps of 50px, rippling every 0.4s.
+ * rally point. The host holds each player to its top speed over the last 1.5s of its reports, and
+ * reckons its stamina with 0.3s of sprinting over a full bar, and lets a kick borrow 0.25s of
+ * regeneration it has not reckoned yet: the report that a player stopped sprinting waits up to
+ * 1/15s for its tick and two steps for a frame where a kick goes at once, and either travels 60
+ * to 180ms. Speech is judged by its loudest level over 0.5s: from 0.3 it carries
+ * 100px, up to 500px from 0.8, in steps of 50px, rippling every 0.4s.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -40,6 +44,14 @@ export const testSimConfig: SimConfig = {
     smoothing: 12,
     useSlack: { distance: 40, seconds: 0.1 },
     predictionHold: 0.5,
+    moves: {
+      slack: 10,
+      lateSeconds: 0.2,
+      windowSeconds: 1.5,
+      settleSeconds: 1,
+      roundTripSeconds: 0.5,
+    },
+    stamina: { slack: 9, lateSeconds: 0.25 },
   },
   noise: { blur: 0.2 },
   footsteps: {
@@ -55,7 +67,7 @@ export const testSimConfig: SimConfig = {
     step: 50,
     interval: 0.4,
   },
-  worldItems: { radius: 8, cooldown: 0.2 },
+  worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };
 
 /** Each noise the local player hears ripples for 0.5s. */

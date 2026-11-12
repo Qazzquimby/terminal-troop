@@ -6,8 +6,10 @@ import {
   entitiesIn,
   hurtPlayer,
   knockBack,
+  makeSound,
   playersIn,
   predict,
+  sound,
 } from "../../sim/index.js";
 import type {
   Circle,
@@ -38,8 +40,6 @@ export interface ShovelConfig {
   /** How far, in pixels, the noise of a swing that hits carries. */
   readonly hitNoiseRadius: number;
 }
-
-const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
 
 /** A hitbox that fades out over `duration` seconds from `use.startedAt`; green when it connected. */
 function drawHitbox(
@@ -77,6 +77,10 @@ function drawHitbox(
  * A swing that hits makes a noise every client hears.
  */
 export const shovel = defineItem("shovel", (config: ShovelConfig) => {
+  const sounds = {
+    hit: sound({ url: hitUrl, volume: config.volume }),
+    miss: sound({ url: missUrl, volume: config.volume }),
+  };
   const hitbox = (at: Point, aim: number) =>
     circleAhead(at, aim, config.reach, config.radius);
   /** Whether `area` touches anything a swing by player `by` hits. */
@@ -113,9 +117,7 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     show(game, at, aim, by) {
       const area = hitbox(at, aim);
       const hit = hits(game, area, by);
-      void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, at, game.local, {
-        volume: config.volume,
-      });
+      makeSound(game, hit ? sounds.hit : sounds.miss, at, by);
       return { center: area.center, hit };
     },
     draw(ctx, use, time) {

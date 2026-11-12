@@ -5,7 +5,7 @@ import {
   speak,
   updateSession,
 } from "./sim/index.js";
-import { NetEvent, createCountingTransport } from "./net/index.js";
+import { NetEvent, carries, createCountingTransport } from "./net/index.js";
 import type { Session } from "./sim/index.js";
 import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
@@ -49,6 +49,7 @@ import { config } from "./config.js";
 import { loadClientEnv } from "./env.js";
 import { createSupabaseTransport } from "./adapters/supabase-transport/index.js";
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
+import { createTrysteroTransport } from "./adapters/trystero-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { entityContent } from "./entities/index.js";
@@ -94,6 +95,8 @@ const envResult = loadClientEnv(
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env
       .VITE_SUPABASE_PUBLISHABLE_KEY,
+    VITE_TRANSPORT: import.meta.env.VITE_TRANSPORT,
+    VITE_ICE_SERVERS: import.meta.env.VITE_ICE_SERVERS,
     VITE_WORLD: import.meta.env.VITE_WORLD,
   },
   import.meta.env.PROD ? "production" : "development",
@@ -105,14 +108,27 @@ if (!envResult.success) {
 const env = envResult.data;
 
 /**
- * Online play when Supabase is configured. Without it, or with `?local` in the URL, rooms run
- * over BroadcastChannel between windows of this browser.
+ * Online play when Supabase is configured: through Realtime, or over data channels Realtime sets
+ * up as `VITE_TRANSPORT` says. Without it, or with `?local` in the URL, rooms run over
+ * BroadcastChannel between windows of this browser.
  */
 function selectTransport(params: URLSearchParams): Transport {
   if (params.has("local") || env.supabase === null) {
     return createBroadcastChannelTransport(NetEvent);
   }
-  return createSupabaseTransport(env.supabase.url, env.supabase.publishableKey);
+  const { url, publishableKey } = env.supabase;
+  if (env.transport === "trystero")
+    return createTrysteroTransport(NetEvent, {
+      url,
+      publishableKey,
+      iceServers: env.iceServers,
+      greeting: {
+        ...config.greeting,
+        greets: (event, payload) => carries(event, payload, NetEvent.HELLO),
+        now: () => performance.now(),
+      },
+    });
+  return createSupabaseTransport(url, publishableKey);
 }
 
 /** Incoming voice plays through the sound effects' master gain. */

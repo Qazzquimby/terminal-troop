@@ -1,5 +1,9 @@
 import { expect, test, vi } from "vitest";
-import { createBatchingTransport, unbatch } from "./batching-transport.js";
+import {
+  carries,
+  createBatchingTransport,
+  unbatch,
+} from "./batching-transport.js";
 import { NetEvent } from "./transport.js";
 import type { Transport } from "./transport.js";
 
@@ -124,4 +128,20 @@ test("keeps the label and delegates leave", async () => {
   expect(batched.label).toBe("fake");
   await batched.leave();
   expect(transport.leave).toHaveBeenCalledOnce();
+});
+
+test("a message carries its own event, and a batch the events it holds", () => {
+  expect(carries(NetEvent.HELLO, {}, NetEvent.HELLO)).toBe(true);
+  expect(carries(NetEvent.STATE, {}, NetEvent.HELLO)).toBe(false);
+  const batch = {
+    messages: [
+      [NetEvent.STATE, {}],
+      [NetEvent.HELLO, {}],
+    ],
+  };
+  expect(carries(NetEvent.BATCH, batch, NetEvent.HELLO)).toBe(true);
+  expect(carries(NetEvent.BATCH, batch, NetEvent.BYE)).toBe(false);
+  expect(carries(NetEvent.BATCH, { not: "a batch" }, NetEvent.HELLO)).toBe(
+    false,
+  );
 });

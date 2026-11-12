@@ -75,7 +75,7 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
   ]);
   lit.set(game.local, true);
   expect(playerState(game).content).toEqual({
-    "core/items": null,
+    "core/items": 0,
     "core/movement": { mode: "walk", moving: false },
     "core/voice": 0,
     "entity/bat": "Infinity",
@@ -87,7 +87,7 @@ test("every session reports the held item, how it moves and how far its speech c
   const game = session();
   registerContent(game, []);
   expect(playerState(game).content).toEqual({
-    "core/items": null,
+    "core/items": 0,
     "core/movement": { mode: "walk", moving: false },
     "core/voice": 0,
   });
@@ -121,7 +121,7 @@ test("an entity and an item of the same name keep their own state", () => {
     })).create({ lamp: undefined }),
   ]);
   expect(playerState(game).content).toEqual({
-    "core/items": null,
+    "core/items": 0,
     "core/movement": { mode: "walk", moving: false },
     "core/voice": 0,
     "entity/lamp": 1,

@@ -2,12 +2,15 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import {
+  applyEntityChanges,
   applyEntitySnapshot,
   entitySnapshot,
   registerEntityType,
   spawnEntity,
 } from "./entities.js";
 import { applyDamage } from "./entity.js";
+import { entityDelta } from "./entity-delta.js";
+import { nextAction, predict, settlePredictions } from "./prediction.js";
 import { rounded } from "./rounded.js";
 import type { Session } from "./session.js";
 import { createSession, updateSession } from "./session.js";
@@ -103,17 +106,19 @@ describe("registering", () => {
 });
 
 describe("spawning", () => {
-  test("ids are the local id and a counter", () => {
+  test("ids count up from 1 in base 36", () => {
     const game = session();
-    expect(spawnEntity(game, KIND, 100, 100, { steps: 0 }).id).toBe("me:1");
-    expect(spawnEntity(game, KIND, 100, 100, { steps: 0 }).id).toBe("me:2");
+    const spawn = () => spawnEntity(game, KIND, 100, 100, { steps: 0 }).id;
+    expect([spawn(), spawn()]).toEqual(["1", "2"]);
+    game.nextEntityId = 35;
+    expect([spawn(), spawn()]).toEqual(["z", "10"]);
   });
 
-  test("skips ids already taken, such as ones heard from a host", () => {
+  test("numbers on past the ids heard from a host", () => {
     const game = session();
     applyEntitySnapshot(game, [
       {
-        id: "me:1",
+        id: "a",
         kind: KIND_ID,
         x: 100,
         y: 300,
@@ -121,7 +126,7 @@ describe("spawning", () => {
         data: { steps: 0 },
       },
     ]);
-    expect(spawnEntity(game, KIND, 100, 100, { steps: 0 }).id).toBe("me:2");
+    expect(spawnEntity(game, KIND, 100, 100, { steps: 0 }).id).toBe("b");
   });
 
   test("throws on data the kind rejects", () => {
@@ -252,7 +257,7 @@ describe("snapshots", () => {
     expect(entitySnapshot(host).map(({ data }) => data)).toEqual([
       { left: 1.23 },
     ]);
-    expect(host.entities.get("host:1")?.data).toEqual({ left: 1.23456 });
+    expect(host.entities.get("1")?.data).toEqual({ left: 1.23456 });
   });
 
   test("entities missing from a snapshot are removed", () => {
@@ -305,6 +310,130 @@ describe("snapshots", () => {
   ])("an entry with %s is left out", (_label, entry) => {
     const game = session();
     applyEntitySnapshot(game, [{ id: "h:1", ...entry }]);
+    expect(game.entities.size).toBe(0);
+  });
+});
+
+describe("changes", () => {
+  /** A host's entities by id, as it last sent them. */
+  const byId = (game: Session) =>
+    new Map(entitySnapshot(game).map((entity) => [entity.id, entity]));
+
+  test("only the fields that changed are sent, and nothing for an entity unchanged", () => {
+    const host = session("host");
+    registerEntityType(host, "post", {
+      radius: 5,
+      maxHealth: 3,
+      data: z.object({ a: z.number(), b: z.number() }),
+      draw: () => undefined,
+    });
+    const walker = spawnEntity(host, KIND, 100, 300, { steps: 0 });
+    const post = spawnEntity(host, "post", 100, 500, { a: 1, b: 2 });
+    const before = byId(host);
+    expect(entityDelta(before, entitySnapshot(host))).toEqual({
+      added: [],
+      changed: [],
+      removed: [],
+    });
+
+    updateSession(host, idle, DT);
+    post.data = { a: 1, b: 5 };
+    post.health = 2;
+    expect(entityDelta(before, entitySnapshot(host)).changed).toEqual([
+      { id: walker.id, x: 101, patch: { steps: 1 } },
+      { id: post.id, health: 2, patch: { b: 5 } },
+    ]);
+  });
+
+  test("state that loses a key is sent whole; new and gone entities by themselves", () => {
+    const host = session("host");
+    registerEntityType(host, "post", {
+      radius: 5,
+      maxHealth: 1,
+      data: z.object({ a: z.number(), b: z.number().optional() }),
+      draw: () => undefined,
+    });
+    const post = spawnEntity(host, "post", 400, 300, { a: 1, b: 2 });
+    const gone = spawnEntity(host, "post", 200, 300, { a: 1 });
+    const before = byId(host);
+    post.data = { a: 1 };
+    host.entities.delete(gone.id);
+    const added = spawnEntity(host, KIND, 100, 300, { steps: 0 });
+    const delta = entityDelta(before, entitySnapshot(host));
+    expect(delta.changed).toEqual([{ id: post.id, data: { a: 1 } }]);
+    expect(delta.added.map(({ id }) => id)).toEqual([added.id]);
+    expect(delta.removed).toEqual([gone.id]);
+  });
+
+  test("a client that takes a full snapshot and then each delta holds what the host does", () => {
+    const host = session("host");
+    spawnEntity(host, KIND, 100, 300, { steps: 0 });
+    spawnEntity(host, KIND, 400, 300, { steps: 0 });
+    const other = session("other");
+    applyEntitySnapshot(other, entitySnapshot(host));
+    let sent = byId(host);
+    for (let tick = 0; tick < 5; tick++) {
+      updateSession(host, idle, DT);
+      if (tick === 2) spawnEntity(host, KIND, 700, 300, { steps: 0 });
+      applyEntityChanges(other, entityDelta(sent, entitySnapshot(host)));
+      sent = byId(host);
+    }
+    expect(
+      [...other.entities.values()].map(({ id, tx, ty, health, data }) => ({
+        id,
+        x: tx,
+        y: ty,
+        health,
+        data,
+      })),
+    ).toEqual(
+      [...host.entities.values()].map(({ id, x, y, health, data }) => ({
+        id,
+        x,
+        y,
+        health,
+        data,
+      })),
+    );
+  });
+
+  test("a change without health leaves the host's as it was under a guest's prediction", () => {
+    const game = session();
+    game.hosting = false;
+    applyEntitySnapshot(game, [
+      {
+        id: "1",
+        kind: KIND_ID,
+        x: 100,
+        y: 300,
+        health: 10,
+        data: { steps: 0 },
+      },
+    ]);
+    const [entity] = game.entities.values();
+    if (entity === undefined) throw new Error("no entity");
+    predict(game, nextAction(game), [entity], (hit) => {
+      hit.health = 4;
+    });
+    applyEntityChanges(game, {
+      added: [],
+      changed: [{ id: "1", x: 110 }],
+      removed: [],
+    });
+    expect(entity.health).toBe(4);
+
+    game.time += game.config.net.predictionHold + 1;
+    settlePredictions(game);
+    expect(entity.health).toBe(10);
+  });
+
+  test("a change to an entity the client lacks is left out", () => {
+    const game = session();
+    applyEntityChanges(game, {
+      added: [],
+      changed: [{ id: "7", x: 120, patch: { steps: 3 } }],
+      removed: [],
+    });
     expect(game.entities.size).toBe(0);
   });
 });

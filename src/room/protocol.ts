@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NetEvent } from "../net/index.js";
-import { rounded } from "../sim/index.js";
+import { Health, rounded } from "../sim/index.js";
 
 const PlayerId = z.string().min(1).max(64);
 
@@ -14,20 +14,8 @@ const Coordinate = rounded(1);
 const Angle = rounded(2);
 
 /**
- * Health: any number from 0 up, Infinity included. JSON has no Infinity, so it travels as the
- * string "Infinity". z.number() rejects NaN and ±Infinity.
- */
-export const Health = z.codec(
-  z.union([z.number().min(0), z.literal("Infinity")]),
-  z.union([z.number().min(0), z.literal(Infinity)]),
-  {
-    decode: (wire) => (wire === "Infinity" ? Infinity : wire),
-    encode: (health) => (health === Infinity ? "Infinity" : health),
-  },
-);
-
-/**
- * A STATE payload, its name cut to `nameMax` characters when heard. `content` holds each content
+ * A STATE payload, its name cut to `nameMax` characters when heard. `epoch` counts the moves the
+ * host has forced on the sender that it has taken. `content` holds each content
  * entry's state for the sender by the entry's name; each entry parses its own, so a value its
  * entry rejects, or of an entry this client lacks, is dropped where it is applied.
  */
@@ -41,7 +29,7 @@ function stateMessage(nameMax: number) {
     x: Coordinate,
     y: Coordinate,
     aim: Angle,
-    health: Health,
+    epoch: z.number().int().min(0),
     content: z.record(z.string(), z.unknown()),
   });
 }
@@ -70,26 +58,40 @@ const MAX_ENTITIES = 4096;
 
 const EntityId = z.string().min(1).max(80);
 
+/** An entity whole: as a full snapshot carries each, and any other each new one. */
+const EntityEntry = z.object({
+  id: EntityId,
+  kind: z.number().int().min(1),
+  x: Coordinate,
+  y: Coordinate,
+  health: Health,
+  data: z.unknown(),
+});
+
+/** What changed of an entity since the sender's last snapshot: only the fields that did. */
+const EntityChange = z.object({
+  id: EntityId,
+  x: Coordinate.optional(),
+  y: Coordinate.optional(),
+  health: Health.optional(),
+  data: z.unknown().optional(),
+  patch: z.record(z.string(), z.unknown()).optional(),
+});
+
 /**
- * The entities the sender hosts, by the sender's id. A full snapshot carries every entity; any
- * other only those changed since the sender's last, and the ids of those gone. Each kind parses
- * its own data, so an entity its kind rejects is dropped where it is applied.
+ * The entities the sender hosts, by the sender's id; who spawned its world's starting entities;
+ * and the time on its world's clock, to a hundredth of a second. A full snapshot carries every
+ * entity whole; any other the entities new since the sender's last, what changed of the others,
+ * and the ids of those gone. Each kind parses its own data, so an entity its kind rejects is
+ * dropped where it is applied.
  */
 const EntitiesMessage = z.object({
   host: PlayerId,
+  origin: PlayerId,
   full: z.boolean(),
-  entities: z
-    .array(
-      z.object({
-        id: EntityId,
-        kind: z.number().int().min(1),
-        x: Coordinate,
-        y: Coordinate,
-        health: Health,
-        data: z.unknown(),
-      }),
-    )
-    .max(MAX_ENTITIES),
+  time: rounded(2),
+  entities: z.array(EntityEntry).max(MAX_ENTITIES),
+  changed: z.array(EntityChange).max(MAX_ENTITIES),
   removed: z.array(EntityId).max(MAX_ENTITIES),
 });
 
@@ -104,6 +106,12 @@ const WorldMessage = z.object({
   term: z.number().int().min(0),
   entries: z.record(z.string(), z.unknown()),
 });
+
+/** `entry` as it arrives: positions rounded as they travel. */
+export const asSent = (
+  entry: z.output<typeof EntityEntry>,
+): z.output<typeof EntityEntry> =>
+  EntityEntry.decode(EntityEntry.encode(entry));
 
 /** A content entry's name, or an event's key within its entry. */
 const ContentKey = z.string().min(1).max(64);

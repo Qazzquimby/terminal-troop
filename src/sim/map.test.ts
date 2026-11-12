@@ -14,3 +14,11 @@ test("map occupancy rejects walls and world boundaries", () => {
   expect(isAreaFree(map, 125, 125, 14)).toBe(false);
   expect(isAreaFree(map, 0, 75, 14)).toBe(false);
 });
+
+test("a point that is not finite is not free", () => {
+  const map = mapWithCenterWall();
+  expect(isAreaFree(map, Number.NaN, 75, 14)).toBe(false);
+  expect(isAreaFree(map, 75, Number.NaN, 14)).toBe(false);
+  expect(isAreaFree(map, Number.POSITIVE_INFINITY, 75, 14)).toBe(false);
+  expect(isAreaFree(map, 75, Number.NEGATIVE_INFINITY, 14)).toBe(false);
+});

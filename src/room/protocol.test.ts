@@ -1,7 +1,8 @@
 import { omit } from "lodash-es";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { NetEvent } from "../net/index.js";
-import { Health, roomMessages } from "./protocol.js";
+import { Health } from "../sim/index.js";
+import { roomMessages } from "./protocol.js";
 import type { Message, RoomMessages, WireMessage } from "./protocol.js";
 
 const messages = roomMessages(3);
@@ -13,7 +14,7 @@ const state = {
   x: 1,
   y: 2,
   aim: 0,
-  health: 100,
+  epoch: 0,
   content: {},
 };
 
@@ -35,13 +36,16 @@ describe("rounding", () => {
   test("a snapshot sends each entity's position to a tenth of a pixel", () => {
     const wire = messages[NetEvent.ENTITIES].encode({
       host: "h",
-      full: true,
-      entities: [
-        { id: "h:1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} },
-      ],
+      origin: "o",
+      full: false,
+      time: 12.345,
+      entities: [{ id: "1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} }],
+      changed: [{ id: "2", x: 5.06 }],
       removed: [],
     });
     expect(wire.entities[0]).toMatchObject({ x: 10, y: 20 });
+    expect(wire.changed[0]).toEqual({ id: "2", x: 5.1 });
+    expect(wire.time).toBe(12.35);
   });
 });
 
@@ -73,11 +77,14 @@ describe("health", () => {
   test("an encoded snapshot with unbreakable health survives JSON", () => {
     const snapshot: Message<"entities"> = {
       host: "h",
-      full: true,
+      origin: "o",
+      full: false,
+      time: 3,
       entities: [
-        { id: "h:1", kind: 1, x: 10, y: 20, health: 40, data: {} },
-        { id: "h:2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
+        { id: "1", kind: 1, x: 10, y: 20, health: 40, data: {} },
+        { id: "2", kind: 2, x: 30, y: 40, health: Infinity, data: {} },
       ],
+      changed: [{ id: "3", health: Infinity, patch: { a: 1 } }],
       removed: [],
     };
     const schema = messages[NetEvent.ENTITIES];
@@ -103,10 +110,9 @@ describe("the message table", () => {
       x: number;
       y: number;
       aim: number;
-      health: number | "Infinity";
+      epoch: number;
       content: Record<string, unknown>;
     }>();
-    expectTypeOf<Message<"state">["health"]>().toEqualTypeOf<number>();
     expectTypeOf<Message<"state">["content"]>().toEqualTypeOf<
       Record<string, unknown>
     >();
@@ -117,7 +123,9 @@ describe("the message table", () => {
     }>();
     expectTypeOf<Message<"entities">>().toEqualTypeOf<{
       host: string;
+      origin: string;
       full: boolean;
+      time: number;
       entities: {
         id: string;
         kind: number;
@@ -125,6 +133,14 @@ describe("the message table", () => {
         y: number;
         health: number;
         data: unknown;
+      }[];
+      changed: {
+        id: string;
+        x?: number | undefined;
+        y?: number | undefined;
+        health?: number | undefined;
+        data?: unknown;
+        patch?: Record<string, unknown> | undefined;
       }[];
       removed: string[];
     }>();
@@ -192,8 +208,9 @@ describe("the message table", () => {
     [NetEvent.BYE, { id: 7 }],
     [NetEvent.STATE, { ...state, x: Number.NaN }],
     [NetEvent.STATE, omit(state, "aim")],
-    [NetEvent.STATE, omit(state, "health")],
-    [NetEvent.STATE, { ...state, health: -1 }],
+    [NetEvent.STATE, omit(state, "epoch")],
+    [NetEvent.STATE, { ...state, epoch: -1 }],
+    [NetEvent.STATE, { ...state, epoch: 1.5 }],
     [NetEvent.STATE, omit(state, "content")],
     [NetEvent.STATE, { ...state, content: null }],
     [NetEvent.STATE, { ...state, content: "shovel" }],
