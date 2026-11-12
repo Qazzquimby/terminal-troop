@@ -48,6 +48,8 @@ export interface WorldContent {
   populate(game: Session): void;
   /** Acts on the local player's controls, each step, once the player has moved. */
   act?(game: Session, controls: Controls): void;
+  /** Runs on the host, each step, after the entities have moved; spawns what the world adds over time. */
+  step?: ((game: Session, dt: number) => void) | undefined;
 }
 
 /**
@@ -151,6 +153,8 @@ export interface EntitySpec<S> extends EntityDefinition<S> {
   readonly player?: PlayerData<unknown>;
   /** The events the kind sends and receives, by key. */
   readonly events?: ContentEvents;
+  /** Runs on the host, each step, after the entities have moved. */
+  readonly step?: (game: Session, dt: number) => void;
 }
 
 /** Random spots tried for each scattered entity before taking the one furthest from the players. */
@@ -240,6 +244,7 @@ export function defineEntity<N extends string, C, S>(
         name: `entity/${name}`,
         player: spec.player,
         events: spec.events,
+        step: spec.step,
         register(game) {
           kind.register(game);
         },

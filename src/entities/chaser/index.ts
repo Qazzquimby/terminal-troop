@@ -10,6 +10,7 @@ import {
   isAreaFree,
   mulberry32Next,
   noisesHeardBy,
+  spawnEntity,
   rounded,
 } from "../../sim/index.js";
 import type {
@@ -123,6 +124,18 @@ const COLOURS = {
 } as const;
 
 const CHASER_GLYPH = "🧟";
+
+/** Seconds between passive spawns at the world's start, and once it has grown old. */
+const SPAWN_FIRST_GAP = 12;
+const SPAWN_LAST_GAP = 3;
+/** How long the gap takes to fall from the first to the last, in seconds. */
+const SPAWN_RAMP_SECONDS = 300;
+/** Most chasers alive at once; spawning waits while the world holds this many. */
+const SPAWN_MAX_ALIVE = 40;
+/** Points tried for a passive spawn before skipping it this time. */
+const SPAWN_TRIES = 24;
+/** Least distance, in pixels, a passive spawn keeps from every player so none sees it appear. */
+const SPAWN_UNSEEN_DISTANCE = 700;
 
 /** A fresh chaser's state, its random draws seeded by `seed`. */
 export function freshChaser(seed: number, config: ChaserConfig): ChaserState {
@@ -413,6 +426,79 @@ function bark(
   return { ...state, seed, nextBark: result, barks: state.barks + 1 };
 }
 
+/** How many chasers the world holds. */
+function aliveChasers(game: Session): number {
+  const kind = game.kindIds.get("chaser");
+  if (kind === undefined) return 0;
+  let count = 0;
+  for (const entity of game.entities.values())
+    if (entity.kind === kind) count++;
+  return count;
+}
+
+/** Where the cruiser stands, or null before the world has one. */
+function cruiserAt(game: Session): Point | null {
+  const kind = game.kindIds.get("cruiser");
+  if (kind === undefined) return null;
+  for (const entity of game.entities.values())
+    if (entity.kind === kind) return { x: entity.x, y: entity.y };
+  return null;
+}
+
+/** How far the nearest player stands from `at`. */
+function nearestPlayerDistance(game: Session, at: Point): number {
+  let nearest = Infinity;
+  for (const player of game.players.values())
+    nearest = Math.min(nearest, Math.hypot(player.x - at.x, player.y - at.y));
+  return nearest;
+}
+
+/**
+ * A free point no player stands near enough to watch the spawn, drawn so that a point twice as
+ * far from the cruiser is twice as likely, or null when none of the tries finds one.
+ */
+function passiveSpawnPoint(game: Session, radius: number): Point | null {
+  const cruiser = cruiserAt(game);
+  let chosen: Point | null = null;
+  let totalWeight = 0;
+  for (let attempt = 0; attempt < SPAWN_TRIES; attempt++) {
+    const at = {
+      x: Math.random() * game.world.W,
+      y: Math.random() * game.world.H,
+    };
+    if (!isAreaFree(game.world.map, at.x, at.y, radius)) continue;
+    if (nearestPlayerDistance(game, at) < SPAWN_UNSEEN_DISTANCE) continue;
+    const weight =
+      cruiser === null ? 1 : Math.hypot(cruiser.x - at.x, cruiser.y - at.y) + 1;
+    totalWeight += weight;
+    if (Math.random() * totalWeight < weight) chosen = at;
+  }
+  return chosen;
+}
+
+/** The world's growing tide of chasers: spawns one out of sight, likelier far from the cruiser. */
+function spawner(config: ChaserConfig): (game: Session, dt: number) => void {
+  let elapsed = 0;
+  let countdown = SPAWN_FIRST_GAP;
+  return (game, dt) => {
+    elapsed += dt;
+    countdown -= dt;
+    if (countdown > 0) return;
+    const ramp = Math.min(1, elapsed / SPAWN_RAMP_SECONDS);
+    countdown = SPAWN_FIRST_GAP + (SPAWN_LAST_GAP - SPAWN_FIRST_GAP) * ramp;
+    if (aliveChasers(game) >= SPAWN_MAX_ALIVE) return;
+    const at = passiveSpawnPoint(game, config.radius);
+    if (at === null) return;
+    spawnEntity(
+      game,
+      "chaser",
+      at.x,
+      at.y,
+      freshChaser(Math.floor(Math.random() * 2 ** 32), config),
+    );
+  };
+}
+
 function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
   return {
     radius: config.radius,
@@ -476,4 +562,5 @@ export const chaser = defineEntity("chaser", (config: ChaserConfig) => ({
     ...config.spawn,
     data: (rng: Rng) => freshChaser(Math.floor(rng() * 2 ** 32), config),
   },
+  step: spawner(config),
 }));

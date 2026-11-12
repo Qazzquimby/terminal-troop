@@ -239,6 +239,8 @@ export function updateEntities(game: Session, dt: number): void {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
+
+  for (const content of game.contents) content.step?.(game, dt);
 }
 
 /** Removes every entity that has been destroyed. */
