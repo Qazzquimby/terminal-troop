@@ -60,8 +60,12 @@ function steps(
     step(game, ripples, controls);
 }
 
-/** A remote player at `x` along the local player's row, walking. */
-function walkerAt(game: Session, x: number): void {
+/** A remote player at `x` along the local player's row, walking or in another gait. */
+function walkerAt(
+  game: Session,
+  x: number,
+  mode: "walk" | "sprint" = "walk",
+): void {
   applyRemoteState(game, {
     id: "them",
     name: "THEM",
@@ -69,7 +73,7 @@ function walkerAt(game: Session, x: number): void {
     y: 300,
     aim: 0,
     health: 100,
-    content: { "core/movement": { mode: "walk", moving: true } },
+    content: { "core/movement": { mode, moving: true } },
   });
 }
 
@@ -81,16 +85,16 @@ describe("footstep ripples", () => {
       {
         at: { x: game.local.x, y: 300 },
         clarity: 1,
-        loudness: footsteps.walk.loudness,
+        radius: footsteps.walk.radius,
         startedAt: game.time * 1000,
       },
     ]);
   });
 
-  test("a remote player's footsteps ripple within hearing range, with no event sent", () => {
+  test("a remote player's footsteps ripple within their radius, with no event sent", () => {
     const { game, ripples } = session();
     game.hosting = false;
-    const distance = config.hearingRange * footsteps.walk.loudness * 0.5;
+    const distance = footsteps.walk.radius * 0.5;
     walkerAt(game, 100 + distance);
     step(game, ripples, idle);
     const [ripple] = ripples.list;
@@ -105,11 +109,19 @@ describe("footstep ripples", () => {
     expect(game.outbox).toEqual([]);
   });
 
-  test("footsteps beyond hearing range make no ripple", () => {
+  test("the local player sees only the footsteps whose radius reaches it", () => {
     const { game, ripples } = session();
-    walkerAt(game, 100 + config.hearingRange * footsteps.walk.loudness + 10);
+    const beyondWalk = 100 + footsteps.walk.radius + 10;
+    walkerAt(game, beyondWalk);
     steps(game, ripples, idle, 1);
     expect(ripples.list).toEqual([]);
+
+    expect(footsteps.sprint.radius).toBeGreaterThan(beyondWalk - 100);
+    walkerAt(game, beyondWalk, "sprint");
+    steps(game, ripples, idle, footsteps.sprint.interval);
+    expect(ripples.list).toEqual([
+      expect.objectContaining({ radius: footsteps.sprint.radius }),
+    ]);
   });
 
   test("a ripple lasts its duration, then is dropped", () => {
@@ -148,14 +160,14 @@ describe("noise from the host", () => {
 
   test("is sent once to everyone, and made and heard on a client that takes its sender for the host", () => {
     const { game: sender } = session();
-    broadcastNoise(sender, { at: { x: 200, y: 300 }, loudness: 1 });
+    broadcastNoise(sender, { at: { x: 200, y: 300 }, radius: 300 });
     expect(sender.outbox).toEqual([
       {
         content: "core/noise",
         event: "made",
         route: "all",
         to: null,
-        payload: { x: 200, y: 300, loudness: 1, source: null },
+        payload: { x: 200, y: 300, radius: 300, source: null },
       },
     ]);
 
@@ -163,25 +175,25 @@ describe("noise from the host", () => {
     game.outbox.push(...sender.outbox);
     made(game, "host");
     step(game, ripples, idle);
-    expect(game.noises).toEqual([{ at: { x: 200, y: 300 }, loudness: 1 }]);
+    expect(game.noises).toEqual([{ at: { x: 200, y: 300 }, radius: 300 }]);
     expect(ripples.list).toEqual([
-      expect.objectContaining({ clarity: 1 - 100 / config.hearingRange }),
+      expect.objectContaining({ clarity: 1 - 100 / 300, radius: 300 }),
     ]);
   });
 
   test("keeps its source", () => {
     const { game } = session();
-    broadcastNoise(game, { at: { x: 200, y: 300 }, loudness: 1, source: "e1" });
+    broadcastNoise(game, { at: { x: 200, y: 300 }, radius: 300, source: "e1" });
     made(game, "host");
     updateSession(game, idle, DT);
     expect(game.noises).toEqual([
-      { at: { x: 200, y: 300 }, loudness: 1, source: "e1" },
+      { at: { x: 200, y: 300 }, radius: 300, source: "e1" },
     ]);
   });
 
   test("is dropped when it comes from anyone else", () => {
     const { game, ripples } = session();
-    broadcastNoise(game, { at: { x: 200, y: 300 }, loudness: 1 });
+    broadcastNoise(game, { at: { x: 200, y: 300 }, radius: 300 });
     made(game, "someone");
     step(game, ripples, idle);
     expect(game.noises).toEqual([]);
@@ -190,10 +202,10 @@ describe("noise from the host", () => {
 });
 
 describe("a ripple's ring", () => {
-  const ripple = (clarity: number, loudness = 1): Ripple => ({
+  const ripple = (clarity: number, radius = 100): Ripple => ({
     at: { x: 0, y: 0 },
     clarity,
-    loudness,
+    radius,
     startedAt: 10_000,
   });
   const ms = (seconds: number): number => seconds * 1000;
@@ -214,10 +226,13 @@ describe("a ripple's ring", () => {
     expect(far?.alpha).toBeLessThan(near?.alpha ?? 0);
   });
 
-  test("a louder noise spreads further", () => {
-    const at = ms(10 + config.duration / 2);
-    const quiet = rippleRing(ripple(1, 0.2), at, config);
-    const loud = rippleRing(ripple(1, 1.5), at, config);
-    expect(loud?.radius).toBeGreaterThan(quiet?.radius ?? Infinity);
+  test("grows out to the noise's radius and no further", () => {
+    const radii = [0.25, 0.5, 0.75, 0.999].map(
+      (t) =>
+        rippleRing(ripple(1, 400), ms(10 + config.duration * t), config)
+          ?.radius,
+    );
+    expect(radii.every((r) => r !== undefined && r <= 400)).toBe(true);
+    expect(radii.at(-1)).toBeCloseTo(400, 1);
   });
 });
