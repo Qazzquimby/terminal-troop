@@ -189,8 +189,8 @@ export const config = {
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
     // kicks fell a chaser, each sending it 2.5 of its own body lengths away. The host takes a
-    // kicker's word for where its lunge ended to within 24px: a tenth of a second of sprinting,
-    // one STATE at 10Hz.
+    // kicker's word for where its lunge ended to within 24px of where it reckons a lunge from the
+    // reported start would.
     kick: {
       reach: 32,
       radius: 18,

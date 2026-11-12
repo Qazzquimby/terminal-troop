@@ -61,7 +61,7 @@ export {
   expectedEpoch,
   takeOverForcedMoves,
 } from "./forced-move.js";
-export { allowMove, restartMoveChecks } from "./move-checks.js";
+export { allowMove, couldStand, restartMoveChecks } from "./move-checks.js";
 export { confirmAction, nextAction, predict } from "./prediction.js";
 export { hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
@@ -82,7 +82,13 @@ export type { Heard } from "./noise.js";
 export { makeSound, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
-export { heldItemId, heldItemOf, hostAccepts, registerItem } from "./use.js";
+export {
+  heldItemId,
+  heldItemOf,
+  hostAccepts,
+  hostReady,
+  registerItem,
+} from "./use.js";
 export type { ItemUse } from "./use.js";
 
 export {

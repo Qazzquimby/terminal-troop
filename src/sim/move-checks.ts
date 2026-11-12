@@ -78,20 +78,21 @@ function allowed(check: MoveCheck): number {
 
 /**
  * Whether the player `playerId`, which stood as `check` says, can stand at `to` now, and has
- * the stamina for the pace it went at.
+ * the stamina for the pace it went at, with `more` pixels on top of the pushes and lunges allowed.
  */
 function withinReach(
   game: Session,
   playerId: string,
   check: MoveCheck,
   to: Point,
+  more = 0,
 ): boolean {
   const { player, net } = game.config;
   const { slack, lateSeconds } = net.moves;
   const topSpeed =
     player.speed *
     Math.max(1, player.sprintMultiplier, player.crouchMultiplier);
-  const extra = allowed(check);
+  const extra = allowed(check) + more;
   const reach =
     topSpeed * (game.time - check.time + lateSeconds) + slack + extra;
   return (
@@ -136,6 +137,22 @@ export function checkMove(
     return { kind: "take" };
   }
   return { kind: "correct", to: check.at };
+}
+
+/**
+ * Whether, as the host, it would take a report from `playerId` of standing at `at` now, with
+ * `more` pixels on top of what its checks allow: what a move the player reports making lately
+ * may start from. True while its reports are taken as they come.
+ */
+export function couldStand(
+  game: Session,
+  playerId: string,
+  at: Point,
+  more: number,
+): boolean {
+  const check = game.moveChecks.get(playerId);
+  if (check === undefined || game.time < check.settleUntil) return true;
+  return withinReach(game, playerId, check, at, more);
 }
 
 /**

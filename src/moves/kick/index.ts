@@ -7,7 +7,7 @@ import {
   contentEvent,
   dashEnd,
   entitiesIn,
-  hostAccepts,
+  hostReady,
   hostSpends,
   hurtPlayer,
   knockBack,
@@ -16,6 +16,7 @@ import {
   nextAction,
   predict,
   confirmAction,
+  couldStand,
   showFlash,
   spendStamina,
   solidBodiesBut,
@@ -51,7 +52,10 @@ export interface KickConfig {
     /** How far, in the kicker's own body lengths. */
     readonly lengths: number;
     readonly seconds: number;
-    /** How far, in pixels, a reported lunge's end may be from the host's own reckoning of it. */
+    /**
+     * How far, in pixels, a reported lunge's end may be from the host's own reckoning of it,
+     * from where and which way the kicker reports it started.
+     */
     readonly slack: number;
   };
   /** How far, in pixels, a kick's noise carries. */
@@ -65,13 +69,15 @@ const NAME = "move/kick";
 const bodyLength = (body: { readonly radius: number }): number =>
   body.radius * 2;
 
+const Spot = z.object({ x: z.number(), y: z.number() });
+
 /**
- * A kick as a player reports it: where it stands once it has lunged, which way it faces, and its
- * action number.
+ * A kick as a player reports it: where its lunge started and where it ended, which way it faces,
+ * and its action number.
  */
 const Kicked = z.object({
-  x: z.number(),
-  y: z.number(),
+  from: Spot,
+  to: Spot,
   aim: z.number(),
   action: z.number().int().positive(),
 });
@@ -91,12 +97,14 @@ const SOUNDS = { use: sound({ url: useUrl }) } as const;
  * The kicker lunges a little, up to whatever is in its way, and spends stamina on its own client;
  * the host spends it from its own reckoning of the kicker's stamina too, and turns down a kick it
  * reckons the kicker cannot afford.
- * The host works out the lunge itself, from where it last heard the kicker stand and face, and
- * turns down a kick whose reported end is too far from its own. It then hurts and knocks back
- * every world entity and every other player in front of where it reckons the lunge ends, and
- * makes a noise. A kicked player takes its blow on its own client. A guest kicker predicts what
- * its kick does to world entities from its own lunge end, so its lunge carries on through them at
- * once.
+ * The kicker reports where its lunge started, which the host holds to the checks on its moves,
+ * and which way it faced. The host works out the lunge itself from there, as far as the reported
+ * end but no further than a lunge goes nor through walls, and turns down a kick whose reported
+ * end is too far from its own. Bodies the kicker may have seen elsewhere do not stop it. It then
+ * hurts and knocks back every world entity and every other player in front of where it reckons
+ * the lunge ends, and makes a noise. A kicked player takes its blow on its own client. A guest
+ * kicker predicts what its kick does to world entities from its own lunge end, so its lunge
+ * carries on through them at once.
  */
 export const kick: Content<"kick", KickConfig> = {
   name: "kick",
@@ -125,17 +133,27 @@ export const kick: Content<"kick", KickConfig> = {
     });
 
     /**
-     * Where a remote `kicker`'s lunge ends as this client sees the world, from where and which
-     * way it last reported standing.
+     * Where a remote `kicker`'s lunge ends as this client sees the walls, if it started `from`
+     * facing `aim` and went as far as `to` does; null when `to` is too far from there, or
+     * `from` too far from where the kicker was lately heard to stand.
      */
-    const lungeEnd = (game: Session, kicker: Player): Point =>
-      dashEnd(
-        { x: kicker.tx, y: kicker.ty, radius: kicker.radius },
-        kicker.taim,
-        bodyLength(kicker) * config.lunge.lengths,
+    const lungeEnd = (
+      game: Session,
+      kicker: Player,
+      { from, to, aim }: z.infer<typeof Kicked>,
+    ): Point | null => {
+      const length = bodyLength(kicker) * config.lunge.lengths;
+      if (!couldStand(game, kicker.id, from, length)) return null;
+      const end = dashEnd(
+        { ...from, radius: kicker.radius },
+        aim,
+        Math.min(length, Math.hypot(to.x - from.x, to.y - from.y)),
         game.world.map,
-        solidBodiesBut(game, kicker),
+        [],
       );
+      const off = Math.hypot(to.x - end.x, to.y - end.y);
+      return off > config.lunge.slack ? null : end;
+    };
 
     const kicked = contentEvent({
       schema: Kicked,
@@ -145,16 +163,18 @@ export const kick: Content<"kick", KickConfig> = {
         const kicker = game.players.get(by);
         if (kicker === undefined) return;
         if (!hostSpends(game, by, config.stamina)) return;
-        const own = kicker === game.local;
-        const aim = own ? reported.aim : kicker.taim;
-        const at = own ? reported : lungeEnd(game, kicker);
-        const off = Math.hypot(reported.x - at.x, reported.y - at.y);
-        if (off > config.lunge.slack) return;
-        if (!hostAccepts(game, by, at, NAME, config.cooldown)) return;
+        const { aim } = reported;
+        const at =
+          kicker === game.local
+            ? reported.to
+            : lungeEnd(game, kicker, reported);
+        if (at === null) return;
+        if (!hostReady(game, by, NAME, config.cooldown)) return;
         allowMove(
           game,
           by,
-          Math.hypot(at.x - kicker.tx, at.y - kicker.ty) + config.lunge.slack,
+          Math.hypot(at.x - reported.from.x, at.y - reported.from.y) +
+            config.lunge.slack,
           config.lunge.seconds,
         );
         const area = hitbox(at, aim);
@@ -189,9 +209,10 @@ export const kick: Content<"kick", KickConfig> = {
         if (stamina === null) return;
         local.stamina = stamina;
         game.localReadyAt.set(NAME, game.time + config.cooldown);
-        // The kicker's state goes with the kick, so the host reckons the lunge from where it
-        // stood and faced as it kicked.
+        // The kicker's state goes with the kick, so the host checks where the lunge started
+        // against a fresh report.
         game.reportNow = true;
+        const from = local.dash?.to ?? { x: local.x, y: local.y };
         const { lengths, seconds } = config.lunge;
         const at = startDash(
           local,
@@ -211,7 +232,12 @@ export const kick: Content<"kick", KickConfig> = {
         predict(game, action, entities, (entity) => {
           strike(game, entity, at);
         });
-        kicked.send(game, { x: at.x, y: at.y, aim: local.aim, action });
+        kicked.send(game, {
+          from,
+          to: { x: at.x, y: at.y },
+          aim: local.aim,
+          action,
+        });
       },
     };
   },
