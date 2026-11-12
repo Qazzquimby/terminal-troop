@@ -24,6 +24,19 @@ export function unbatch(
   });
 }
 
+/** Whether a message is `wanted`, or is a batch that holds one. */
+export function carries(
+  event: NetEvent,
+  payload: unknown,
+  wanted: NetEvent,
+): boolean {
+  if (event === wanted) return true;
+  return (
+    event === NetEvent.BATCH &&
+    unbatch(payload).some((message) => message.event === wanted)
+  );
+}
+
 export interface BatchingTransport {
   readonly transport: Transport;
   /**

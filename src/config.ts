@@ -11,6 +11,7 @@ import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
+import type { GreetingConfig } from "./net/index.js";
 import type { UiConfig } from "./ui/index.js";
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
@@ -18,6 +19,8 @@ import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 interface AppConfig extends SimConfig {
   readonly sim: SimClockConfig;
   readonly room: RoomConfig;
+  /** For transports whose peers connect some time after joining. */
+  readonly greeting: GreetingConfig;
   readonly camera: CameraConfig;
   readonly ripples: RippleConfig;
   readonly flashes: FlashConfig;
@@ -132,6 +135,8 @@ export const config = {
       goneHiddenMs: 180_000,
     },
   },
+  // Peers connect a second or two after joining; past this, a HELLO is news to no one.
+  greeting: { replayMs: 10_000 },
   entities: {
     chaser: {
       spawn: {
