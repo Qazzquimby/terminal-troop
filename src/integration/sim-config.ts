@@ -15,7 +15,8 @@ import type { SimConfig } from "../sim/index.js";
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
  * where it was made. Walking steps every 0.5s at loudness 0.5; sprinting every 0.25s at 1.5;
  * crouching, at half speed, every 0.75s at 0.2. A player new to a world starts within 100px of its
- * rally point.
+ * rally point. A pushed player should report where its push ended within 0.25s of it, within 10px
+ * plus how far it could have moved itself.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -35,7 +36,11 @@ export const testSimConfig: SimConfig = {
   arrival: { spread: 100 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
-  net: { smoothing: 12, useSlack: { distance: 40, seconds: 0.1 } },
+  net: {
+    smoothing: 12,
+    useSlack: { distance: 40, seconds: 0.1 },
+    knockback: { slack: 0.25, tolerance: 10 },
+  },
   noise: { blur: 0.2 },
   footsteps: {
     walk: { interval: 0.5, loudness: 0.5 },

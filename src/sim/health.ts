@@ -2,6 +2,7 @@ import { z } from "zod";
 import { solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { applyDamage } from "./entity.js";
+import { expectKnockback } from "./expected-knockback.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import { startDash } from "./player.js";
@@ -53,9 +54,10 @@ export const damaged = contentEvent({
 
 /**
  * Deals `amount` damage to `player`, and `push` if given, as the host: the local player takes it
- * at once, and a remote one is sent it, since each player keeps its own health and position. A
- * push from where the player stands has no way to go, and is dropped. A blow of neither damage
- * nor push does nothing.
+ * at once, and a remote one is sent it, since each player keeps its own health and position. The
+ * host expects a remote player it pushes to end up where the push leaves it, and puts it there if
+ * it does not. A push from where the player stands has no way to go, and is dropped. A blow of
+ * neither damage nor push does nothing.
  */
 export function hurtPlayer(
   game: Session,
@@ -75,6 +77,9 @@ export function hurtPlayer(
   };
   if (blow.amount === 0 && blow.push === undefined) return;
   if (player === game.local) takeBlow(game, blow);
-  else if (game.players.get(player.id) === player)
+  else if (game.players.get(player.id) === player) {
     damaged.send(game, player.id, blow);
+    if (blow.push !== undefined)
+      expectKnockback(game, player, blow.push.aim, blow.push.distance);
+  }
 }

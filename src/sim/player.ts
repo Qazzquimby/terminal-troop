@@ -167,7 +167,7 @@ function stepGait(
 }
 
 /** A gait's top speed as a multiple of the walking speed. */
-function speedFactor(mode: MovementMode, config: PlayerConfig): number {
+export function speedFactor(mode: MovementMode, config: PlayerConfig): number {
   switch (mode) {
     case "walk":
       return 1;
@@ -227,13 +227,31 @@ export function startDash(
   map: TileMap,
   others: readonly CollisionBody[],
 ): Point {
-  const direction = { x: Math.cos(aim), y: Math.sin(aim) };
   const speed = distance / seconds;
-  player.dash = { vx: direction.x * speed, vy: direction.y * speed, seconds };
-  const free = Math.min(distance, distanceToContact(player, direction, others));
-  return lastFreePointAlong(map, player.radius, player, {
-    x: player.x + direction.x * free,
-    y: player.y + direction.y * free,
+  player.dash = {
+    vx: Math.cos(aim) * speed,
+    vy: Math.sin(aim) * speed,
+    seconds,
+  };
+  return dashEnd(player, aim, distance, map, others);
+}
+
+/**
+ * Where a dash of `distance` pixels towards `aim` (radians) leaves `body`: as far as it goes
+ * before a wall, and short of touching any of `others`, if they stay where they are.
+ */
+export function dashEnd(
+  body: CollisionBody,
+  aim: number,
+  distance: number,
+  map: TileMap,
+  others: readonly CollisionBody[],
+): Point {
+  const direction = { x: Math.cos(aim), y: Math.sin(aim) };
+  const free = Math.min(distance, distanceToContact(body, direction, others));
+  return lastFreePointAlong(map, body.radius, body, {
+    x: body.x + direction.x * free,
+    y: body.y + direction.y * free,
   });
 }
 

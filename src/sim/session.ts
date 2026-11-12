@@ -15,6 +15,11 @@ import type { WorldContent } from "./content.js";
 import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
+import { checkKnockbacks } from "./expected-knockback.js";
+import type {
+  ExpectedKnockback,
+  KnockbackCheck,
+} from "./expected-knockback.js";
 import { emitFootsteps } from "./footsteps.js";
 import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
@@ -44,6 +49,7 @@ interface SyncConfig {
   /** Rate, per second, at which remote players ease towards their reported state. */
   readonly smoothing: number;
   readonly useSlack: UseSlack;
+  readonly knockback: KnockbackCheck;
 }
 
 /** The tuning a session runs on; it keeps this for its lifetime. */
@@ -108,6 +114,8 @@ export interface Session {
   readonly readyAt: Map<string, Map<string, number>>;
   /** When, in sim seconds, the local player may next act, by what the action is timed under. */
   readonly localReadyAt: Map<string, number>;
+  /** While hosting, the push each remote player is expected to take, by player id. */
+  readonly knockbacks: Map<string, ExpectedKnockback>;
   /** The content registered with it, in order. */
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
@@ -202,6 +210,7 @@ export function createSession(
     noises: [],
     readyAt: new Map(),
     localReadyAt: new Map(),
+    knockbacks: new Map(),
     contents: [],
     flashes: [],
     reportNow: false,
@@ -262,6 +271,7 @@ export function updateSession(
 
   applyEvents(game);
   emitFootsteps(game, dt);
+  checkKnockbacks(game);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
 
