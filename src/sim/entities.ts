@@ -1,11 +1,14 @@
 import type { z } from "zod";
 import { moveWithCollision } from "./collision.js";
 import type { Entity } from "./entity.js";
+import { changedData } from "./entity-delta.js";
+import type { EntityChange, EntityDelta } from "./entity-delta.js";
 import { isDead } from "./entity.js";
 import { hurtPlayer } from "./health.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
+import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import type { LightEmission } from "./vision.js";
 
@@ -180,11 +183,16 @@ function placeEntity(
     cued: data,
   };
   game.entities.set(id, entity);
+  const number = parseInt(id, 36);
+  if (number.toString(36) === id)
+    game.nextEntityId = Math.max(game.nextEntityId, number + 1);
   return entity;
 }
 
 /**
- * Spawns the kind registered as `name` at (x, y) under an id no entity in the session holds.
+ * Spawns the kind registered as `name` at (x, y) under an id no entity in the session holds: the
+ * next entity number, in base 36, short on the wire. Every client numbers on past each entity it
+ * places, so a client that comes to host goes on from the numbers its last host used.
  * Throws when `data` is not the kind's state.
  */
 export function spawnEntity(
@@ -200,9 +208,7 @@ export function spawnEntity(
     throw new Error(`Unregistered entity kind: ${name}`);
   const parsed = type.data.parse(data);
 
-  let id = `${game.localId}:${String(game.nextEntityId++)}`;
-  while (game.entities.has(id))
-    id = `${game.localId}:${String(game.nextEntityId++)}`;
+  const id = (game.nextEntityId++).toString(36);
   return placeEntity(game, id, kind, type, x, y, type.maxHealth, parsed);
 }
 
@@ -248,11 +254,11 @@ function cullDeadEntities(game: Session): void {
   }
 }
 
-/** Eases every entity towards the host's latest snapshot of it. */
+/** Eases every entity no prediction holds towards the host's latest snapshot of it. */
 export function followEntities(game: Session, dt: number): void {
   const amount = 1 - Math.exp(-game.config.net.smoothing * dt);
   game.entities.forEach((entity) => {
-    easeToTarget(entity, amount);
+    if (!isHeld(game, entity)) easeToTarget(entity, amount);
   });
 }
 
@@ -300,7 +306,7 @@ function takeEntries(
     if (known?.kind === kind) {
       known.tx = x;
       known.ty = y;
-      known.health = Math.min(health, known.maxHealth);
+      hearHealth(game, known, Math.min(health, known.maxHealth));
       known.data = parsed.data;
     } else {
       placeEntity(game, id, kind, type, x, y, health, parsed.data);
@@ -324,16 +330,38 @@ export function applyEntitySnapshot(
   }
 }
 
+/** The whole entry `change` makes of the entity it is for, or null when this client lacks it. */
+function changedEntry(
+  game: Session,
+  change: EntityChange,
+): EntitySnapshot | null {
+  const known = game.entities.get(change.id);
+  if (known === undefined) return null;
+  const encoded = game.entityTypes.get(known.kind)?.data.safeEncode(known.data);
+  if (encoded?.success !== true) return null;
+  return {
+    id: known.id,
+    kind: known.kind,
+    x: change.x ?? known.tx,
+    y: change.y ?? known.ty,
+    health: change.health ?? heardHealth(game, known),
+    data: changedData(encoded.data, change),
+  };
+}
+
 /**
- * Applies the entities a host changed since its last snapshot: each changed entry taken as
- * `takeEntries` does, and each of `removed` removed. Every other entity stays as it is.
+ * Applies what a host changed since its last snapshot: each new entity, and each entity changed
+ * as the change fills it in, taken as `takeEntries` does; each removed one removed. Every other
+ * entity stays as it is, as does one changed that this client lacks.
  */
 export function applyEntityChanges(
   game: Session,
-  changed: readonly EntitySnapshot[],
-  removed: readonly string[],
+  { added, changed, removed }: EntityDelta,
 ): void {
-  takeEntries(game, changed);
+  takeEntries(game, [
+    ...added,
+    ...changed.flatMap((change) => changedEntry(game, change) ?? []),
+  ]);
   for (const id of removed) game.entities.delete(id);
 }
 

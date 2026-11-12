@@ -224,7 +224,7 @@ test("a guest that steps through a pillar is put back, and the same step in the 
 });
 
 test("a long kick lunge is allowed", async () => {
-  const lunge = { lengths: 10, seconds: 0.1 };
+  const lunge = { ...testMovesConfig.kick.lunge, lengths: 10 };
   const moves = { kick: { ...testMovesConfig.kick, lunge } };
   const sim = {
     ...testSimConfig,

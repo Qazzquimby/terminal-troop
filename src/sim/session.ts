@@ -35,6 +35,8 @@ import { checkMove } from "./move-checks.js";
 import type { MoveCheck, MoveCheckConfig, MoveVerdict } from "./move-checks.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
+import type { Prediction } from "./prediction.js";
+import { settlePredictions } from "./prediction.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
@@ -48,6 +50,8 @@ interface SyncConfig {
   readonly smoothing: number;
   readonly useSlack: UseSlack;
   readonly moves: MoveCheckConfig;
+  /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
+  readonly predictionHold: number;
 }
 
 /** The tuning a session runs on; it keeps this for its lifetime. */
@@ -78,11 +82,17 @@ export interface Session {
   readonly entityTypes: Map<number, EntityType>;
   /** The number each kind is registered and sent as, by name. */
   readonly kindIds: Map<string, number>;
+  /** The number the next entity spawned here takes, past that of every entity placed here. */
   nextEntityId: number;
   /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
   hosting: boolean;
   /** Sim seconds stepped since the session began. */
   time: number;
+  /**
+   * Sim seconds on the world's clock, which entities keep their deadlines by. Every client steps
+   * it, and takes the host's from each snapshot, so whoever hosts next goes on from it.
+   */
+  worldTime: number;
   /** What each usable item does, by item id. */
   readonly items: Map<string, ItemBehaviour>;
   /** Every item this client knows, by item id. */
@@ -118,6 +128,10 @@ export interface Session {
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
   readonly flashes: Flash[];
+  /** What this client predicted of each entity, held until the host confirms it, by entity id. */
+  readonly predictions: Map<string, Prediction>;
+  /** The number of the local player's latest action; 0 before its first. */
+  lastAction: number;
   /**
    * The local player's state changed in a way the others should hear at once; the room sends
    * it in its next frame, and clears this.
@@ -195,6 +209,7 @@ export function createSession(
     nextEntityId: 1,
     hosting: true,
     time: 0,
+    worldTime: 0,
     items: new Map(),
     itemDefinitions: new Map(),
     playerData: new Map(),
@@ -211,6 +226,8 @@ export function createSession(
     moveChecks: new Map(),
     contents: [],
     flashes: [],
+    predictions: new Map(),
+    lastAction: 0,
     reportNow: false,
   };
   registerBuiltIns(game);
@@ -253,12 +270,13 @@ export function updateSession(
   dt: number,
 ): void {
   game.time += dt;
+  game.worldTime += dt;
   game.noises.length = 0;
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
   updatePlayer(game.local, controls, dt, game.world.map, game.config);
   stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
-  reportHeld(game.local);
+  reportHeld(game);
   if (controls.use) useHeldItem(game);
   if (controls.interact) interact(game);
   for (const content of game.contents) content.act?.(game, controls);
@@ -269,6 +287,7 @@ export function updateSession(
 
   applyEvents(game);
   emitFootsteps(game, dt);
+  settlePredictions(game);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
 

@@ -47,12 +47,9 @@ export const config = {
     followRate: 18,
     snapDistance: CELL * 4,
   },
-  // What the local player hears, drawn as ripples: a walking step 3.5 cells off and a sprinting
-  // one 11 cells off.
+  // Noises the local player hears, each drawn as a ring growing out to the noise's radius.
   ripples: {
-    hearingRange: CELL * 7,
     duration: 0.9,
-    radius: { min: 12, perLoudness: 40 },
     width: { sharp: 1.5, soft: 7 },
     alpha: { sharp: 0.85, soft: 0.2 },
     colour: "#9fd3ff",
@@ -98,13 +95,15 @@ export const config = {
   arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
-  // A player's report may land 12px past its reach, as if 0.3s more of sprinting had passed: one
-  // report late by that much then the next on time. Reports are taken as they come for 2s after a
-  // player joins or comes back, or the host changes, and one sent before a correction is held for
-  // a second rather than corrected again.
+  // A guest holds a hit it predicted for up to a second before the host confirms it. A player's
+  // report may land 12px past its reach, as if 0.3s more of sprinting had passed: one report late
+  // by that much then the next on time. Reports are taken as they come for 2s after a player joins
+  // or comes back, or the host changes, and one sent before a correction is held for a second
+  // rather than corrected again.
   net: {
     smoothing: 12,
     useSlack: { distance: 80, seconds: 0.3 },
+    predictionHold: 1,
     moves: {
       slack: 12,
       lateSeconds: 0.3,
@@ -114,11 +113,12 @@ export const config = {
   },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
-  // Loudness is a multiple of a listener's hearing range.
+  // Each step is heard by anything within its radius: a sprint carries well past a chaser's
+  // sight, a walk a few cells, a crouch barely past arm's length.
   footsteps: {
-    walk: { interval: 0.5, loudness: 0.5 },
-    sprint: { interval: 0.3, loudness: 1.6 },
-    crouch: { interval: 0.7, loudness: 0.15 },
+    walk: { interval: 0.5, radius: CELL * 5 },
+    sprint: { interval: 0.3, radius: CELL * 16 },
+    crouch: { interval: 0.7, radius: CELL * 1.5 },
   },
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2 },
@@ -151,7 +151,6 @@ export const config = {
       barkGap: { min: 6, max: 12 },
       attackRange: 30,
       attackCooldown: 2,
-      hearingRange: CELL * 5,
     },
     cruiser: {
       lightRadius: CELL * 12,
@@ -166,7 +165,7 @@ export const config = {
       cooldown: 1,
       duration: 0.18,
       volume: 0.8,
-      hitLoudness: 1.2,
+      hitNoiseRadius: CELL * 14,
     },
     // 500 scrap about the world, none within 3 cells of the first players; each sells for 1 while
     // its holder stands within 3 cells of the cruiser, one every quarter second.
@@ -181,7 +180,9 @@ export const config = {
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
-    // kicks fell a chaser, each sending it 2.5 of its own body lengths away.
+    // kicks fell a chaser, each sending it 2.5 of its own body lengths away. The host takes a
+    // kicker's word for where its lunge ended to within 24px: a tenth of a second of sprinting,
+    // one STATE at 10Hz.
     kick: {
       reach: 32,
       radius: 18,
@@ -189,8 +190,8 @@ export const config = {
       knockback: 2.5,
       cooldown: 0.8,
       stamina: STAMINA_MAX * 0.15,
-      lunge: { lengths: 1, seconds: 0.08 },
-      loudness: 1,
+      lunge: { lengths: 1, seconds: 0.08, slack: 24 },
+      noiseRadius: CELL * 12,
     },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },

@@ -51,15 +51,13 @@ export interface ChaserConfig {
   readonly attackRange: number;
   /** Seconds between attacks. */
   readonly attackCooldown: number;
-  /** How far a chaser hears a noise of loudness 1. */
-  readonly hearingRange: number;
 }
 
 /** A point, sent to a tenth of a pixel. */
 const Waypoint = z.object({ x: rounded(1), y: rounded(1) });
 
-/** Seconds, sent to a hundredth. */
-const Seconds = rounded(2, z.number().min(0));
+/** A moment on the world's clock, in sim seconds, sent to a hundredth. */
+const Time = rounded(2);
 
 const Route = z.array(Waypoint).max(MAX_WAYPOINTS);
 
@@ -72,36 +70,45 @@ const Seed = z
 
 const Count = z.number().int().min(0);
 
-/** What a chaser keeps whichever mode it is in. */
+/**
+ * What a chaser keeps whichever mode it is in. Snapshots carry only the fields that changed, so
+ * its timers are deadlines on the world's clock, which change only when set. Each field says who
+ * reads it: everyone, to draw it or play its sounds, or only the host, which sends it so that
+ * whoever hosts next goes on from it.
+ */
 const Shared = {
-  /** Seconds until the next bark. */
-  nextBark: Seconds,
-  /** Seconds until the chaser may attack again. */
-  attackCooldown: Seconds,
-  /** Whether it attacks in this step. */
+  /** When it next barks. Host. */
+  barkAt: Time,
+  /** When it may next attack. Host. */
+  attackAt: Time,
+  /** Whether it attacks in this step. Host. */
   attacking: z.boolean(),
-  /** Counts of barks, chases started and attacks, so every client hears each one. */
+  /** Counts of barks, chases started and attacks, so every client hears each one. Everyone. */
   barks: Count,
   alerts: Count,
   attacks: Count,
+  /** Host. */
   seed: Seed,
+  /** Host. */
   route: Route,
-  /** Where a chase is headed, or null while wandering. */
+  /** Where a chase is headed, or null while wandering. Host. */
   target: Waypoint.nullable(),
-  /** Radians, sent to a hundredth. */
+  /** Radians, sent to a hundredth. Everyone. */
   facing: rounded(2),
 };
 
 /**
- * - wander: walks `route`, then stands for `pause` seconds, then picks a new leg; a heard
- *   noise turns its route towards `noiseTarget`, where the noise seemed to come from
+ * Everyone reads the mode, to colour the chaser.
+ * - wander: walks `route`, then stands until `standUntil`, set once it stops (host), then picks
+ *   a new leg; a heard noise turns its route towards `noiseTarget` (everyone), where the noise
+ *   seemed to come from
  * - chase: heads along `route` for `target`, where a player was last seen
  */
 export const ChaserState = z.discriminatedUnion("mode", [
   z.object({
     ...Shared,
     mode: z.literal("wander"),
-    pause: Seconds,
+    standUntil: Time.nullable(),
     noiseTarget: Waypoint.nullable(),
   }),
   z.object({ ...Shared, mode: z.literal("chase") }),
@@ -124,8 +131,12 @@ const COLOURS = {
 
 const CHASER_GLYPH = "🧟";
 
-/** A fresh chaser's state, its random draws seeded by `seed`. */
-export function freshChaser(seed: number, config: ChaserConfig): ChaserState {
+/** A fresh chaser's state at world time `now`, its random draws seeded by `seed`. */
+export function freshChaser(
+  seed: number,
+  now: number,
+  config: ChaserConfig,
+): ChaserState {
   const { result, seed: next } = withSeed(seed | 0, (rng) =>
     barkGap(rng, config),
   );
@@ -134,10 +145,10 @@ export function freshChaser(seed: number, config: ChaserConfig): ChaserState {
     seed: next,
     route: [],
     target: null,
-    pause: 0,
+    standUntil: now,
     noiseTarget: null,
-    nextBark: result,
-    attackCooldown: 0,
+    barkAt: now + result,
+    attackAt: now,
     attacking: false,
     barks: 0,
     alerts: 0,
@@ -219,15 +230,10 @@ function listen(
   state: Wander,
   at: Point,
   game: Session,
-  config: ChaserConfig,
 ): { result: Heard | null; seed: number } {
   return withSeed(state.seed, (rng) => {
     let clearest: Heard | null = null;
-    for (const heard of noisesHeardBy(game, {
-      at,
-      range: config.hearingRange,
-      rng,
-    })) {
+    for (const heard of noisesHeardBy(game, { at, rng })) {
       if (clearest === null || heard.clarity > clearest.clarity)
         clearest = heard;
     }
@@ -236,8 +242,8 @@ function listen(
 }
 
 /**
- * Heads for `heard`, planning anew unless the route already heads close enough to it. A noise
- * no route reaches is ignored.
+ * Heads for `heard`, planning anew unless the route already heads close enough to it, and
+ * stands a while once there. A noise no route reaches is ignored.
  */
 function investigate(
   state: Wander,
@@ -256,51 +262,52 @@ function investigate(
     return state;
   const route = planRoute(map, config.radius, at, heard);
   if (route === null || route.length === 0) return state;
-  return { ...state, route, noiseTarget: heard };
+  return { ...state, route, noiseTarget: heard, standUntil: null };
 }
 
 /**
  * Walks its route, turning it towards the clearest noise it hears; at the end of a route it
- * stands, then picks a new leg.
+ * stands a while, then picks a new leg.
  */
 function wander(
   state: Wander,
   at: Point,
-  dt: number,
   game: Session,
   config: ChaserConfig,
 ): Wander {
   const { map } = game.world;
-  const { result: heard, seed } = listen(state, at, game, config);
+  const { result: heard, seed } = listen(state, at, game);
   if (heard !== null)
     return investigate({ ...state, seed }, at, heard.at, map, config);
   if (state.route.length > 0) return state;
   const standing = { ...state, noiseTarget: null };
-  if (standing.pause > 0)
-    return { ...standing, pause: Math.max(0, standing.pause - dt) };
-  const leg = withSeed(standing.seed, (rng) => ({
-    route: wanderLeg(map, at, rng, config) ?? [],
-    pause: pauseLength(rng, config),
-  }));
-  return { ...standing, seed: leg.seed, ...leg.result };
+  if (standing.standUntil === null) return stand(standing, game, config);
+  if (game.worldTime < standing.standUntil) return standing;
+  const leg = withSeed(standing.seed, (rng) => wanderLeg(map, at, rng, config));
+  return {
+    ...standing,
+    seed: leg.seed,
+    route: leg.result ?? [],
+    standUntil: null,
+  };
+}
+
+/** Stands from now for a pause drawn from its seed. */
+function stand(state: Wander, game: Session, config: ChaserConfig): Wander {
+  const { result, seed } = withSeed(state.seed, (rng) =>
+    pauseLength(rng, config),
+  );
+  return { ...state, seed, standUntil: game.worldTime + result };
 }
 
 /** What a chaser carries over from `state` on changing mode. */
 function kept(state: ChaserState) {
-  const {
-    seed,
-    nextBark,
-    attackCooldown,
-    attacking,
-    barks,
-    alerts,
-    attacks,
-    facing,
-  } = state;
+  const { seed, barkAt, attackAt, attacking, barks, alerts, attacks, facing } =
+    state;
   return {
     seed,
-    nextBark,
-    attackCooldown,
+    barkAt,
+    attackAt,
     attacking,
     barks,
     alerts,
@@ -334,19 +341,23 @@ function pursue(
 }
 
 /** Back to wandering, standing a while first. */
-function giveUp(state: ChaserState, config: ChaserConfig): Wander {
-  const { result, seed } = withSeed(state.seed, (rng) =>
-    pauseLength(rng, config),
+function giveUp(
+  state: ChaserState,
+  game: Session,
+  config: ChaserConfig,
+): Wander {
+  return stand(
+    {
+      ...kept(state),
+      mode: "wander",
+      route: [],
+      target: null,
+      standUntil: null,
+      noiseTarget: null,
+    },
+    game,
+    config,
   );
-  return {
-    ...kept(state),
-    mode: "wander",
-    seed,
-    route: [],
-    target: null,
-    pause: result,
-    noiseTarget: null,
-  };
 }
 
 /**
@@ -357,15 +368,14 @@ function giveUp(state: ChaserState, config: ChaserConfig): Wander {
 function think(
   state: ChaserState,
   at: Point,
-  dt: number,
   game: Session,
   config: ChaserConfig,
 ): ChaserState {
   const { map } = game.world;
   const seen = sighting(game, at, config.sightRange, state.facing);
   if (seen !== null) return pursue(state, at, seen, map, config);
-  if (state.mode === "wander") return wander(state, at, dt, game, config);
-  return state.route.length > 0 ? state : giveUp(state, config);
+  if (state.mode === "wander") return wander(state, at, game, config);
+  return state.route.length > 0 ? state : giveUp(state, game, config);
 }
 
 /** How close a player must be to a chaser of `radius` to be hit by its attack. */
@@ -377,40 +387,42 @@ function attackRange(
   return Math.max(config.attackRange, radius + game.config.player.radius + 1);
 }
 
-/** Ticks the attack cooldown, and attacks once the chaser is close to where it is headed. */
+/** Attacks once the cooldown is over and the chaser is close to where it is headed. */
 function attack(
   state: ChaserState,
   at: Point & { readonly radius: number },
-  dt: number,
   game: Session,
   config: ChaserConfig,
 ): ChaserState {
-  const attackCooldown = Math.max(0, state.attackCooldown - dt);
   const { target } = state;
   const attacking =
-    attackCooldown === 0 &&
+    game.worldTime >= state.attackAt &&
     target !== null &&
     Math.hypot(target.x - at.x, target.y - at.y) <=
       attackRange(at.radius, game, config);
-  if (!attacking) return { ...state, attacking, attackCooldown };
+  if (!attacking) return { ...state, attacking };
   return {
     ...state,
     attacking,
-    attackCooldown: config.attackCooldown,
+    attackAt: game.worldTime + config.attackCooldown,
     attacks: state.attacks + 1,
   };
 }
 
-/** Ticks the bark timer, barking and drawing a fresh gap once it runs out. */
+/** Barks once its time comes, drawing when to bark next. */
 function bark(
   state: ChaserState,
-  dt: number,
+  game: Session,
   config: ChaserConfig,
 ): ChaserState {
-  const nextBark = state.nextBark - dt;
-  if (nextBark > 0) return { ...state, nextBark };
+  if (game.worldTime < state.barkAt) return state;
   const { result, seed } = withSeed(state.seed, (rng) => barkGap(rng, config));
-  return { ...state, seed, nextBark: result, barks: state.barks + 1 };
+  return {
+    ...state,
+    seed,
+    barkAt: game.worldTime + result,
+    barks: state.barks + 1,
+  };
 }
 
 function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
@@ -419,8 +431,8 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
     maxHealth: config.maxHealth,
     data: ChaserState,
     update(entity, state, dt, game) {
-      const thought = think(state, entity, dt, game, config);
-      const next = bark(attack(thought, entity, dt, game, config), dt, config);
+      const thought = think(state, entity, game, config);
+      const next = bark(attack(thought, entity, game, config), game, config);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
       const route = steer(entity, next.route, speed, dt);
@@ -474,6 +486,7 @@ export const chaser = defineEntity("chaser", (config: ChaserConfig) => ({
   spawn: {
     at: "scatter",
     ...config.spawn,
-    data: (rng: Rng) => freshChaser(Math.floor(rng() * 2 ** 32), config),
+    data: (rng: Rng, game: Session) =>
+      freshChaser(Math.floor(rng() * 2 ** 32), game.worldTime, config),
   },
 }));

@@ -7,8 +7,15 @@ import {
   hurtPlayer,
   knockBack,
   playersIn,
+  predict,
 } from "../../sim/index.js";
-import type { Circle, ItemUse, Point, Session } from "../../sim/index.js";
+import type {
+  Circle,
+  ItemUse,
+  Point,
+  Session,
+  WorldEntity,
+} from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
@@ -28,8 +35,8 @@ export interface ShovelConfig {
   readonly duration: number;
   /** Volume of a swing's sound, 0..1. */
   readonly volume: number;
-  /** How loud a swing that hits is, as a multiple of a listener's hearing range. */
-  readonly hitLoudness: number;
+  /** How far, in pixels, the noise of a swing that hits carries. */
+  readonly hitNoiseRadius: number;
 }
 
 const SOUNDS = { hit: hitUrl, miss: missUrl } as const;
@@ -75,6 +82,11 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   /** Whether `area` touches anything a swing by player `by` hits. */
   const hits = (game: Session, area: Circle, by: string): boolean =>
     entitiesIn(game, area).length + playersIn(game, area, by).length > 0;
+  /** Hurts `entity` and knocks it away from a swinger at `at`. */
+  const strike = (game: Session, entity: WorldEntity, at: Point): void => {
+    applyDamage(entity, config.damage);
+    knockBack(entity, at, config.knockback, game.world.map, "stay");
+  };
   return {
     name: "Shovel",
     emoji: "🪏",
@@ -84,17 +96,19 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
       const area = hitbox(at, aim);
       const { center } = area;
       const hit = hits(game, area, by);
-      for (const entity of entitiesIn(game, area)) {
-        applyDamage(entity, config.damage);
-        knockBack(entity, at, config.knockback, game.world.map, "stay");
-      }
+      for (const entity of entitiesIn(game, area)) strike(game, entity, at);
       for (const player of playersIn(game, area, by))
         hurtPlayer(game, player, config.damage, {
           from: at,
           distance: config.knockback,
         });
       if (hit)
-        broadcastNoise(game, { at: center, loudness: config.hitLoudness });
+        broadcastNoise(game, { at: center, radius: config.hitNoiseRadius });
+    },
+    predict(game, at, aim, action) {
+      predict(game, action, entitiesIn(game, hitbox(at, aim)), (entity) => {
+        strike(game, entity, at);
+      });
     },
     show(game, at, aim, by) {
       const area = hitbox(at, aim);

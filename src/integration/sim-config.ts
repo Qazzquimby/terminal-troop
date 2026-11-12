@@ -13,8 +13,8 @@ import type { SimConfig } from "../sim/index.js";
 /**
  * Tuning for tests that build a whole session. A full stamina bar lasts 3s of sprinting and
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
- * where it was made. Walking steps every 0.5s at loudness 0.5; sprinting every 0.25s at 1.5;
- * crouching, at half speed, every 0.75s at 0.2. A player new to a world starts within 100px of its
+ * where it was made. Walking steps every 0.5s, heard 150px off; sprinting every 0.25s, 450px off;
+ * crouching, at half speed, every 0.75s, 60px off. A player new to a world starts within 100px of its
  * rally point.
  */
 export const testSimConfig: SimConfig = {
@@ -38,6 +38,7 @@ export const testSimConfig: SimConfig = {
   net: {
     smoothing: 12,
     useSlack: { distance: 40, seconds: 0.1 },
+    predictionHold: 0.5,
     moves: {
       slack: 10,
       lateSeconds: 0.2,
@@ -47,18 +48,16 @@ export const testSimConfig: SimConfig = {
   },
   noise: { blur: 0.2 },
   footsteps: {
-    walk: { interval: 0.5, loudness: 0.5 },
-    sprint: { interval: 0.25, loudness: 1.5 },
-    crouch: { interval: 0.75, loudness: 0.2 },
+    walk: { interval: 0.5, radius: 150 },
+    sprint: { interval: 0.25, radius: 450 },
+    crouch: { interval: 0.75, radius: 60 },
   },
   worldItems: { radius: 8, cooldown: 0.2 },
 };
 
-/** The local player hears a noise of loudness 1 from 300px, and sees it ripple for 0.5s. */
+/** Each noise the local player hears ripples for 0.5s. */
 export const testRippleConfig: RippleConfig = {
-  hearingRange: 300,
   duration: 0.5,
-  radius: { min: 10, perLoudness: 50 },
   width: { sharp: 2, soft: 10 },
   alpha: { sharp: 1, soft: 0.2 },
   colour: "#fff",
@@ -75,7 +74,7 @@ export const testMapMemoryConfig: MapMemoryConfig = {
 /**
  * Three chasers in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
- * seconds, and hear a noise of loudness 1 from 300px. A cruiser starts at the rally point, lighting 400px round it.
+ * seconds. A cruiser starts at the rally point, lighting 400px round it.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   chaser: {
@@ -92,7 +91,6 @@ export const testEntitiesConfig: EntitiesConfig = {
     barkGap: { min: 4, max: 8 },
     attackRange: 32,
     attackCooldown: 1.5,
-    hearingRange: 300,
   },
   cruiser: { lightRadius: 400 },
 };
@@ -111,7 +109,7 @@ export const testItemsConfig: ItemsConfig = {
     cooldown: 0.5,
     duration: 0.1,
     volume: 1,
-    hitLoudness: 1,
+    hitNoiseRadius: 300,
   },
   scrap: {
     value: 2,
@@ -126,7 +124,8 @@ export const testItemsConfig: ItemsConfig = {
 /**
  * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
  * test chaser falls to its fourth, sending what it hits two of its own body lengths away. It costs
- * a third of the test stamina bar, at most twice a second.
+ * a third of the test stamina bar, at most twice a second. The host turns it down if the kicker
+ * says its lunge ended more than 20px from where the host reckons it did.
  */
 export const testMovesConfig: MovesConfig = {
   kick: {
@@ -136,8 +135,8 @@ export const testMovesConfig: MovesConfig = {
     knockback: 2,
     cooldown: 0.5,
     stamina: 30,
-    lunge: { lengths: 1, seconds: 0.1 },
-    loudness: 1,
+    lunge: { lengths: 1, seconds: 0.1, slack: 20 },
+    noiseRadius: 300,
   },
 };
 
@@ -150,7 +149,17 @@ export const testFlashConfig: FlashConfig = {
   colour: { hit: "#f00", miss: "#888" },
 };
 
+const SILENT: Awaited<ReturnType<Sfx["play"]>> = {
+  stop: () => undefined,
+  setVolume: () => undefined,
+  setPosition: () => undefined,
+};
+
 /** Sound effects for sessions under test; nothing plays. */
 export function testSfx(): Sfx {
-  return createSfx({ full: 0, silent: 1000, pan: 500 });
+  return {
+    ...createSfx({ full: 0, silent: 1000, pan: 500 }),
+    play: () => Promise.resolve(SILENT),
+    playLoop: () => Promise.resolve(SILENT),
+  };
 }

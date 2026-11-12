@@ -190,10 +190,10 @@ test("content of several kinds registers them all and spawns them together", () 
       data,
     })),
   ).toEqual([
-    { id: "me:1", kind: 1, x: 100, data: {} },
-    { id: "me:2", kind: 2, x: 140, data: { coffin: "me:1" } },
-    { id: "me:3", kind: 1, x: 400, data: {} },
-    { id: "me:4", kind: 2, x: 440, data: { coffin: "me:3" } },
+    { id: "1", kind: 1, x: 100, data: {} },
+    { id: "2", kind: 2, x: 140, data: { coffin: "1" } },
+    { id: "3", kind: 1, x: 400, data: {} },
+    { id: "4", kind: 2, x: 440, data: { coffin: "3" } },
   ]);
 });
 

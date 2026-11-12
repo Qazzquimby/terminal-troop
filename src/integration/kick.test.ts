@@ -139,7 +139,7 @@ test("a kick lunges the kicker one body length, spends its stamina and goes to t
       event: "kicked",
       route: "host",
       to: null,
-      payload: { x: 300 + PLAYER_LENGTH, y: 300, aim: 0 },
+      payload: { x: 300 + PLAYER_LENGTH, y: 300, aim: 0, action: 1 },
     },
   ]);
   wait(game, kick.lunge.seconds + DT);
@@ -331,7 +331,7 @@ async function pair() {
     a.frame(clock.now());
     step(b, idle);
   };
-  return { a, b, exchange, seen, step };
+  return { a, b, clock, exchange, seen, step };
 }
 
 /** Puts `room`'s local player at `at`, still. */
@@ -403,10 +403,64 @@ test("a kick makes a noise from its hitbox on every client, the kicker its sourc
   exchange({ b: kickRight(sessionOf(b)) });
   const noise = {
     at: { x: TARGET.x, y: TARGET.y },
-    loudness: kick.loudness,
+    radius: kick.noiseRadius,
     source: "b",
   };
   expect(sessionOf(b).noises).toEqual([noise]);
   updateSession(sessionOf(a), idle, DT);
   expect(sessionOf(a).noises).toEqual([noise]);
+});
+
+/** Sends a kick from `room`'s client as if it lunged to `at`, whatever its lunge did. */
+function forgeKick(room: Room, at: Point & { aim: number }): void {
+  sessionOf(room).outbox.push({
+    content: "move/kick",
+    event: "kicked",
+    route: "host",
+    to: null,
+    payload: { ...at, action: 1 },
+  });
+}
+
+test("the host turns down a kick that says it lunged further than the host reckons", async () => {
+  const { a, b, exchange, seen, step } = await lineUp();
+  const facingRight = { ...idle, aim: { x: GUEST.x + 1000, y: GUEST.y } };
+  exchange({ b: facingRight });
+  forgeKick(b, { x: GUEST.x, y: GUEST.y + 30, aim: 0 });
+  exchange({ b: facingRight });
+  step(a, idle);
+  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
+  expect(seen.a.list).toEqual([]);
+  expect(seen.b.list).toEqual([]);
+});
+
+test("a kick whose lunge the host sees stopped by a wall lands where the host reckons", async () => {
+  const { a, b, exchange, seen, step } = await pair();
+  const wall = sessionOf(a).world.W;
+  const start = { x: wall - 25, y: 300 };
+  place(a, { x: 450, y: 150 });
+  place(b, start);
+  const facingWall = { ...idle, aim: { x: wall + 1000, y: start.y } };
+  exchange({ b: facingWall });
+  exchange({ b: facingWall });
+  forgeKick(b, { x: start.x + PLAYER_LENGTH, y: start.y, aim: 0 });
+  exchange({ b: facingWall });
+  step(a, idle);
+  const flash = seen.a.list[0];
+  if (flash === undefined) throw new Error("no kick landed");
+  const end = flash.at.x - kick.reach;
+  expect(end).toBeGreaterThan(start.x);
+  expect(end).toBeLessThanOrEqual(wall - testSimConfig.player.radius);
+  expect(flash.at.y).toBeCloseTo(start.y);
+});
+
+test("a guest that turns and kicks between its ticks lands the kick where it aimed", async () => {
+  const { a, b, clock, exchange } = await lineUp();
+  exchange();
+  b.frame(clock.now());
+  const guest = sessionOf(b);
+  updateSession(guest, kickRight(guest), DT);
+  b.frame(clock.now());
+  updateSession(sessionOf(a), idle, DT);
+  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
 });

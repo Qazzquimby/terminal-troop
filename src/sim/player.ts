@@ -216,6 +216,25 @@ export function updatePlayer(
 }
 
 /**
+ * Where a body of `radius` dashing `distance` pixels from `from` towards `aim` (radians) stops,
+ * if `others` and the walls stay where they are.
+ */
+export function dashEnd(
+  from: Point & { readonly radius: number },
+  aim: number,
+  distance: number,
+  map: TileMap,
+  others: readonly CollisionBody[],
+): Point {
+  const direction = { x: Math.cos(aim), y: Math.sin(aim) };
+  const free = Math.min(distance, distanceToContact(from, direction, others));
+  return lastFreePointAlong(map, from.radius, from, {
+    x: from.x + direction.x * free,
+    y: from.y + direction.y * free,
+  });
+}
+
+/**
  * Starts `player` dashing `distance` pixels towards `aim` (radians) over `seconds`, and returns
  * where it stops if `others` and the walls stay where they are.
  */
@@ -227,14 +246,13 @@ export function startDash(
   map: TileMap,
   others: readonly CollisionBody[],
 ): Point {
-  const direction = { x: Math.cos(aim), y: Math.sin(aim) };
   const speed = distance / seconds;
-  player.dash = { vx: direction.x * speed, vy: direction.y * speed, seconds };
-  const free = Math.min(distance, distanceToContact(player, direction, others));
-  return lastFreePointAlong(map, player.radius, player, {
-    x: player.x + direction.x * free,
-    y: player.y + direction.y * free,
-  });
+  player.dash = {
+    vx: Math.cos(aim) * speed,
+    vy: Math.sin(aim) * speed,
+    seconds,
+  };
+  return dashEnd(player, aim, distance, map, others);
 }
 
 /**
