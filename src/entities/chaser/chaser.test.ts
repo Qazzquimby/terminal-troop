@@ -378,6 +378,7 @@ describe("sounds", () => {
       y: 400,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: {},
     });
     chaserAt(game, 100, 400);
@@ -412,6 +413,7 @@ describe("hearing", () => {
       y,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: { "core/movement": { mode, moving: true } },
     });
   }

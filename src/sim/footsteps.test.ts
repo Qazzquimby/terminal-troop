@@ -98,6 +98,7 @@ describe("a remote player's footsteps", () => {
       y: 300,
       aim: 0,
       health: 100,
+      epoch: 0,
       content,
     });
 

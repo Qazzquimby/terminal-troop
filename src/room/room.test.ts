@@ -376,6 +376,7 @@ async function withListener() {
       ...spot,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: {},
     });
   };
@@ -439,6 +440,7 @@ describe("players and voice", () => {
       y: 0,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: {},
     });
     expect(hasX()).toBe(false);
@@ -481,6 +483,7 @@ describe("players and voice", () => {
       ...spot,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: { "core/items": "laser" },
     });
     const remote = session.players.get("x");
@@ -604,6 +607,7 @@ describe("content's player state", () => {
         ...spot,
         aim: 0,
         health: 100,
+        epoch: 0,
         content: entries,
       });
       const remote = session.players.get("x");
@@ -865,6 +869,7 @@ describe("payloads that do not parse are dropped", () => {
       ...spot,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: {},
     });
     expect(session.players.has("x")).toBe(false);
@@ -879,6 +884,7 @@ describe("payloads that do not parse are dropped", () => {
       ...spot,
       aim: 0,
       health: 100,
+      epoch: 0,
       content: {},
     });
     other.send(NetEvent.BYE, { who: "x" });

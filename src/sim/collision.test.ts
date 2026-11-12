@@ -175,6 +175,7 @@ test("player separation does not move remote players", () => {
     y: 300,
     aim: 0,
     health: 100,
+    epoch: 0,
     content: {},
   });
 

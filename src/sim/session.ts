@@ -16,6 +16,8 @@ import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
+import type { ForcedMove } from "./forced-move.js";
+import { followForcedMoves, positionHeld } from "./forced-move.js";
 import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
@@ -118,6 +120,12 @@ export interface Session {
   readonly flashes: Flash[];
   /** What this client predicted of each entity, held until the host confirms it, by entity id. */
   readonly predictions: Map<string, Prediction>;
+  /** The latest forced move this client has heard of on each remote player, by player id. */
+  readonly forcedSeen: Map<string, ForcedMove>;
+  /** The local player's epoch has settled on the room's count: heard from the host, or hosting. */
+  epochSettled: boolean;
+  /** For trying out a client that cheats: the local player takes no forced moves. */
+  ignoresForcedMoves: boolean;
   /** The number of the local player's latest action; 0 before its first. */
   lastAction: number;
   /**
@@ -213,6 +221,9 @@ export function createSession(
     contents: [],
     flashes: [],
     predictions: new Map(),
+    forcedSeen: new Map(),
+    epochSettled: false,
+    ignoresForcedMoves: false,
     lastAction: 0,
     reportNow: false,
   };
@@ -268,9 +279,11 @@ export function updateSession(
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);
+    stepDash(player, dt, game.world.map, solidBodiesBut(game, player));
   }
 
   applyEvents(game);
+  followForcedMoves(game);
   emitFootsteps(game, dt);
   settlePredictions(game);
   if (game.hosting) updateEntities(game, dt);
@@ -279,16 +292,21 @@ export function updateSession(
   separateSessionBodies(game);
 }
 
-/** The local player's state, as its STATE reports it. */
+/**
+ * The local player's state, as its STATE reports it. While it slides where the host forced it,
+ * it reports where the slide ends, where every client is already moving it.
+ */
 export function playerState(game: Session): PlayerState {
   const { local } = game;
+  const at = local.dash?.to ?? local;
   return {
     id: local.id,
     name: local.name,
-    x: local.x,
-    y: local.y,
+    x: at.x,
+    y: at.y,
     aim: local.aim,
     health: local.health,
+    epoch: local.epoch,
     content: contentState(game),
   };
 }
@@ -301,7 +319,8 @@ export function removePlayer(game: Session, id: string): boolean {
 
 /**
  * Applies a remote player's reported state: "added" when the player is new to the session,
- * "rejected" for the local player's own id or a position inside a wall.
+ * "rejected" for the local player's own id or a position inside a wall. A known player's position
+ * stays put while `positionHeld` holds it back. The rest applies: forced moves only move players.
  */
 export function applyRemoteState(
   game: Session,
@@ -324,8 +343,12 @@ export function applyRemoteState(
   player.health = Math.min(state.health, player.maxHealth);
   applyContentState(game, player, state.content);
 
-  player.tx = state.x;
-  player.ty = state.y;
+  if (known === undefined || !positionHeld(game, state)) {
+    player.tx = state.x;
+    player.ty = state.y;
+    player.epoch = state.epoch;
+  }
+  player.heardEpoch = Math.max(player.heardEpoch, state.epoch);
   player.taim = state.aim;
   return known === undefined ? "added" : "updated";
 }

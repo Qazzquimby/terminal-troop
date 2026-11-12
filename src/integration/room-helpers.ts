@@ -207,6 +207,10 @@ export function createHub() {
       pending = held.filter((message) => message.to !== to);
       for (const message of held) if (message.to === to) message.deliver();
     },
+    /** Loses what is held for member `to`, and goes on holding. */
+    drop(to: string) {
+      pending = (pending ?? []).filter((message) => message.to !== to);
+    },
     /** Delivers everything held, in the order sent, and stops holding. */
     flush() {
       const held = pending ?? [];

@@ -189,6 +189,7 @@ test("the lunge never runs into a player in the way", () => {
     y: 300,
     aim: 0,
     health: 100,
+    epoch: 0,
     content: {},
   });
   updateSession(game, kickRight(game), DT);
