@@ -247,10 +247,12 @@ test("the snapshot that shows the hit takes over smoothly, and agrees on damage"
 });
 
 test("a kick the host turns down eases the chaser back to where the host has it", async () => {
-  const { a, b, step, exchange, reset } = await lineUp(KICKED);
+  const { a, b, step, frame, exchange, reset } = await lineUp(KICKED);
   const guest = sessionOf(b);
   step(b, kickRight(guest));
-  exchange();
+  frame(b);
+  step(a);
+  frame(a);
   expect(chaserOf(a).health).toBe(MAX_HEALTH - kick.damage);
   // The guest kicks again within the host's cooldown, its own count cleared.
   reset(KICKED);

@@ -219,24 +219,28 @@ export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   ];
 }
 
+/** The lights entities give off, such as a cruiser's lamp, apart from any viewer's own. */
+export function emittedLights(game: Session): LightSource[] {
+  const lights: LightSource[] = [];
+  game.entities.forEach((entity) => {
+    const emission = game.entityTypes.get(entity.kind)?.light(entity);
+    if (emission === undefined || emission === null) return;
+    lights.push({ ...emission, x: entity.x, y: entity.y });
+  });
+  return lights;
+}
+
 export function lightSources(game: Session, viewer: Viewer): LightSource[] {
   const [cone, surroundings] = directionalVision(
     viewer,
     viewer.aim,
     game.config.vision,
   );
-  const lights: LightSource[] = [
+  return [
     { ...cone, range: game.config.light.range },
     surroundings,
+    ...emittedLights(game),
   ];
-
-  game.entities.forEach((entity) => {
-    const emission = game.entityTypes.get(entity.kind)?.light(entity);
-    if (emission === undefined || emission === null) return;
-    lights.push({ ...emission, x: entity.x, y: entity.y });
-  });
-
-  return lights;
 }
 
 export function isVisible(

@@ -121,7 +121,8 @@ export const testItemsConfig: ItemsConfig = {
 /**
  * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
  * test chaser falls to its fourth, sending what it hits two of its own body lengths away. It costs
- * a third of the test stamina bar, at most twice a second.
+ * a third of the test stamina bar, at most twice a second. The host turns it down if the kicker
+ * says its lunge ended more than 20px from where the host reckons it did.
  */
 export const testMovesConfig: MovesConfig = {
   kick: {
@@ -131,7 +132,7 @@ export const testMovesConfig: MovesConfig = {
     knockback: 2,
     cooldown: 0.5,
     stamina: 30,
-    lunge: { lengths: 1, seconds: 0.1 },
+    lunge: { lengths: 1, seconds: 0.1, slack: 20 },
     loudness: 1,
   },
 };
@@ -145,7 +146,17 @@ export const testFlashConfig: FlashConfig = {
   colour: { hit: "#f00", miss: "#888" },
 };
 
+const SILENT: Awaited<ReturnType<Sfx["play"]>> = {
+  stop: () => undefined,
+  setVolume: () => undefined,
+  setPosition: () => undefined,
+};
+
 /** Sound effects for sessions under test; nothing plays. */
 export function testSfx(): Sfx {
-  return createSfx({ full: 0, silent: 1000, pan: 500 });
+  return {
+    ...createSfx({ full: 0, silent: 1000, pan: 500 }),
+    play: () => Promise.resolve(SILENT),
+    playLoop: () => Promise.resolve(SILENT),
+  };
 }

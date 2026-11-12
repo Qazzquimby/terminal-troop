@@ -268,7 +268,7 @@ export function separateBodies(
  * leaves no room at all, and one behind it is no obstacle.
  */
 export function distanceToContact(
-  body: CollisionBody,
+  body: Pick<CollisionBody, "x" | "y" | "radius">,
   direction: Point,
   others: readonly CollisionBody[],
 ): number {
