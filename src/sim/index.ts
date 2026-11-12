@@ -67,6 +67,7 @@ export { hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export { spendStamina } from "./stamina.js";
+export { hostSpends } from "./stamina-checks.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, dashEnd, startDash } from "./player.js";
 export { playerData } from "./player-data.js";
