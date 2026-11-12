@@ -28,6 +28,7 @@ export const testSimConfig: SimConfig = {
     inventorySlots: 4,
     maxHealth: 100,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
@@ -39,6 +40,7 @@ export const testSimConfig: SimConfig = {
     sprint: { interval: 0.25, loudness: 1.5 },
     crouch: { interval: 0.75, loudness: 0.2 },
   },
+  worldItems: { radius: 8, cooldown: 0.2 },
 };
 
 /** The local player hears a noise of loudness 1 from 300px, and sees it ripple for 0.5s. */

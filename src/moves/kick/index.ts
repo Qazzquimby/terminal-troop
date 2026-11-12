@@ -6,7 +6,9 @@ import {
   contentEvent,
   entitiesIn,
   hostAccepts,
+  hurtPlayer,
   knockBack,
+  playersIn,
   showFlash,
   spendStamina,
   solidBodiesBut,
@@ -21,9 +23,9 @@ export interface KickConfig {
   readonly reach: number;
   /** The radius of the hitbox. */
   readonly radius: number;
-  /** Damage dealt to every world entity in the hitbox. */
+  /** Damage dealt to every world entity and other player in the hitbox. */
   readonly damage: number;
-  /** How far a kicked entity is pushed away from the kicker, in its own body lengths. */
+  /** How far a kicked entity or player is pushed away from the kicker, in its own body lengths. */
   readonly knockback: number;
   /** Minimum time between kicks. */
   readonly cooldown: number;
@@ -62,7 +64,8 @@ const SOUNDS = { use: useUrl } as const;
 /**
  * The kick: what every player can do empty-handed, whatever it holds, on the secondary action.
  * The kicker lunges a little, up to whatever is in its way, and spends stamina on its own client; the host checks the kick, then hurts and knocks back
- * every world entity in front of the kicker, never a player, and makes a noise.
+ * every world entity and every other player in front of the kicker, and makes a noise. A kicked
+ * player takes its blow on its own client.
  */
 export const kick: Content<"kick", KickConfig> = {
   name: "kick",
@@ -90,18 +93,25 @@ export const kick: Content<"kick", KickConfig> = {
       receive(game, at, by) {
         if (!hostAccepts(game, by, at, NAME, config.cooldown)) return;
         const area = hitbox(at, at.aim);
-        const hit = entitiesIn(game, area);
-        for (const entity of hit) {
+        const entities = entitiesIn(game, area);
+        for (const entity of entities) {
           applyDamage(entity, config.damage);
           const distance = bodyLength(entity) * config.knockback;
           knockBack(entity, at, distance, game.world.map, "stop");
         }
+        const players = playersIn(game, area, by);
+        for (const player of players)
+          hurtPlayer(game, player, config.damage, {
+            from: at,
+            distance: bodyLength(player) * config.knockback,
+          });
+        const hit = entities.length + players.length;
         broadcastNoise(game, {
           at: area.center,
           loudness: config.loudness,
           source: by,
         });
-        shown.send(game, { by, ...area.center, hit: hit.length > 0 });
+        shown.send(game, { by, ...area.center, hit: hit > 0 });
       },
     });
 
@@ -128,8 +138,11 @@ export const kick: Content<"kick", KickConfig> = {
           solidBodiesBut(game, local),
         );
         const area = hitbox(at, local.aim);
-        show(game, area, entitiesIn(game, area).length > 0);
-        game.sfx.play(SOUNDS.use, at, game.local)
+        const hits =
+          entitiesIn(game, area).length +
+          playersIn(game, area, game.localId).length;
+        show(game, area, hits > 0);
+        game.sfx.play(SOUNDS.use, at, game.local);
         kicked.send(game, { x: at.x, y: at.y, aim: local.aim });
       },
     };

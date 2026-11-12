@@ -21,6 +21,7 @@ const rules: PlayerRules = {
     maxHealth: 100,
     inventorySlots: 4,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: {
     max: STAMINA_MAX,
@@ -52,6 +53,7 @@ function hold(
     select: null,
     use: false,
     secondary: false,
+    interact: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {

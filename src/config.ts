@@ -79,6 +79,7 @@ export const config = {
     maxHealth: 100,
     inventorySlots: 6,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: {
     max: STAMINA_MAX,
@@ -100,9 +101,12 @@ export const config = {
     sprint: { interval: 0.3, loudness: 1.6 },
     crouch: { interval: 0.7, loudness: 0.15 },
   },
+  // Items lying about: a 16px glyph, picked up at most five times a second.
+  worldItems: { radius: 8, cooldown: 0.2 },
   room: {
     sendHz: 15,
     entityHz: 10,
+    fullSnapshotMs: 5000,
     heartbeatMs: 1000,
     presence: {
       awayAfterMs: 3500,

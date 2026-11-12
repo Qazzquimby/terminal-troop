@@ -14,6 +14,7 @@ export const ACTIONS = {
   crouch: { keys: ["KeyC"], contexts: ["play"] },
   useItem: { keys: ["MouseLeft"], contexts: ["play"] },
   secondary: { keys: ["MouseRight"], contexts: ["play"] },
+  interact: { keys: ["KeyE"], contexts: ["play"] },
   toggleInventory: { keys: ["Tab"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
@@ -74,6 +75,38 @@ export function keyLabel(code: string): string {
 /** Display text for the first key bound to `action`. */
 export function actionKeyLabel(action: Action): string {
   return keyLabel(ACTIONS[action].keys[0]);
+}
+
+export type Bindings = Readonly<
+  Record<Action, { readonly keys: readonly string[] }>
+>;
+
+/**
+ * Display text for the keys bound to `actions` taken together, e.g. "WASD / ↑←↓→"
+ * for the four move actions or "Shift" for sprint. The nth keys of every action form
+ * one group; a group of single characters runs together, others join with " / ".
+ * Repeated labels and groups are shown once.
+ */
+export function keysLabel(
+  actions: readonly Action[],
+  bindings: Bindings = ACTIONS,
+): string {
+  const depth = Math.max(0, ...actions.map((a) => bindings[a].keys.length));
+  const groups: string[] = [];
+  for (let i = 0; i < depth; i++) {
+    const labels = [
+      ...new Set(
+        actions.flatMap((a) => {
+          const code = bindings[a].keys[i];
+          return code === undefined ? [] : [keyLabel(code)];
+        }),
+      ),
+    ];
+    const compact = labels.length > 1 && labels.every((l) => l.length === 1);
+    const group = labels.join(compact ? "" : " / ");
+    if (group !== "" && !groups.includes(group)) groups.push(group);
+  }
+  return groups.join(" / ");
 }
 
 /**
@@ -259,5 +292,6 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     select: pressedSlot(frame),
     use: frame.pressed.has("useItem"),
     secondary: frame.pressed.has("secondary"),
+    interact: frame.pressed.has("interact"),
   };
 }

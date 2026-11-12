@@ -1,12 +1,15 @@
-export { isSweepFree } from "./collision.js";
+export { isSweepFree, solidBodiesBut } from "./collision.js";
 export {
+  applyEntityChanges,
   applyEntitySnapshot,
   cueEntities,
   entitySnapshot,
   registerEntityType,
+  removeEntity,
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export { spawnWorldItem } from "./world-items.js";
 export {
   defineEntity,
   defineItem,
@@ -45,12 +48,14 @@ export type {
 export { applyDamage } from "./entity.js";
 export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
-export { circleAhead, entitiesIn } from "./reach.js";
+export { hurtPlayer } from "./health.js";
+export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export { spendStamina } from "./stamina.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, startDash } from "./player.js";
 export { playerData } from "./player-data.js";
+export { applyWorldState, worldData, worldState } from "./world-data.js";
 export { movement } from "./movement.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
@@ -64,7 +69,6 @@ export {
   playerState,
   remotePlayers,
   removePlayer,
-  solidBodiesBut,
   updateSession,
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";

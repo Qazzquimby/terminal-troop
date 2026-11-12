@@ -1,7 +1,7 @@
 import type { Sfx } from "../audio/index.js";
 import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
-import { separateBodies } from "./collision.js";
+import { separateBodies, solidBodiesBut } from "./collision.js";
 import type {
   ContentEvent,
   Delivery,
@@ -29,10 +29,13 @@ import {
 } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
+import type { WorldData } from "./world-data.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
+import { interact } from "./world-items.js";
+import type { WorldItemConfig } from "./world-items.js";
 
 /** How remote players follow the state they report. */
 interface SyncConfig {
@@ -49,6 +52,7 @@ export interface SimConfig extends PlayerRules {
   readonly net: SyncConfig;
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
+  readonly worldItems: WorldItemConfig;
 }
 
 export interface Session {
@@ -76,6 +80,10 @@ export interface Session {
   readonly itemDefinitions: Map<string, ItemDefinition>;
   /** The state each content entry keeps on every player, by the entry's name. */
   readonly playerData: Map<string, PlayerData<unknown>>;
+  /** The state each content entry keeps once for the world, by the entry's name. */
+  readonly worldData: Map<string, WorldData<unknown>>;
+  /** Each entry's world state, in its wire form; an entry with nothing here reads as its initial value. */
+  readonly worldValues: Map<WorldData<unknown>, unknown>;
   /** Each content entry's events, by the entry's name, then by key. */
   readonly events: Map<string, Map<string, ContentEvent<unknown>>>;
   /** Where each registered event travels. */
@@ -151,6 +159,8 @@ export function createSession(
     items: new Map(),
     itemDefinitions: new Map(),
     playerData: new Map(),
+    worldData: new Map(),
+    worldValues: new Map(),
     events: new Map(),
     eventAddresses: new Map(),
     inbox: [],
@@ -174,17 +184,6 @@ export function remotePlayers(game: Session): Player[] {
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
 function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
-}
-
-/** Every body in the session that others collide with, but `body` itself. */
-export function solidBodiesBut(
-  game: Session,
-  body: CollisionBody,
-): CollisionBody[] {
-  return [
-    ...game.players.values(),
-    ...[...game.entities.values()].filter((entity) => entity.collides),
-  ].filter((other) => other !== body);
 }
 
 function separateSessionBodies(game: Session): void {
@@ -220,6 +219,7 @@ export function updateSession(
   stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
+  if (controls.interact) interact(game);
   for (const content of game.contents) content.act?.(game, controls);
 
   for (const player of remotePlayers(game)) {

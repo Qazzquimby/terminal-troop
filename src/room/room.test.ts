@@ -38,6 +38,7 @@ const idle = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT
@@ -1119,6 +1120,7 @@ describe("host", () => {
       expect(kinds(get("a"))).toEqual([
         ["blob", 1],
         ["biter", 2],
+        ["core/world-item", 3],
       ]);
       expect(kinds(get("b"))).toEqual(kinds(get("a")));
 
@@ -1240,18 +1242,27 @@ describe("host", () => {
       const data = { steps: 0 };
       listener.send(NetEvent.ENTITIES, {
         host: "b",
+        full: true,
         entities: [{ ...entity, data }],
+        world: {},
+        removed: [],
       });
       listener.send(NetEvent.ENTITIES, {
         host: "z",
+        full: true,
         entities: [{ ...entity, data }],
+        world: {},
+        removed: [],
       });
       expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
       expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
 
       listener.send(NetEvent.ENTITIES, {
         host: "a",
+        full: true,
         entities: [{ ...entity, data }],
+        world: {},
+        removed: [],
       });
       expect(ids(get("b"))).toEqual(["z:1"]);
     });
