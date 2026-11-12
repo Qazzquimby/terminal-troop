@@ -1,7 +1,7 @@
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
 import { forcedMoveEvents, forcedMoves } from "./forced-move.js";
-import { damaged } from "./health.js";
+import { playerHealth } from "./health.js";
 import { movement } from "./movement.js";
 import { noiseMade } from "./noise.js";
 import { registerPlayerData } from "./player-data.js";
@@ -31,8 +31,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/movement": { player: movement },
   /** Each noise the host makes, made again on every client. */
   "core/noise": { events: { made: noiseMade } },
-  /** The damage the host deals each player, sent to that player's own client. */
-  "core/health": { events: { damage: damaged } },
+  /** Each player's health, which the host alone changes. */
+  "core/health": { world: { players: playerHealth } },
   /**
    * Each move the host forces on a player, a correction or a knockback, and the latest on each
    * player for clients that missed it.

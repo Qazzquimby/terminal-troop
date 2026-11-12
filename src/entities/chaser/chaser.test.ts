@@ -16,6 +16,7 @@ import {
   isAreaFree,
   registerContent,
   spawnEntity,
+  takeWorldEntries,
   updateSession,
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
@@ -374,7 +375,7 @@ describe("sounds", () => {
     expect(played(game)).toContain(attackUrl);
   });
 
-  test("an attack on a remote player waits to be sent to it", () => {
+  test("an attack on a remote player comes off the host's record of its health", () => {
     const game = world();
     standAt(game, 100, 100);
     applyRemoteState(game, {
@@ -383,22 +384,17 @@ describe("sounds", () => {
       x: 300,
       y: 400,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: {},
     });
     chaserAt(game, 100, 400);
-    expect(runUntil(game, 3, () => game.outbox.length > 0)).toBe(true);
-    expect(game.outbox).toEqual([
-      {
-        content: "core/health",
-        event: "damage",
-        route: "player",
-        to: "them",
-        payload: { amount: config.attackDamage },
-      },
-    ]);
-    expect(game.players.get("them")?.health).toBe(100);
+    const them = () => game.players.get("them")?.health;
+    expect(runUntil(game, 3, () => them() !== 100)).toBe(true);
+    expect(them()).toBe(100 - config.attackDamage);
+    expect(game.outbox).toEqual([]);
+    expect(takeWorldEntries(game, false)).toEqual({
+      "core/health.players": [1, { them: 100 - config.attackDamage }],
+    });
   });
 });
 
@@ -419,7 +415,6 @@ describe("hearing", () => {
       x,
       y,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: { "core/movement": { mode, moving: true } },
     });

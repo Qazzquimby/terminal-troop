@@ -11,8 +11,10 @@ import { NetEvent } from "../net/index.js";
 import {
   applyDamage,
   contentEvent,
+  Health,
   heldItemId,
   heldItemOf,
+  hurtPlayer,
   playerData,
   playerState,
   randomFreePosition,
@@ -26,7 +28,7 @@ import type { Point, Session, WorldContent } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import type { Voice } from "../voice/index.js";
 import { z } from "zod";
-import { Health, roomMessages } from "./protocol.js";
+import { roomMessages } from "./protocol.js";
 import { createRoom } from "./room.js";
 import type { Room, RoomState } from "./room.js";
 
@@ -375,7 +377,6 @@ async function withListener() {
       name: "X",
       ...spot,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: {},
     });
@@ -439,7 +440,6 @@ describe("players and voice", () => {
       x: 0,
       y: 0,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: {},
     });
@@ -482,7 +482,6 @@ describe("players and voice", () => {
       name: "X",
       ...spot,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: { "core/items": "laser" },
     });
@@ -606,7 +605,6 @@ describe("content's player state", () => {
         name,
         ...spot,
         aim: 0,
-        health: 100,
         epoch: 0,
         content: entries,
       });
@@ -868,7 +866,6 @@ describe("payloads that do not parse are dropped", () => {
       name: 5,
       ...spot,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: {},
     });
@@ -883,7 +880,6 @@ describe("payloads that do not parse are dropped", () => {
       name: "X",
       ...spot,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: {},
     });
@@ -1573,7 +1569,7 @@ describe("host", () => {
         expect(healthOf(a, "2")).toBe(10);
       });
 
-      test("a monster's strike hurts each player on its own client, and every client sees it", async () => {
+      test("a monster's strike comes off the host's record at once, and every client sees it once the record arrives", async () => {
         const { a, b } = await hosted();
         standAt(a, { x: 100, y: 500 });
         standAt(b, { x: 500, y: 500 });
@@ -1585,40 +1581,13 @@ describe("host", () => {
 
         updateSession(host, idle, 1 / 60);
         expect(host.local.health).toBe(95);
-        expect(host.players.get("b")?.health).toBe(100);
+        expect(host.players.get("b")?.health).toBe(95);
+        expect(sessionOf(b).local.health).toBe(100);
         a.clock.advance(a.clock.now() + 200);
         a.room.frame(a.clock.now());
-        expect(sessionOf(b).local.health).toBe(100);
         step(b);
         expect(sessionOf(b).local.health).toBe(95);
         expect(sessionOf(b).players.get("a")?.health).toBe(95);
-
-        b.room.frame(b.clock.now());
-        expect(host.players.get("b")?.health).toBe(95);
-      });
-
-      test("damage said to come from anyone but the host, or for another player, is ignored", async () => {
-        const { hub, a, b } = await hosted();
-        const listener = hub.listener("dev:ABC");
-        const damage = (from: string, to: string) => {
-          listener.send(NetEvent.CONTENT, {
-            from,
-            to,
-            content: "core/health",
-            event: "damage",
-            payload: { amount: 5 },
-          });
-          step(a);
-          step(b);
-        };
-        damage("b", "a");
-        damage("z", "b");
-        damage("a", "a");
-        expect(sessionOf(a).local.health).toBe(100);
-        expect(sessionOf(b).local.health).toBe(100);
-        damage("a", "b");
-        expect(sessionOf(a).local.health).toBe(100);
-        expect(sessionOf(b).local.health).toBe(95);
       });
     });
   });
@@ -1728,17 +1697,14 @@ describe("host", () => {
       ]);
     });
 
-    test("the host's damage reaches its player with no content listed", async () => {
+    test("the host's record of a player's health reaches it with no content listed", async () => {
       const { clock, get } = await gather(["a", "b"], [], []);
       clock.advance(1000);
       const [a, b] = [get("a"), get("b")];
-      sessionOf(a).outbox.push({
-        content: "core/health",
-        event: "damage",
-        route: "player",
-        to: "b",
-        payload: { amount: 5 },
-      });
+      step(a);
+      const victim = sessionOf(a).players.get("b");
+      if (victim === undefined) throw new Error("no b on the host");
+      hurtPlayer(sessionOf(a), victim, 5);
       a.room.frame(clock.now());
       step(b);
       expect(sessionOf(b).local.health).toBe(95);

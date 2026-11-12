@@ -72,7 +72,6 @@ function walkerAt(
     x,
     y: 300,
     aim: 0,
-    health: 100,
     epoch: 0,
     content: { "core/movement": { mode, moving: true } },
   });

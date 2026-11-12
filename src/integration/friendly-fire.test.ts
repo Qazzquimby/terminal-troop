@@ -270,7 +270,6 @@ test("one swing on the host hurts the world entity and the player it catches ali
     ...SWING_AT,
     y: SWING_AT.y + 10,
     aim: 0,
-    health: FULL,
     epoch: 0,
     content: {},
   });
@@ -283,14 +282,7 @@ test("one swing on the host hurts the world entity and the player it catches ali
     );
   updateSession(game, idle, DT);
   expect(dummy.health).toBe(40 - shovel.damage);
-  expect(game.outbox).toContainEqual(
-    expect.objectContaining({
-      content: "core/health",
-      event: "damage",
-      to: "them",
-      payload: { amount: shovel.damage },
-    }),
-  );
+  expect(game.players.get("them")?.health).toBe(FULL - shovel.damage);
   const aim = Math.atan2(10, shovel.reach + 5);
   const forced = game.outbox.find((sent) => sent.content === "core/position");
   expect(forced).toMatchObject({
