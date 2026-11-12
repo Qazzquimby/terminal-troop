@@ -102,7 +102,9 @@ export const config = {
   // report may land 12px past its reach, as if 0.3s more of sprinting had passed: one report late
   // by that much then the next on time. Reports are taken as they come for 2s after a player joins
   // or comes back, or the host changes, and one sent before a correction is held for a second
-  // rather than corrected again.
+  // rather than corrected again. The host reckons each player's stamina with a kick's worth over a
+  // full bar, 0.45s of sprinting, so late reports never leave it reckoning a player emptier than
+  // the player's own bar.
   net: {
     smoothing: 12,
     useSlack: { distance: 80, seconds: 0.3 },
@@ -113,6 +115,7 @@ export const config = {
       settleSeconds: 2,
       roundTripSeconds: 1,
     },
+    stamina: { slack: STAMINA_MAX * 0.15 },
   },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },

@@ -120,7 +120,6 @@ export interface PlayerState {
   readonly x: number;
   readonly y: number;
   readonly aim: number;
-  readonly health: number;
   /** The latest forced move the player has taken. */
   readonly epoch: number;
   /** Each content entry's state, encoded by the entry's schema, by the entry's name. */

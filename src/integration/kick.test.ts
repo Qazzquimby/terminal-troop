@@ -188,7 +188,6 @@ test("the lunge never runs into a player in the way", () => {
     x: 340,
     y: 300,
     aim: 0,
-    health: 100,
     epoch: 0,
     content: {},
   });

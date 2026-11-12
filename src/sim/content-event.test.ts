@@ -145,7 +145,6 @@ describe("content events", () => {
     ).toEqual([
       ["core/items", ["use"]],
       ["core/noise", ["made"]],
-      ["core/health", ["damage"]],
       ["core/position", ["forced"]],
       ["core/world-items", ["pickedUp", "dropped", "landed"]],
     ]);

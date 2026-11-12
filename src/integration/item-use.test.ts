@@ -169,7 +169,6 @@ test("a remote player holds what the host's record has in the slot it reports, a
       x: 450,
       y: 300,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: { "core/items": held },
     });

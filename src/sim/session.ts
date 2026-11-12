@@ -16,6 +16,7 @@ import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
+import { followHealth } from "./health.js";
 import type { ForcedMove } from "./forced-move.js";
 import {
   correctPlayer,
@@ -40,6 +41,8 @@ import {
 } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import { checkMove } from "./move-checks.js";
+import { trackStamina } from "./stamina-checks.js";
+import type { StaminaCheck, StaminaCheckConfig } from "./stamina-checks.js";
 import type { MoveCheck, MoveCheckConfig, MoveVerdict } from "./move-checks.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
@@ -58,6 +61,7 @@ interface SyncConfig {
   readonly smoothing: number;
   readonly useSlack: UseSlack;
   readonly moves: MoveCheckConfig;
+  readonly stamina: StaminaCheckConfig;
   /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
   readonly predictionHold: number;
 }
@@ -136,6 +140,8 @@ export interface Session {
   readonly localReadyAt: Map<string, number>;
   /** While hosting, how each remote player has moved, by player id. */
   readonly moveChecks: Map<string, MoveCheck>;
+  /** While hosting, what this client reckons of each remote player's stamina, by player id. */
+  readonly staminaChecks: Map<string, StaminaCheck>;
   /** The content registered with it, in order. */
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
@@ -244,6 +250,7 @@ export function createSession(
     readyAt: new Map(),
     localReadyAt: new Map(),
     moveChecks: new Map(),
+    staminaChecks: new Map(),
     contents: [],
     flashes: [],
     predictions: new Map(),
@@ -314,10 +321,13 @@ export function updateSession(
   followForcedMoves(game);
   emitFootsteps(game, dt);
   settlePredictions(game);
-  if (game.hosting) updateEntities(game, dt);
-  else followEntities(game, dt);
+  if (game.hosting) {
+    trackStamina(game, dt);
+    updateEntities(game, dt);
+  } else followEntities(game, dt);
 
   separateSessionBodies(game);
+  followHealth(game);
 }
 
 /**
@@ -333,7 +343,6 @@ export function playerState(game: Session): PlayerState {
     x: at.x,
     y: at.y,
     aim: local.aim,
-    health: local.health,
     epoch: local.epoch,
     content: contentState(game),
   };
@@ -343,6 +352,7 @@ export function playerState(game: Session): PlayerState {
 export function removePlayer(game: Session, id: string): boolean {
   if (id === game.localId) return false;
   game.moveChecks.delete(id);
+  game.staminaChecks.delete(id);
   return game.players.delete(id);
 }
 
@@ -371,7 +381,6 @@ export function applyRemoteState(
   }
 
   player.name = state.name;
-  player.health = Math.min(state.health, player.maxHealth);
   applyContentState(game, player, state.content);
 
   player.taim = state.aim;

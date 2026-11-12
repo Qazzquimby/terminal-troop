@@ -8,6 +8,7 @@ import {
   dashEnd,
   entitiesIn,
   hostAccepts,
+  hostSpends,
   hurtPlayer,
   knockBack,
   makeSound,
@@ -87,7 +88,9 @@ const SOUNDS = { use: sound({ url: useUrl }) } as const;
 
 /**
  * The kick: what every player can do empty-handed, whatever it holds, on the secondary action.
- * The kicker lunges a little, up to whatever is in its way, and spends stamina on its own client.
+ * The kicker lunges a little, up to whatever is in its way, and spends stamina on its own client;
+ * the host spends it from its own reckoning of the kicker's stamina too, and turns down a kick it
+ * reckons the kicker cannot afford.
  * The host works out the lunge itself, from where it last heard the kicker stand and face, and
  * turns down a kick whose reported end is too far from its own. It then hurts and knocks back
  * every world entity and every other player in front of where it reckons the lunge ends, and
@@ -141,6 +144,7 @@ export const kick: Content<"kick", KickConfig> = {
         confirmAction(game, by, reported.action);
         const kicker = game.players.get(by);
         if (kicker === undefined) return;
+        if (!hostSpends(game, by, config.stamina)) return;
         const own = kicker === game.local;
         const aim = own ? reported.aim : kicker.taim;
         const at = own ? reported : lungeEnd(game, kicker);
