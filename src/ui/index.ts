@@ -7,4 +7,5 @@ export { element } from "./dom.js";
 export { createInventoryHud } from "./hud.js";
 export { createMicIndicatorView } from "./mic-indicator-view.js";
 export { createSettingsMenu, menuPeers } from "./settings-menu.js";
+export { voiceDebugLines } from "./voice-diagnostics.js";
 export { createStatusView } from "./status.js";

@@ -42,6 +42,33 @@
         <form method="dialog">
           <h2 id="settings-title">Settings</h2>
           <fieldset>
+            <legend>Microphone</legend>
+            <p id="mic-status" class="settings-note" aria-live="polite"></p>
+            <button id="mic-request" type="button" hidden>
+              Request mic access again
+            </button>
+            <label class="settings-range" for="voice-input">Input device</label>
+            <select id="voice-input">
+              <option value="">Browser default</option>
+            </select>
+            <div class="mic-test">
+              <label class="settings-choice">
+                <input id="mic-test" type="checkbox" />
+                Test mic
+              </label>
+              <meter
+                id="mic-level"
+                min="0"
+                max="1"
+                low="0.75"
+                high="0.9"
+                optimum="0.5"
+                value="0"
+                aria-label="Mic input level"
+              ></meter>
+            </div>
+          </fieldset>
+          <fieldset>
             <legend>Voice chat</legend>
             <label class="settings-choice">
               <input
