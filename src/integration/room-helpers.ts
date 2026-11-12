@@ -219,3 +219,60 @@ export function createHub() {
     },
   };
 }
+
+/**
+ * A transport whose sends arrive `delayMs()` after they are sent, in the order sent, and that
+ * counts the corrections (forced moves that jump rather than slide), kicks and kicks shown it
+ * sends. While held, what is sent waits until released, then arrives all at once.
+ */
+export function delayed(port: Transport, delayMs: () => number) {
+  const queue: { at: number | null; send: () => void }[] = [];
+  let last = 0;
+  let held = false;
+  const counts = { corrections: 0, kicks: 0, shown: 0 };
+  const send: Transport["send"] = (event, payload) => {
+    for (const message of messages(event, payload)) {
+      if (message.event !== NetEvent.CONTENT) continue;
+      const json = JSON.stringify(message.payload);
+      if (json.includes('"core/position"') && !json.includes('"slide"'))
+        counts.corrections++;
+      if (json.includes('"kicked"')) counts.kicks++;
+      if (json.includes('"shown"')) counts.shown++;
+    }
+    queue.push({ at: null, send: () => void port.send(event, payload) });
+    return Promise.resolve();
+  };
+  /** Delivers what is due by `now`. */
+  const flush = (now: number): void => {
+    while (queue[0]?.at != null && queue[0].at <= now) queue.shift()?.send();
+  };
+  /** Sends what is queued at once, then leaves, so that leaving is heard. */
+  const leave: Transport["leave"] = () => {
+    for (const item of queue) item.at ??= last;
+    flush(Infinity);
+    return port.leave();
+  };
+  return {
+    port: { ...port, send, leave },
+    counts,
+    flush,
+    /** Stamps what was sent since last time, unless held, as sent at `now`. */
+    stamp(now: number): void {
+      if (held) return;
+      for (const item of queue)
+        if (item.at === null) {
+          last = Math.max(last, now + delayMs());
+          item.at = last;
+        }
+    },
+    hold(): void {
+      held = true;
+    },
+    /** Delivers everything held, and what is due, at `now`. */
+    release(now: number): void {
+      held = false;
+      for (const item of queue) item.at ??= now;
+      flush(now);
+    },
+  };
+}

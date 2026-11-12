@@ -2,8 +2,6 @@ import { expect, test, vi } from "vitest";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { moveContent } from "../moves/index.js";
-import { NetEvent } from "../net/index.js";
-import type { Transport } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import { isAreaFree, movement, updateSession } from "../sim/index.js";
@@ -12,7 +10,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
-  messages,
+  delayed,
   testRoomConfig,
 } from "./room-helpers.js";
 import {
@@ -87,50 +85,6 @@ function kicking() {
       secondary: true,
       aim: { x: game.local.x + 1000 * way, y: game.local.y },
     };
-  };
-}
-
-/**
- * A transport whose sends arrive `delayMs()` after they are sent, in the order sent, and that
- * counts the corrections, kicks and kicks shown it sends.
- */
-function delayed(port: Transport, delayMs: () => number) {
-  const queue: { at: number | null; send: () => void }[] = [];
-  let last = 0;
-  const counts = { corrections: 0, kicks: 0, shown: 0 };
-  const send: Transport["send"] = (event, payload) => {
-    for (const message of messages(event, payload)) {
-      if (message.event !== NetEvent.CONTENT) continue;
-      const json = JSON.stringify(message.payload);
-      if (json.includes('"core/position"')) counts.corrections++;
-      if (json.includes('"kicked"')) counts.kicks++;
-      if (json.includes('"shown"')) counts.shown++;
-    }
-    queue.push({ at: null, send: () => void port.send(event, payload) });
-    return Promise.resolve();
-  };
-  /** Delivers what is due by `now`. */
-  const flush = (now: number): void => {
-    while (queue[0]?.at != null && queue[0].at <= now) queue.shift()?.send();
-  };
-  /** Sends what is queued at once, then leaves, so that leaving is heard. */
-  const leave: Transport["leave"] = () => {
-    for (const item of queue) item.at ??= last;
-    flush(Infinity);
-    return port.leave();
-  };
-  return {
-    port: { ...port, send, leave },
-    counts,
-    flush,
-    /** Stamps what was sent since last time as sent at `now`. */
-    stamp(now: number): void {
-      for (const item of queue)
-        if (item.at === null) {
-          last = Math.max(last, now + delayMs());
-          item.at = last;
-        }
-    },
   };
 }
 

@@ -98,11 +98,12 @@ export const config = {
   arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
-  // A guest holds a hit it predicted for up to a second before the host confirms it. A player's
-  // report may land 12px past its reach, as if 0.3s more of sprinting had passed: one report late
-  // by that much then the next on time. Reports are taken as they come for 2s after a player joins
-  // or comes back, or the host changes, and one sent before a correction is held for a second
-  // rather than corrected again. The host reckons each player's stamina with a kick's worth over a
+  // A guest holds a hit it predicted for up to a second before the host confirms it. A player is
+  // held to its top speed over each stretch of the last 1.5s of its reports, with 12px and 0.3s
+  // more of sprinting to spare: one report late by that much then the next on time. A player kept
+  // 1.3 times too fast falls outside that within about 1.2s, 1.5 times within about 0.7s. Reports
+  // are taken as they come for 2s after a player joins or comes back, or the host changes, and one
+  // sent before a correction is held for a second rather than corrected again. The host reckons each player's stamina with a kick's worth over a
   // full bar, 0.45s of sprinting, so late reports never leave it reckoning a player emptier than
   // the player's own bar.
   net: {
@@ -112,6 +113,7 @@ export const config = {
     moves: {
       slack: 12,
       lateSeconds: 0.3,
+      windowSeconds: 1.5,
       settleSeconds: 2,
       roundTripSeconds: 1,
     },
