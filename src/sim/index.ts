@@ -70,6 +70,7 @@ export {
   playerState,
   remotePlayers,
   removePlayer,
+  roomSeed,
   updateSession,
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";

@@ -10,7 +10,7 @@ const falloff = { full: 100, silent: 600, pan: 300 };
 
 describe("syncVoicePeers", () => {
   function addRemote(session: Session, id: string, dx: number): void {
-    const player = createPlayer(id, id, session.world, testSimConfig);
+    const player = createPlayer(id, id, session.local, testSimConfig);
     player.x = session.local.x + dx;
     player.y = session.local.y;
     session.players.set(id, player);
