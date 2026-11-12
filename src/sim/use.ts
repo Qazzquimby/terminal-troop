@@ -5,6 +5,7 @@ import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import { playerData } from "./player-data.js";
+import { confirmAction, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
 
 /** A player's item use, as plain data: what this client sees of it. */
@@ -24,6 +25,12 @@ export interface ItemBehaviour {
   readonly cooldown: number;
   /** Applies a use by player `by` standing at `at`, facing `aim`. Runs only on the host. */
   apply(game: Session, at: Point, aim: number, by: string): void;
+  /**
+   * Predicts what the local player's use at `at`, facing `aim`, does to world entities, until
+   * the host confirms the local action `action`. Runs on the user's own client, after `show`.
+   * Without it, the use's effects wait for the host.
+   */
+  predict?(game: Session, at: Point, aim: number, action: number): void;
   /**
    * Starts a use by player `by` standing at `at`, facing `aim`, as this client sees it: plays
    * its sound for this client's listener, and returns where it lands and whether it hits.
@@ -76,9 +83,16 @@ export const heldItemId = playerData({
   initial: selectedItemId,
 });
 
-/** Keeps the local player's held item id in step with its selected slot. */
-export function reportHeld(local: Player): void {
-  heldItemId.set(local, selectedItemId(local));
+/**
+ * Keeps the local player's held item id in step with its selected slot. A change goes out at
+ * once, so it reaches the host ahead of a use of the newly held item.
+ */
+export function reportHeld(game: Session): void {
+  const { local } = game;
+  const id = selectedItemId(local);
+  if (local.content.has(heldItemId) && heldItemId.get(local) === id) return;
+  heldItemId.set(local, id);
+  game.reportNow = true;
 }
 
 /** The item `player` holds; null when it holds nothing, or an item this client does not know. */
@@ -90,12 +104,13 @@ export function heldItemOf(
   return id === null ? null : (game.itemDefinitions.get(id) ?? null);
 }
 
-/** A player's use of an item: which item, and where the player stood and faced. */
+/** A player's use of an item: which item, where the player stood and faced, and its action number. */
 const ItemUsed = z.object({
   item: ItemId,
   x: z.number(),
   y: z.number(),
   aim: z.number(),
+  action: z.number().int().positive(),
 });
 
 /** What an item use is timed under: every item shares one cooldown per player. */
@@ -128,7 +143,8 @@ export function hostAccepts(
 
 /**
  * A player's item use, sent to everyone: each other client shows it on the player, and the host
- * applies it if it accepts it.
+ * confirms it handled the use, and applies it if it accepts it. The host refuses outright a use
+ * of an item other than the one the player reports holding.
  */
 export const itemUsed = contentEvent({
   schema: ItemUsed,
@@ -137,7 +153,10 @@ export const itemUsed = contentEvent({
     const behaviour = game.items.get(use.item);
     if (behaviour === undefined) return;
     const player = game.players.get(by);
-    if (player !== undefined && player !== game.local)
+    if (player === undefined) return;
+    if (game.hosting) confirmAction(game, by, use.action);
+    if (game.hosting && heldItemId.get(player) !== use.item) return;
+    if (player !== game.local)
       player.use = {
         item: use.item,
         ...behaviour.show(game, use, use.aim, by),
@@ -152,8 +171,8 @@ export const itemUsed = contentEvent({
 });
 
 /**
- * Starts the local player's use of its held item, if it is usable and off cooldown, and sends
- * it to everyone.
+ * Starts the local player's use of its held item, if it is usable and off cooldown, predicts
+ * what it does, and sends it to everyone.
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
@@ -171,10 +190,13 @@ export function useHeldItem(game: Session): void {
     ...behaviour.show(game, local, local.aim, local.id),
     startedAt: game.time,
   };
+  const action = nextAction(game);
+  behaviour.predict?.(game, local, local.aim, action);
   itemUsed.send(game, {
     item: item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,
+    action,
   });
 }

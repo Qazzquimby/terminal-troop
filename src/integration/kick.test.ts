@@ -139,7 +139,7 @@ test("a kick lunges the kicker one body length, spends its stamina and goes to t
       event: "kicked",
       route: "host",
       to: null,
-      payload: { x: 300 + PLAYER_LENGTH, y: 300, aim: 0 },
+      payload: { x: 300 + PLAYER_LENGTH, y: 300, aim: 0, action: 1 },
     },
   ]);
   wait(game, kick.lunge.seconds + DT);
@@ -403,7 +403,7 @@ test("a kick makes a noise from its hitbox on every client, the kicker its sourc
   exchange({ b: kickRight(sessionOf(b)) });
   const noise = {
     at: { x: TARGET.x, y: TARGET.y },
-    loudness: kick.loudness,
+    radius: kick.noiseRadius,
     source: "b",
   };
   expect(sessionOf(b).noises).toEqual([noise]);
@@ -418,7 +418,7 @@ function forgeKick(room: Room, at: Point & { aim: number }): void {
     event: "kicked",
     route: "host",
     to: null,
-    payload: at,
+    payload: { ...at, action: 1 },
   });
 }
 

@@ -7,8 +7,8 @@ import type { Session } from "./session.js";
 interface Footstep {
   /** Seconds between steps while moving. */
   readonly interval: number;
-  /** Each step's loudness, as a multiple of a listener's hearing range. */
-  readonly loudness: number;
+  /** How far each step carries, in pixels. */
+  readonly radius: number;
 }
 
 /** Each gait's footsteps. */
@@ -31,7 +31,7 @@ export function emitFootsteps(game: Session, dt: number): void {
     player.stride = footstep.interval;
     emitNoise(game, {
       at: { x: player.x, y: player.y },
-      loudness: footstep.loudness,
+      radius: footstep.radius,
       source: player.id,
     });
   }

@@ -3,11 +3,11 @@ import { contentEvent } from "./content-event.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
 
-/** A sound made in the world, heard by whatever listens in the step it is made in. */
+/** A sound made in the world, heard by whatever stands within its radius in the step it is made in. */
 export interface Noise {
   readonly at: Point;
-  /** How far it carries, as a multiple of a listener's hearing range. */
-  readonly loudness: number;
+  /** How far it carries, in pixels: anything within this of `at` hears it. */
+  readonly radius: number;
   /** The id of the player or entity that made it, if any. */
   readonly source?: string;
 }
@@ -21,11 +21,9 @@ export interface NoiseConfig {
   readonly blur: number;
 }
 
-/** Something that hears noise: where it stands, how far it hears, and its random draws. */
+/** Something that hears noise: the point it stands at, and its random draws. */
 interface Listener {
   readonly at: Point;
-  /** How far it hears a noise of loudness 1, in pixels. */
-  readonly range: number;
   /** Draws where each heard noise seems to come from. */
   readonly rng: Rng;
 }
@@ -34,20 +32,16 @@ interface Listener {
 export interface Heard {
   /** Where it seems to come from: the further off it was made, the further this may stray. */
   readonly at: Point;
-  /** From 1 for a noise made where the listener stands, down towards 0 at the edge of its reach. */
+  /** From 1 for a noise made where the listener stands, down to 0 at the edge of its radius. */
   readonly clarity: number;
-  readonly loudness: number;
+  /** How far it carries, in pixels. */
+  readonly radius: number;
   readonly source: string | null;
 }
 
 /** Makes `noise` for the rest of this step. */
 export function emitNoise(game: Session, noise: Noise): void {
   game.noises.push(noise);
-}
-
-/** How far, in pixels, `noise` carries to a listener of `range` at `at`. */
-function reach(noise: Noise, range: number): number {
-  return noise.loudness * range;
 }
 
 /** A point at most `spread` from `at`, spread evenly over the disc. */
@@ -61,8 +55,8 @@ function blurred(at: Point, spread: number, rng: Rng): Point {
 }
 
 /**
- * The noises made this step that carry to `listener`, oldest first, each placed with a blur
- * that grows with its distance. Each one heard takes two draws from the listener's generator.
+ * The noises made this step whose radius reaches `listener`, oldest first, each placed with a
+ * blur that grows with its distance. Each one heard takes two draws from the listener's generator.
  */
 export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
   const heard: Heard[] = [];
@@ -71,12 +65,11 @@ export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
       noise.at.x - listener.at.x,
       noise.at.y - listener.at.y,
     );
-    const carries = reach(noise, listener.range);
-    if (!(distance < carries)) continue;
+    if (!(distance <= noise.radius)) continue;
     heard.push({
       at: blurred(noise.at, distance * game.config.noise.blur, listener.rng),
-      clarity: 1 - distance / carries,
-      loudness: noise.loudness,
+      clarity: noise.radius > 0 ? 1 - distance / noise.radius : 1,
+      radius: noise.radius,
       source: noise.source ?? null,
     });
   }
@@ -87,7 +80,7 @@ export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
 const NoiseMade = z.object({
   x: z.number(),
   y: z.number(),
-  loudness: z.number().min(0),
+  radius: z.number().min(0),
   source: z.string().min(1).max(64).nullable(),
 });
 
@@ -96,12 +89,12 @@ export const noiseMade = contentEvent({
   schema: NoiseMade,
   to: "all",
   from: "host",
-  receive(game, { x, y, loudness, source }) {
+  receive(game, { x, y, radius, source }) {
     emitNoise(
       game,
       source === null
-        ? { at: { x, y }, loudness }
-        : { at: { x, y }, loudness, source },
+        ? { at: { x, y }, radius }
+        : { at: { x, y }, radius, source },
     );
   },
 });
@@ -114,7 +107,7 @@ export function broadcastNoise(game: Session, noise: Noise): void {
   noiseMade.send(game, {
     x: noise.at.x,
     y: noise.at.y,
-    loudness: noise.loudness,
+    radius: noise.radius,
     source: noise.source ?? null,
   });
 }

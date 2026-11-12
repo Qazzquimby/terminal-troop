@@ -8,7 +8,13 @@ export {
   removeEntity,
   spawnEntity,
 } from "./entities.js";
-export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export type {
+  EntityDefinition,
+  EntitySnapshot,
+  Strike,
+  WorldEntity,
+} from "./entities.js";
+export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
 export { spawnWorldItem } from "./world-items.js";
 export {
@@ -51,6 +57,7 @@ export { applyDamage } from "./entity.js";
 export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
 export { correctPlayer } from "./correction.js";
+export { confirmAction, nextAction, predict } from "./prediction.js";
 export { hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
