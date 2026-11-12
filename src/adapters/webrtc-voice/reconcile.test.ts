@@ -44,6 +44,20 @@ function ready(conn: string): SignalMessage {
 }
 
 describe("diffPeers", () => {
+  test("a peer to redo is hung up on and connected again", () => {
+    expect(diffPeers(["a", "b"], new Set(["a", "b"]), new Set(["a"]))).toEqual({
+      added: ["a"],
+      removed: ["a"],
+    });
+  });
+
+  test("a peer to redo that is not held, or not wanted, is only added or only removed", () => {
+    expect(diffPeers(["b"], new Set(["a"]), new Set(["a", "b"]))).toEqual({
+      added: ["a"],
+      removed: ["b"],
+    });
+  });
+
   test("adds the new ids and removes the dropped ones", () => {
     expect(diffPeers(["a", "b"], new Set(["b", "c"]))).toEqual({
       added: ["c"],

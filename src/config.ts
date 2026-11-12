@@ -188,6 +188,7 @@ export const config = {
     connectDeadlineMs: 15_000,
     pending: { cap: 32, ttlMs: 5000 },
     retry: { firstMs: 2000, maxMs: 60_000 },
+    statsIntervalMs: 1000,
   },
   audio: { full: 0, silent: 1000, pan: 500 },
   ui: { debugRefreshMs: 250 },

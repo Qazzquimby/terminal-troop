@@ -6,7 +6,7 @@ import {
   signalFor,
 } from "./signal.js";
 import type {
-  MicState,
+  PeerDiagnostics,
   Voice,
   VoiceConnectionConfig,
   VoiceRoom,
@@ -14,7 +14,11 @@ import type {
 } from "../../voice/index.js";
 import { createScope } from "../../lib/scope/index.js";
 import type { Scope } from "../../lib/scope/index.js";
+import { createMicCapture } from "./mic-capture.js";
 import { createPeerLevels } from "./peer-levels.js";
+import { disposeQuietly, later } from "./scopes.js";
+import { connectionStats } from "./stats.js";
+import type { ConnectionStats } from "./stats.js";
 import {
   connDecision,
   createPendingSignals,
@@ -33,14 +37,6 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-const MIC_CONSTRAINTS: MediaStreamConstraints = {
-  audio: {
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  },
-};
-
 /** One RTCPeerConnection to a peer, and the playback nodes fed by it. */
 interface Connection {
   /** Our name for this connection, sent with every signal from it. */
@@ -57,6 +53,16 @@ interface Connection {
   source: MediaStreamAudioSourceNode | null;
   makingOffer: boolean;
   ignoreOffer: boolean;
+  /** The connection state last seen, and since when. */
+  seen: { state: RTCPeerConnectionState; since: number };
+  stats: StatsReading;
+}
+
+/** The latest statistics of a connection, and when they were asked for. */
+interface StatsReading extends ConnectionStats {
+  receiving: boolean;
+  askedAt: number;
+  asking: boolean;
 }
 
 /** A peer voice wants a connection with; between attempts it has none. */
@@ -65,6 +71,15 @@ interface Peer {
   connection: Connection | null;
   /** The wait before the latest retry, or null since the last success. */
   backoffMs: number | null;
+  /** Attempts that failed since the last success. */
+  failures: number;
+  /** When the peer was last left without a connection. */
+  idleSince: number;
+}
+
+/** A room that can also redo one peer's connection. */
+interface JoinedRoom extends VoiceRoom {
+  retry(id: string): void;
 }
 
 /** Why a connection opens: on our own, or to take up an offer or a ready from the peer. */
@@ -74,26 +89,6 @@ type Signal =
   | { description: RTCSessionDescriptionInit }
   | { candidate: RTCIceCandidateInit }
   | { ready: true };
-
-/** Runs `fn` after `ms` unless `scope` is disposed first. */
-function later(scope: Scope, ms: number, fn: () => void): () => void {
-  const stop = (): void => {
-    clearTimeout(timer);
-    scope.signal.removeEventListener("abort", stop);
-  };
-  const timer = setTimeout(() => {
-    stop();
-    fn();
-  }, ms);
-  scope.signal.addEventListener("abort", stop);
-  return stop;
-}
-
-function disposeQuietly(scope: Scope): void {
-  scope.dispose().catch((error: unknown) => {
-    console.warn("Voice cleanup failed", error);
-  });
-}
 
 /**
  * Voice over WebRTC: a mesh with one RTCPeerConnection per wanted remote player, set up
@@ -111,13 +106,14 @@ export function createWebRtcVoice(
   const levels = createPeerLevels();
   /** The peers of the room joined now, by id. */
   let peers = new Map<string, Peer>();
-  let mic: MicState = "pending";
-  let micTrack: MediaStreamTrack | null = null;
-  let micRequested = false;
   let talking = false;
+  let testing = false;
   let { mode, muted, volume } = initial;
   let voiceVolume: GainNode | null = null;
-  let room: VoiceRoom | null = null;
+  let room: JoinedRoom | null = null;
+  const mic = createMicCapture(audioContext, initial.inputDevice, () => {
+    applyTransmit();
+  });
 
   function volumeGain(): GainNode {
     if (voiceVolume === null) {
@@ -129,7 +125,7 @@ export function createWebRtcVoice(
   }
 
   function transmitting(): boolean {
-    return micTrack !== null && isTransmitting(mode, talking, muted);
+    return mic.track() !== null && isTransmitting(mode, talking, muted);
   }
 
   /**
@@ -137,7 +133,7 @@ export function createWebRtcVoice(
    * still sends comfort-noise packets, so silence also detaches it: nothing goes out.
    */
   function attachMic(pc: RTCPeerConnection): void {
-    const track = transmitting() ? micTrack : null;
+    const track = transmitting() ? mic.track() : null;
     for (const transceiver of pc.getTransceivers()) {
       if (transceiver.direction === "sendrecv") {
         void transceiver.sender.replaceTrack(track);
@@ -153,8 +149,10 @@ export function createWebRtcVoice(
     return all;
   }
 
+  /** A track that is testing stays enabled, for its meter, while off every connection. */
   function applyTransmit(): void {
-    if (micTrack !== null) micTrack.enabled = transmitting();
+    const track = mic.track();
+    if (track !== null) track.enabled = transmitting() || testing;
     for (const connection of connections()) attachMic(connection.pc);
   }
 
@@ -168,32 +166,63 @@ export function createWebRtcVoice(
     connection.panner.pan.setTargetAtTime(pan, now, config.levelRampS);
   }
 
-  function requestMic(): void {
-    if (micRequested) return;
-    micRequested = true;
-    void audioContext().resume();
-    // Absent outside secure contexts (plain http on a LAN address).
-    if (!("mediaDevices" in navigator)) {
-      mic = "unavailable";
-      return;
+  /** Notes a change of the connection's state, which an unexpected close makes without an event. */
+  function observe(connection: Connection): void {
+    const state = connection.pc.connectionState;
+    if (state !== connection.seen.state) {
+      connection.seen = { state, since: performance.now() };
     }
-    navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS).then(
-      (stream) => {
-        const [track] = stream.getAudioTracks();
-        if (track === undefined) {
-          mic = "unavailable";
-          return;
-        }
-        micTrack = track;
-        mic = "live";
-        applyTransmit();
-      },
-      (error: unknown) => {
-        const refused =
-          error instanceof DOMException && error.name === "NotAllowedError";
-        mic = refused ? "denied" : "unavailable";
-      },
-    );
+  }
+
+  /** Asks for the connection's statistics, at most once per `statsIntervalMs`. */
+  function readStats(connection: Connection, now: number): void {
+    const { stats, pc } = connection;
+    if (stats.asking || now - stats.askedAt < config.statsIntervalMs) return;
+    if (pc.connectionState === "closed") return;
+    stats.asking = true;
+    stats.askedAt = now;
+    pc.getStats()
+      .then((report) => {
+        const read = connectionStats(report);
+        stats.receiving = read.bytesReceived > stats.bytesReceived;
+        stats.bytesReceived = read.bytesReceived;
+        stats.route = read.route;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        stats.asking = false;
+      });
+  }
+
+  function diagnose(id: string, peer: Peer, now: number): PeerDiagnostics {
+    const { connection, failures } = peer;
+    if (connection === null) {
+      return {
+        id,
+        state: "pending",
+        ice: null,
+        signaling: null,
+        since: peer.idleSince,
+        route: null,
+        bytesReceived: 0,
+        receiving: false,
+        failures,
+      };
+    }
+    observe(connection);
+    readStats(connection, now);
+    const { pc, seen, stats } = connection;
+    return {
+      id,
+      state: seen.state,
+      ice: pc.iceConnectionState,
+      signaling: pc.signalingState,
+      since: seen.since,
+      route: stats.route,
+      bytesReceived: stats.bytesReceived,
+      receiving: stats.receiving,
+      failures,
+    };
   }
 
   function play(connection: Connection, event: RTCTrackEvent): void {
@@ -209,7 +238,7 @@ export function createWebRtcVoice(
     localId: string,
     sendSignal: (signal: unknown) => void,
     events: { peerFailed(id: string): void },
-  ): VoiceRoom {
+  ): JoinedRoom {
     const scope = createScope();
     const own = new Map<string, Peer>();
     const pending = createPendingSignals(config.pending);
@@ -224,12 +253,14 @@ export function createWebRtcVoice(
       const { connection } = peer;
       if (connection === null) return;
       peer.connection = null;
+      peer.idleSince = performance.now();
       disposeQuietly(connection.scope);
     }
 
     /** Gives up on the peer's connection, and tries again after a growing wait. */
     function fail(peerId: string, peer: Peer): void {
       events.peerFailed(peerId);
+      peer.failures += 1;
       drop(peer);
       if (peer.scope.disposed) return;
       const wait = nextBackoff(peer.backoffMs, config.retry);
@@ -270,6 +301,14 @@ export function createWebRtcVoice(
         source: null,
         makingOffer: false,
         ignoreOffer: false,
+        seen: { state: pc.connectionState, since: performance.now() },
+        stats: {
+          route: null,
+          bytesReceived: 0,
+          receiving: false,
+          askedAt: -Infinity,
+          asking: false,
+        },
       };
       connectionScope.defer(() => {
         connection.source?.disconnect();
@@ -340,11 +379,13 @@ export function createWebRtcVoice(
       pc.addEventListener(
         "connectionstatechange",
         () => {
+          observe(connection);
           switch (pc.connectionState) {
             case "connected":
               cancelDeadline?.();
               cancelDeadline = null;
               peer.backoffMs = null;
+              peer.failures = 0;
               break;
             case "disconnected":
               startDeadline();
@@ -470,6 +511,8 @@ export function createWebRtcVoice(
         scope: scope.child(),
         connection: null,
         backoffMs: null,
+        failures: 0,
+        idleSince: performance.now(),
       };
       own.set(peerId, peer);
       for (const message of pending.take(peerId, performance.now())) {
@@ -478,14 +521,25 @@ export function createWebRtcVoice(
       if (peer.connection === null) connect(peerId, peer, "self", null);
     }
 
-    function removePeer(peerId: string): void {
+    /** Hangs up on `peerId`, keeping its mix when it is to be connected again. */
+    function removePeer(peerId: string, keepMix: boolean): void {
       const peer = own.get(peerId);
       own.delete(peerId);
-      levels.forget(peerId);
+      if (!keepMix) levels.forget(peerId);
       if (peer !== undefined) disposeQuietly(peer.scope);
     }
 
-    const voiceRoom: VoiceRoom = {
+    /** Connects to the peers in `desired` and hangs up on the rest, redoing those in `redo`. */
+    function reconcile(
+      desired: ReadonlySet<string>,
+      redo: ReadonlySet<string>,
+    ): void {
+      const { added, removed } = diffPeers(own.keys(), desired, redo);
+      for (const id of removed) removePeer(id, desired.has(id));
+      added.forEach(addPeer);
+    }
+
+    const voiceRoom: JoinedRoom = {
       receive(payload) {
         if (scope.disposed) return;
         const message = signalFor(payload, localId);
@@ -497,9 +551,12 @@ export function createWebRtcVoice(
 
       setPeers(ids) {
         if (scope.disposed) return;
-        const { added, removed } = diffPeers(own.keys(), ids);
-        removed.forEach(removePeer);
-        added.forEach(addPeer);
+        reconcile(ids, new Set());
+      },
+
+      retry(peerId) {
+        if (scope.disposed) return;
+        reconcile(new Set(own.keys()), new Set([peerId]));
       },
 
       setPeerMix(peerId, mix) {
@@ -520,11 +577,13 @@ export function createWebRtcVoice(
   }
 
   return {
-    requestMic,
+    requestMic() {
+      mic.request();
+    },
 
     join(localId, send, events) {
       room?.leave();
-      requestMic();
+      mic.request();
       room = join(localId, send, events);
       return room;
     },
@@ -533,7 +592,27 @@ export function createWebRtcVoice(
       ({ mode, muted } = settings);
       volume = Math.max(0, Math.min(1, settings.volume));
       if (voiceVolume !== null) voiceVolume.gain.value = volume;
+      mic.setDevice(settings.inputDevice);
       applyTransmit();
+    },
+
+    setMicTest(on) {
+      testing = on;
+      if (on) mic.request();
+      applyTransmit();
+    },
+
+    retry(peerId) {
+      room?.retry(peerId);
+    },
+
+    diagnostics() {
+      const now = performance.now();
+      const diagnosed: PeerDiagnostics[] = [];
+      peers.forEach((peer, id) => {
+        diagnosed.push(diagnose(id, peer, now));
+      });
+      return { mic: { ...mic.report(), testing }, peers: diagnosed };
     },
 
     setTalking(held) {
@@ -562,7 +641,7 @@ export function createWebRtcVoice(
       return {
         mode,
         muted,
-        mic,
+        mic: mic.state(),
         transmitting: transmitting(),
         peers: connected,
         mutedPeers: levels.mutedPeers(),

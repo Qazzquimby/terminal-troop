@@ -21,6 +21,7 @@ import {
   menuPeers,
   roomDebugInfo,
   trackInputContext,
+  voiceDebugLines,
   element,
 } from "./ui/index.js";
 import {
@@ -260,17 +261,24 @@ const input = createInput(
   "play",
 );
 const inputContext = trackInputContext("play", input.setContext);
-const settingsMenu = createSettingsMenu(
-  settingsDialog,
-  settings,
-  (open, time) => {
+const settingsMenu = createSettingsMenu(settingsDialog, settings, {
+  onOpenChange(open, time) {
     if (open) refreshPeers(room.state());
     inputContext.set(open ? "menu" : "play", time);
   },
-  (id, muted) => {
+  onPeerMutedChange(id, muted) {
     voice.setPeerMuted(id, muted);
   },
-);
+  onPeerRetry(id) {
+    voice.retry(id);
+  },
+  onRequestMic() {
+    voice.requestMic();
+  },
+  onMicTest(on) {
+    voice.setMicTest(on);
+  },
+});
 
 /** Whether remote player `id` is away. */
 function isAway(id: string): boolean {
@@ -321,12 +329,15 @@ async function enterRoom(rawCode: string): Promise<void> {
 function debugInfo(): DebugInfo {
   const now = performance.now();
   const session = joinedSession(room.state());
+  const nameOf = (id: string): string =>
+    session?.players.get(id)?.name ?? id.slice(0, 8);
   return {
     perf: perf.snapshot(now),
     room:
       session === null
         ? null
         : roomDebugInfo(session, now, counted.rates(now), room),
+    voice: voiceDebugLines(voice.diagnostics(), nameOf, now),
   };
 }
 
@@ -385,6 +396,7 @@ function frame(): void {
   status.show(room.state(), transport.label);
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
+  settingsMenu.showVoice(now, () => voice.diagnostics());
   micView.show(session === null ? null : micIndicator(voice.status(), talkKey));
   requestAnimationFrame(frame);
 }
