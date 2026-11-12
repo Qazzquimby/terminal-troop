@@ -37,6 +37,7 @@ import { createSfx } from "./audio/index.js";
 import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
 import { createPositionMemory } from "./position-memory/index.js";
+import { createPlayerIdentity } from "./identity/index.js";
 import type { DebugInfo } from "./ui/index.js";
 import type { Settings } from "./settings/index.js";
 import { createSettingsStore } from "./settings/index.js";
@@ -121,8 +122,18 @@ function selectVoice(initial: VoiceSettings): Voice {
 const params = new URLSearchParams(location.search);
 /** `?debug` shows the debug overlay, exposes voice and the room on `window`, and logs voice failures. */
 const debug = params.has("debug");
-const playerId = crypto.randomUUID();
-const defaultName = playerId.slice(0, 4).toUpperCase();
+const playerIdKey = "terminal-troop:player-id";
+/** Kept in the page's session storage: a reload is the same player, another tab another one. */
+const identity = createPlayerIdentity(
+  {
+    get: () => sessionStorage.getItem(playerIdKey),
+    set: (value) => {
+      sessionStorage.setItem(playerIdKey, value);
+    },
+  },
+  () => crypto.randomUUID(),
+);
+const defaultName = identity.current().slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
@@ -175,7 +186,8 @@ applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
 
 const room = createRoom({
-  localId: playerId,
+  localId: identity.current(),
+  renewId: () => identity.renew(),
   world: env.world,
   transport,
   voice,

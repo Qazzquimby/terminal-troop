@@ -3,14 +3,15 @@ import {
   POSITION_MEMORY_KEY,
   createPositionMemory,
 } from "./position-memory.js";
-import type {
-  PositionMemory,
-  PositionPlace,
-  PositionStorage,
-} from "./position-memory.js";
+import type { PositionPlace, PositionStorage } from "./position-memory.js";
 
 const config = { saveInterval: 1, maxRooms: 2 };
-const here: PositionPlace = { room: "ROOM1", world: "dev", seed: 1 };
+const here: PositionPlace = {
+  player: "me",
+  room: "ROOM1",
+  world: "dev",
+  seed: 1,
+};
 
 /** Storage held in a map, counting writes. */
 function memoryStorage(): PositionStorage & {
@@ -29,12 +30,6 @@ function memoryStorage(): PositionStorage & {
   };
 }
 
-/** Enters `place` with the player starting at the origin. */
-function arrive(memory: PositionMemory, place: PositionPlace): void {
-  memory.enter(place);
-  memory.save({ x: 0, y: 0 }, 0);
-}
-
 describe("position memory", () => {
   test("knows nothing of a world never saved", () => {
     expect(createPositionMemory(config, memoryStorage()).enter(here)).toBe(
@@ -45,7 +40,7 @@ describe("position memory", () => {
   test("finds where the player stood on the next visit", () => {
     const storage = memoryStorage();
     const before = createPositionMemory(config, storage);
-    arrive(before, here);
+    before.enter(here);
     before.save({ x: 10, y: 20 }, 0);
     before.save({ x: 30, y: 40 }, 100);
     before.flush();
@@ -54,10 +49,25 @@ describe("position memory", () => {
     expect(after.enter(here)).toEqual({ x: 30, y: 40 });
   });
 
+  test("keeps each player apart: a player in another tab finds its own spot", () => {
+    const storage = memoryStorage();
+    const mine = createPositionMemory(config, storage);
+    const theirs = createPositionMemory(config, storage);
+    mine.enter(here);
+    theirs.enter({ ...here, player: "them" });
+    mine.save({ x: 1, y: 2 }, 0);
+    theirs.save({ x: 3, y: 4 }, 0);
+
+    const fresh = createPositionMemory(config, storage);
+    expect(fresh.enter(here)).toEqual({ x: 1, y: 2 });
+    expect(fresh.enter({ ...here, player: "them" })).toEqual({ x: 3, y: 4 });
+    expect(fresh.enter({ ...here, player: "new" })).toBe(undefined);
+  });
+
   test("keeps each world apart: another room, world kind or seed finds nothing", () => {
     const storage = memoryStorage();
     const memory = createPositionMemory(config, storage);
-    arrive(memory, here);
+    memory.enter(here);
     memory.save({ x: 10, y: 20 }, 0);
 
     const fresh = createPositionMemory(config, storage);
@@ -67,20 +77,10 @@ describe("position memory", () => {
     expect(fresh.enter(here)).toEqual({ x: 10, y: 20 });
   });
 
-  test("saves nothing until the player moves off where it started", () => {
-    const storage = memoryStorage();
-    const memory = createPositionMemory(config, storage);
-    arrive(memory, here);
-    memory.save({ x: 0, y: 0 }, 5000);
-    memory.flush();
-    expect(storage.writes).toBe(0);
-    expect(createPositionMemory(config, storage).enter(here)).toBe(undefined);
-  });
-
   test("saves at most once each interval while the player moves, and only when it moved", () => {
     const storage = memoryStorage();
     const memory = createPositionMemory(config, storage);
-    arrive(memory, here);
+    memory.enter(here);
     memory.save({ x: 1, y: 1 }, 0);
     memory.save({ x: 2, y: 1 }, 500);
     expect(storage.writes).toBe(1);
@@ -94,7 +94,7 @@ describe("position memory", () => {
   test("saves the world left when entering another", () => {
     const storage = memoryStorage();
     const memory = createPositionMemory(config, storage);
-    arrive(memory, here);
+    memory.enter(here);
     memory.save({ x: 1, y: 1 }, 0);
     memory.save({ x: 5, y: 5 }, 10);
     memory.enter({ ...here, room: "ROOM2" });
@@ -108,7 +108,7 @@ describe("position memory", () => {
     const storage = memoryStorage();
     const memory = createPositionMemory(config, storage);
     for (const room of ["A", "B", "C"]) {
-      arrive(memory, { ...here, room });
+      memory.enter({ ...here, room });
       memory.save({ x: 1, y: 1 }, 0);
     }
     const fresh = createPositionMemory(config, storage);
@@ -150,7 +150,7 @@ describe("position memory", () => {
       },
     };
     const memory = createPositionMemory(config, flaky);
-    arrive(memory, here);
+    memory.enter(here);
     memory.save({ x: 7, y: 8 }, 0);
     full = false;
     memory.flush();

@@ -15,26 +15,26 @@ export interface PositionStorage {
   set: (key: string, value: string) => void;
 }
 
-/** A world as a room builds it: the same room code, world kind and seed build the same map. */
+/**
+ * A player in a world as a room builds it: the same room code, world kind and seed build the
+ * same map.
+ */
 export interface PositionPlace {
+  readonly player: string;
   readonly room: string;
   readonly world: WorldKind;
   /** The session's seed, which covers the room code and the world config's seed. */
   readonly seed: number;
 }
 
-/** Where the local player last stood in a world, kept on this client alone. */
+/** Where each local player last stood in each world, kept on this client alone. */
 export interface PositionMemory {
   /**
    * Saves where the player stood in the world left, then keeps positions for `place`, and
-   * returns where the player last stood there, if it was saved.
+   * returns where its player last stood there, if it was saved.
    */
   enter(place: PositionPlace): Point | undefined;
-  /**
-   * Keeps `at` as where the player stands, and saves it unless saved under `saveInterval` before
-   * `now` (ms). The first position after entering is where the player started, so it is saved
-   * only once the player moves off it.
-   */
+  /** Keeps `at` as where the player stands; saves it unless saved under `saveInterval` before `now` (ms). */
   save(at: Point, now: number): void;
   /** Saves where the player stands now, as when the page hides or closes. */
   flush(): void;
@@ -50,7 +50,7 @@ const SavedSchema = z.array(
 type Saved = z.infer<typeof SavedSchema>;
 
 function placeKey(place: PositionPlace): string {
-  return `${place.world}:${place.room}:${String(place.seed)}`;
+  return `${place.player}:${place.world}:${place.room}:${String(place.seed)}`;
 }
 
 /**
@@ -105,9 +105,7 @@ export function createPositionMemory(
       return found === undefined ? undefined : { x: found.x, y: found.y };
     },
     save(at, now) {
-      if (latest === null) {
-        latest = { x: at.x, y: at.y };
-      } else if (latest.x !== at.x || latest.y !== at.y) {
+      if (latest?.x !== at.x || latest.y !== at.y) {
         latest = { x: at.x, y: at.y };
         dirty = true;
       }
