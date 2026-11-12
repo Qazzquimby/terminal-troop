@@ -22,6 +22,7 @@ import type {
   Point,
   Session,
 } from "../../sim/index.js";
+import useUrl from "./sfx/use.mp3";
 
 /** How a kick works. Distances in pixels unless said otherwise, times in sim seconds. */
 export interface KickConfig {
@@ -66,6 +67,8 @@ const Shown = z.object({
   y: z.number(),
   hit: z.boolean(),
 });
+
+const SOUNDS = { use: useUrl } as const;
 
 /**
  * The kick: what every player can do empty-handed, whatever it holds, on the secondary action.
@@ -173,6 +176,7 @@ export const kick: Content<"kick", KickConfig> = {
           entitiesIn(game, area).length +
           playersIn(game, area, game.localId).length;
         show(game, area, hits > 0);
+        void game.sfx.play(SOUNDS.use, at, game.local);
         kicked.send(game, { x: at.x, y: at.y, aim: local.aim });
       },
     };
