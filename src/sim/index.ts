@@ -8,7 +8,13 @@ export {
   removeEntity,
   spawnEntity,
 } from "./entities.js";
-export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export type {
+  EntityDefinition,
+  EntitySnapshot,
+  Strike,
+  WorldEntity,
+} from "./entities.js";
+export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
 export { spawnWorldItem } from "./world-items.js";
 export {
