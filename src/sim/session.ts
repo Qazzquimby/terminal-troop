@@ -1,7 +1,9 @@
 import type { Sfx } from "../audio/index.js";
+import { arrivalPoint, canStandAt, rallyPoint } from "./arrival.js";
+import type { ArrivalConfig } from "./arrival.js";
 import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
-import { separateBodies } from "./collision.js";
+import { separateBodies, solidBodiesBut } from "./collision.js";
 import type {
   ContentEvent,
   Delivery,
@@ -18,7 +20,7 @@ import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
-import type { ViewConfig, World, WorldKind } from "./map.js";
+import type { Point, Rng, ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import {
@@ -29,10 +31,13 @@ import {
 } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
+import type { WorldData } from "./world-data.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
+import { interact } from "./world-items.js";
+import type { WorldItemConfig } from "./world-items.js";
 
 /** How remote players follow the state they report. */
 interface SyncConfig {
@@ -49,6 +54,8 @@ export interface SimConfig extends PlayerRules {
   readonly net: SyncConfig;
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
+  readonly worldItems: WorldItemConfig;
+  readonly arrival: ArrivalConfig;
 }
 
 export interface Session {
@@ -59,6 +66,8 @@ export interface Session {
   readonly world: World;
   /** Seeded by the room code, so the same on every client in the room. */
   readonly seed: number;
+  /** Where the world's starting things gather and new players arrive; seeded like `seed`. */
+  readonly rally: Point;
   readonly sfx: Sfx;
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
@@ -76,6 +85,10 @@ export interface Session {
   readonly itemDefinitions: Map<string, ItemDefinition>;
   /** The state each content entry keeps on every player, by the entry's name. */
   readonly playerData: Map<string, PlayerData<unknown>>;
+  /** The state each content entry keeps once for the world, by the entry's name. */
+  readonly worldData: Map<string, WorldData<unknown>>;
+  /** Each entry's world state, in its wire form; an entry with nothing here reads as its initial value. */
+  readonly worldValues: Map<WorldData<unknown>, unknown>;
   /** Each content entry's events, by the entry's name, then by key. */
   readonly events: Map<string, Map<string, ContentEvent<unknown>>>;
   /** Where each registered event travels. */
@@ -104,7 +117,19 @@ export interface Session {
   reportNow: boolean;
 }
 
-function roomSeed(code: string, base: number): number {
+/** Where the local player starts. */
+export interface Start {
+  /**
+   * Where it stood when last in this world. Taken if a player can stand there; otherwise the
+   * player arrives as if new to the world.
+   */
+  readonly at?: Point | undefined;
+  /** Picks the spot a player new to the world arrives at; `Math.random` by default. */
+  readonly rng?: Rng | undefined;
+}
+
+/** The seed of the room `code` in worlds seeded by `base`. */
+export function roomSeed(code: string, base: number): number {
   let seed = base;
   for (const character of code) {
     seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
@@ -129,10 +154,23 @@ export function createSession(
   worldKind: WorldKind,
   sfx: Sfx,
   config: SimConfig,
+  start: Start = {},
 ): Session {
   const seed = roomSeed(roomCode, config.world.seed);
   const world = buildRoomWorld(seed, worldKind, config);
-  const local = createPlayer(localId, name, world, config);
+  const { radius } = config.player;
+  const rally = rallyPoint(world, seed, radius);
+  const position =
+    start.at !== undefined && canStandAt(world, start.at, radius)
+      ? start.at
+      : arrivalPoint(
+          world,
+          rally,
+          radius,
+          config.arrival.spread,
+          start.rng ?? Math.random,
+        );
+  const local = createPlayer(localId, name, position, config);
 
   const game: Session = {
     localId,
@@ -140,6 +178,7 @@ export function createSession(
     local,
     world,
     seed,
+    rally,
     sfx,
     players: new Map([[localId, local]]),
     entities: new Map(),
@@ -151,6 +190,8 @@ export function createSession(
     items: new Map(),
     itemDefinitions: new Map(),
     playerData: new Map(),
+    worldData: new Map(),
+    worldValues: new Map(),
     events: new Map(),
     eventAddresses: new Map(),
     inbox: [],
@@ -174,17 +215,6 @@ export function remotePlayers(game: Session): Player[] {
 /** Every body a step can move. A new kind of body belongs here so it interpolates. */
 function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
-}
-
-/** Every body in the session that others collide with, but `body` itself. */
-export function solidBodiesBut(
-  game: Session,
-  body: CollisionBody,
-): CollisionBody[] {
-  return [
-    ...game.players.values(),
-    ...[...game.entities.values()].filter((entity) => entity.collides),
-  ].filter((other) => other !== body);
 }
 
 function separateSessionBodies(game: Session): void {
@@ -220,6 +250,7 @@ export function updateSession(
   stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
   reportHeld(game.local);
   if (controls.use) useHeldItem(game);
+  if (controls.interact) interact(game);
   for (const content of game.contents) content.act?.(game, controls);
 
   for (const player of remotePlayers(game)) {
@@ -268,10 +299,8 @@ export function applyRemoteState(
 
   const known = game.players.get(state.id);
   const player =
-    known ?? createPlayer(state.id, state.name, game.world, game.config);
+    known ?? createPlayer(state.id, state.name, state, game.config);
   if (known === undefined) {
-    player.x = state.x;
-    player.y = state.y;
     player.aim = state.aim;
     snapPrevious(player);
     game.players.set(state.id, player);

@@ -18,6 +18,7 @@ const walkRight = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 function session(): Session {
@@ -44,7 +45,7 @@ test("render position blends from the previous position", () => {
 });
 
 test("a spawned player starts with no previous motion", () => {
-  const player = createPlayer("p", "P", session().world, testSimConfig);
+  const player = createPlayer("p", "P", { x: 100, y: 100 }, testSimConfig);
   expect({ x: player.prevX, y: player.prevY }).toEqual({
     x: player.x,
     y: player.y,

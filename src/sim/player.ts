@@ -7,8 +7,7 @@ import {
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
-import type { Point, TileMap, World, WorldConfig } from "./map.js";
-import { randomFreePosition } from "./map.js";
+import type { Point, TileMap, WorldConfig } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
 import { createInventory, selectSlot } from "./inventory.js";
 import { movement } from "./movement.js";
@@ -37,6 +36,8 @@ interface PlayerConfig {
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
+  /** How long, in seconds, a knocked-back player slides to where the blow sends it. */
+  readonly knockbackSeconds: number;
 }
 
 /** The tuning a player's creation and step read. */
@@ -57,6 +58,8 @@ export interface Controls {
   readonly use: boolean;
   /** Whether the secondary action was pressed this step. */
   readonly secondary: boolean;
+  /** Whether to pick up the nearest item the player touches this step. */
+  readonly interact: boolean;
 }
 
 /** A quick move a player makes on top of walking: a fixed velocity, for a while. */
@@ -109,13 +112,14 @@ export interface PlayerState {
   readonly content: Readonly<Record<string, unknown>>;
 }
 
+/** A player at rest at `at`. */
 export function createPlayer(
   id: string,
   name: string,
-  world: World,
+  at: Point,
   rules: PlayerRules,
 ): Player {
-  const position = randomFreePosition(world, rules.player.radius);
+  const position = { x: at.x, y: at.y };
   return {
     id,
     name,
@@ -183,7 +187,7 @@ export function updatePlayer(
 ): void {
   const { player: config } = rules;
   if (controls.select !== null)
-    player.held = selectSlot(player.inventory, player.held, controls.select);
+    player.held = selectSlot(player.inventory, controls.select);
   const moving = controls.move.x !== 0 || controls.move.y !== 0;
   const mode = stepGait(player, controls, moving);
   player.stamina = updateStamina(

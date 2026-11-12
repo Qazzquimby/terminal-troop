@@ -14,7 +14,7 @@ function session(remotes: number) {
   );
   for (let i = 0; i < remotes; i++) {
     const id = `r${String(i)}`;
-    game.players.set(id, createPlayer(id, id, game.world, testSimConfig));
+    game.players.set(id, createPlayer(id, id, game.local, testSimConfig));
   }
   return game;
 }

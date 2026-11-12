@@ -38,6 +38,7 @@ const idle = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 const heartbeat = roomMessages(testSimConfig.player.nameMax)[
   NetEvent.HEARTBEAT
@@ -101,9 +102,8 @@ const biters: WorldContent = {
  */
 const poke = defineItem("poke", (cooldown: number) => ({
   name: "Poke",
-  maxStack: 1,
   emoji: "👉",
-  starting: { slot: 1, quantity: 1 },
+  startingSlot: 1,
   cooldown,
   apply(game, at, aim) {
     const x = at.x + Math.cos(aim) * 20;
@@ -464,7 +464,6 @@ describe("players and voice", () => {
     expect(seen()).toEqual({
       id: "poke",
       name: "Poke",
-      maxStack: 1,
       emoji: "👉",
     });
     expect(joined(a.room).session.players.get("b")?.inventory).toEqual(
@@ -561,7 +560,6 @@ describe("content's player state", () => {
       })).create({ lamp: undefined }),
       defineItem("lamp", () => ({
         name: "Lamp",
-        maxStack: 1,
         emoji: "🪔",
         player: fuel,
         cooldown: 1,
@@ -1124,6 +1122,7 @@ describe("host", () => {
       expect(kinds(get("a"))).toEqual([
         ["blob", 1],
         ["biter", 2],
+        ["core/world-item", 3],
       ]);
       expect(kinds(get("b"))).toEqual(kinds(get("a")));
 
@@ -1245,18 +1244,27 @@ describe("host", () => {
       const data = { steps: 0 };
       listener.send(NetEvent.ENTITIES, {
         host: "b",
+        full: true,
         entities: [{ ...entity, data }],
+        world: {},
+        removed: [],
       });
       listener.send(NetEvent.ENTITIES, {
         host: "z",
+        full: true,
         entities: [{ ...entity, data }],
+        world: {},
+        removed: [],
       });
       expect(ids(get("a"))).toEqual(["a:1", "a:2", "a:3"]);
       expect(ids(get("b"))).toEqual(["a:1", "a:2", "a:3"]);
 
       listener.send(NetEvent.ENTITIES, {
         host: "a",
+        full: true,
         entities: [{ ...entity, data }],
+        world: {},
+        removed: [],
       });
       expect(ids(get("b"))).toEqual(["z:1"]);
     });
@@ -1402,7 +1410,7 @@ describe("host", () => {
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 20, y: blob.y });
         const local = sessionOf(b).local;
-        expect(local.inventory.map((stack) => stack?.item.id ?? null)).toEqual([
+        expect(local.inventory.map((item) => item?.id ?? null)).toEqual([
           null,
           "poke",
           null,

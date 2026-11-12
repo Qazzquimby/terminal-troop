@@ -113,21 +113,19 @@ describe("scatter", () => {
   });
 });
 
-describe("host", () => {
-  test("puts one beside the hosting player at the offset", () => {
-    const game = session("HOST", "dev");
-    Object.assign(game.local, { x: 400, y: 300 });
-    rock({ at: "host", offset: { x: 60, y: -20 }, data: 7 }, game);
-    expect([...game.entities.values()]).toMatchObject([
-      { x: 460, y: 280, data: 7 },
-    ]);
+describe("rally", () => {
+  test("puts one at the rally point, wherever the hosting player is", () => {
+    const game = session("RALLY");
+    const { x, y } = game.rally;
+    rock({ at: "rally", data: 7 }, game);
+    expect([...game.entities.values()]).toMatchObject([{ x, y, data: 7 }]);
   });
 
-  test("moves it to the nearest free spot when the offset is inside a wall", () => {
+  test("moves it to the nearest free spot when the rally point has no room for it", () => {
     // The dev square's pillar fills x 200-300, y 50-150.
-    const game = session("HOST", "dev");
-    Object.assign(game.local, { x: 150, y: 100 });
-    rock({ at: "host", offset: { x: 100, y: 0 }, data: 0 }, game);
+    const game = session("RALLY", "dev");
+    Object.assign(game, { rally: { x: 250, y: 100 } });
+    rock({ at: "rally", data: 0 }, game);
     const [moved] = placed(game);
     expect(moved).toBeDefined();
     expect(
@@ -201,15 +199,11 @@ test("content of several kinds registers them all and spawns them together", () 
 
 describe("defineItem", () => {
   /** An item named `name` that does nothing, used at most every `cooldown` seconds. */
-  const inert = <N extends string>(
-    name: N,
-    starting?: { slot: number; quantity: number },
-  ) =>
+  const inert = <N extends string>(name: N, startingSlot?: number) =>
     defineItem(name, (cooldown: number) => ({
       name: name.toUpperCase(),
-      maxStack: 5,
       emoji: "🧪",
-      ...(starting === undefined ? {} : { starting }),
+      ...(startingSlot === undefined ? {} : { startingSlot }),
       cooldown,
       apply: () => undefined,
       show: (_game, at) => ({ center: { x: at.x, y: at.y }, hit: false }),
@@ -217,16 +211,13 @@ describe("defineItem", () => {
     }));
 
   const stocked = (game: Session) =>
-    game.local.inventory.map((stack) =>
-      stack === null ? null : `${stack.item.id} ${String(stack.quantity)}`,
-    );
+    game.local.inventory.map((item) => item?.id ?? null);
 
   test("registers the item under its name, configured by the slice under that name", () => {
     const game = populated(inert("flask").create({ flask: 2 }));
     expect(game.itemDefinitions.get("flask")).toEqual({
       id: "flask",
       name: "FLASK",
-      maxStack: 5,
       emoji: "🧪",
     });
     expect(game.items.get("flask")?.cooldown).toBe(2);
@@ -234,9 +225,9 @@ describe("defineItem", () => {
     expect(stocked(game)).toEqual([null, null, null, null]);
   });
 
-  test("puts each starting stack in its own slot, whatever order the items register in", () => {
-    const flask = inert("flask", { slot: 2, quantity: 3 });
-    const vial = inert("vial", { slot: 0, quantity: 1 });
+  test("puts each starting item in its own slot, whatever order the items register in", () => {
+    const flask = inert("flask", 2);
+    const vial = inert("vial", 0);
     const config = { flask: 1, vial: 1 };
     for (const list of [
       [flask, vial],
@@ -244,16 +235,14 @@ describe("defineItem", () => {
     ]) {
       const game = session();
       for (const entry of list) entry.create(config).register(game);
-      expect(stocked(game)).toEqual(["vial 1", null, "flask 3", null]);
+      expect(stocked(game)).toEqual(["vial", null, "flask", null]);
     }
   });
 
   test("two items starting in one slot are refused", () => {
     const game = session();
-    inert("flask", { slot: 1, quantity: 1 })
-      .create({ flask: 1 })
-      .register(game);
-    const vial = inert("vial", { slot: 1, quantity: 1 }).create({ vial: 1 });
+    inert("flask", 1).create({ flask: 1 }).register(game);
+    const vial = inert("vial", 1).create({ vial: 1 });
     expect(() => {
       vial.register(game);
     }).toThrow(RangeError);

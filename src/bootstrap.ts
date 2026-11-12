@@ -10,7 +10,10 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
-  createInventoryHud,
+  CONTROLS_HINT,
+  TALK_HINT,
+  controlsHintText,
+  createHud,
   createDebugOverlay,
   createMicIndicatorView,
   createSettingsMenu,
@@ -34,6 +37,8 @@ import {
 import { createSfx } from "./audio/index.js";
 import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
+import { createPositionMemory } from "./position-memory/index.js";
+import { createPlayerIdentity } from "./identity/index.js";
 import type { DebugInfo } from "./ui/index.js";
 import type { Settings } from "./settings/index.js";
 import { createSettingsStore } from "./settings/index.js";
@@ -46,7 +51,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
 import { entityContent } from "./entities/index.js";
-import { itemContent } from "./items/index.js";
+import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 
 /** Owns everything that lives as long as the page. */
@@ -68,14 +73,16 @@ const roomInput = element("#room", HTMLInputElement);
 const createBtn = element("#create", HTMLButtonElement);
 const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
-const inventoryEl = element("#inventory", HTMLElement);
-const inventoryList = element("#inventory-slots", HTMLOListElement);
+const hud = createHud({
+  bar: element("#hud", HTMLDivElement),
+  slots: element("#hud-slots", HTMLOListElement),
+  credit: element("#hud-credit", HTMLSpanElement),
+});
 const debugEl = element("#debug", HTMLPreElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
-const baseHint = controlsHint.textContent.trim();
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -116,21 +123,34 @@ function selectVoice(initial: VoiceSettings): Voice {
 const params = new URLSearchParams(location.search);
 /** `?debug` shows the debug overlay, exposes voice and the room on `window`, and logs voice failures. */
 const debug = params.has("debug");
-const playerId = crypto.randomUUID();
-const defaultName = playerId.slice(0, 4).toUpperCase();
+const playerIdKey = "terminal-troop:player-id";
+/** Kept in the page's session storage: a reload is the same player, another tab another one. */
+const identity = createPlayerIdentity(
+  {
+    get: () => sessionStorage.getItem(playerIdKey),
+    set: (value) => {
+      sessionStorage.setItem(playerIdKey, value);
+    },
+  },
+  () => crypto.randomUUID(),
+);
+const defaultName = identity.current().slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
 const flashes = createFlashes(config.flashes);
-const mapMemory = createMapMemory(config.mapMemory, {
-  get: (key) => localStorage.getItem(key),
-  set: (key, value) => {
+/** The browser's storage, by key, for what the game remembers between visits. */
+const browserStorage = {
+  get: (key: string) => localStorage.getItem(key),
+  set: (key: string, value: string) => {
     localStorage.setItem(key, value);
   },
-  remove: (key) => {
+  remove: (key: string) => {
     localStorage.removeItem(key);
   },
-});
+};
+const mapMemory = createMapMemory(config.mapMemory, browserStorage);
+const positions = createPositionMemory(config.positionMemory, browserStorage);
 const clock = createSimClock(config.sim);
 const counted = createCountingTransport(selectTransport(params), () =>
   performance.now(),
@@ -157,19 +177,18 @@ element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
   voice.configure(current.voice);
-  controlsHint.textContent =
+  controlsHint.textContent = controlsHintText(
     current.voice.mode === "pushToTalk"
-      ? `${baseHint} · ${talkKey} to talk`
-      : baseHint;
+      ? [...CONTROLS_HINT, TALK_HINT]
+      : CONTROLS_HINT,
+  );
 }
 applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
-const updateInventory = createInventoryHud(inventoryEl, inventoryList);
-
-let inventoryOpen = false;
 
 const room = createRoom({
-  localId: playerId,
+  localId: identity.current(),
+  renewId: () => identity.renew(),
   world: env.world,
   transport,
   voice,
@@ -192,6 +211,7 @@ const room = createRoom({
     ...moveContent(config.moves),
   ],
   falloff: config.voice,
+  savedPosition: (place) => positions.enter(place),
   onChange() {
     refreshPeers(room.state());
   },
@@ -199,8 +219,16 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence, ripples, flashes and map memory from the console or a test browser.
-if (debug) Object.assign(window, { voice, room, ripples, flashes, mapMemory });
+// Debug hook for driving voice and reading presence, ripples, flashes, map memory and positions from the console or a test browser.
+if (debug)
+  Object.assign(window, {
+    voice,
+    room,
+    ripples,
+    flashes,
+    mapMemory,
+    positions,
+  });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -218,11 +246,6 @@ const input = createInput(
   (point) => screenToWorld(camera, point),
   config.view,
   {
-    toggleInventory: {
-      press() {
-        if (room.state().kind === "joined") inventoryOpen = !inventoryOpen;
-      },
-    },
     toggleSettings: {
       press(time) {
         settingsMenu.toggle(time);
@@ -290,7 +313,6 @@ async function enterRoom(rawCode: string): Promise<void> {
   nameInput.value = name;
   localStorage.setItem(nameKey, name);
   roomInput.value = state.code;
-  inventoryOpen = false;
   const url = new URLSearchParams(location.search);
   url.set("room", state.code);
   history.replaceState({}, "", `${location.pathname}?${url.toString()}`);
@@ -358,10 +380,15 @@ function frame(): void {
       mapMemory,
     );
     mapMemory.save(now);
+    positions.save(session.local, now);
     frameStats.drawMs = performance.now() - drawStart;
-    updateInventory(session.local.inventory, session.local.held, inventoryOpen);
+    hud.show({
+      inventory: session.local.inventory,
+      held: session.local.held,
+      credit: credit.get(session),
+    });
   } else {
-    inventoryEl.hidden = true;
+    hud.show(null);
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
@@ -407,13 +434,17 @@ on(copyBtn, "click", () => {
 
 on(document, "visibilitychange", () => {
   room.setHidden(document.hidden);
-  if (document.hidden) mapMemory.flush();
+  if (document.hidden) {
+    mapMemory.flush();
+    positions.flush();
+  }
 });
 
 // Leaving sends BYE before anything else, while the page can still send.
 on(window, "beforeunload", () => {
   void room.leave();
   mapMemory.flush();
+  positions.flush();
 });
 
 requestAnimationFrame(frame);

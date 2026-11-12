@@ -1,12 +1,13 @@
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
-import { damaged } from "./entities.js";
+import { damaged } from "./health.js";
 import { movement } from "./movement.js";
 import { noiseMade } from "./noise.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { Session } from "./session.js";
 import { heldItemId, itemUsed } from "./use.js";
+import { dropped, granted, landed, pickedUp } from "./world-items.js";
 
 /** State the engine itself keeps on every player, and events it sends, under one name. */
 interface BuiltIn {
@@ -25,8 +26,13 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/movement": { player: movement },
   /** Each noise the host makes, made again on every client. */
   "core/noise": { events: { made: noiseMade } },
-  /** The damage the host deals each player, sent to that player's own client. */
+  /** The blows the host deals each player, damage and any push, sent to that player's own client. */
   "core/health": { events: { damage: damaged } },
+  /**
+   * Items lying in the world: each pickup and drop the host checks, the item it grants, and each
+   * item it lays down.
+   */
+  "core/world-items": { events: { pickedUp, granted, dropped, landed } },
 };
 
 /** Registers the engine's own player state and events with a new session. */

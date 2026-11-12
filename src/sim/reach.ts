@@ -1,5 +1,6 @@
 import type { WorldEntity } from "./entities.js";
 import type { Point } from "./map.js";
+import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 
 /** A round patch of the world. */
@@ -31,5 +32,16 @@ export function entitiesIn(game: Session, area: Circle): WorldEntity[] {
     (entity) =>
       Math.hypot(entity.x - center.x, entity.y - center.y) <=
       radius + entity.radius,
+  );
+}
+
+/** Every player that touches `area`, but the one with id `but`, if given. */
+export function playersIn(game: Session, area: Circle, but?: string): Player[] {
+  const { center, radius } = area;
+  return [...game.players.values()].filter(
+    (player) =>
+      player.id !== but &&
+      Math.hypot(player.x - center.x, player.y - center.y) <=
+        radius + player.radius,
   );
 }

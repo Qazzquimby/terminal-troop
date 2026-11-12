@@ -3,8 +3,10 @@ import type { Scope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
+  applyEntityChanges,
   applyEntitySnapshot,
   applyRemoteState,
+  applyWorldState,
   cueEntities,
   createSession,
   entitySnapshot,
@@ -12,9 +14,12 @@ import {
   receiveEvent,
   registerContent,
   removePlayer,
+  roomSeed,
+  worldState,
 } from "../sim/index.js";
 import type {
   OutgoingEvent,
+  Point,
   Session,
   SimConfig,
   WorldContent,
@@ -43,6 +48,12 @@ export interface RoomConfig {
   readonly sendHz: number;
   /** Most entity snapshots per second, while hosting. */
   readonly entityHz: number;
+  /**
+   * Milliseconds between full entity snapshots, while hosting. Between them a snapshot carries
+   * only the entities that changed and the ids of those gone; a full one, also sent to each
+   * newcomer and as a new host's first, mends what a lost snapshot missed.
+   */
+  readonly fullSnapshotMs: number;
   /** Milliseconds between heartbeats, and between presence sweeps. */
   readonly heartbeatMs: number;
   readonly presence: PresenceTiming;
@@ -72,7 +83,14 @@ interface RoomClock {
 }
 
 export interface RoomDeps {
+  /** The local player's id on joining; `renewId` replaces it. */
   readonly localId: string;
+  /**
+   * A fresh id for the local player, kept for its later joins too. Called when another client
+   * already plays under the local player's id, as when a tab is duplicated with its storage.
+   * Without it, the clash goes unresolved.
+   */
+  renewId?(): string;
   readonly world: WorldKind;
   readonly transport: Transport;
   readonly voice: Voice;
@@ -85,6 +103,16 @@ export interface RoomDeps {
   /** What the world holds. Every client registers it in this order, which numbers its kinds. */
   readonly content: readonly WorldContent[];
   readonly falloff: VoiceFalloff;
+  /**
+   * Where the local player stood when last in the world the room `room` builds from `seed`, if
+   * anywhere; it starts there if it can stand there, and by the rally point otherwise.
+   */
+  savedPosition?(place: {
+    readonly player: string;
+    readonly room: string;
+    readonly world: WorldKind;
+    readonly seed: number;
+  }): Point | undefined;
   /** The state changed, or a remote player arrived, left, or changed presence. */
   onChange(): void;
   /** A voice connection to `id` stayed down past its deadline. */
@@ -123,7 +151,13 @@ export interface Room {
 
 /** A joined room's live parts, shared by its message handlers, its pulse and the frame. */
 interface Link {
+  readonly code: string;
+  readonly name: string;
   readonly scope: Scope;
+  /** When this client said HELLO. */
+  joinedAt: number;
+  /** Another client plays under the local id, and this one is to take a fresh id. */
+  clashed: boolean;
   readonly session: Session;
   readonly roster: Roster;
   voiceRoom: VoiceRoom | null;
@@ -139,6 +173,10 @@ interface Link {
   /** When the last heartbeat was due to go out. */
   lastPulse: number;
   lastEntitiesSent: number;
+  /** When the last full entity snapshot went out. */
+  lastFullSent: number;
+  /** Each entity as this client last sent it while hosting, by id; empty while not hosting. */
+  sent: Map<string, string>;
   /** The world has its starting entities: this client spawned them or heard them from a host. */
   populated: boolean;
 }
@@ -147,7 +185,8 @@ const ALREADY_CONNECTING = "Already connecting.";
 const LEFT_WHILE_CONNECTING = "Left before the room was joined.";
 
 export function createRoom(deps: RoomDeps): Room {
-  const { localId, transport, clock, config } = deps;
+  const { transport, clock, config } = deps;
+  let localId = deps.localId;
   let state: RoomState = { kind: "lobby", error: null };
   /** The scope of the room joined or being joined. */
   let current: Scope | null = null;
@@ -199,12 +238,37 @@ export function createRoom(deps: RoomDeps): Room {
     if (away) void send(NetEvent.CONTENT, message);
   }
 
+  /**
+   * Sends the entities and the world state, at most `entityHz` times a second unless forced: in
+   * full when forced, as this client's first while hosting, or every `fullSnapshotMs`; otherwise
+   * only the entities changed since the last send, and the ids of those gone.
+   */
   function sendEntities(room: Link, now: number, force = false): void {
     if (!force && now - room.lastEntitiesSent < 1000 / config.entityHz) return;
     room.lastEntitiesSent = now;
+    const entities = entitySnapshot(room.session);
+    const current = new Map(
+      entities.map((entity) => [entity.id, JSON.stringify(entity)]),
+    );
+    const full =
+      force ||
+      room.sent.size === 0 ||
+      now - room.lastFullSent >= config.fullSnapshotMs;
+    const previous = room.sent;
+    room.sent = current;
+    if (full) room.lastFullSent = now;
     void send(NetEvent.ENTITIES, {
       host: localId,
-      entities: entitySnapshot(room.session),
+      full,
+      entities: full
+        ? entities
+        : entities.filter(
+            (entity) => previous.get(entity.id) !== current.get(entity.id),
+          ),
+      removed: full
+        ? []
+        : [...previous.keys()].filter((id) => !current.has(id)),
+      world: worldState(room.session),
     });
   }
 
@@ -216,6 +280,7 @@ export function createRoom(deps: RoomDeps): Room {
     room.host = view;
     const hosting = view?.id === localId;
     room.session.hosting = hosting;
+    if (!hosting) room.sent.clear();
     if (hosting && !room.populated) {
       for (const content of deps.content) content.populate(room.session);
       room.populated = true;
@@ -281,6 +346,10 @@ export function createRoom(deps: RoomDeps): Room {
     }
     return {
       [NetEvent.STATE]: on(NetEvent.STATE, (message) => {
+        if (message.id === localId) {
+          heardOwnId(room);
+          return;
+        }
         const change = room.roster.apply(
           message.id,
           { kind: "heard", hidden: false },
@@ -295,6 +364,10 @@ export function createRoom(deps: RoomDeps): Room {
         }
       }),
       [NetEvent.HEARTBEAT]: on(NetEvent.HEARTBEAT, (message) => {
+        if (message.id === localId) {
+          heardOwnId(room);
+          return;
+        }
         hear(room, message.id, { kind: "heard", hidden: message.hidden });
         if (room.roster.get(message.id) === undefined) return;
         room.views.set(message.id, message.host);
@@ -302,7 +375,10 @@ export function createRoom(deps: RoomDeps): Room {
       }),
       [NetEvent.ENTITIES]: on(NetEvent.ENTITIES, (message) => {
         if (message.host === localId || message.host !== room.host?.id) return;
-        applyEntitySnapshot(room.session, message.entities);
+        if (message.full) applyEntitySnapshot(room.session, message.entities);
+        else
+          applyEntityChanges(room.session, message.entities, message.removed);
+        applyWorldState(room.session, message.world);
         room.populated = true;
       }),
       [NetEvent.CONTENT]: on(NetEvent.CONTENT, (message) => {
@@ -311,13 +387,20 @@ export function createRoom(deps: RoomDeps): Room {
         receiveEvent(room.session, message, room.host?.id);
       }),
       [NetEvent.HELLO]: on(NetEvent.HELLO, (message) => {
-        hear(room, message.id, { kind: "hello" });
+        if (message.id === localId) heardOwnId(room);
+        else {
+          hear(room, message.id, { kind: "hello" });
+          // A host that says HELLO again has lost the world it ran, so the others take it over.
+          if (room.host?.id === message.id) handOver(room, message.id);
+        }
+        if (room.clashed) return;
         sendState(room, clock.now(), true);
         // The newcomer learns the host view at once, and a hidden page undoes the visible STATE.
         sendHeartbeat(room);
         if (room.host?.id === localId) sendEntities(room, clock.now(), true);
       }),
       [NetEvent.BYE]: on(NetEvent.BYE, ({ id }) => {
+        if (id === localId) return;
         const change = room.roster.apply(id, { kind: "bye" }, clock.now());
         const removed = removePlayer(room.session, id);
         room.views.delete(id);
@@ -328,6 +411,41 @@ export function createRoom(deps: RoomDeps): Room {
         room.voiceRoom?.receive(signal);
       }),
     };
+  }
+
+  /**
+   * Runs a new election among everyone but `id`, the host, which joined again without the
+   * world it ran.
+   */
+  function handOver(room: Link, id: string): void {
+    holdView(
+      room,
+      elect(
+        room.host,
+        { id: localId, active: !hidden },
+        remotes(room).filter((remote) => remote.id !== id),
+      ),
+    );
+  }
+
+  /**
+   * Another client plays under the local id. A client that hears its own id from another within
+   * `awayAfterMs` of its HELLO takes a fresh id and joins again; one that has been in the room
+   * longer keeps it. So a page that joins after a copy of itself has settled in renews, and of
+   * two that join at once, at least the first to hear the other does.
+   */
+  function heardOwnId(room: Link): void {
+    if (room.clashed || deps.renewId === undefined) return;
+    if (clock.now() - room.joinedAt >= config.presence.awayAfterMs) return;
+    room.clashed = true;
+    if (link === room) rejoin(room);
+  }
+
+  /** Takes a fresh id and joins `room`'s code again under it. */
+  function rejoin(room: Link): void {
+    if (deps.renewId === undefined) return;
+    localId = deps.renewId();
+    void joinRoom(room.code, room.name);
   }
 
   /**
@@ -365,6 +483,7 @@ export function createRoom(deps: RoomDeps): Room {
     scope.defer(() => {
       deps.sfx.stopAll();
     });
+    const seed = roomSeed(code, deps.sim.world.seed);
     const session = createSession(
       localId,
       name,
@@ -372,11 +491,23 @@ export function createRoom(deps: RoomDeps): Room {
       deps.world,
       deps.sfx,
       deps.sim,
+      {
+        at: deps.savedPosition?.({
+          player: localId,
+          room: code,
+          world: deps.world,
+          seed,
+        }),
+      },
     );
     registerContent(session, deps.content);
     session.hosting = false;
     const room: Link = {
+      code,
+      name,
       scope,
+      joinedAt: clock.now(),
+      clashed: false,
       session,
       roster: createRoster(config.presence),
       voiceRoom: null,
@@ -387,6 +518,8 @@ export function createRoom(deps: RoomDeps): Room {
       views: new Map(),
       lastPulse: clock.now(),
       lastEntitiesSent: -Infinity,
+      lastFullSent: -Infinity,
+      sent: new Map(),
       populated: false,
     };
     await transport.join(roomKey(code, deps.world), handlers(room));
@@ -414,8 +547,13 @@ export function createRoom(deps: RoomDeps): Room {
         stop();
       },
     );
-    scope.defer(() => send(NetEvent.BYE, { id: localId }));
-    void send(NetEvent.HELLO, { id: localId });
+    const id = localId;
+    // A client leaving over a clash says no BYE: the id stays with the client that keeps it.
+    scope.defer(() =>
+      room.clashed ? Promise.resolve() : send(NetEvent.BYE, { id }),
+    );
+    room.joinedAt = clock.now();
+    void send(NetEvent.HELLO, { id });
     sendState(room, clock.now(), true);
     return room;
   }
@@ -434,6 +572,7 @@ export function createRoom(deps: RoomDeps): Room {
       if (joined === null) return { ok: false, error: LEFT_WHILE_CONNECTING };
       link = joined;
       setState({ kind: "joined", code, session: joined.session });
+      if (joined.clashed) rejoin(joined);
       return { ok: true };
     } catch (error) {
       const message =
@@ -447,28 +586,30 @@ export function createRoom(deps: RoomDeps): Room {
     }
   }
 
+  function joinRoom(rawCode: string, name: string): Promise<JoinResult> {
+    if (state.kind === "connecting")
+      return Promise.resolve({ ok: false, error: ALREADY_CONNECTING });
+    const code = parseRoomCode(rawCode);
+    if (code === null) {
+      if (state.kind === "lobby")
+        setState({ kind: "lobby", error: INVALID_ROOM_CODE });
+      return Promise.resolve({ ok: false, error: INVALID_ROOM_CODE });
+    }
+
+    const previous = current;
+    const scope = deps.scope.child();
+    current = scope;
+    link = null;
+    setState({ kind: "connecting", code });
+    const result = attemptJoin(code, name, scope, previous, attempt);
+    attempt = result.catch(() => undefined);
+    return result;
+  }
+
   return {
     state: () => state,
 
-    join(rawCode, name) {
-      if (state.kind === "connecting")
-        return Promise.resolve({ ok: false, error: ALREADY_CONNECTING });
-      const code = parseRoomCode(rawCode);
-      if (code === null) {
-        if (state.kind === "lobby")
-          setState({ kind: "lobby", error: INVALID_ROOM_CODE });
-        return Promise.resolve({ ok: false, error: INVALID_ROOM_CODE });
-      }
-
-      const previous = current;
-      const scope = deps.scope.child();
-      current = scope;
-      link = null;
-      setState({ kind: "connecting", code });
-      const result = attemptJoin(code, name, scope, previous, attempt);
-      attempt = result.catch(() => undefined);
-      return result;
-    },
+    join: joinRoom,
 
     async leave() {
       const scope = current;

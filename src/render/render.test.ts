@@ -86,6 +86,7 @@ const walkRight = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 function session(): Session {
@@ -137,7 +138,7 @@ test("entities record their pre-step position", () => {
 
 test("the render view draws bodies between steps without touching the simulation", () => {
   const game = session();
-  const remote = createPlayer("them", "THEM", game.world, game.config);
+  const remote = createPlayer("them", "THEM", game.local, game.config);
   game.players.set("them", remote);
   Object.assign(remote, { prevX: 100, x: 110, prevY: 50, y: 50 });
   Object.assign(game.local, { prevX: 300, x: 320 });
@@ -158,7 +159,7 @@ test("the render view draws bodies between steps without touching the simulation
 
 test("the view's remote aim is interpolated by alpha along the shortest arc", () => {
   const game = session();
-  const remote = createPlayer("them", "THEM", game.world, game.config);
+  const remote = createPlayer("them", "THEM", game.local, game.config);
   game.players.set("them", remote);
   Object.assign(remote, { prevAim: degrees(160), aim: degrees(-160) });
 
@@ -172,15 +173,15 @@ test("the view's remote aim is interpolated by alpha along the shortest arc", ()
 
 test("the view's players hold what the simulation's do", () => {
   const game = session();
-  const torch = { id: "torch", name: "Torch", maxStack: 1, emoji: "🔦" };
+  const torch = { id: "torch", name: "Torch", emoji: "🔦" };
   registerItem(game, torch, {
     cooldown: 1,
     apply: () => undefined,
     show: (_game, at) => ({ center: at, hit: false }),
     draw: () => undefined,
   });
-  game.local.inventory[0] = { item: torch, quantity: 1 };
-  const remote = createPlayer("them", "THEM", game.world, game.config);
+  game.local.inventory[0] = torch;
+  const remote = createPlayer("them", "THEM", game.local, game.config);
   game.players.set("them", remote);
   heldItemId.set(remote, "torch");
   remote.use = { item: "torch", center: origin, hit: false, startedAt: 0 };

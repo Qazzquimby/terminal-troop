@@ -7,7 +7,7 @@ import {
 import { createSession } from "../sim/index.js";
 import { entityContent } from "./index.js";
 
-test("the content list numbers the chaser 1 and the cruiser 2, and a new world starts with chasers and a cruiser beside the host", () => {
+test("the content list numbers the chaser 1 and the cruiser 2, and a new world starts with chasers and a cruiser at the rally point", () => {
   const game = createSession(
     "me",
     "ME",
@@ -27,8 +27,5 @@ test("the content list numbers the chaser 1 and the cruiser 2, and a new world s
   ]);
   const entities = [...game.entities.values()];
   expect(entities.map(({ kind }) => kind)).toEqual([1, 1, 2]);
-  expect(entities.at(-1)).toMatchObject({
-    x: 400 + testEntitiesConfig.cruiser.offset,
-    y: 300,
-  });
+  expect(entities.at(-1)).toMatchObject(game.rally);
 });

@@ -6,6 +6,7 @@ import type {
   MapMemoryConfig,
   RippleConfig,
 } from "./render/index.js";
+import type { PositionMemoryConfig } from "./position-memory/index.js";
 import type { RoomConfig } from "./room/index.js";
 import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
@@ -21,6 +22,7 @@ interface AppConfig extends SimConfig {
   readonly ripples: RippleConfig;
   readonly flashes: FlashConfig;
   readonly mapMemory: MapMemoryConfig;
+  readonly positionMemory: PositionMemoryConfig;
   readonly entities: EntitiesConfig;
   readonly items: ItemsConfig;
   readonly moves: MovesConfig;
@@ -62,6 +64,8 @@ export const config = {
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
   },
+  // Where the player stands, saved every 2s while it moves, so a reload puts it back there.
+  positionMemory: { saveInterval: 2, maxRooms: 50 },
   // A kick's flash: three quarters of its size at first, swelling to full as it fades over 0.3s.
   flashes: {
     duration: 0.3,
@@ -77,8 +81,9 @@ export const config = {
     sprintMultiplier: 1.8,
     crouchMultiplier: 0.5,
     maxHealth: 100,
-    inventorySlots: 9,
+    inventorySlots: 6,
     nameMax: 8,
+    knockbackSeconds: 0.15,
   },
   stamina: {
     max: STAMINA_MAX,
@@ -89,6 +94,8 @@ export const config = {
     regenDelay: 0.6,
     recover: STAMINA_MAX * 0.3,
   },
+  // A player new to a world starts within 2 cells of its rally point, where the cruiser waits.
+  arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
   net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
@@ -100,9 +107,12 @@ export const config = {
     sprint: { interval: 0.3, loudness: 1.6 },
     crouch: { interval: 0.7, loudness: 0.15 },
   },
+  // Items lying about: a 16px glyph, picked up at most five times a second.
+  worldItems: { radius: 8, cooldown: 0.2 },
   room: {
     sendHz: 15,
     entityHz: 10,
+    fullSnapshotMs: 5000,
     heartbeatMs: 1000,
     presence: {
       awayAfterMs: 3500,
@@ -133,7 +143,6 @@ export const config = {
     },
     cruiser: {
       lightRadius: CELL * 12,
-      offset: CELL,
     },
   },
   items: {
@@ -146,6 +155,16 @@ export const config = {
       duration: 0.18,
       volume: 0.8,
       hitLoudness: 1.2,
+    },
+    // 500 scrap about the world, none within 3 cells of the first players; each sells for 1 while
+    // its holder stands within 3 cells of the cruiser, one every quarter second.
+    scrap: {
+      value: 1,
+      cashoutRadius: CELL * 3,
+      sellInterval: 0.25,
+      sellTimeout: 2,
+      volume: 0.8,
+      scatter: { count: 500, seed: 2, clearance: CELL * 3 },
     },
   },
   moves: {

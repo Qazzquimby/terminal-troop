@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
-import { circleAhead, entitiesIn } from "./reach.js";
-import { createSession } from "./session.js";
+import { circleAhead, entitiesIn, playersIn } from "./reach.js";
+import { applyRemoteState, createSession } from "./session.js";
 
 function session() {
   const game = createSession(
@@ -50,4 +50,27 @@ test("never finds a player", () => {
   expect(entitiesIn(game, { center: { x: 300, y: 300 }, radius: 50 })).toEqual(
     [],
   );
+});
+
+test("finds every player touching the circle but the one left out, and no world entity", () => {
+  const game = session();
+  Object.assign(game.local, { x: 300, y: 300 });
+  const near = (id: string, x: number) => {
+    applyRemoteState(game, {
+      id,
+      name: id,
+      x,
+      y: 300,
+      aim: 0,
+      health: 100,
+      content: {},
+    });
+    return game.players.get(id);
+  };
+  const touching = near("touching", 334);
+  near("beyond", 335);
+  spawnEntity(game, "post", 300, 300, null);
+  const area = { center: { x: 300, y: 300 }, radius: 20 };
+  expect(playersIn(game, area)).toEqual([game.local, touching]);
+  expect(playersIn(game, area, "me")).toEqual([touching]);
 });

@@ -51,6 +51,7 @@ const still: Controls = {
   select: null,
   use: false,
   secondary: false,
+  interact: false,
 };
 
 function sessionOf(room: Room): Session {

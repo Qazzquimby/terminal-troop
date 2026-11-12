@@ -4,9 +4,11 @@ import {
   circleAhead,
   defineItem,
   entitiesIn,
+  hurtPlayer,
   knockBack,
+  playersIn,
 } from "../../sim/index.js";
-import type { ItemUse, Point } from "../../sim/index.js";
+import type { Circle, ItemUse, Point, Session } from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
@@ -16,9 +18,9 @@ export interface ShovelConfig {
   readonly radius: number;
   /** How far in front of the player the hitbox is centred. */
   readonly reach: number;
-  /** Damage dealt to every world entity in the hitbox. */
+  /** Damage dealt to every world entity and other player in the hitbox. */
   readonly damage: number;
-  /** How far, in pixels, a hit entity is pushed away from the hitbox centre. */
+  /** How far, in pixels, a hit entity or player is pushed away from the swinger. */
   readonly knockback: number;
   /** Minimum time between swings. */
   readonly cooldown: number;
@@ -70,26 +72,33 @@ function drawHitbox(
 export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   const hitbox = (at: Point, aim: number) =>
     circleAhead(at, aim, config.reach, config.radius);
+  /** Whether `area` touches anything a swing by player `by` hits. */
+  const hits = (game: Session, area: Circle, by: string): boolean =>
+    entitiesIn(game, area).length + playersIn(game, area, by).length > 0;
   return {
     name: "Shovel",
-    maxStack: 1,
     emoji: "🪏",
-    starting: { slot: 0, quantity: 1 },
+    startingSlot: 0,
     cooldown: config.cooldown,
-    apply(game, at, aim) {
+    apply(game, at, aim, by) {
       const area = hitbox(at, aim);
       const { center } = area;
-      const hit = entitiesIn(game, area);
-      for (const entity of hit) {
+      const hit = hits(game, area, by);
+      for (const entity of entitiesIn(game, area)) {
         applyDamage(entity, config.damage);
-        knockBack(entity, center, config.knockback, game.world.map, "stay");
+        knockBack(entity, at, config.knockback, game.world.map, "stay");
       }
-      if (hit.length > 0)
+      for (const player of playersIn(game, area, by))
+        hurtPlayer(game, player, config.damage, {
+          from: at,
+          distance: config.knockback,
+        });
+      if (hit)
         broadcastNoise(game, { at: center, loudness: config.hitLoudness });
     },
-    show(game, at, aim) {
+    show(game, at, aim, by) {
       const area = hitbox(at, aim);
-      const hit = entitiesIn(game, area).length > 0;
+      const hit = hits(game, area, by);
       void game.sfx.play(hit ? SOUNDS.hit : SOUNDS.miss, at, game.local, {
         volume: config.volume,
       });

@@ -9,10 +9,13 @@ import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
+import { registerWorldData } from "./world-data.js";
+import type { WorldData } from "./world-data.js";
 import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
 import { registerItem } from "./use.js";
 import type { ItemBehaviour } from "./use.js";
+import { registerWorldItems, spawnWorldItem } from "./world-items.js";
 
 /**
  * A content entry's name, in the namespace of where it comes from: `entity/` for kinds of entity,
@@ -32,6 +35,8 @@ export interface WorldContent {
   readonly name: ContentName;
   /** The state it keeps on every player, if any. */
   readonly player?: PlayerData<unknown> | undefined;
+  /** The state it keeps once for the world, if any. */
+  readonly world?: WorldData<unknown> | undefined;
   /** The events it sends and receives, by the key each travels under. */
   readonly events?: ContentEvents | undefined;
   /**
@@ -60,6 +65,8 @@ export function registerContent(
     names.add(content.name);
     if (content.player !== undefined)
       registerPlayerData(game, content.name, content.player);
+    if (content.world !== undefined)
+      registerWorldData(game, content.name, content.world);
     if (content.events !== undefined)
       registerEvents(game, content.name, content.events);
     content.register(game);
@@ -129,12 +136,12 @@ export interface Scatter {
 /**
  * Where a new world puts a kind's starting entities:
  * - scatter: at random free spots seeded by the room; `data` draws from the same generator
- * - host: one beside the hosting player, `offset` from it, or at the nearest free spot
+ * - rally: one at the world's rally point, where new players arrive, or at the nearest free spot
  * - a function: spawns them itself
  */
 export type SpawnRule<S> =
   | (Scatter & { readonly at: "scatter"; readonly data: (rng: Rng) => S })
-  | { readonly at: "host"; readonly offset: Point; readonly data: S }
+  | { readonly at: "rally"; readonly data: S }
   | ((spawn: (at: Point, data: S) => WorldEntity, game: Session) => void);
 
 /** A kind's definition, and where a new world puts its starting entities; none without `spawn`. */
@@ -197,16 +204,12 @@ function spawnByRule<S>(
 ): void {
   if (typeof rule === "function") {
     rule(spawn, game);
-  } else if (rule.at === "host") {
-    const target = {
-      x: game.local.x + rule.offset.x,
-      y: game.local.y + rule.offset.y,
-    };
-    const { map } = game.world;
+  } else if (rule.at === "rally") {
+    const { rally, world } = game;
     spawn(
-      isAreaFree(map, target.x, target.y, radius)
-        ? target
-        : nearestFreePoint(map, radius, target),
+      isAreaFree(world.map, rally.x, rally.y, radius)
+        ? rally
+        : nearestFreePoint(world.map, radius, rally),
       rule.data,
     );
   } else {
@@ -251,23 +254,32 @@ export function defineEntity<N extends string, C, S>(
   };
 }
 
-/** A stack each player starts with, in a slot of its own. */
-interface StartingStack {
-  readonly slot: number;
-  readonly quantity: number;
-}
-
-/**
- * An item's definition, less its id, which is its content name; what using it does; and where
- * each player starts with it, if anywhere.
- */
-export interface ItemSpec extends Omit<ItemDefinition, "id">, ItemBehaviour {
-  readonly starting?: StartingStack;
+/** What every item spec has, usable or not. */
+interface ItemBase extends Omit<ItemDefinition, "id"> {
+  /** The slot each player starts with it in, if any; no two items may share one. */
+  readonly startingSlot?: number;
+  /** Where a new world lays it on the ground, one item each, if anywhere. */
+  readonly scatter?: Scatter;
   /** The state the item keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
   /** The events the item sends and receives, by key. */
   readonly events?: ContentEvents;
+  /** The state the item keeps once for the world, if any. */
+  readonly world?: WorldData<unknown>;
+  /** Acts on the local player's controls, each step, once the player has moved. */
+  act?(game: Session, controls: Controls): void;
 }
+
+/** An item that does nothing when used. */
+interface Unusable {
+  readonly cooldown?: undefined;
+}
+
+/**
+ * An item's definition, less its id, which is its content name; what using it does, if it is
+ * usable; where each player starts with it, and where a new world lays it, if anywhere.
+ */
+export type ItemSpec = ItemBase & (ItemBehaviour | Unusable);
 
 /**
  * A content entry of one item, registered as the item id `name` and configured by the slice
@@ -285,21 +297,39 @@ export function defineItem<N extends string, C>(
       const item: ItemDefinition & { readonly id: N } = {
         id: name,
         name: spec.name,
-        maxStack: spec.maxStack,
         emoji: spec.emoji,
+        ...(spec.drop === undefined ? {} : { drop: spec.drop }),
       };
+      const { scatter } = spec;
       return {
         name: `item/${name}`,
         player: spec.player,
+        world: spec.world,
         events: spec.events,
         register(game) {
-          registerItem(game, item, spec);
-          if (spec.starting !== undefined) {
-            const { slot, quantity } = spec.starting;
-            placeItem(game.local.inventory, slot, item, quantity);
-          }
+          registerItem(
+            game,
+            item,
+            spec.cooldown === undefined ? undefined : spec,
+          );
+          registerWorldItems(game);
+          if (spec.startingSlot !== undefined)
+            placeItem(game.local.inventory, spec.startingSlot, item);
         },
-        populate: () => undefined,
+        populate(game) {
+          if (scatter === undefined) return;
+          const rule: SpawnRule<null> = {
+            ...scatter,
+            at: "scatter",
+            data: () => null,
+          };
+          spawnByRule(game, rule, game.config.worldItems.radius, (at) =>
+            spawnWorldItem(game, at, name),
+          );
+        },
+        act(game, controls) {
+          spec.act?.(game, controls);
+        },
       };
     },
   };
