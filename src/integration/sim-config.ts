@@ -39,6 +39,12 @@ export const testSimConfig: SimConfig = {
     smoothing: 12,
     useSlack: { distance: 40, seconds: 0.1 },
     predictionHold: 0.5,
+    moves: {
+      slack: 10,
+      lateSeconds: 0.2,
+      settleSeconds: 1,
+      roundTripSeconds: 0.5,
+    },
   },
   noise: { blur: 0.2 },
   footsteps: {

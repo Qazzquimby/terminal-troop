@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  allowMove,
   applyDamage,
   broadcastNoise,
   circleAhead,
@@ -144,6 +145,12 @@ export const kick: Content<"kick", KickConfig> = {
         const off = Math.hypot(reported.x - at.x, reported.y - at.y);
         if (off > config.lunge.slack) return;
         if (!hostAccepts(game, by, at, NAME, config.cooldown)) return;
+        allowMove(
+          game,
+          by,
+          Math.hypot(at.x - kicker.tx, at.y - kicker.ty) + config.lunge.slack,
+          config.lunge.seconds,
+        );
         const area = hitbox(at, aim);
         const entities = entitiesIn(game, area);
         for (const entity of entities) strike(game, entity, at);
