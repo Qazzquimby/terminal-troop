@@ -77,6 +77,7 @@ export {
   worldData,
 } from "./world-data.js";
 export { movement } from "./movement.js";
+export { speak } from "./voice-noise.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
 export { makeSound, sound } from "./sound.js";

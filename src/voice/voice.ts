@@ -165,6 +165,11 @@ export interface Voice {
   /** Cheap enough to call every frame; connection statistics refresh in the background. */
   diagnostics(): VoiceDiagnostics;
   /**
+   * How loud the mic goes out to the other players now, 0..1: 0 while muted, while push-to-talk
+   * is not held, and without a mic. Cheap enough to call every frame.
+   */
+  speakingLevel(): number;
+  /**
    * Starts voice in a room, leaving the room joined before. Setup messages go out through
    * `send`, for the room to deliver as SIGNAL events. The mic stays captured across rooms.
    */
@@ -203,6 +208,7 @@ export function createNullVoice(initial: VoiceSettings): Voice {
     setPeerMuted: noop,
     setMicTest: noop,
     retry: noop,
+    speakingLevel: () => 0,
     diagnostics: () => ({
       mic: {
         permission: "unavailable",

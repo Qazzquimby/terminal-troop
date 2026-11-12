@@ -2,6 +2,8 @@ import { expect, test } from "vitest";
 import { z } from "zod";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
+import { NetEvent, createCountingTransport } from "../net/index.js";
+import type { Transport } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import { createRipples } from "../render/index.js";
@@ -10,6 +12,7 @@ import {
   broadcastNoise,
   isAreaFree,
   mulberry32,
+  speak,
   updateSession,
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
@@ -17,6 +20,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  messages,
   tenth,
   testRoomConfig,
 } from "./room-helpers.js";
@@ -100,11 +104,33 @@ function freeSpotNear(game: Session, from: Point, distance: number): Point {
 async function pair() {
   const hub = createHub();
   const clock = createManualClock();
+  /** What each client sent, message by message, batches unpacked. */
+  const sent = new Map<string, NetEvent[]>();
+  /** Each client's broadcasts over the last second. */
+  const broadcasts = new Map<string, () => number>();
+  const tapped = (id: string): Transport => {
+    const port = hub.transport(id, []).port;
+    const log: NetEvent[] = [];
+    sent.set(id, log);
+    const counted = createCountingTransport(
+      {
+        ...port,
+        send(event, payload) {
+          for (const message of messages(event, payload))
+            log.push(message.event);
+          return port.send(event, payload);
+        },
+      },
+      () => clock.now(),
+    );
+    broadcasts.set(id, () => counted.rates(clock.now()).sentPerS);
+    return counted.transport;
+  };
   const client = (id: string): Room =>
     createRoom({
       localId: id,
       world: "dev",
-      transport: hub.transport(id, []).port,
+      transport: tapped(id),
       voice: createNullVoice({
         mode: "open",
         muted: false,
@@ -127,7 +153,9 @@ async function pair() {
   await b.join("NOISE", "B");
   clock.advance(1000);
   expect(a.hostId()).toBe("a");
-  return { a, b, clock };
+  const sentBy = (id: string): NetEvent[] => sent.get(id) ?? [];
+  const broadcastsBy = (id: string): number => broadcasts.get(id)?.() ?? 0;
+  return { a, b, clock, sentBy, broadcastsBy };
 }
 
 test("a chaser drawn by a remote player's sprinting keeps investigating when the host changes", async () => {
@@ -183,4 +211,65 @@ test("each client sees the other's footsteps, worked out from its state, and the
   expect(heardByGuest.list.at(-1)).toMatchObject({ radius: 300 });
   steps(a, still, DT);
   expect(host.noises).toHaveLength(1);
+});
+
+test("a shouting guest draws a chaser from beyond walking range, its voice rippling on the host with no message but its state", async () => {
+  const { a, b, clock, sentBy, broadcastsBy } = await pair();
+  const host = sessionOf(a);
+  const guest = sessionOf(b);
+  const { voiceNoise } = testSimConfig;
+  const distance = 300;
+  expect(distance).toBeGreaterThan(testSimConfig.footsteps.walk.radius);
+  expect(distance).toBeLessThan(voiceNoise.radius.loud);
+  const spot = freeSpotNear(guest, chaserOf(a), distance);
+  Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
+  const near = freeSpotNear(host, spot, 100);
+  Object.assign(host.local, { ...near, prevX: near.x, prevY: near.y });
+  const heardByHost = createRipples(testRippleConfig, mulberry32(1));
+  /** The noises the guest's voice made on the host. */
+  let voices = 0;
+
+  /** Runs both clients' frames, at 60 a second, for `seconds`, the guest's mic going out at `level`. */
+  const run = (seconds: number, level: number): void => {
+    for (let step = 0; step < Math.round(seconds / DT); step++) {
+      clock.advance(clock.now() + 1000 * DT);
+      speak(guest, level);
+      updateSession(guest, still, DT);
+      b.frame(clock.now());
+      updateSession(host, still, DT);
+      heardByHost.hear(host, host.time * 1000);
+      voices += host.noises.filter(({ source }) => source === "b").length;
+      a.frame(clock.now());
+    }
+  };
+
+  steps(b, { ...still, move: { x: 1, y: 0 } }, DT);
+  Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
+  run(1, 0);
+  expect(noiseTarget(a)).toBeNull();
+  const quiet = broadcastsBy("b");
+  voices = 0;
+  const before = { guest: sentBy("b").length, host: sentBy("a").length };
+
+  run(1, 1);
+  const heard = noiseTarget(a);
+  if (heard === null) throw new Error("the chaser heard nothing");
+  expect(Math.hypot(heard.x - spot.x, heard.y - spot.y)).toBeLessThan(
+    distance * testSimConfig.noise.blur + 10,
+  );
+  expect(voices).toBeGreaterThanOrEqual(Math.floor(1 / voiceNoise.interval));
+  expect(voices).toBeLessThanOrEqual(Math.ceil(1 / voiceNoise.interval));
+  expect(heardByHost.list.at(-1)).toMatchObject({
+    radius: voiceNoise.radius.loud,
+  });
+
+  const byGuest = sentBy("b").slice(before.guest);
+  expect(byGuest.filter((event) => event === NetEvent.STATE)).toHaveLength(1);
+  expect(
+    byGuest.every(
+      (event) => event === NetEvent.STATE || event === NetEvent.HEARTBEAT,
+    ),
+  ).toBe(true);
+  expect(sentBy("a").slice(before.host)).not.toContain(NetEvent.CONTENT);
+  expect(broadcastsBy("b")).toBeLessThanOrEqual(quiet + 1);
 });

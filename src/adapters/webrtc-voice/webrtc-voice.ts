@@ -615,6 +615,10 @@ export function createWebRtcVoice(
       return { mic: { ...mic.report(), testing }, peers: diagnosed };
     },
 
+    speakingLevel() {
+      return transmitting() ? mic.level() : 0;
+    },
+
     setTalking(held) {
       talking = held;
       applyTransmit();

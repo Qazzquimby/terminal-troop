@@ -12,6 +12,7 @@ import { heldSlot, inventories } from "./inventories.js";
 import { itemUsed } from "./use.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
+import { voiceNoise } from "./voice-noise.js";
 import { dropped, landed, pickedUp } from "./world-items.js";
 
 /** State the engine itself keeps on every player or once for the world, and events it sends, under one name. */
@@ -34,6 +35,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   },
   /** How each player moves, which its footsteps follow. */
   "core/movement": { player: movement },
+  /** How far each player's speech carries, which its voice noise follows. */
+  "core/voice": { player: voiceNoise },
   /** Each noise the host makes, made again on every client. */
   "core/noise": { events: { made: noiseMade } },
   /** Each player's health, which the host alone changes. */

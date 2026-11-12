@@ -19,7 +19,8 @@ import type { SimConfig } from "../sim/index.js";
  * reckons its stamina with 0.3s of sprinting over a full bar, and lets a kick borrow 0.25s of
  * regeneration it has not reckoned yet: the report that a player stopped sprinting waits up to
  * 1/15s for its tick and two steps for a frame where a kick goes at once, and either travels 60
- * to 180ms.
+ * to 180ms. Speech is judged by its loudest level over 0.5s: from 0.3 it carries
+ * 100px, up to 500px from 0.8, in steps of 50px, rippling every 0.4s.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -57,6 +58,14 @@ export const testSimConfig: SimConfig = {
     walk: { interval: 0.5, radius: 150 },
     sprint: { interval: 0.25, radius: 450 },
     crouch: { interval: 0.75, radius: 60 },
+  },
+  voiceNoise: {
+    window: 0.5,
+    threshold: 0.3,
+    full: 0.8,
+    radius: { quiet: 100, loud: 500 },
+    step: 50,
+    interval: 0.4,
   },
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };

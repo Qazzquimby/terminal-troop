@@ -130,6 +130,20 @@ export const config = {
     sprint: { interval: 0.3, radius: CELL * 16 },
     crouch: { interval: 0.7, radius: CELL * 1.5 },
   },
+  // Speech is judged by its loudest moment over the last 0.75s, so the gaps between words don't
+  // silence it. The mic level runs from -60 dBFS (0) to full scale (1): a quiet room sits below
+  // 0.35 (-39 dBFS), talking at about 0.5 (-30 dBFS) carries 4 cells, under a walk's 5, and a
+  // shout at 0.85 (-9 dBFS) or more carries 10, past a walk but short of a sprint's 16. Rounded to
+  // whole cells, so a player reports a new radius only as its loudness steps; a speaker ripples
+  // every 0.5s, a walking step's pace.
+  voiceNoise: {
+    window: 0.75,
+    threshold: 0.35,
+    full: 0.85,
+    radius: { quiet: CELL * 2, loud: CELL * 10 },
+    step: CELL,
+    interval: 0.5,
+  },
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {

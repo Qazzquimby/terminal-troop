@@ -2,6 +2,7 @@ import {
   createSimClock,
   remotePlayers,
   renderPosition,
+  speak,
   updateSession,
 } from "./sim/index.js";
 import { NetEvent, carries, createCountingTransport } from "./net/index.js";
@@ -374,6 +375,7 @@ function frame(): void {
   if (session !== null) {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
+      speak(session, voice.speakingLevel());
       updateSession(session, input.getControls(until), clock.dt);
       ripples.hear(session, until);
       flashes.see(session, until);
