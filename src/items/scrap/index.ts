@@ -2,11 +2,16 @@ import { z } from "zod";
 import {
   contentEvent,
   defineItem,
-  heldItemId,
+  heldItemOf,
   hostAccepts,
+  itemIn,
   makeSound,
+  nextAction,
+  predictInventory,
   removeItem,
+  settleItemAction,
   sound,
+  takeItem,
   worldData,
 } from "../../sim/index.js";
 import type { Point, Scatter, Session } from "../../sim/index.js";
@@ -64,15 +69,25 @@ function nearCruiser(game: Session, at: Point, radius: number): boolean {
 /** A sale's number: one past the latest of its seller's sales sold. */
 const SaleNumber = z.number().int().min(1);
 
-/** A sale as its seller asks for it: its number, and where the seller stood. */
-const Sell = z.object({ sale: SaleNumber, x: z.number(), y: z.number() });
+/**
+ * A sale as its seller asks for it: its number, the slot the scrap is in, where the seller stood,
+ * and the seller's action number.
+ */
+const Sell = z.object({
+  sale: SaleNumber,
+  slot: z.number().int().min(0),
+  x: z.number(),
+  y: z.number(),
+  action: z.number().int().positive(),
+});
 
 /** The host's answer to the sale numbered `sale`. */
 const Answer = z.object({ sale: SaleNumber });
 
-/** A sale under way on this client: its number, and when it was last sent. */
+/** A sale under way on this client: its number, the slot it sells from, and when it was last sent. */
 interface Pending {
   readonly sale: number;
+  readonly slot: number;
   readonly sent: number;
 }
 
@@ -82,14 +97,15 @@ interface Pending {
  *
  * A sale goes:
  * 1. The seller's client, holding scrap by a cruiser with no sale under way, asks the host,
- *    numbering the sale one past the latest of its sales sold; it keeps the scrap.
- * 2. The host checks the seller reports holding scrap, stands by a cruiser near where it was
- *    last heard, and is off its sale cooldown. It adds the credit to the world, records the sale
- *    as the seller's latest in the world, and answers "sold"; or answers "refused". A sale it, or
- *    an earlier host, has already sold is answered "sold" again, credited once.
- * 3. On "sold" the seller's client takes one scrap out of its inventory; on either answer it may
- *    sell again after the interval. A sale with no answer is asked for again, under its number,
- *    until one comes.
+ *    numbering the sale one past the latest of its sales sold, and shows the scrap gone at once.
+ * 2. The host checks its record has scrap in the slot the sale names, the seller stands by a
+ *    cruiser near where it was last heard, and is off its sale cooldown. It takes the scrap out of
+ *    the seller's slot, adds the credit to the world, records the sale as the seller's latest in
+ *    the world, and answers "sold"; or answers "refused". A sale it, or an earlier host, has
+ *    already sold is answered "sold" again, credited once. Either way the seller's items follow
+ *    the host's record, which brings back scrap a refused sale showed gone.
+ * 3. On either answer the seller's client may sell again after the interval. A sale with no
+ *    answer is asked for again, under its number, until one comes.
  * Every client plays the sale's sound.
  */
 export const scrap = defineItem("scrap", (config: ScrapConfig) => {
@@ -119,14 +135,7 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
     to: "player",
     from: "host",
     receive(game, { sale }) {
-      if (!settle(game, sale)) return;
-      settled.set(game, sale);
-      const { inventory, held } = game.local;
-      const slot =
-        held !== null && inventory[held]?.id === ITEM
-          ? held
-          : inventory.findIndex((item) => item?.id === ITEM);
-      if (slot !== -1) removeItem(inventory, slot);
+      if (settle(game, sale)) settled.set(game, sale);
     },
   });
 
@@ -142,10 +151,9 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
   const sell = contentEvent({
     schema: Sell,
     to: "host",
-    receive(game, { sale, x, y }, by) {
-      if (!game.hosting) return;
-      const player = game.players.get(by);
-      if (player === undefined) return;
+    receive(game, { sale, slot, x, y, action }, by) {
+      if (!game.hosting || !game.players.has(by)) return;
+      settleItemAction(game, by, action);
       const latest = sales.get(game);
       if (sale <= (latest[by] ?? 0)) {
         sold.send(game, by, { sale });
@@ -153,13 +161,14 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
       }
       const at = { x, y };
       if (
-        heldItemId.get(player) !== ITEM ||
+        itemIn(game, by, slot) !== ITEM ||
         !nearCruiser(game, at, config.cashoutRadius) ||
         !hostAccepts(game, by, at, NAME, config.sellInterval)
       ) {
         refused.send(game, by, { sale });
         return;
       }
+      takeItem(game, by, slot, ITEM);
       credit.set(game, credit.get(game) + config.value);
       sales.set(game, { ...latest, [by]: sale });
       sold.send(game, by, { sale });
@@ -176,21 +185,29 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
     events: { sell, sold, refused, cashedOut },
     act(game) {
       const { local } = game;
+      /** Asks the host for `sale` of the scrap in `slot`, showing it gone meanwhile. */
+      const ask = (sale: number, slot: number): void => {
+        const action = nextAction(game);
+        pending.set(game, { sale, slot, sent: game.time });
+        predictInventory(game, action, (inventory) => {
+          if (inventory[slot]?.id === ITEM) removeItem(inventory, slot);
+        });
+        sell.send(game, { sale, slot, x: local.x, y: local.y, action });
+      };
       const waiting = pending.get(game);
       if (waiting !== undefined) {
-        if (game.time - waiting.sent < config.sellTimeout) return;
-        pending.set(game, { sale: waiting.sale, sent: game.time });
-        sell.send(game, { sale: waiting.sale, x: local.x, y: local.y });
+        if (game.time - waiting.sent >= config.sellTimeout)
+          ask(waiting.sale, waiting.slot);
         return;
       }
       if (game.time < (game.localReadyAt.get(NAME) ?? -Infinity)) return;
-      if (heldItemId.get(local) !== ITEM) return;
+      if (local.held === null || heldItemOf(game, local)?.id !== ITEM) return;
       if (!nearCruiser(game, local, config.cashoutRadius)) return;
-      const sale =
+      ask(
         Math.max(settled.get(game) ?? 0, sales.get(game)[game.localId] ?? 0) +
-        1;
-      pending.set(game, { sale, sent: game.time });
-      sell.send(game, { sale, x: local.x, y: local.y });
+          1,
+        local.held,
+      );
     },
   };
 });

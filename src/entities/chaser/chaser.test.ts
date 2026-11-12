@@ -392,7 +392,7 @@ describe("sounds", () => {
     expect(runUntil(game, 3, () => them() !== 100)).toBe(true);
     expect(them()).toBe(100 - config.attackDamage);
     expect(game.outbox).toEqual([]);
-    expect(takeWorldEntries(game, false)).toEqual({
+    expect(takeWorldEntries(game, false)).toMatchObject({
       "core/health.players": [1, { them: 100 - config.attackDamage }],
     });
   });

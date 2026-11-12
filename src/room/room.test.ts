@@ -12,7 +12,7 @@ import {
   applyDamage,
   contentEvent,
   Health,
-  heldItemId,
+  heldSlot,
   heldItemOf,
   hurtPlayer,
   playerData,
@@ -475,7 +475,7 @@ describe("players and voice", () => {
     expect(seen()).toBeNull();
   });
 
-  test("a STATE holding an item this client does not know adds the player holding nothing", async () => {
+  test("a STATE holding a slot past the inventory adds the player holding nothing", async () => {
     const { other, session, spot } = await withListener();
     other.send(NetEvent.STATE, {
       id: "x",
@@ -483,12 +483,10 @@ describe("players and voice", () => {
       ...spot,
       aim: 0,
       epoch: 0,
-      content: { "core/items": "laser" },
+      content: { "core/items": 9 },
     });
     const remote = session.players.get("x");
-    expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
-      "laser",
-    );
+    expect(remote === undefined ? undefined : heldSlot.get(remote)).toBe(9);
     expect(
       remote === undefined ? undefined : heldItemOf(session, remote),
     ).toBeNull();
@@ -540,13 +538,12 @@ describe("content's player state", () => {
     const b = setup(a.hub, "b", clock, []);
     await a.room.join("ABC", "A");
     await b.room.join("ABC", "B");
-    heldItemId.set(joined(b.room).session.local, "poke");
+    joined(b.room).session.local.held = 2;
+    heldSlot.set(joined(b.room).session.local, 2);
     clock.advance(clock.now() + SEND_GAP);
     b.room.frame(clock.now());
     const remote = joined(a.room).session.players.get("b");
-    expect(remote === undefined ? undefined : heldItemId.get(remote)).toBe(
-      "poke",
-    );
+    expect(remote === undefined ? undefined : heldSlot.get(remote)).toBe(2);
   });
 
   test("an entity and an item of the same name sync their own state, each under its namespace", async () => {
@@ -588,7 +585,7 @@ describe("content's player state", () => {
     ).toEqual([5, 7]);
     const sent = listener.heard.filter(({ event }) => event === NetEvent.STATE);
     expect(sent.at(-1)?.payload).toMatchObject({
-      content: { "core/items": null, "entity/lamp": 5, "item/lamp": 7 },
+      content: { "core/items": 0, "entity/lamp": 5, "item/lamp": 7 },
     });
   });
 
@@ -611,14 +608,14 @@ describe("content's player state", () => {
       const remote = session.players.get("x");
       return remote === undefined
         ? undefined
-        : { lamp: lampState.get(remote), held: heldItemId.get(remote) };
+        : { lamp: lampState.get(remote), held: heldSlot.get(remote) };
     };
     return { session, report };
   }
 
   test("a new remote player that reports nothing for an entry has its initial value", async () => {
     const { report } = await reported();
-    expect(report({})).toEqual({ lamp: { lit: false, fuel: 10 }, held: null });
+    expect(report({})).toEqual({ lamp: { lit: false, fuel: 10 }, held: 0 });
   });
 
   test("an unknown entry or a value its entry rejects is dropped, and the rest of the STATE applies", async () => {
@@ -627,25 +624,28 @@ describe("content's player state", () => {
       report(
         {
           "item/lamp": { lit: "yes", fuel: 1 },
-          "core/items": "poke",
+          "core/items": 2,
           ghost: 1,
         },
         "XY",
       ),
-    ).toEqual({ lamp: { lit: false, fuel: 10 }, held: "poke" });
+    ).toEqual({ lamp: { lit: false, fuel: 10 }, held: 2 });
     expect(session.players.get("x")?.name).toBe("XY");
     expect(
-      report({ "item/lamp": { lit: true, fuel: "Infinity" }, "core/items": 7 }),
+      report({
+        "item/lamp": { lit: true, fuel: "Infinity" },
+        "core/items": "poke",
+      }),
     ).toEqual({
       lamp: { lit: true, fuel: Infinity },
-      held: "poke",
+      held: 2,
     });
   });
 
   test("an entry missing from a STATE keeps its last value", async () => {
     const { report } = await reported();
-    report({ "item/lamp": { lit: true, fuel: 3 }, "core/items": "poke" });
-    expect(report({})).toEqual({ lamp: { lit: true, fuel: 3 }, held: "poke" });
+    report({ "item/lamp": { lit: true, fuel: 3 }, "core/items": 2 });
+    expect(report({})).toEqual({ lamp: { lit: true, fuel: 3 }, held: 2 });
   });
 });
 
@@ -1429,7 +1429,7 @@ describe("host", () => {
           event: "use",
           route: "all",
           to: null,
-          payload: { item: "poke", ...use, action: 1 },
+          payload: { item: "poke", slot: 1, ...use, action: 1 },
         });
         player.room.frame(player.clock.now());
       };
@@ -1492,9 +1492,9 @@ describe("host", () => {
         expect(a.sounds.filter(({ url }) => url === "poke")).toHaveLength(1);
         clock.advance(clock.now() + 200);
         b.room.frame(clock.now());
-        expect(seen === undefined ? undefined : heldItemId.get(seen)).toBe(
-          "poke",
-        );
+        expect(
+          seen === undefined ? undefined : heldItemOf(sessionOf(a), seen)?.id,
+        ).toBe("poke");
         play(a, 1 / 60);
         expect(healthOf(a, "2")).toBe(6);
         expect(healthOf(b, "2")).toBe(6);
