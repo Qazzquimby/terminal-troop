@@ -127,7 +127,7 @@ export const config = {
     crouch: { interval: 0.7, radius: CELL * 1.5 },
   },
   // Items lying about: a 16px glyph, picked up at most five times a second.
-  worldItems: { radius: 8, cooldown: 0.2 },
+  worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {
     sendHz: 10,
     fullSnapshotMs: 5000,

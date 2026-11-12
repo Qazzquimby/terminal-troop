@@ -1,4 +1,8 @@
+import { z } from "zod";
 import type { Sound } from "./sound.js";
+
+/** An item's id, as a player reports it. */
+export const ItemId = z.string().min(1).max(32);
 
 export interface ItemDefinition {
   readonly id: string;

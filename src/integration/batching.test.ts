@@ -87,7 +87,7 @@ test("a room handles each message of a batch, dropping one that does not parse a
   const { room, other } = await joinedWithListener();
   const session = sessionOf(room);
   const spot = randomFreePosition(session.world, session.local.radius);
-  const state = { id: "x", name: "X", ...spot, aim: 0, health: 100, epoch: 0 };
+  const state = { id: "x", name: "X", ...spot, aim: 0, epoch: 0 };
   other.send(NetEvent.BATCH, {
     messages: [
       [NetEvent.STATE, { ...state, id: "y", name: 5, content: {} }],

@@ -5,6 +5,8 @@ import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
   defineItem,
+  giveItem,
+  itemIn,
   remotePlayers,
   removeEntity,
   spawnWorldItem,
@@ -62,6 +64,12 @@ function place(room: Room, at: Point): void {
 
 const carried = (room: Room): (string | null)[] =>
   sessionOf(room).local.inventory.map((item) => item?.id ?? null);
+
+/** Each slot of `room`'s player's items as the host's record keeps them. */
+const recorded = (host: Room, room: Room): (string | null)[] => {
+  const id = sessionOf(room).localId;
+  return [0, 1, 2, 3].map((slot) => itemIn(sessionOf(host), id, slot));
+};
 
 /** Clients `ids` joined to one room on a hub that sends every payload through JSON, the first hosting. */
 async function crew(...ids: string[]) {
@@ -240,7 +248,7 @@ test("a guest cannot take what is not a lying item, nor one out of its reach, no
   const forge = (id: string, at: Point): void => {
     const event = guest.events.get("core/world-items")?.get("pickedUp");
     if (event?.to !== "host") throw new Error("no event");
-    event.send(guest, { id, ...at });
+    event.send(guest, { id, ...at, action: 1 });
     exchange();
   };
   forge(cruiser.id, { x: cruiser.x, y: cruiser.y });
@@ -257,9 +265,7 @@ test("standing on a bolt with a full inventory, E drops the held item instead", 
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   const lying = layBolt(host, exchange);
-  const definition = sessionOf(b).itemDefinitions.get("bolt");
-  if (definition === undefined) throw new Error("no bolt");
-  sessionOf(b).local.inventory.fill(definition);
+  for (const slot of [0, 1, 2, 3]) holdBolt(host, b, slot);
   sessionOf(b).local.held = 2;
   place(b, SPOT);
   exchange();
@@ -267,29 +273,47 @@ test("standing on a bolt with a full inventory, E drops the held item instead", 
   exchange();
   expect(sessionOf(host).entities.has(lying.id)).toBe(true);
   expect(carried(b)).toEqual(["bolt", "bolt", null, "bolt"]);
+  expect(recorded(host, b)).toEqual(["bolt", "bolt", null, "bolt"]);
   expect(boltsAt(host, SPOT)).toBe(2);
 });
 
-test("a bolt granted to an inventory that filled meanwhile goes back to the world where the guest stands", async () => {
+test("the host refuses a pickup into an inventory its record has full, whatever the client thinks", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
+  const guest = sessionOf(b);
   const lying = layBolt(host, exchange);
+  for (const slot of [0, 1, 2, 3]) holdBolt(host, b, slot);
   place(b, SPOT);
   exchange();
-  updateSession(sessionOf(b), reach, DT);
-  const definition = sessionOf(b).itemDefinitions.get("bolt");
-  if (definition === undefined) throw new Error("no bolt");
-  sessionOf(b).local.inventory.fill(definition);
+  const event = guest.events.get("core/world-items")?.get("pickedUp");
+  if (event?.to !== "host") throw new Error("no event");
+  event.send(guest, { id: lying.id, ...SPOT, action: 1 });
   exchange();
   exchange();
+  expect(sessionOf(host).entities.has(lying.id)).toBe(true);
+  expect(guest.entities.has(lying.id)).toBe(true);
+  expect(recorded(host, b)).toEqual(["bolt", "bolt", "bolt", "bolt"]);
+});
+
+test("a pickup shows in the inventory at once; the one of two guests the host refuses rolls back", async () => {
+  const { get, host, exchange } = await crew("a", "b", "c");
+  const lying = layBolt(host, exchange);
+  place(get("b"), { x: SPOT.x - 12, y: SPOT.y });
+  place(get("c"), { x: SPOT.x + 12, y: SPOT.y });
+  exchange();
+  for (const id of ["b", "c"]) {
+    updateSession(sessionOf(get(id)), reach, DT);
+    expect(carried(get(id))).toEqual(["bolt", null, null, null]);
+  }
+  exchange();
+  exchange();
+  const bolts = ["b", "c"].map((id) => carried(get(id))[0]);
+  expect(bolts.sort()).toEqual(["bolt", null]);
+  expect(["b", "c"].map((id) => recorded(host, get(id))[0]).sort()).toEqual([
+    "bolt",
+    null,
+  ]);
   expect(sessionOf(host).entities.has(lying.id)).toBe(false);
-  expect(
-    [...sessionOf(host).entities.values()].some(
-      (entity) =>
-        Math.hypot(entity.x - SPOT.x, entity.y - SPOT.y) < 1 &&
-        JSON.stringify(entity.data) === JSON.stringify({ item: "bolt" }),
-    ),
-  ).toBe(true);
 });
 
 /** How many bolts lie within a pixel of `at`, as `room` knows them. */
@@ -301,13 +325,11 @@ function boltsAt(room: Room, at: Point): number {
   ).length;
 }
 
-/** Gives `room`'s player a bolt in its second slot, and holds it. */
-function holdBolt(room: Room): void {
+/** As the host, gives `room`'s player a bolt in `slot`, its second by default, and holds it. */
+function holdBolt(host: Room, room: Room, slot = 1): void {
   const game = sessionOf(room);
-  const definition = game.itemDefinitions.get("bolt");
-  if (definition === undefined) throw new Error("no bolt");
-  game.local.inventory[1] = definition;
-  game.local.held = 1;
+  expect(giveItem(sessionOf(host), game.localId, "bolt", slot)).toBe(true);
+  game.local.held = slot;
 }
 
 /** Whether `room`'s client played the bolt's drop sound. */
@@ -319,11 +341,13 @@ const clinked = (room: Room): boolean =>
 test("with nothing in reach, E drops the held item where the player stands, on every client, with its sound", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
-  holdBolt(b);
+  holdBolt(host, b);
   place(b, SPOT);
   exchange();
+  expect(carried(b)).toEqual([null, "bolt", null, null]);
   exchange({ b: reach });
   expect(carried(b)).toEqual([null, null, null, null]);
+  expect(recorded(host, b)).toEqual([null, null, null, null]);
   expect(boltsAt(host, SPOT)).toBe(1);
   expect(boltsAt(b, SPOT)).toBe(1);
   exchange();
@@ -335,7 +359,7 @@ test("E picks up what is in reach rather than drop the held item", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   const lying = layBolt(host, exchange);
-  holdBolt(b);
+  holdBolt(host, b);
   place(b, SPOT);
   exchange();
   exchange({ b: reach });
@@ -354,7 +378,25 @@ test("with an empty hand and nothing in reach, E does nothing", async () => {
   expect(sessionOf(b).outbox).toEqual([]);
 });
 
-test("the host lays nothing for a drop from where the player is not", async () => {
+test("the host lays nothing for a drop from where the player is not, and the player keeps the item", async () => {
+  const { get, host, exchange } = await crew("a", "b");
+  const b = get("b");
+  const guest = sessionOf(b);
+  holdBolt(host, b);
+  place(b, SPOT);
+  exchange();
+  const event = guest.events.get("core/world-items")?.get("dropped");
+  if (event?.to !== "host") throw new Error("no event");
+  const far = { x: SPOT.x + 200, y: SPOT.y };
+  event.send(guest, { item: "bolt", slot: 1, ...far, action: 1 });
+  exchange();
+  exchange();
+  expect(boltsAt(host, far)).toBe(0);
+  expect(boltsAt(b, far)).toBe(0);
+  expect(recorded(host, b)).toEqual([null, "bolt", null, null]);
+});
+
+test("the host lays nothing for a forged drop of an item the player does not have", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   const guest = sessionOf(b);
@@ -362,19 +404,44 @@ test("the host lays nothing for a drop from where the player is not", async () =
   exchange();
   const event = guest.events.get("core/world-items")?.get("dropped");
   if (event?.to !== "host") throw new Error("no event");
-  const far = { x: SPOT.x + 200, y: SPOT.y };
-  event.send(guest, { item: "bolt", ...far });
+  for (const slot of [0, 1, 2, 3]) {
+    event.send(guest, { item: "bolt", slot, ...SPOT, action: slot + 1 });
+    exchange();
+  }
+  exchange();
+  expect(boltsAt(host, SPOT)).toBe(0);
+  expect(boltsAt(b, SPOT)).toBe(0);
+  expect(recorded(host, b)).toEqual([null, null, null, null]);
+});
+
+test("a drop shows at once; one the host refuses comes back to its slot", async () => {
+  const { get, host, exchange } = await crew("a", "b");
+  const b = get("b");
+  const guest = sessionOf(b);
+  holdBolt(host, b, 1);
+  holdBolt(host, b, 2);
+  guest.local.held = 1;
+  place(b, SPOT);
+  exchange();
+  updateSession(guest, reach, DT);
+  expect(carried(b)).toEqual([null, null, "bolt", null]);
+  updateSession(guest, { ...idle, select: 2 }, DT);
+  // A client off its own drop cooldown early, as one tampered with could be.
+  guest.localReadyAt.clear();
+  updateSession(guest, reach, DT);
+  expect(carried(b)).toEqual([null, null, null, null]);
   exchange();
   exchange();
-  expect(boltsAt(host, far)).toBe(0);
-  expect(boltsAt(b, far)).toBe(0);
+  expect(carried(b)).toEqual([null, null, "bolt", null]);
+  expect(recorded(host, b)).toEqual([null, null, "bolt", null]);
+  expect(boltsAt(host, SPOT)).toBe(1);
 });
 
 test("a dropped item can be picked up by another player", async () => {
-  const { get, exchange } = await crew("a", "b", "c");
+  const { get, host, exchange } = await crew("a", "b", "c");
   const b = get("b");
   const c = get("c");
-  holdBolt(b);
+  holdBolt(host, b);
   place(b, SPOT);
   place(c, { x: SPOT.x + 150, y: SPOT.y });
   exchange();

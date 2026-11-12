@@ -163,6 +163,11 @@ test("the host sends its world state in full every fullSnapshotMs", async () => 
   expect(full[0]?.entries).toEqual({
     "entity/beacon.lit": [0, false],
     "entity/beacon.count": [0, 0],
+    "core/items.inventories": [
+      1,
+      { a: [null, null, null, null], b: [null, null, null, null] },
+    ],
+    "core/health.players": [0, {}],
     "core/position.forced": [0, {}],
     "core/predictions.handled": [0, {}],
   });

@@ -1,10 +1,9 @@
 import { z } from "zod";
 import { contentEvent } from "./content-event.js";
-import { heldItem } from "./inventory.js";
+import { itemIn } from "./inventories.js";
+import { heldItem, ItemId } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
-import type { Player } from "./player.js";
-import { playerData } from "./player-data.js";
 import { confirmAction, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
 
@@ -65,48 +64,13 @@ export function registerItem(
   if (behaviour !== undefined) game.items.set(item.id, behaviour);
 }
 
-/** An item's id, as a player reports it. */
-export const ItemId = z.string().min(1).max(32);
-
-/** The id of the item in `player`'s selected slot, or null for nothing. */
-function selectedItemId(player: Player): string | null {
-  return heldItem(player.inventory, player.held)?.id ?? null;
-}
-
 /**
- * The id of the item a player holds, or null for nothing: the local player's from its selected
- * slot, a remote player's as it last reported. A reported id may name an item this client does
- * not know.
+ * A player's use of an item: which item, the slot it holds it in, where the player stood and
+ * faced, and its action number.
  */
-export const heldItemId = playerData({
-  schema: ItemId.nullable(),
-  initial: selectedItemId,
-});
-
-/**
- * Keeps the local player's held item id in step with its selected slot. A change goes out at
- * once, so it reaches the host ahead of a use of the newly held item.
- */
-export function reportHeld(game: Session): void {
-  const { local } = game;
-  const id = selectedItemId(local);
-  if (local.content.has(heldItemId) && heldItemId.get(local) === id) return;
-  heldItemId.set(local, id);
-  game.reportNow = true;
-}
-
-/** The item `player` holds; null when it holds nothing, or an item this client does not know. */
-export function heldItemOf(
-  game: Session,
-  player: Player,
-): ItemDefinition | null {
-  const id = heldItemId.get(player);
-  return id === null ? null : (game.itemDefinitions.get(id) ?? null);
-}
-
-/** A player's use of an item: which item, where the player stood and faced, and its action number. */
 const ItemUsed = z.object({
   item: ItemId,
+  slot: z.number().int().min(0),
   x: z.number(),
   y: z.number(),
   aim: z.number(),
@@ -158,7 +122,7 @@ export function hostReady(
 /**
  * A player's item use, sent to everyone: each other client shows it on the player, and the host
  * confirms it handled the use, and applies it if it accepts it. The host refuses outright a use
- * of an item other than the one the player reports holding.
+ * of an item its record does not have in the slot the use names.
  */
 export const itemUsed = contentEvent({
   schema: ItemUsed,
@@ -168,8 +132,10 @@ export const itemUsed = contentEvent({
     if (behaviour === undefined) return;
     const player = game.players.get(by);
     if (player === undefined) return;
-    if (game.hosting) confirmAction(game, by, use.action);
-    if (game.hosting && heldItemId.get(player) !== use.item) return;
+    if (game.hosting) {
+      confirmAction(game, by, use.action);
+      if (itemIn(game, by, use.slot) !== use.item) return;
+    }
     if (player !== game.local)
       player.use = {
         item: use.item,
@@ -191,7 +157,7 @@ export const itemUsed = contentEvent({
 export function useHeldItem(game: Session): void {
   const { local } = game;
   const item = heldItem(local.inventory, local.held);
-  if (item === null) return;
+  if (item === null || local.held === null) return;
   const behaviour = game.items.get(item.id);
   if (behaviour === undefined) return;
   if (
@@ -208,6 +174,7 @@ export function useHeldItem(game: Session): void {
   behaviour.predict?.(game, local, local.aim, action);
   itemUsed.send(game, {
     item: item.id,
+    slot: local.held,
     x: local.x,
     y: local.y,
     aim: local.aim,
