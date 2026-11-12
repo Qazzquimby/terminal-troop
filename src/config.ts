@@ -98,7 +98,12 @@ export const config = {
   arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
-  net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
+  // A guest holds a hit it predicted for up to a second before the host confirms it.
+  net: {
+    smoothing: 12,
+    useSlack: { distance: 80, seconds: 0.3 },
+    predictionHold: 1,
+  },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
   // Loudness is a multiple of a listener's hearing range.

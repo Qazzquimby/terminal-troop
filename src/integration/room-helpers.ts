@@ -80,12 +80,20 @@ export const messages = (
 ): { event: NetEvent; payload: unknown }[] =>
   event === NetEvent.BATCH ? unbatch(payload) : [{ event, payload }];
 
+/** A message on its way to one member, sent while the hub was held. */
+interface Pending {
+  readonly to: string;
+  readonly deliver: () => void;
+}
+
 /**
- * Transports that deliver to every other member of the same room, synchronously, each payload
- * through JSON.
+ * Transports that deliver to every other member of the same room, each payload through JSON:
+ * synchronously, or while held, in the order sent once released.
  */
 export function createHub() {
   const members = new Map<string, { room: string; handlers: Handlers }>();
+  /** While set, what is sent waits here instead of arriving. */
+  let pending: Pending[] | null = null;
   /** While set, members hear only those in their own group; members in no group hear everyone. */
   let groups: Map<string, number> | null = null;
   const hears = (from: string, to: string): boolean =>
@@ -126,8 +134,16 @@ export function createHub() {
         const self = members.get(name);
         if (self === undefined) return Promise.resolve();
         for (const [other, member] of members) {
-          if (other !== name && member.room === self.room && hears(name, other))
-            member.handlers[event]?.(overJson(payload));
+          if (
+            other === name ||
+            member.room !== self.room ||
+            !hears(name, other)
+          )
+            continue;
+          const wire = overJson(payload);
+          const deliver = () => member.handlers[event]?.(wire);
+          if (pending === null) deliver();
+          else pending.push({ to: other, deliver });
         }
         return Promise.resolve();
       },
@@ -180,6 +196,22 @@ export function createHub() {
     },
     heal() {
       groups = null;
+    },
+    /** Holds back everything sent from here on, until released. */
+    hold() {
+      pending ??= [];
+    },
+    /** Delivers what is held for member `to`, in the order it was sent, and goes on holding. */
+    release(to: string) {
+      const held = pending ?? [];
+      pending = held.filter((message) => message.to !== to);
+      for (const message of held) if (message.to === to) message.deliver();
+    },
+    /** Delivers everything held, in the order sent, and stops holding. */
+    flush() {
+      const held = pending ?? [];
+      pending = null;
+      for (const message of held) message.deliver();
     },
   };
 }

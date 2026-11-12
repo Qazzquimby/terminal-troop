@@ -5,6 +5,7 @@ import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import { playerData } from "./player-data.js";
+import { confirmAction, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
 
 /** A player's item use, as plain data: what this client sees of it. */
@@ -24,6 +25,12 @@ export interface ItemBehaviour {
   readonly cooldown: number;
   /** Applies a use by player `by` standing at `at`, facing `aim`. Runs only on the host. */
   apply(game: Session, at: Point, aim: number, by: string): void;
+  /**
+   * Predicts what the local player's use at `at`, facing `aim`, does to world entities, until
+   * the host confirms the local action `action`. Runs on the user's own client, after `show`.
+   * Without it, the use's effects wait for the host.
+   */
+  predict?(game: Session, at: Point, aim: number, action: number): void;
   /**
    * Starts a use by player `by` standing at `at`, facing `aim`, as this client sees it: plays
    * its sound for this client's listener, and returns where it lands and whether it hits.
@@ -90,12 +97,13 @@ export function heldItemOf(
   return id === null ? null : (game.itemDefinitions.get(id) ?? null);
 }
 
-/** A player's use of an item: which item, and where the player stood and faced. */
+/** A player's use of an item: which item, where the player stood and faced, and its action number. */
 const ItemUsed = z.object({
   item: ItemId,
   x: z.number(),
   y: z.number(),
   aim: z.number(),
+  action: z.number().int().positive(),
 });
 
 /** What an item use is timed under: every item shares one cooldown per player. */
@@ -128,7 +136,7 @@ export function hostAccepts(
 
 /**
  * A player's item use, sent to everyone: each other client shows it on the player, and the host
- * applies it if it accepts it.
+ * confirms it handled the use, and applies it if it accepts it.
  */
 export const itemUsed = contentEvent({
   schema: ItemUsed,
@@ -143,17 +151,16 @@ export const itemUsed = contentEvent({
         ...behaviour.show(game, use, use.aim, by),
         startedAt: game.time,
       };
-    if (
-      game.hosting &&
-      hostAccepts(game, by, use, ITEM_COOLDOWN, behaviour.cooldown)
-    )
+    if (!game.hosting) return;
+    confirmAction(game, by, use.action);
+    if (hostAccepts(game, by, use, ITEM_COOLDOWN, behaviour.cooldown))
       behaviour.apply(game, use, use.aim, by);
   },
 });
 
 /**
- * Starts the local player's use of its held item, if it is usable and off cooldown, and sends
- * it to everyone.
+ * Starts the local player's use of its held item, if it is usable and off cooldown, predicts
+ * what it does, and sends it to everyone.
  */
 export function useHeldItem(game: Session): void {
   const { local } = game;
@@ -171,10 +178,13 @@ export function useHeldItem(game: Session): void {
     ...behaviour.show(game, local, local.aim, local.id),
     startedAt: game.time,
   };
+  const action = nextAction(game);
+  behaviour.predict?.(game, local, local.aim, action);
   itemUsed.send(game, {
     item: item.id,
     x: local.x,
     y: local.y,
     aim: local.aim,
+    action,
   });
 }
