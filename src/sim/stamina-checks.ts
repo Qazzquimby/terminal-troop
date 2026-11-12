@@ -98,7 +98,7 @@ export function notePace(
   const since = time - roundTripSeconds;
   check.trail = [
     ...check.trail.filter((mark) => mark.time >= since),
-    { at, time },
+    { at: { x: at.x, y: at.y }, time },
   ];
 }
 
@@ -114,6 +114,16 @@ function withinWalk(
   const walk = player.speed * Math.max(1, player.crouchMultiplier);
   const reach = walk * (game.time - from.time + lateSeconds) + slack + allowed;
   return Math.hypot(to.x - from.at.x, to.y - from.at.y) <= reach;
+}
+
+/**
+ * Notes that `playerId` stands at `at` now, whatever came before, as when the host forces it there
+ * or takes its reports as they come: its pace is reckoned from there.
+ */
+export function rebasePace(game: Session, playerId: string, at: Point): void {
+  checkOn(game, playerId).trail = [
+    { at: { x: at.x, y: at.y }, time: game.time },
+  ];
 }
 
 /**

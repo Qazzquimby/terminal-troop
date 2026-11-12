@@ -77,6 +77,19 @@ function pacing(seconds: number, kicks = false) {
   };
 }
 
+/** Standing still and kicking whenever it can, turning about every half second. */
+function kicking() {
+  let step = 0;
+  return (game: Session): Controls => {
+    const way = Math.floor((step++ * DT) / 0.5) % 2 === 0 ? 1 : -1;
+    return {
+      ...idle,
+      secondary: true,
+      aim: { x: game.local.x + 1000 * way, y: game.local.y },
+    };
+  };
+}
+
 /**
  * A transport whose sends arrive `delayMs()` after they are sent, in the order sent, and that
  * counts the corrections, kicks and kicks shown it sends.
@@ -260,18 +273,19 @@ test("the host's reckoning follows a guest's sprint to exhaustion and its rest, 
   expect(client("a").net.counts.corrections).toBe(0);
 });
 
-test("an honest guest that sprints itself out, kicking whenever it can, then rests and kicks again, is never refused or corrected", async () => {
+test("an honest guest that sprints itself out, kicks whenever it can, rests and does it again, is never refused or corrected", async () => {
   const { client, run } = await room({ a: HOST, b: GUEST });
-  run(EMPTYING + 3, { b: pacing(1, true) });
+  const guest = client("b").game().local;
+  run(EMPTYING + 0.5, { b: pacing(1) });
+  expect(guest.stamina.exhausted).toBe(true);
+  run(3, { b: kicking() });
   run(2);
-  run(1, { b: pacing(0.5, true) });
-  run(3);
-  run(EMPTYING, { b: pacing(1, true) });
-  run(4);
-  run(1, { b: pacing(0.5, true) });
-  run(1);
+  run(1, { b: pacing(1) });
+  run(3, { b: kicking() });
+  run(EMPTYING, { b: pacing(1) });
+  run(4, { b: kicking() });
   const { kicks } = client("b").net.counts;
-  expect(kicks).toBeGreaterThanOrEqual(7);
+  expect(kicks).toBeGreaterThanOrEqual(5);
   expect(client("a").net.counts.shown).toBe(kicks);
   expect(client("a").net.counts.corrections).toBe(0);
 });
@@ -307,9 +321,13 @@ test("a kick the host reckons the guest cannot afford is turned down and confirm
     a: HOST,
     b: GUEST,
   });
+  const facingRight = (game: Session): Controls => ({
+    ...idle,
+    aim: { x: game.local.x + 1000, y: game.local.y },
+  });
   cheats.stamina.add("b");
   run(EMPTYING + 0.5, { b: pacing(1) });
-  run(0.3);
+  run(1, { b: facingRight });
   const guest = client("b").game();
   const target = {
     x: guest.local.x + testSimConfig.player.radius * 2 + kick.reach,
@@ -317,16 +335,10 @@ test("a kick the host reckons the guest cannot afford is turned down and confirm
   };
   expect(isAreaFree(guest.world.map, target.x, target.y, 15)).toBe(true);
   Object.assign(chaser("a"), { ...target, tx: target.x, ty: target.y });
-  run(0.5);
+  run(0.5, { b: facingRight });
   Object.assign(chaser("b"), { ...target, prevX: target.x, prevY: target.y });
   const health = chaser("a").health;
-  step({
-    b: (game) => ({
-      ...idle,
-      secondary: true,
-      aim: { x: game.local.x + 1000, y: game.local.y },
-    }),
-  });
+  step({ b: (game) => ({ ...facingRight(game), secondary: true }) });
   expect(guest.predictions.size).toBe(1);
   run(0.4);
   expect(chaser("a").health).toBe(health);

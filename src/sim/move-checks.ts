@@ -1,7 +1,12 @@
 import { isSweepFree } from "./collision.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
-import { keepsPace, notePace, restartStaminaChecks } from "./stamina-checks.js";
+import {
+  keepsPace,
+  notePace,
+  rebasePace,
+  restartStaminaChecks,
+} from "./stamina-checks.js";
 
 /** How the host holds each remote player to the moves its rules allow. */
 export interface MoveCheckConfig {
@@ -116,11 +121,13 @@ export function checkMove(
       settleUntil: time + game.config.net.moves.settleSeconds,
       allowances: [],
     });
-    notePace(game, playerId, to, 0);
+    rebasePace(game, playerId, to);
     return { kind: "take" };
   }
-  if (time < check.settleUntil || withinReach(game, playerId, check, to)) {
-    notePace(game, playerId, to, allowed(check));
+  const settling = time < check.settleUntil;
+  if (settling || withinReach(game, playerId, check, to)) {
+    if (settling) rebasePace(game, playerId, to);
+    else notePace(game, playerId, to, allowed(check));
     check.at = { x: to.x, y: to.y };
     check.time = time;
     check.allowances = check.allowances.filter(
@@ -162,6 +169,7 @@ export function rebaseMoves(game: Session, playerId: string, at: Point): void {
     settleUntil: -Infinity,
     allowances: check?.allowances ?? [],
   });
+  rebasePace(game, playerId, at);
 }
 
 /**
