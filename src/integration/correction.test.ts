@@ -160,6 +160,31 @@ test("a correction from a client that is not the host is ignored", async () => {
   expect(playerOn(b, "a").tx).toBeCloseTo(HOST.x, 1);
 });
 
+test("a spot that is not a finite point is ignored", async () => {
+  const { a, b, settle } = await pair();
+  const game = sessionOf(a);
+  const seen = playerOn(a, "b");
+  const guest = sessionOf(b).local;
+  const before = {
+    host: { ...game.local },
+    seen: { ...seen },
+    guest: { x: guest.x, y: guest.y },
+  };
+  for (const at of [
+    { x: Number.NaN, y: THERE.y },
+    { x: THERE.x, y: Number.POSITIVE_INFINITY },
+    { x: Number.NEGATIVE_INFINITY, y: Number.NaN },
+  ]) {
+    correctPlayer(game, game.local, at);
+    correctPlayer(game, seen, at);
+  }
+  expect(game.outbox).toEqual([]);
+  expect(game.local).toEqual(before.host);
+  expect(seen).toEqual(before.seen);
+  settle();
+  expect(guest).toMatchObject(before.guest);
+});
+
 test("a spot inside a wall is moved to the nearest free floor", async () => {
   const { a, b, settle } = await pair();
   const { world } = sessionOf(a);

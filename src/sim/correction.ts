@@ -38,10 +38,16 @@ export const corrected = contentEvent({
 
 /**
  * Moves `player` to `at` as the host, or to the nearest point a player can stand when `at` is
- * blocked. The local player moves at once. A remote player is sent where to stand, and its copy
- * here stands there until its next STATE, so the host sees and hits it there meanwhile.
+ * blocked. An `at` that is not a finite point is ignored. The local player moves at once. A
+ * remote player is sent where to stand, and its copy here stands there until its next STATE, so
+ * the host sees and hits it there meanwhile.
+ *
+ * A STATE the player sent before the correction reached it can still arrive afterwards, and puts
+ * the copy here back at the old position until the corrected STATE follows, about a round trip
+ * later. Checks on reported positions should allow for that rather than correct again.
  */
 export function correctPlayer(game: Session, player: Player, at: Point): void {
+  if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
   const { radius } = game.config.player;
   const to = canStandAt(game.world, at, radius)
     ? { x: at.x, y: at.y }
