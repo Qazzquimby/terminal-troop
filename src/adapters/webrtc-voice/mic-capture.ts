@@ -163,6 +163,8 @@ export function createMicCapture(
       if (track !== null) capture();
     },
     track: (): MediaStreamTrack | null => track,
+    /** Loudness of the captured track, 0..1, while it is enabled; 0 otherwise. */
+    level,
     state: (): MicState => state,
     report(): Omit<VoiceDiagnostics["mic"], "testing"> {
       return {

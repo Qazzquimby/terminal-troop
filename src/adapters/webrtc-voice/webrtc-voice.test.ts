@@ -261,6 +261,24 @@ describe("the local mic", () => {
     expect(voice.diagnostics().mic.level).toBe(0);
   });
 
+  test("speaks at the mic's level only while it goes out", async () => {
+    const { voice } = voiceIn({ ...OPEN_MIC, mode: "pushToTalk" });
+    expect(voice.speakingLevel()).toBe(0);
+    await settle();
+    voice.setMicTest(true);
+    expect(voice.speakingLevel()).toBe(0);
+
+    voice.setTalking(true);
+    expect(voice.speakingLevel()).toBeGreaterThan(0);
+    voice.setTalking(false);
+    expect(voice.speakingLevel()).toBe(0);
+
+    voice.configure(OPEN_MIC);
+    expect(voice.speakingLevel()).toBeGreaterThan(0);
+    voice.configure({ ...OPEN_MIC, muted: true });
+    expect(voice.speakingLevel()).toBe(0);
+  });
+
   test("a refused mic reports denied until asking again succeeds", async () => {
     getUserMedia.mockRejectedValueOnce(
       new DOMException("Permission denied", "NotAllowedError"),

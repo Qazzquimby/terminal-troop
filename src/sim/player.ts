@@ -95,6 +95,8 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   use: ItemUse | null;
   /** Seconds until the player's next footstep while it moves; never sent over the network. */
   stride: number;
+  /** Seconds until the player's next voice noise while its speech carries; never sent over the network. */
+  voiceGap: number;
   /** Whether the local player is crouching; unused for remote players. */
   crouched: boolean;
   /** The local player's dash under way, if any; unused for remote players. */
@@ -141,6 +143,7 @@ export function createPlayer(
     stamina: createStamina(rules.stamina),
     use: null,
     stride: 0,
+    voiceGap: 0,
     crouched: false,
     dash: null,
     health: rules.player.maxHealth,

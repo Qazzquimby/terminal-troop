@@ -33,6 +33,8 @@ import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
 import type { Prediction } from "./prediction.js";
+import { emitVoices } from "./voice-noise.js";
+import type { SpokenLevel, VoiceNoiseConfig } from "./voice-noise.js";
 import { settlePredictions } from "./prediction.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
@@ -58,6 +60,7 @@ export interface SimConfig extends PlayerRules {
   readonly net: SyncConfig;
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
+  readonly voiceNoise: VoiceNoiseConfig;
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
 }
@@ -105,6 +108,11 @@ export interface Session {
   readonly outbox: OutgoingEvent[];
   /** The noises made in the latest step; each step starts by clearing them. */
   readonly noises: Noise[];
+  /**
+   * The levels the local player spoke at within the voice window that are louder than every
+   * level after them, oldest first: the first is the loudest.
+   */
+  readonly spoken: SpokenLevel[];
   /**
    * When, in sim seconds, the host lets each player act again: by what the action is timed
    * under, then by player id.
@@ -208,6 +216,7 @@ export function createSession(
     inbox: [],
     outbox: [],
     noises: [],
+    spoken: [],
     readyAt: new Map(),
     localReadyAt: new Map(),
     contents: [],
@@ -272,6 +281,7 @@ export function updateSession(
 
   applyEvents(game);
   emitFootsteps(game, dt);
+  emitVoices(game, dt);
   settlePredictions(game);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);

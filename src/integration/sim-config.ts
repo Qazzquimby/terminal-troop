@@ -15,7 +15,8 @@ import type { SimConfig } from "../sim/index.js";
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
  * where it was made. Walking steps every 0.5s, heard 150px off; sprinting every 0.25s, 450px off;
  * crouching, at half speed, every 0.75s, 60px off. A player new to a world starts within 100px of its
- * rally point.
+ * rally point. Speech is judged by its loudest level over 0.5s: from 0.3 it carries 100px, up to
+ * 500px from 0.8, in steps of 50px, rippling every 0.4s.
  */
 export const testSimConfig: SimConfig = {
   world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
@@ -45,6 +46,14 @@ export const testSimConfig: SimConfig = {
     walk: { interval: 0.5, radius: 150 },
     sprint: { interval: 0.25, radius: 450 },
     crouch: { interval: 0.75, radius: 60 },
+  },
+  voiceNoise: {
+    window: 0.5,
+    threshold: 0.3,
+    full: 0.8,
+    radius: { quiet: 100, loud: 500 },
+    step: 50,
+    interval: 0.4,
   },
   worldItems: { radius: 8, cooldown: 0.2 },
 };
