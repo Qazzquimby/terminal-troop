@@ -69,6 +69,8 @@ interface Dash {
   readonly vy: number;
   /** Seconds it has left. */
   readonly seconds: number;
+  /** Where a slide the host forced ends: the player is put here when its time runs out. */
+  readonly to?: Point;
 }
 
 export interface Player extends Entity, Interpolated, Facing, Tracked {
@@ -97,8 +99,18 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   stride: number;
   /** Whether the local player is crouching; unused for remote players. */
   crouched: boolean;
-  /** The local player's dash under way, if any; unused for remote players. */
+  /**
+   * The dash under way, if any: the local player's own or one forced on it, or a forced slide
+   * this client shows on a remote player.
+   */
   dash: Dash | null;
+  /**
+   * The latest forced move the local player has taken, or for a remote player, the epoch of the
+   * latest STATE whose position this client took; 0 before any.
+   */
+  epoch: number;
+  /** The highest epoch a remote player's STATE has reported, its position taken or not. */
+  heardEpoch: number;
 }
 
 export interface PlayerState {
@@ -108,6 +120,8 @@ export interface PlayerState {
   readonly y: number;
   readonly aim: number;
   readonly health: number;
+  /** The latest forced move the player has taken. */
+  readonly epoch: number;
   /** Each content entry's state, encoded by the entry's schema, by the entry's name. */
   readonly content: Readonly<Record<string, unknown>>;
 }
@@ -143,6 +157,8 @@ export function createPlayer(
     stride: 0,
     crouched: false,
     dash: null,
+    epoch: 0,
+    heardEpoch: 0,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };
@@ -236,7 +252,8 @@ export function dashEnd(
 
 /**
  * Starts `player` dashing `distance` pixels towards `aim` (radians) over `seconds`, and returns
- * where it stops if `others` and the walls stay where they are.
+ * where it stops if `others` and the walls stay where they are. A slide the host forced is not
+ * cut short: the player goes on with it, and its end is returned.
  */
 export function startDash(
   player: Player,
@@ -246,6 +263,8 @@ export function startDash(
   map: TileMap,
   others: readonly CollisionBody[],
 ): Point {
+  const forced = player.dash?.to;
+  if (forced !== undefined) return forced;
   const speed = distance / seconds;
   player.dash = {
     vx: Math.cos(aim) * speed,
@@ -257,7 +276,7 @@ export function startDash(
 
 /**
  * Moves `player` along its dash for `dt`, stopping at walls and short of touching any of
- * `others`, and ends the dash once its time has run.
+ * `others`, and ends the dash once its time has run, at its end if it has one.
  */
 export function stepDash(
   player: Player,
@@ -280,9 +299,10 @@ export function stepDash(
     vy: direction.y * travel,
   };
   moveWithCollision(body, player.radius, 1, map, 0);
-  player.x = body.x;
-  player.y = body.y;
   const seconds = dash.seconds - dt;
+  const end = seconds > 0 ? body : (dash.to ?? body);
+  player.x = end.x;
+  player.y = end.y;
   player.dash = seconds > 0 ? { ...dash, seconds } : null;
 }
 
@@ -291,9 +311,12 @@ export function aimAt(from: Point, target: Point): number {
   return Math.atan2(target.y - from.y, target.x - from.x);
 }
 
-/** Eases a remote player towards its network target; `rate` is per second. */
+/**
+ * Eases a remote player towards its network target; `rate` is per second. One sliding where the
+ * host forced it only turns: the slide moves it.
+ */
 export function smoothPlayer(player: Player, dt: number, rate: number): void {
   const amount = 1 - Math.exp(-rate * dt);
-  easeToTarget(player, amount);
+  if (player.dash === null) easeToTarget(player, amount);
   player.aim = lerpAngle(player.aim, player.taim, amount);
 }

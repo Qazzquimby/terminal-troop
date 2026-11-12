@@ -87,6 +87,7 @@ test("a guest's prediction holds against the host until the host has handled the
     y: 100,
     aim: 0,
     health: 100,
+    epoch: 0,
     content: {},
   });
   confirmAction(host, "me", action);

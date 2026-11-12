@@ -27,7 +27,8 @@ export const Health = z.codec(
 );
 
 /**
- * A STATE payload, its name cut to `nameMax` characters when heard. `content` holds each content
+ * A STATE payload, its name cut to `nameMax` characters when heard. `epoch` counts the moves the
+ * host has forced on the sender that it has taken. `content` holds each content
  * entry's state for the sender by the entry's name; each entry parses its own, so a value its
  * entry rejects, or of an entry this client lacks, is dropped where it is applied.
  */
@@ -42,6 +43,7 @@ function stateMessage(nameMax: number) {
     y: Coordinate,
     aim: Angle,
     health: Health,
+    epoch: z.number().int().min(0),
     content: z.record(z.string(), z.unknown()),
   });
 }

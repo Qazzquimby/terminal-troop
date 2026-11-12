@@ -11,6 +11,7 @@ import {
   hostSpends,
   hurtPlayer,
   knockBack,
+  makeSound,
   playersIn,
   nextAction,
   predict,
@@ -18,6 +19,7 @@ import {
   showFlash,
   spendStamina,
   solidBodiesBut,
+  sound,
   startDash,
 } from "../../sim/index.js";
 import type {
@@ -82,7 +84,7 @@ const Shown = z.object({
   hit: z.boolean(),
 });
 
-const SOUNDS = { use: useUrl } as const;
+const SOUNDS = { use: sound({ url: useUrl }) } as const;
 
 /**
  * The kick: what every player can do empty-handed, whatever it holds, on the secondary action.
@@ -204,7 +206,7 @@ export const kick: Content<"kick", KickConfig> = {
         const hits =
           entities.length + playersIn(game, area, game.localId).length;
         show(game, area, hits > 0);
-        void game.sfx.play(SOUNDS.use, at, game.local);
+        makeSound(game, SOUNDS.use, at, game.localId);
         const action = nextAction(game);
         predict(game, action, entities, (entity) => {
           strike(game, entity, at);

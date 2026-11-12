@@ -146,7 +146,7 @@ describe("content events", () => {
       ["core/items", ["use"]],
       ["core/noise", ["made"]],
       ["core/health", ["damage"]],
-      ["core/position", ["corrected"]],
+      ["core/position", ["forced"]],
       ["core/world-items", ["pickedUp", "granted", "dropped", "landed"]],
     ]);
   });

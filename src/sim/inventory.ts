@@ -1,8 +1,4 @@
-/** A sound an item makes: what plays, and how loud, 0..1. */
-interface ItemSound {
-  readonly url: string;
-  readonly volume: number;
-}
+import type { Sound } from "./sound.js";
 
 export interface ItemDefinition {
   readonly id: string;
@@ -10,7 +6,7 @@ export interface ItemDefinition {
   /** The glyph the item is drawn with. */
   readonly emoji: string;
   /** What every client near it hears when it is dropped, if anything. */
-  readonly drop?: ItemSound;
+  readonly drop?: Sound;
 }
 
 /** One item per slot; items do not stack. */

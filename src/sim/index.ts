@@ -56,7 +56,11 @@ export type {
 export { applyDamage } from "./entity.js";
 export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
-export { correctPlayer } from "./correction.js";
+export {
+  correctPlayer,
+  expectedEpoch,
+  takeOverForcedMoves,
+} from "./forced-move.js";
 export { allowMove, restartMoveChecks } from "./move-checks.js";
 export { confirmAction, nextAction, predict } from "./prediction.js";
 export { hurtPlayer } from "./health.js";
@@ -75,6 +79,8 @@ export {
 export { movement } from "./movement.js";
 export { broadcastNoise, noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
+export { makeSound, sound } from "./sound.js";
+export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
 export { heldItemId, heldItemOf, hostAccepts, registerItem } from "./use.js";
 export type { ItemUse } from "./use.js";

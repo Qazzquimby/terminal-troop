@@ -72,6 +72,7 @@ test("a remote player first seen in a state snaps there, then interpolates", () 
     ...first,
     aim: 0,
     health: 100,
+    epoch: 0,
     content: {},
   });
 
@@ -86,6 +87,7 @@ test("a remote player first seen in a state snaps there, then interpolates", () 
     ...next,
     aim: 0,
     health: 100,
+    epoch: 0,
     content: {},
   });
   updateSession(game, walkRight, FIXED_DT);
@@ -122,6 +124,7 @@ function remoteAt(game: Session, aim: number): Player {
     ...position,
     aim,
     health: 100,
+    epoch: 0,
     content: {},
   });
   const remote = game.players.get("them");
@@ -146,6 +149,7 @@ test("remote aim eases towards the network target across the wrap, storing the p
     y: remote.ty,
     aim: degrees(-170),
     health: 100,
+    epoch: 0,
     content: {},
   });
 

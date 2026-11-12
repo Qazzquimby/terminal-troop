@@ -11,12 +11,17 @@ import type {
   OutgoingEvent,
 } from "./content-event.js";
 import { applyEvents } from "./content-event.js";
-import { correctPlayer } from "./correction.js";
 import type { WorldContent } from "./content.js";
 import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
+import type { ForcedMove } from "./forced-move.js";
+import {
+  correctPlayer,
+  followForcedMoves,
+  positionHeld,
+} from "./forced-move.js";
 import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
@@ -135,6 +140,12 @@ export interface Session {
   readonly flashes: Flash[];
   /** What this client predicted of each entity, held until the host confirms it, by entity id. */
   readonly predictions: Map<string, Prediction>;
+  /** The latest forced move this client has heard of on each remote player, by player id. */
+  readonly forcedSeen: Map<string, ForcedMove>;
+  /** The local player's epoch has settled on the room's count: heard from the host, or hosting. */
+  epochSettled: boolean;
+  /** For trying out a client that cheats: the local player takes no forced moves. */
+  ignoresForcedMoves: boolean;
   /** The number of the local player's latest action; 0 before its first. */
   lastAction: number;
   /**
@@ -233,6 +244,9 @@ export function createSession(
     contents: [],
     flashes: [],
     predictions: new Map(),
+    forcedSeen: new Map(),
+    epochSettled: false,
+    ignoresForcedMoves: false,
     lastAction: 0,
     reportNow: false,
   };
@@ -289,9 +303,11 @@ export function updateSession(
 
   for (const player of remotePlayers(game)) {
     smoothPlayer(player, dt, game.config.net.smoothing);
+    stepDash(player, dt, game.world.map, solidBodiesBut(game, player));
   }
 
   applyEvents(game);
+  followForcedMoves(game);
   emitFootsteps(game, dt);
   settlePredictions(game);
   if (game.hosting) {
@@ -302,16 +318,21 @@ export function updateSession(
   separateSessionBodies(game);
 }
 
-/** The local player's state, as its STATE reports it. */
+/**
+ * The local player's state, as its STATE reports it. While it slides where the host forced it,
+ * it reports where the slide ends, where every client is already moving it.
+ */
 export function playerState(game: Session): PlayerState {
   const { local } = game;
+  const at = local.dash?.to ?? local;
   return {
     id: local.id,
     name: local.name,
-    x: local.x,
-    y: local.y,
+    x: at.x,
+    y: at.y,
     aim: local.aim,
     health: local.health,
+    epoch: local.epoch,
     content: contentState(game),
   };
 }
@@ -326,9 +347,10 @@ export function removePlayer(game: Session, id: string): boolean {
 
 /**
  * Applies a remote player's reported state: "added" when the player is new to the session,
- * "rejected" for the local player's own id or a position inside a wall. While hosting, a
- * position beyond the player's reach is not taken: the player is held where it last stood, or
- * corrected back there.
+ * "rejected" for the local player's own id or a position inside a wall. A known player's position
+ * stays put while `positionHeld` holds it back; the rest applies, since forced moves only move
+ * players. While hosting, a position beyond the player's reach is not taken: the player is
+ * corrected back where it last stood.
  */
 export function applyRemoteState(
   game: Session,
@@ -352,13 +374,15 @@ export function applyRemoteState(
   applyContentState(game, player, state.content);
 
   player.taim = state.aim;
+  player.heardEpoch = Math.max(player.heardEpoch, state.epoch);
+  if (known !== undefined && positionHeld(game, state)) return "updated";
   const verdict: MoveVerdict = game.hosting
     ? checkMove(game, player.id, state)
     : { kind: "take" };
   if (verdict.kind === "take") {
     player.tx = state.x;
     player.ty = state.y;
-  } else if (verdict.kind === "correct")
-    correctPlayer(game, player, verdict.to);
+    player.epoch = state.epoch;
+  } else correctPlayer(game, player, verdict.to);
   return known === undefined ? "added" : "updated";
 }
