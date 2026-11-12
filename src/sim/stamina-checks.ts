@@ -1,4 +1,3 @@
-import type { Point } from "./map.js";
 import { movement } from "./movement.js";
 import type { Session } from "./session.js";
 import {
@@ -18,12 +17,6 @@ export interface StaminaCheckConfig {
   readonly slack: number;
 }
 
-/** Where a player stood in a report the host took, and when, in sim seconds. */
-interface Mark {
-  readonly at: Point;
-  readonly time: number;
-}
-
 /** What the host reckons of one remote player's stamina. Times are in sim seconds. */
 export interface StaminaCheck {
   stamina: Stamina;
@@ -31,8 +24,8 @@ export interface StaminaCheck {
   fastUntil: number;
   /** When the player last reported sprinting. */
   sprintedAt: number;
-  /** The reports taken over about the last round trip, oldest first. */
-  trail: Mark[];
+  /** When the host last reckoned the player had the stamina to sprint. */
+  sprintableAt: number;
 }
 
 /** The rules the host reckons stamina by: a player's own, with the slack on top of a full bar. */
@@ -49,7 +42,7 @@ function checkOn(game: Session, playerId: string): StaminaCheck {
     stamina: createStamina(reckoning(game)),
     fastUntil: -Infinity,
     sprintedAt: -Infinity,
-    trail: [],
+    sprintableAt: game.time,
   };
   game.staminaChecks.set(playerId, check);
   return check;
@@ -70,80 +63,30 @@ export function trackStamina(game: Session, dt: number): void {
     if (reported) check.sprintedAt = game.time;
     const sprinting = reported || game.time < check.fastUntil;
     check.stamina = updateStamina(check.stamina, sprinting, dt, rules);
+    if (canSprint(check.stamina)) check.sprintableAt = game.time;
   }
 }
 
 /**
- * Notes, as the host, that it took `playerId`'s report of standing at `at` now. A walk can cover
- * only so much in the reports since about a round trip ago, plus `allowed` pixels of pushes and
- * lunges: a player that goes further without reporting a sprint counts as sprinting for as long
- * again, and spends stamina for it.
+ * Notes, as the host, that `playerId` went faster than a walk in the reports it took since
+ * `since`: a player that did so without reporting a sprint counts as sprinting for a round trip,
+ * and spends stamina for it.
  */
-export function notePace(
-  game: Session,
-  playerId: string,
-  at: Point,
-  allowed: number,
-): void {
+export function noteFast(game: Session, playerId: string, since: number): void {
   const check = checkOn(game, playerId);
-  const { time } = game;
   const { lateSeconds, roundTripSeconds } = game.config.net.moves;
-  const from = check.trail[0];
-  if (
-    from !== undefined &&
-    check.sprintedAt < from.time - lateSeconds &&
-    !withinWalk(game, from, at, allowed)
-  )
-    check.fastUntil = Math.max(check.fastUntil, time + (time - from.time));
-  const since = time - roundTripSeconds;
-  check.trail = [
-    ...check.trail.filter((mark) => mark.time >= since),
-    { at: { x: at.x, y: at.y }, time },
-  ];
+  if (check.sprintedAt < since - lateSeconds)
+    check.fastUntil = Math.max(check.fastUntil, game.time + roundTripSeconds);
 }
 
-/** Whether a walk from `from` reaches `to` by now, with `allowed` pixels of pushes and lunges. */
-function withinWalk(
-  game: Session,
-  from: Mark,
-  to: Point,
-  allowed: number,
-): boolean {
-  const { player, net } = game.config;
-  const { slack, lateSeconds } = net.moves;
-  const walk = player.speed * Math.max(1, player.crouchMultiplier);
-  const reach = walk * (game.time - from.time + lateSeconds) + slack + allowed;
-  return Math.hypot(to.x - from.at.x, to.y - from.at.y) <= reach;
-}
-
-/**
- * Notes that `playerId` stands at `at` now, whatever came before, as when the host forces it there
- * or takes its reports as they come: its pace is reckoned from there.
- */
-export function rebasePace(game: Session, playerId: string, at: Point): void {
-  checkOn(game, playerId).trail = [
-    { at: { x: at.x, y: at.y }, time: game.time },
-  ];
-}
-
-/**
- * Whether, as the host, it takes `playerId`'s report of standing at `to` now as far as stamina
- * goes: a player the host reckons too spent to sprint must keep to a walk over the reports since
- * about a round trip ago, plus `allowed` pixels of pushes and lunges.
- */
-export function keepsPace(
+/** Whether the host reckoned `playerId` had the stamina to sprint at any time since `time`. */
+export function couldSprintSince(
   game: Session,
   playerId: string,
-  to: Point,
-  allowed: number,
+  time: number,
 ): boolean {
   const check = checkOn(game, playerId);
-  const from = check.trail[0];
-  return (
-    canSprint(check.stamina) ||
-    from === undefined ||
-    withinWalk(game, from, to, allowed)
-  );
+  return canSprint(check.stamina) || check.sprintableAt >= time;
 }
 
 /**
