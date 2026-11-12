@@ -16,10 +16,7 @@ export interface MoveCheckConfig {
    * host takes over, in which its reports are taken as they come.
    */
   readonly settleSeconds: number;
-  /**
-   * About a round trip, in seconds: how long after a correction reports sent before it may still
-   * arrive, and how long past its own time a push or lunge may take to show in reports.
-   */
+  /** About a round trip, in seconds: how long past its own time a lunge may take to show in reports. */
   readonly roundTripSeconds: number;
 }
 
@@ -37,21 +34,16 @@ export interface MoveCheck {
   time: number;
   /** Until when every report is taken as it comes. */
   settleUntil: number;
-  /** Until when a report that breaks the rules is held at `at` rather than corrected again. */
-  holdUntil: number;
   allowances: Allowance[];
 }
 
 /**
  * What the host does with a player's reported position:
  * - take: the player stands there
- * - hold: the player stays where it last stood, and is not corrected again
  * - correct: the player is put back `to`, where it last stood
  */
 export type MoveVerdict =
-  | { readonly kind: "take" }
-  | { readonly kind: "hold" }
-  | { readonly kind: "correct"; readonly to: Point };
+  { readonly kind: "take" } | { readonly kind: "correct"; readonly to: Point };
 
 /**
  * Whether a player's body fits along the straight way from `from` to `to`, or along either way
@@ -103,7 +95,6 @@ export function checkMove(
       at: { x: to.x, y: to.y },
       time,
       settleUntil: time + game.config.net.moves.settleSeconds,
-      holdUntil: -Infinity,
       allowances: [],
     });
     return { kind: "take" };
@@ -116,13 +107,12 @@ export function checkMove(
     );
     return { kind: "take" };
   }
-  if (time < check.holdUntil) return { kind: "hold" };
   return { kind: "correct", to: check.at };
 }
 
 /**
  * Lets the player `playerId` move `distance` pixels on top of its own speed in reports over the
- * next `seconds`, and a round trip after: a push it was dealt, or a lunge it made.
+ * next `seconds`, and a round trip after: a lunge it made.
  */
 export function allowMove(
   game: Session,
@@ -140,18 +130,15 @@ export function allowMove(
 }
 
 /**
- * Notes that the host put the player `playerId` at `at`: its reports are checked from there, and
- * for about a round trip one that breaks the rules, as one sent before the correction does, is
- * held there rather than corrected again.
+ * Notes that the host forced the player `playerId` to `at`: its reports that took the move are
+ * checked from there. Reports sent before it never reach the checks, so need no allowance.
  */
-export function holdMoves(game: Session, playerId: string, at: Point): void {
-  const { time } = game;
+export function rebaseMoves(game: Session, playerId: string, at: Point): void {
   const check = game.moveChecks.get(playerId);
   game.moveChecks.set(playerId, {
     at: { x: at.x, y: at.y },
-    time,
+    time: game.time,
     settleUntil: -Infinity,
-    holdUntil: time + game.config.net.moves.roundTripSeconds,
     allowances: check?.allowances ?? [],
   });
 }

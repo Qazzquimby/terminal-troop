@@ -48,7 +48,8 @@ const GUEST = { x: 100, y: 300 };
 const FAR = { x: 700, y: 300 };
 
 /**
- * A transport that counts the corrections it sends, and can hold what it sends until released
+ * A transport that counts the corrections it sends, forced moves that jump rather than slide,
+ * and can hold what it sends until released
  * all at once.
  */
 function watched(port: Transport) {
@@ -56,9 +57,11 @@ function watched(port: Transport) {
   let corrections = 0;
   const send: Transport["send"] = (event, payload) => {
     for (const message of messages(event, payload)) {
+      const json = JSON.stringify(message.payload);
       if (
         message.event === NetEvent.CONTENT &&
-        JSON.stringify(message.payload).includes('"core/position"')
+        json.includes('"core/position"') &&
+        !json.includes('"slide"')
       )
         corrections++;
     }
@@ -289,7 +292,7 @@ test("a new host takes each player's reports as they come at first, then checks 
   expectAt(client("b"), client("c"), FAR);
 });
 
-test("reports a guest sent before its correction are held, not corrected again", async () => {
+test("reports a guest sent before its correction are ignored, not corrected again", async () => {
   const { client, run } = await room({ a: HOST, b: GUEST });
   const there = { x: 400, y: 400 };
   client("b").net.hold();

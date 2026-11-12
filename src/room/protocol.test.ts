@@ -14,6 +14,7 @@ const state = {
   y: 2,
   aim: 0,
   health: 100,
+  epoch: 0,
   content: {},
 };
 
@@ -110,6 +111,7 @@ describe("the message table", () => {
       y: number;
       aim: number;
       health: number | "Infinity";
+      epoch: number;
       content: Record<string, unknown>;
     }>();
     expectTypeOf<Message<"state">["health"]>().toEqualTypeOf<number>();
@@ -210,6 +212,9 @@ describe("the message table", () => {
     [NetEvent.STATE, omit(state, "aim")],
     [NetEvent.STATE, omit(state, "health")],
     [NetEvent.STATE, { ...state, health: -1 }],
+    [NetEvent.STATE, omit(state, "epoch")],
+    [NetEvent.STATE, { ...state, epoch: -1 }],
+    [NetEvent.STATE, { ...state, epoch: 1.5 }],
     [NetEvent.STATE, omit(state, "content")],
     [NetEvent.STATE, { ...state, content: null }],
     [NetEvent.STATE, { ...state, content: "shovel" }],

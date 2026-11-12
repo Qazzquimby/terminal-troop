@@ -56,7 +56,11 @@ export type {
 export { applyDamage } from "./entity.js";
 export { showFlash } from "./flashes.js";
 export { knockBack } from "./knockback.js";
-export { correctPlayer } from "./correction.js";
+export {
+  correctPlayer,
+  expectedEpoch,
+  takeOverForcedMoves,
+} from "./forced-move.js";
 export { allowMove, restartMoveChecks } from "./move-checks.js";
 export { confirmAction, nextAction, predict } from "./prediction.js";
 export { hurtPlayer } from "./health.js";
