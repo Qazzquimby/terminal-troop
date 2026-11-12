@@ -52,7 +52,7 @@ export const testSimConfig: SimConfig = {
     sprint: { interval: 0.25, radius: 450 },
     crouch: { interval: 0.75, radius: 60 },
   },
-  worldItems: { radius: 8, cooldown: 0.2 },
+  worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };
 
 /** Each noise the local player hears ripples for 0.5s. */

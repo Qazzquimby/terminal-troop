@@ -4,7 +4,13 @@ import { credit, itemContent } from "../items/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { isAreaFree, updateSession } from "../sim/index.js";
+import {
+  giveItem,
+  heldItemOf,
+  isAreaFree,
+  itemIn,
+  updateSession,
+} from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
@@ -55,15 +61,20 @@ function place(room: Room, at: Point): void {
 const scrapCarried = (room: Room): number =>
   sessionOf(room).local.inventory.filter((item) => item?.id === "scrap").length;
 
-/** Gives `room`'s player `count` scrap, from its second slot on, and holds the first. */
-function stock(room: Room, count: number): void {
+/** As the host, gives `room`'s player `count` scrap, from its second slot on; it holds the first. */
+function stock(host: Room, room: Room, count: number): void {
   const game = sessionOf(room);
-  const definition = game.itemDefinitions.get("scrap");
-  if (definition === undefined) throw new Error("no scrap");
   for (let slot = 1; slot <= count; slot++)
-    game.local.inventory[slot] = definition;
+    expect(giveItem(sessionOf(host), game.localId, "scrap", slot)).toBe(true);
   game.local.held = 1;
 }
+
+/** How much scrap the host's record has `room`'s player carrying. */
+const scrapRecorded = (host: Room, room: Room): number =>
+  [0, 1, 2, 3, 4, 5].filter(
+    (slot) =>
+      itemIn(sessionOf(host), sessionOf(room).localId, slot) === "scrap",
+  ).length;
 
 /** Whether `room`'s client played the sale's sound. */
 const rang = (room: Room): boolean =>
@@ -163,21 +174,83 @@ function byCruiser(room: Room, distance: number): Point {
 test("a guest holding scrap by the cruiser sells it: the team's credit rises on every client, and the scrap is gone", async () => {
   const { get, exchange } = await crew("a", "b");
   const b = get("b");
-  stock(b, 1);
+  stock(get("a"), b, 1);
   place(b, byCruiser(b, 60));
+  exchange();
   exchange();
   exchange();
   expect(credit.get(sessionOf(get("a")))).toBe(scrap.value);
   expect(credit.get(sessionOf(b))).toBe(scrap.value);
   expect(scrapCarried(b)).toBe(0);
+  expect(scrapRecorded(get("a"), b)).toBe(0);
   expect(rang(get("a"))).toBe(true);
   expect(rang(b)).toBe(true);
+});
+
+test("sold scrap is gone from the host's record: a client that keeps showing it sells nothing more", async () => {
+  const { get, exchange } = await crew("a", "b");
+  const b = get("b");
+  const guest = sessionOf(b);
+  stock(get("a"), b, 1);
+  place(b, byCruiser(b, 60));
+  for (let round = 0; round < 3; round++) exchange();
+  expect(credit.get(sessionOf(get("a")))).toBe(scrap.value);
+  const definition = guest.itemDefinitions.get("scrap");
+  if (definition === undefined) throw new Error("no scrap");
+  for (let round = 0; round < 20; round++) {
+    guest.local.inventory[1] = definition;
+    exchange();
+  }
+  expect(credit.get(sessionOf(get("a")))).toBe(scrap.value);
+  expect(scrapRecorded(get("a"), b)).toBe(0);
+});
+
+test("a sale shows the scrap gone at once; a refused one brings it back", async () => {
+  const { get, exchange } = await crew("a", "b");
+  const b = get("b");
+  const guest = sessionOf(b);
+  stock(get("a"), b, 1);
+  place(b, byCruiser(b, scrap.cashoutRadius + 60));
+  exchange();
+  expect(scrapCarried(b)).toBe(1);
+  // Standing by the cruiser only as this client sees it: the host still hears it far off.
+  const cruiser = cruiserOf(b);
+  cruiser.x = guest.local.x;
+  cruiser.y = guest.local.y + 40;
+  updateSession(guest, idle, DT);
+  expect(scrapCarried(b)).toBe(0);
+  exchange();
+  exchange();
+  expect(scrapCarried(b)).toBe(1);
+  expect(scrapRecorded(get("a"), b)).toBe(1);
+  expect(credit.get(sessionOf(get("a")))).toBe(0);
+});
+
+test("a forged held slot sells nothing: the host checks the slot named against its record", async () => {
+  const { get, exchange } = await crew("a", "b");
+  const b = get("b");
+  const guest = sessionOf(b);
+  place(b, byCruiser(b, 60));
+  exchange();
+  const event = guest.events.get("item/scrap")?.get("sell");
+  if (event?.to !== "host") throw new Error("no event");
+  for (const slot of [0, 1, 2]) {
+    event.send(guest, {
+      sale: slot + 1,
+      slot,
+      ...guest.local,
+      action: slot + 1,
+    });
+    exchange();
+  }
+  exchange();
+  expect(credit.get(sessionOf(get("a")))).toBe(0);
 });
 
 test("held scrap sells one at a time; scrap not held stays", async () => {
   const { get, exchange } = await crew("a", "b");
   const b = get("b");
-  stock(b, 3);
+  stock(get("a"), b, 3);
   place(b, byCruiser(b, 60));
   for (let round = 0; round < 6; round++) exchange();
   expect(credit.get(sessionOf(get("a")))).toBe(scrap.value);
@@ -191,7 +264,7 @@ test("held scrap sells one at a time; scrap not held stays", async () => {
 test("the host sells its own scrap the same way", async () => {
   const { get, exchange } = await crew("a", "b");
   const a = get("a");
-  stock(a, 1);
+  stock(a, a, 1);
   place(a, byCruiser(a, 60));
   for (let round = 0; round < 4; round++) exchange();
   expect(credit.get(sessionOf(a))).toBe(scrap.value);
@@ -202,7 +275,7 @@ test("the host sells its own scrap the same way", async () => {
 test("scrap held away from the cruiser does not sell", async () => {
   const { get, exchange } = await crew("a", "b");
   const b = get("b");
-  stock(b, 1);
+  stock(get("a"), b, 1);
   place(b, byCruiser(b, scrap.cashoutRadius + 60));
   exchange();
   expect(sessionOf(b).outbox).toEqual([]);
@@ -215,14 +288,19 @@ test("the host refuses a sale from a player not holding scrap, or not by the cru
   const { get, exchange } = await crew("a", "b");
   const b = get("b");
   const guest = sessionOf(b);
-  stock(b, 1);
+  stock(get("a"), b, 1);
   guest.local.held = 0;
   place(b, byCruiser(b, 60));
   exchange();
   const forge = (at: Point): void => {
     const event = guest.events.get("item/scrap")?.get("sell");
     if (event?.to !== "host") throw new Error("no event");
-    event.send(guest, { sale: 1, ...at });
+    event.send(guest, {
+      sale: 1,
+      slot: guest.local.held ?? 0,
+      ...at,
+      action: 1,
+    });
     exchange();
     exchange();
   };
@@ -239,7 +317,7 @@ test("a sale whose answer is lost is asked for again, and credited once", async 
   const { get, exchange, hub, clock } = await crew("a", "b");
   const a = get("a");
   const b = get("b");
-  stock(b, 2);
+  stock(get("a"), b, 2);
   place(b, byCruiser(b, scrap.cashoutRadius + 60));
   exchange();
   place(b, byCruiser(b, 60));
@@ -250,7 +328,7 @@ test("a sale whose answer is lost is asked for again, and credited once", async 
   a.frame(clock.now() + 200);
   hub.heal();
   expect(credit.get(sessionOf(a))).toBe(scrap.value);
-  expect(scrapCarried(b)).toBe(2);
+  expect(scrapCarried(b)).toBe(1);
   for (let step = 0; step < scrap.sellTimeout / DT + 1; step++)
     updateSession(sessionOf(b), idle, DT);
   exchange();
@@ -262,7 +340,7 @@ test("a sale whose answer is lost is asked for again, and credited once", async 
 test("a late joiner sees the team's credit", async () => {
   const { get, join, exchange } = await crew("a", "b");
   const b = get("b");
-  stock(b, 1);
+  stock(get("a"), b, 1);
   place(b, byCruiser(b, 60));
   exchange();
   exchange();
@@ -273,7 +351,7 @@ test("a late joiner sees the team's credit", async () => {
 test("the team's credit survives the host leaving, and the new host sells on from it", async () => {
   const { get, exchange, clock } = await crew("a", "b", "c");
   const b = get("b");
-  stock(b, 2);
+  stock(get("a"), b, 2);
   place(b, byCruiser(b, 60));
   exchange();
   exchange();
@@ -312,7 +390,7 @@ function salesOn(room: Room): unknown {
 test("a new host knows which sales the last one sold", async () => {
   const { get, exchange, clock } = await crew("a", "b", "c");
   const c = get("c");
-  stock(c, 2);
+  stock(get("a"), c, 2);
   place(c, byCruiser(c, 60));
   exchange();
   exchange();
@@ -332,7 +410,7 @@ test("a sale whose answer is lost as the host goes is credited once by the next 
   const { get, exchange, hub, clock } = await crew("a", "b", "c");
   const a = get("a");
   const c = get("c");
-  stock(c, 2);
+  stock(get("a"), c, 2);
   place(c, byCruiser(c, scrap.cashoutRadius + 60));
   exchange();
   place(c, byCruiser(c, 60));
@@ -345,7 +423,7 @@ test("a sale whose answer is lost as the host goes is credited once by the next 
   hub.heal();
   expect(credit.get(sessionOf(get("b")))).toBe(scrap.value);
   expect(credit.get(sessionOf(c))).toBe(0);
-  expect(scrapCarried(c)).toBe(2);
+  expect(scrapCarried(c)).toBe(1);
 
   await a.leave();
   clock.advance(clock.now() + 3000);
@@ -357,4 +435,60 @@ test("a sale whose answer is lost as the host goes is credited once by the next 
   expect(credit.get(sessionOf(get("b")))).toBe(scrap.value);
   expect(credit.get(sessionOf(c))).toBe(scrap.value);
   expect(scrapCarried(c)).toBe(1);
+});
+
+/** What `room`'s client sees player `id` hold. */
+function seenHolding(room: Room, id: string): string | null {
+  const game = sessionOf(room);
+  const player = game.players.get(id);
+  if (player === undefined) throw new Error(`no player ${id}`);
+  return heldItemOf(game, player)?.id ?? null;
+}
+
+test("a player joining starts with the starting items, in the host's record and its own", async () => {
+  const { get, join, exchange } = await crew("a", "b");
+  const c = await join("c");
+  exchange();
+  exchange();
+  for (const room of [get("b"), c]) {
+    expect(itemIn(sessionOf(get("a")), sessionOf(room).localId, 0)).toBe(
+      "shovel",
+    );
+    expect(sessionOf(room).local.inventory[0]?.id).toBe("shovel");
+  }
+});
+
+test("a late joiner sees what each player holds, from the host's record", async () => {
+  const { get, join, exchange } = await crew("a", "b");
+  const b = get("b");
+  stock(get("a"), b, 1);
+  place(b, byCruiser(b, scrap.cashoutRadius + 60));
+  exchange();
+  const c = await join("c");
+  exchange();
+  exchange();
+  expect(seenHolding(c, "a")).toBe("shovel");
+  expect(seenHolding(c, "b")).toBe("scrap");
+  sessionOf(b).local.held = 2;
+  exchange();
+  exchange();
+  expect(seenHolding(c, "b")).toBeNull();
+  expect(seenHolding(get("a"), "b")).toBeNull();
+});
+
+test("everyone's items survive the host leaving, and the new host keeps them", async () => {
+  const { get, exchange, clock } = await crew("a", "b", "c");
+  const c = get("c");
+  stock(get("a"), c, 2);
+  place(c, byCruiser(c, scrap.cashoutRadius + 60));
+  exchange();
+  exchange();
+  await get("a").leave();
+  clock.advance(clock.now() + 3000);
+  expect(get("b").hostId()).toBe("b");
+  exchange();
+  exchange();
+  expect(scrapRecorded(get("b"), c)).toBe(2);
+  expect(scrapCarried(c)).toBe(2);
+  expect(seenHolding(get("b"), "c")).toBe("scrap");
 });

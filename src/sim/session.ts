@@ -24,7 +24,10 @@ import {
 } from "./forced-move.js";
 import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
-import type { ItemDefinition } from "./inventory.js";
+import { followInventories, reportHeld } from "./inventories.js";
+import type { InventoryHold } from "./inventories.js";
+import type { Inventory, ItemDefinition } from "./inventory.js";
+import { createInventory } from "./inventory.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
 import type { Point, Rng, ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
@@ -44,7 +47,7 @@ import type { Prediction } from "./prediction.js";
 import { settlePredictions } from "./prediction.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
-import { reportHeld, useHeldItem } from "./use.js";
+import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 import { interact } from "./world-items.js";
 import type { WorldItemConfig } from "./world-items.js";
@@ -102,6 +105,10 @@ export interface Session {
   readonly items: Map<string, ItemBehaviour>;
   /** Every item this client knows, by item id. */
   readonly itemDefinitions: Map<string, ItemDefinition>;
+  /** The items every player starts with, as the room's items stock them. */
+  readonly starting: Inventory;
+  /** What the local player's client predicted of its own items, until the host settles it. */
+  inventoryHold: InventoryHold | null;
   /** The state each content entry keeps on every player, by the entry's name. */
   readonly playerData: Map<string, PlayerData<unknown>>;
   /** The state each content entry keeps once for the world, by the entry's name. */
@@ -223,6 +230,8 @@ export function createSession(
     worldTime: 0,
     items: new Map(),
     itemDefinitions: new Map(),
+    starting: createInventory(config.player.inventorySlots),
+    inventoryHold: null,
     playerData: new Map(),
     worldData: new Map(),
     worldValues: new Map(),
@@ -301,6 +310,7 @@ export function updateSession(
   }
 
   applyEvents(game);
+  followInventories(game);
   followForcedMoves(game);
   emitFootsteps(game, dt);
   settlePredictions(game);
