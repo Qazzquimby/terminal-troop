@@ -4,7 +4,12 @@ import { createScope } from "../lib/scope/index.js";
 import { moveContent } from "../moves/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { isAreaFree, movement, updateSession } from "../sim/index.js";
+import {
+  isAreaFree,
+  movement,
+  mulberry32,
+  updateSession,
+} from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
@@ -88,6 +93,30 @@ function kicking() {
   };
 }
 
+/**
+ * Over and over: sprinting back and forth until its stamina runs out, standing and kicking
+ * whenever it can for 4s, then resting for 1s.
+ */
+function sprintingOut(): Driver {
+  const sprint = pacing(1);
+  const kick = kicking();
+  let phase: "sprint" | "kick" | "rest" = "sprint";
+  let left = 0;
+  return (game) => {
+    left -= DT;
+    if (phase === "sprint" && game.local.stamina.exhausted) {
+      phase = "kick";
+      left = 4;
+    } else if (phase === "kick" && left <= 0) {
+      phase = "rest";
+      left = 1;
+    } else if (phase === "rest" && left <= 0) phase = "sprint";
+    if (phase === "sprint") return sprint(game);
+    const controls = kick(game);
+    return phase === "kick" ? controls : { ...controls, secondary: false };
+  };
+}
+
 function sessionOf(room: Room): Session {
   const state = room.state();
   if (state.kind !== "joined") throw new Error(`not joined: ${state.kind}`);
@@ -108,8 +137,11 @@ type Driver = (game: Session) => Controls;
 /**
  * Clients joined in order to one room on a JSON hub, the first hosting, each standing where
  * `starts` puts it, each send arriving 60 to 180ms later, and stepped past the settle time.
+ * Given a `seed`, the delays are drawn at random from it, and the guests' frames, which send
+ * what they have to send, come every one to three steps, as a browser's do when they fall
+ * behind the sim.
  */
-async function room(starts: Readonly<Record<string, Point>>) {
+async function room(starts: Readonly<Record<string, Point>>, seed?: number) {
   const hub = createHub();
   const clock = createManualClock();
   const clients = new Map<
@@ -117,7 +149,10 @@ async function room(starts: Readonly<Record<string, Point>>) {
     { room: Room; net: ReturnType<typeof delayed> }
   >();
   let sends = 0;
-  const jitter = (): number => 60 + ((sends++ * 37) % 120);
+  const random = seed === undefined ? null : mulberry32(seed);
+  const jitter = (): number =>
+    60 + (random === null ? (sends++ * 37) % 120 : random() * 120);
+  const host = Object.keys(starts)[0];
   for (const id of Object.keys(starts)) {
     const net = delayed(hub.transport(id, []).port, jitter);
     const joined = createRoom({
@@ -169,8 +204,11 @@ async function room(starts: Readonly<Record<string, Point>>) {
 
   /** Clients whose stamina is kept full, and who report walking whatever they do. */
   const cheats = { stamina: new Set<string>(), walk: new Set<string>() };
+  let steps = 0;
   /** Steps every joined client once, `drivers` by id or standing still, then a step's time. */
   function step(drivers: Readonly<Record<string, Driver>> = {}): void {
+    steps++;
+    const framed = random === null || steps % 5 >= 3 || steps % 7 === 0;
     for (const [id, { room: joined, net }] of clients) {
       if (joined.state().kind !== "joined") continue;
       const game = sessionOf(joined);
@@ -178,6 +216,7 @@ async function room(starts: Readonly<Record<string, Point>>) {
       updateSession(game, drivers[id]?.(game) ?? idle, DT);
       if (cheats.walk.has(id))
         movement.set(game.local, { ...movement.get(game.local), mode: "walk" });
+      if (id !== host && !framed) continue;
       joined.frame(clock.now());
       net.stamp(clock.now());
     }
@@ -318,4 +357,32 @@ test("a new host reckons every player's stamina full, then holds them to it", as
   run(2, { c: pacing(1) });
   expect(reckoned(newHost, "c").exhausted).toBe(true);
   expect(client("b").net.counts.corrections).toBeGreaterThan(0);
+});
+
+test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])(
+  "an honest guest that sprints itself out, kicks whenever it can and rests, over and over through random delays, is never refused (seed %i)",
+  async (seed) => {
+    const { client, run } = await room({ a: HOST, b: GUEST }, seed);
+    run(60, { b: sprintingOut() });
+    run(1);
+    const { kicks } = client("b").net.counts;
+    expect(kicks).toBeGreaterThanOrEqual(10);
+    expect(client("a").net.counts.shown).toBe(kicks);
+    expect(client("a").net.counts.corrections).toBe(0);
+  },
+);
+
+test("a guest that keeps its stamina full while it kicks whenever it can is held to the kicks its stamina affords", async () => {
+  const { client, cheats, run } = await room({ a: HOST, b: GUEST }, 1);
+  const seconds = 10;
+  cheats.stamina.add("b");
+  run(seconds, { b: kicking() });
+  run(1);
+  const { lateSeconds } = testSimConfig.net.stamina;
+  const affords =
+    (stamina.max + slack + stamina.regen * (seconds + lateSeconds)) /
+    kick.stamina;
+  const { kicks } = client("b").net.counts;
+  expect(kicks).toBeGreaterThan(affords);
+  expect(client("a").net.counts.shown).toBeLessThanOrEqual(affords);
 });

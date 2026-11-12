@@ -15,11 +15,20 @@ export interface StaminaCheckConfig {
    * never leave it reckoning a player emptier than the player's own bar.
    */
   readonly slack: number;
+  /**
+   * Seconds by which the report that a player stopped sprinting, or its last kick, may arrive
+   * later than a kick it sent after, so that the host starts reckoning its regeneration that much
+   * late. A kick may borrow that much regeneration the host has not reckoned yet, which the
+   * regeneration that follows pays back before the player may borrow again.
+   */
+  readonly lateSeconds: number;
 }
 
 /** What the host reckons of one remote player's stamina. Times are in sim seconds. */
 export interface StaminaCheck {
   stamina: Stamina;
+  /** Stamina the player spent on regeneration the host had not reckoned yet, still to pay back. */
+  owed: number;
   /** Until when the player counts as sprinting whatever gait it reports. */
   fastUntil: number;
   /** When the player last reported sprinting. */
@@ -40,6 +49,7 @@ function checkOn(game: Session, playerId: string): StaminaCheck {
   if (known !== undefined) return known;
   const check: StaminaCheck = {
     stamina: createStamina(reckoning(game)),
+    owed: 0,
     fastUntil: -Infinity,
     sprintedAt: -Infinity,
     sprintableAt: game.time,
@@ -62,9 +72,33 @@ export function trackStamina(game: Session, dt: number): void {
     const reported = mode === "sprint" && moving;
     if (reported) check.sprintedAt = game.time;
     const sprinting = reported || game.time < check.fastUntil;
-    check.stamina = updateStamina(check.stamina, sprinting, dt, rules);
+    regain(check, sprinting, dt, rules);
     if (canSprint(check.stamina)) check.sprintableAt = game.time;
   }
+}
+
+/**
+ * Steps `check`'s stamina by `rules`, its regeneration paying back what the player owes first.
+ */
+function regain(
+  check: StaminaCheck,
+  sprinting: boolean,
+  dt: number,
+  rules: StaminaConfig,
+): void {
+  const next = updateStamina(check.stamina, sprinting, dt, rules);
+  const paid = Math.min(check.owed, next.value - check.stamina.value);
+  if (paid <= 0) {
+    check.stamina = next;
+    return;
+  }
+  check.owed -= paid;
+  const value = next.value - paid;
+  check.stamina = {
+    ...next,
+    value,
+    exhausted: check.stamina.exhausted && value < rules.recover,
+  };
 }
 
 /**
@@ -91,8 +125,9 @@ export function couldSprintSince(
 
 /**
  * Spends, as the host, `amount` of `playerId`'s stamina as its client spends it on an action;
- * false, spending nothing, when the host reckons it has less. The local player's own stamina is
- * spent on its own client, so this is always true for it.
+ * false, spending nothing, when the host reckons it has less, even borrowing what regeneration
+ * the report of its rest may be late with and it does not owe already. The local player's own
+ * stamina is spent on its own client, so this is always true for it.
  */
 export function hostSpends(
   game: Session,
@@ -102,8 +137,16 @@ export function hostSpends(
   if (playerId === game.localId) return true;
   const check = checkOn(game, playerId);
   const spent = spendStamina(check.stamina, amount);
-  if (spent === null) return false;
-  check.stamina = spent;
+  if (spent !== null) {
+    check.stamina = spent;
+    return true;
+  }
+  const { stamina, net } = game.config;
+  const short = amount - check.stamina.value;
+  if (check.owed + short > stamina.regen * net.stamina.lateSeconds)
+    return false;
+  check.owed += short;
+  check.stamina = { ...check.stamina, value: 0, rested: 0 };
   return true;
 }
 

@@ -105,7 +105,9 @@ export const config = {
   // are taken as they come for 2s after a player joins or comes back, or the host changes, and one
   // sent before a correction is held for a second rather than corrected again. The host reckons each player's stamina with a kick's worth over a
   // full bar, 0.45s of sprinting, so late reports never leave it reckoning a player emptier than
-  // the player's own bar.
+  // the player's own bar. A kick may borrow 0.3s of regeneration, half a kick's worth, that the
+  // host has not reckoned yet: the report that a player stopped sprinting waits up to 0.1s for
+  // its tick where a kick goes at once, and may take some 0.2s longer on the way.
   net: {
     smoothing: 12,
     useSlack: { distance: 80, seconds: 0.3 },
@@ -117,7 +119,7 @@ export const config = {
       settleSeconds: 2,
       roundTripSeconds: 1,
     },
-    stamina: { slack: STAMINA_MAX * 0.15 },
+    stamina: { slack: STAMINA_MAX * 0.15, lateSeconds: 0.3 },
   },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
