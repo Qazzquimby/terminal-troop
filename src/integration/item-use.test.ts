@@ -199,6 +199,7 @@ test("the use control swings the held shovel at the step's sim time and sends it
         x: game.local.x,
         y: game.local.y,
         aim: game.local.aim,
+        action: 1,
       },
     },
   ]);

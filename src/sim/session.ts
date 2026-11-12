@@ -32,6 +32,8 @@ import {
 import type { Noise, NoiseConfig } from "./noise.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
+import type { Prediction } from "./prediction.js";
+import { settlePredictions } from "./prediction.js";
 import { applyContentState, contentState } from "./player-data.js";
 import type { ItemBehaviour, UseSlack } from "./use.js";
 import { reportHeld, useHeldItem } from "./use.js";
@@ -44,6 +46,8 @@ interface SyncConfig {
   /** Rate, per second, at which remote players ease towards their reported state. */
   readonly smoothing: number;
   readonly useSlack: UseSlack;
+  /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
+  readonly predictionHold: number;
 }
 
 /** The tuning a session runs on; it keeps this for its lifetime. */
@@ -112,6 +116,10 @@ export interface Session {
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
   readonly flashes: Flash[];
+  /** What this client predicted of each entity, held until the host confirms it, by entity id. */
+  readonly predictions: Map<string, Prediction>;
+  /** The number of the local player's latest action; 0 before its first. */
+  lastAction: number;
   /**
    * The local player's state changed in a way the others should hear at once; the room sends
    * it in its next frame, and clears this.
@@ -204,6 +212,8 @@ export function createSession(
     localReadyAt: new Map(),
     contents: [],
     flashes: [],
+    predictions: new Map(),
+    lastAction: 0,
     reportNow: false,
   };
   registerBuiltIns(game);
@@ -262,6 +272,7 @@ export function updateSession(
 
   applyEvents(game);
   emitFootsteps(game, dt);
+  settlePredictions(game);
   if (game.hosting) updateEntities(game, dt);
   else followEntities(game, dt);
 
