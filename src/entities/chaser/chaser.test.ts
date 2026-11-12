@@ -63,7 +63,13 @@ function standAt(game: Session, x: number, y: number): void {
 }
 
 function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
-  return spawnEntity(game, "chaser", x, y, freshChaser(seed, config));
+  return spawnEntity(
+    game,
+    "chaser",
+    x,
+    y,
+    freshChaser(seed, game.worldTime, config),
+  );
 }
 
 const stateOf = (entity: WorldEntity): ChaserState =>

@@ -78,11 +78,17 @@ export interface Session {
   readonly entityTypes: Map<number, EntityType>;
   /** The number each kind is registered and sent as, by name. */
   readonly kindIds: Map<string, number>;
+  /** The number the next entity spawned here takes, past that of every entity placed here. */
   nextEntityId: number;
   /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
   hosting: boolean;
   /** Sim seconds stepped since the session began. */
   time: number;
+  /**
+   * Sim seconds on the world's clock, which entities keep their deadlines by. Every client steps
+   * it, and takes the host's from each snapshot, so whoever hosts next goes on from it.
+   */
+  worldTime: number;
   /** What each usable item does, by item id. */
   readonly items: Map<string, ItemBehaviour>;
   /** Every item this client knows, by item id. */
@@ -197,6 +203,7 @@ export function createSession(
     nextEntityId: 1,
     hosting: true,
     time: 0,
+    worldTime: 0,
     items: new Map(),
     itemDefinitions: new Map(),
     playerData: new Map(),
@@ -256,6 +263,7 @@ export function updateSession(
   dt: number,
 ): void {
   game.time += dt;
+  game.worldTime += dt;
   game.noises.length = 0;
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
