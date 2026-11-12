@@ -98,7 +98,20 @@ export const config = {
   arrival: { spread: CELL * 2 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
-  net: { smoothing: 12, useSlack: { distance: 80, seconds: 0.3 } },
+  // A player's report may land 12px past its reach, as if 0.3s more of sprinting had passed: one
+  // report late by that much then the next on time. Reports are taken as they come for 2s after a
+  // player joins or comes back, or the host changes, and one sent before a correction is held for
+  // a second rather than corrected again.
+  net: {
+    smoothing: 12,
+    useSlack: { distance: 80, seconds: 0.3 },
+    moves: {
+      slack: 12,
+      lateSeconds: 0.3,
+      settleSeconds: 2,
+      roundTripSeconds: 1,
+    },
+  },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
   // Loudness is a multiple of a listener's hearing range.

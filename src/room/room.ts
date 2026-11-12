@@ -14,6 +14,7 @@ import {
   receiveEvent,
   registerContent,
   removePlayer,
+  restartMoveChecks,
   roomSeed,
   takeWorldEntries,
 } from "../sim/index.js";
@@ -313,7 +314,7 @@ export function createRoom(deps: RoomDeps): Room {
   /**
    * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
    * no starting entities yet spawns them. A client that takes over sends its world state in full
-   * with its next tick.
+   * with its next tick, and checks every player's moves afresh.
    */
   function holdView(room: Link, view: HostView | undefined): void {
     if (
@@ -324,6 +325,7 @@ export function createRoom(deps: RoomDeps): Room {
       room.worldFullDue = true;
     room.host = view;
     const hosting = view?.id === localId;
+    if (room.session.hosting !== hosting) restartMoveChecks(room.session);
     room.session.hosting = hosting;
     if (!hosting) room.sent.clear();
     if (hosting && !room.populated) {
@@ -387,9 +389,14 @@ export function createRoom(deps: RoomDeps): Room {
       );
   }
 
-  /** Drops the players `changes` made gone, then points voice at who is left. */
+  /**
+   * Drops the players `changes` made gone, checks the moves of those back from away afresh, then
+   * points voice at who is left.
+   */
   function settle(room: Link, changes: readonly PresenceChange[]): void {
     for (const change of changes) {
+      if (change.from === "away" && change.to === "present")
+        restartMoveChecks(room.session, change.id);
       if (change.to !== "gone") continue;
       removePlayer(room.session, change.id);
       room.views.delete(change.id);
@@ -430,9 +437,8 @@ export function createRoom(deps: RoomDeps): Room {
           clock.now(),
         );
         if (room.roster.get(message.id) === undefined) return;
-        const added = applyRemoteState(room.session, message) === "added";
         if (change !== null) settle(room, [change]);
-        else if (added) {
+        if (applyRemoteState(room.session, message) === "added") {
           syncVoice(room);
           deps.onChange();
         }
@@ -483,6 +489,7 @@ export function createRoom(deps: RoomDeps): Room {
         if (message.id === localId) heardOwnId(room);
         else {
           hear(room, message.id, { kind: "hello" });
+          restartMoveChecks(room.session, message.id);
           // A host that says HELLO again has lost the world it ran, so the others take it over.
           if (room.host?.id === message.id) handOver(room, message.id);
         }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  allowMove,
   applyDamage,
   broadcastNoise,
   circleAhead,
@@ -89,6 +90,8 @@ export const kick: Content<"kick", KickConfig> = {
       to: "host",
       receive(game, at, by) {
         if (!hostAccepts(game, by, at, NAME, config.cooldown)) return;
+        const { lengths, seconds } = config.lunge;
+        allowMove(game, by, bodyLength(game.config.player) * lengths, seconds);
         const area = hitbox(at, at.aim);
         const entities = entitiesIn(game, area);
         for (const entity of entities) {

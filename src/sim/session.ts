@@ -11,6 +11,7 @@ import type {
   OutgoingEvent,
 } from "./content-event.js";
 import { applyEvents } from "./content-event.js";
+import { correctPlayer } from "./correction.js";
 import type { WorldContent } from "./content.js";
 import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
@@ -30,6 +31,8 @@ import {
   updatePlayer,
 } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
+import { checkMove } from "./move-checks.js";
+import type { MoveCheck, MoveCheckConfig, MoveVerdict } from "./move-checks.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
 import { applyContentState, contentState } from "./player-data.js";
@@ -44,6 +47,7 @@ interface SyncConfig {
   /** Rate, per second, at which remote players ease towards their reported state. */
   readonly smoothing: number;
   readonly useSlack: UseSlack;
+  readonly moves: MoveCheckConfig;
 }
 
 /** The tuning a session runs on; it keeps this for its lifetime. */
@@ -108,6 +112,8 @@ export interface Session {
   readonly readyAt: Map<string, Map<string, number>>;
   /** When, in sim seconds, the local player may next act, by what the action is timed under. */
   readonly localReadyAt: Map<string, number>;
+  /** While hosting, how each remote player has moved, by player id. */
+  readonly moveChecks: Map<string, MoveCheck>;
   /** The content registered with it, in order. */
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
@@ -202,6 +208,7 @@ export function createSession(
     noises: [],
     readyAt: new Map(),
     localReadyAt: new Map(),
+    moveChecks: new Map(),
     contents: [],
     flashes: [],
     reportNow: false,
@@ -285,12 +292,15 @@ export function playerState(game: Session): PlayerState {
 /** Drops a remote player; false when there is none by that id. */
 export function removePlayer(game: Session, id: string): boolean {
   if (id === game.localId) return false;
+  game.moveChecks.delete(id);
   return game.players.delete(id);
 }
 
 /**
  * Applies a remote player's reported state: "added" when the player is new to the session,
- * "rejected" for the local player's own id or a position inside a wall.
+ * "rejected" for the local player's own id or a position inside a wall. While hosting, a
+ * position beyond the player's reach is not taken: the player is held where it last stood, or
+ * corrected back there.
  */
 export function applyRemoteState(
   game: Session,
@@ -313,8 +323,14 @@ export function applyRemoteState(
   player.health = Math.min(state.health, player.maxHealth);
   applyContentState(game, player, state.content);
 
-  player.tx = state.x;
-  player.ty = state.y;
   player.taim = state.aim;
+  const verdict: MoveVerdict = game.hosting
+    ? checkMove(game, player.id, state)
+    : { kind: "take" };
+  if (verdict.kind === "take") {
+    player.tx = state.x;
+    player.ty = state.y;
+  } else if (verdict.kind === "correct")
+    correctPlayer(game, player, verdict.to);
   return known === undefined ? "added" : "updated";
 }
