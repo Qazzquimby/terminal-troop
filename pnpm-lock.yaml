@@ -10,6 +10,9 @@ importers:
       "@supabase/supabase-js":
         specifier: ^2.57.0
         version: 2.118.0
+      "@trystero-p2p/supabase":
+        specifier: 0.26.0
+        version: 0.26.0
       jimkit-env:
         specifier: ^0.8.0
         version: 0.8.0
@@ -1095,6 +1098,18 @@ packages:
     peerDependenciesMeta:
       "@opentelemetry/api":
         optional: true
+
+  "@trystero-p2p/core@0.26.0":
+    resolution:
+      {
+        integrity: sha512-CZpeXPgfbDdFKrGxfD98F9tn/fTjya4mQ2o/Ax6H0qpBaJXCBz5+jyPtjsYEPAAcKRK/btOatCetFiQ5qIMCOA==,
+      }
+
+  "@trystero-p2p/supabase@0.26.0":
+    resolution:
+      {
+        integrity: sha512-4gvjPMFinGLvNqk07D4nROsET+C9WsGxHtQ3QL9h2pqvUiIMV8GfyVZQJl8Rbao3gLgSTXPz5kVtkYC8R8dCMA==,
+      }
 
   "@tybys/wasm-util@0.10.4":
     resolution:
@@ -2863,6 +2878,15 @@ snapshots:
       "@supabase/postgrest-js": 2.118.0
       "@supabase/realtime-js": 2.118.0
       "@supabase/storage-js": 2.118.0
+
+  "@trystero-p2p/core@0.26.0": {}
+
+  "@trystero-p2p/supabase@0.26.0":
+    dependencies:
+      "@supabase/supabase-js": 2.118.0
+      "@trystero-p2p/core": 0.26.0
+    transitivePeerDependencies:
+      - "@opentelemetry/api"
 
   "@tybys/wasm-util@0.10.4":
     dependencies:

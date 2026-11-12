@@ -34,3 +34,12 @@ export interface Transport {
   /** No-op when not in a room. */
   send: (event: NetEvent, payload: unknown) => Promise<void>;
 }
+
+/**
+ * For a transport whose members connect to each other some time after joining, so that what a
+ * member says on joining can miss those that connect later.
+ */
+export interface GreetingConfig {
+  /** How long after it greets the room a member greets again each member that connects. */
+  readonly replayMs: number;
+}
