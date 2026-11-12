@@ -11,6 +11,7 @@ import {
   makeSound,
   mulberry32Next,
   noisesHeardBy,
+  spawnEntity,
   rounded,
   sound,
 } from "../../sim/index.js";
@@ -26,6 +27,8 @@ import type {
   TileMap,
 } from "../../sim/index.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
+import { spawning, stepSpawning } from "./spawning.js";
+import type { SpawningConfig } from "./spawning.js";
 
 /**
  * How a chaser moves and hunts, and how many a new world starts with. Distances are in pixels,
@@ -33,6 +36,8 @@ import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
  */
 export interface ChaserConfig {
   readonly spawn: Scatter;
+  /** How more keep arriving once the world has begun. */
+  readonly spawning: SpawningConfig;
   readonly radius: number;
   /** Health when at full. */
   readonly maxHealth: number;
@@ -137,6 +142,9 @@ const COLOURS = {
 } as const;
 
 const CHASER_GLYPH = "🧟";
+
+/** The kind's name. */
+const NAME = "chaser";
 
 /** A fresh chaser's state at world time `now`, its random draws seeded by `seed`. */
 export function freshChaser(
@@ -486,14 +494,27 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
 /**
  * A chaser: wanders slowly, drawn towards what it hears, and runs down any player it sees to
  * where it last saw them. A new world scatters them away from the players, each drawing its own
- * seed.
+ * seed, and more keep arriving out of sight, ever faster as the world ages.
  */
-export const chaser = defineEntity("chaser", (config: ChaserConfig) => ({
+export const chaser = defineEntity(NAME, (config: ChaserConfig) => ({
   ...definition(config),
   spawn: {
     at: "scatter",
     ...config.spawn,
     data: (rng: Rng, game: Session) =>
       freshChaser(Math.floor(rng() * 2 ** 32), game.worldTime, config),
+  },
+  world: { spawning },
+  step(game: Session) {
+    stepSpawning(game, NAME, config.radius, config.spawning, (at) => {
+      const seed = Math.floor(Math.random() * 2 ** 32);
+      spawnEntity(
+        game,
+        NAME,
+        at.x,
+        at.y,
+        freshChaser(seed, game.worldTime, config),
+      );
+    });
   },
 }));

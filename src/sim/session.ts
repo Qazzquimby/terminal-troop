@@ -334,6 +334,7 @@ export function updateSession(
   if (game.hosting) {
     trackStamina(game, dt);
     updateEntities(game, dt);
+    for (const content of game.contents) content.step?.(game, dt);
   } else followEntities(game, dt);
 
   separateSessionBodies(game);
