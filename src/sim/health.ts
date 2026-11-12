@@ -3,6 +3,7 @@ import { solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { applyDamage } from "./entity.js";
 import type { Point } from "./map.js";
+import { allowMove } from "./move-checks.js";
 import type { Player } from "./player.js";
 import { startDash } from "./player.js";
 import type { Session } from "./session.js";
@@ -75,6 +76,14 @@ export function hurtPlayer(
   };
   if (blow.amount === 0 && blow.push === undefined) return;
   if (player === game.local) takeBlow(game, blow);
-  else if (game.players.get(player.id) === player)
+  else if (game.players.get(player.id) === player) {
+    if (blow.push !== undefined)
+      allowMove(
+        game,
+        player.id,
+        blow.push.distance,
+        game.config.player.knockbackSeconds,
+      );
     damaged.send(game, player.id, blow);
+  }
 }

@@ -304,6 +304,7 @@ export function isAreaFree(
   y: number,
   half: number,
 ): boolean {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
   const minCol = Math.floor((x - half) / map.cell + EPSILON);
   const maxCol = Math.floor((x + half) / map.cell - EPSILON);
   const minRow = Math.floor((y - half) / map.cell + EPSILON);

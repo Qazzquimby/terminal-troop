@@ -4,6 +4,7 @@ import { nearestFreePoint } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { snapPrevious } from "./interpolation.js";
 import type { Point } from "./map.js";
+import { holdMoves } from "./move-checks.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 
@@ -44,7 +45,7 @@ export const corrected = contentEvent({
  *
  * A STATE the player sent before the correction reached it can still arrive afterwards, and puts
  * the copy here back at the old position until the corrected STATE follows, about a round trip
- * later. Checks on reported positions should allow for that rather than correct again.
+ * later. The host's checks on its reports hold it at `at` meanwhile rather than correct again.
  */
 export function correctPlayer(game: Session, player: Player, at: Point): void {
   if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
@@ -55,6 +56,7 @@ export function correctPlayer(game: Session, player: Player, at: Point): void {
   if (player === game.local) takeCorrection(game, to);
   else if (game.players.get(player.id) === player) {
     placeAt(player, to);
+    holdMoves(game, player.id, to);
     corrected.send(game, player.id, to);
   }
 }
