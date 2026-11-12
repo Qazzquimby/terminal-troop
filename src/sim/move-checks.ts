@@ -1,6 +1,7 @@
 import { isSweepFree } from "./collision.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
+import { keepsPace, notePace, restartStaminaChecks } from "./stamina-checks.js";
 
 /** How the host holds each remote player to the moves its rules allow. */
 export interface MoveCheckConfig {
@@ -71,25 +72,43 @@ function hasPath(game: Session, from: Point, to: Point): boolean {
   );
 }
 
-/** Whether a player that stood as `check` says can stand at `to` now. */
-function withinReach(game: Session, check: MoveCheck, to: Point): boolean {
+/** Pixels of pushes and lunges `check` allows on top of the player's own speed. */
+function allowed(check: MoveCheck): number {
+  let distance = 0;
+  for (const allowance of check.allowances) distance += allowance.distance;
+  return distance;
+}
+
+/**
+ * Whether the player `playerId`, which stood as `check` says, can stand at `to` now, and has
+ * the stamina for the pace it went at.
+ */
+function withinReach(
+  game: Session,
+  playerId: string,
+  check: MoveCheck,
+  to: Point,
+): boolean {
   const { player, net } = game.config;
   const { slack, lateSeconds } = net.moves;
   const topSpeed =
     player.speed *
     Math.max(1, player.sprintMultiplier, player.crouchMultiplier);
-  let reach = topSpeed * (game.time - check.time + lateSeconds) + slack;
-  for (const allowance of check.allowances) reach += allowance.distance;
+  const extra = allowed(check);
+  const reach =
+    topSpeed * (game.time - check.time + lateSeconds) + slack + extra;
   return (
     Math.hypot(to.x - check.at.x, to.y - check.at.y) <= reach &&
-    hasPath(game, check.at, to)
+    hasPath(game, check.at, to) &&
+    keepsPace(game, playerId, to, extra)
   );
 }
 
 /**
  * Checks, as the host, a remote player's reported position against the last one taken: it must
  * lie within the player's top speed over the time since, plus any push or lunge allowed and the
- * configured slack, with no wall in the way. A player with no check yet starts one there.
+ * configured slack, with no wall in the way, and keep to a walk while the host reckons the player
+ * too spent to sprint. A player with no check yet starts one there.
  */
 export function checkMove(
   game: Session,
@@ -106,9 +125,11 @@ export function checkMove(
       holdUntil: -Infinity,
       allowances: [],
     });
+    notePace(game, playerId, to, 0);
     return { kind: "take" };
   }
-  if (time < check.settleUntil || withinReach(game, check, to)) {
+  if (time < check.settleUntil || withinReach(game, playerId, check, to)) {
+    notePace(game, playerId, to, allowed(check));
     check.at = { x: to.x, y: to.y };
     check.time = time;
     check.allowances = check.allowances.filter(
@@ -158,9 +179,10 @@ export function holdMoves(game: Session, playerId: string, at: Point): void {
 
 /**
  * Starts the checks on `playerId` afresh, or on every player when none is given: the next report
- * is taken as it comes, and those for the settle time after it.
+ * is taken as it comes, and those for the settle time after it, and its stamina is reckoned full.
  */
 export function restartMoveChecks(game: Session, playerId?: string): void {
   if (playerId === undefined) game.moveChecks.clear();
   else game.moveChecks.delete(playerId);
+  restartStaminaChecks(game, playerId);
 }
