@@ -8,6 +8,7 @@ import { hurtPlayer } from "./health.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
+import { hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import type { LightEmission } from "./vision.js";
 
@@ -253,11 +254,11 @@ function cullDeadEntities(game: Session): void {
   }
 }
 
-/** Eases every entity towards the host's latest snapshot of it. */
+/** Eases every entity no prediction holds towards the host's latest snapshot of it. */
 export function followEntities(game: Session, dt: number): void {
   const amount = 1 - Math.exp(-game.config.net.smoothing * dt);
   game.entities.forEach((entity) => {
-    easeToTarget(entity, amount);
+    if (!isHeld(game, entity)) easeToTarget(entity, amount);
   });
 }
 
@@ -305,7 +306,7 @@ function takeEntries(
     if (known?.kind === kind) {
       known.tx = x;
       known.ty = y;
-      known.health = Math.min(health, known.maxHealth);
+      hearHealth(game, known, Math.min(health, known.maxHealth));
       known.data = parsed.data;
     } else {
       placeEntity(game, id, kind, type, x, y, health, parsed.data);

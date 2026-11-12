@@ -6,19 +6,23 @@ import { movement } from "./movement.js";
 import { noiseMade } from "./noise.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
+import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
 import { heldItemId, itemUsed } from "./use.js";
+import { registerWorldData } from "./world-data.js";
+import type { WorldDataSet } from "./world-data.js";
 import { dropped, granted, landed, pickedUp } from "./world-items.js";
 
-/** State the engine itself keeps on every player, and events it sends, under one name. */
+/** State the engine itself keeps on every player or once for the world, and events it sends, under one name. */
 interface BuiltIn {
   readonly player?: PlayerData<unknown>;
+  readonly world?: WorldDataSet;
   readonly events?: ContentEvents;
 }
 
 /**
- * The engine's own player state and events, by the name each travels under. Every session has
- * them, under `core/`, a namespace content names cannot take.
+ * The engine's own state and events, by the name each travels under. Every session has them,
+ * under `core/`, a namespace content names cannot take.
  */
 const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   /** The id of the item each player holds, and each use of it. */
@@ -36,12 +40,15 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
    * item it lays down.
    */
   "core/world-items": { events: { pickedUp, granted, dropped, landed } },
+  /** The latest action the host has handled from each player, which ends what that player's client predicted. */
+  "core/predictions": { world: { handled: handledActions } },
 };
 
-/** Registers the engine's own player state and events with a new session. */
+/** Registers the engine's own state and events with a new session. */
 export function registerBuiltIns(game: Session): void {
-  for (const [name, { player, events }] of Object.entries(BUILT_INS)) {
+  for (const [name, { player, world, events }] of Object.entries(BUILT_INS)) {
     if (player !== undefined) registerPlayerData(game, name, player);
+    if (world !== undefined) registerWorldData(game, name, world);
     if (events !== undefined) registerEvents(game, name, events);
   }
 }

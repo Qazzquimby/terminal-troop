@@ -786,10 +786,11 @@ describe("state sends", () => {
     clock.advance(1000);
     expect(beats()).toBe(0);
     room.frame(1000 + SEND_GAP);
-    // Alone, it hosts, so the tick carries its entities too.
-    expect(other.heard.slice(-3).map(({ event }) => event)).toEqual([
+    // Alone, it hosts, so the tick carries its world state and entities too.
+    expect(other.heard.slice(-4).map(({ event }) => event)).toEqual([
       NetEvent.HEARTBEAT,
       NetEvent.STATE,
+      NetEvent.WORLD,
       NetEvent.ENTITIES,
     ]);
     expect(states()).toBe(2);
@@ -1426,7 +1427,7 @@ describe("host", () => {
           event: "use",
           route: "all",
           to: null,
-          payload: { item: "poke", ...use },
+          payload: { item: "poke", ...use, action: 1 },
         });
         player.room.frame(player.clock.now());
       };

@@ -10,6 +10,9 @@ import {
   hurtPlayer,
   knockBack,
   playersIn,
+  nextAction,
+  predict,
+  confirmAction,
   showFlash,
   spendStamina,
   solidBodiesBut,
@@ -21,6 +24,7 @@ import type {
   Player,
   Point,
   Session,
+  WorldEntity,
 } from "../../sim/index.js";
 import useUrl from "./sfx/use.mp3";
 
@@ -57,8 +61,16 @@ const NAME = "move/kick";
 const bodyLength = (body: { readonly radius: number }): number =>
   body.radius * 2;
 
-/** A kick as a player reports it: where it stands once it has lunged, and which way it faces. */
-const Kicked = z.object({ x: z.number(), y: z.number(), aim: z.number() });
+/**
+ * A kick as a player reports it: where it stands once it has lunged, which way it faces, and its
+ * action number.
+ */
+const Kicked = z.object({
+  x: z.number(),
+  y: z.number(),
+  aim: z.number(),
+  action: z.number().int().positive(),
+});
 
 /** A kick the host accepted, as every other client shows it. */
 const Shown = z.object({
@@ -76,7 +88,9 @@ const SOUNDS = { use: useUrl } as const;
  * The host works out the lunge itself, from where it last heard the kicker stand and face, and
  * turns down a kick whose reported end is too far from its own. It then hurts and knocks back
  * every world entity and every other player in front of where it reckons the lunge ends, and
- * makes a noise. A kicked player takes its blow on its own client.
+ * makes a noise. A kicked player takes its blow on its own client. A guest kicker predicts what
+ * its kick does to world entities from its own lunge end, so its lunge carries on through them at
+ * once.
  */
 export const kick: Content<"kick", KickConfig> = {
   name: "kick",
@@ -86,6 +100,12 @@ export const kick: Content<"kick", KickConfig> = {
       circleAhead(at, aim, config.reach, config.radius);
     const show = (game: Session, area: Circle, hit: boolean): void => {
       showFlash(game, { at: area.center, radius: area.radius, hit });
+    };
+    /** Hurts `entity` and knocks it away from a kicker at `at`. */
+    const strike = (game: Session, entity: WorldEntity, at: Point): void => {
+      applyDamage(entity, config.damage);
+      const distance = bodyLength(entity) * config.knockback;
+      knockBack(entity, at, distance, game.world.map, "stop");
     };
 
     const shown = contentEvent({
@@ -115,6 +135,7 @@ export const kick: Content<"kick", KickConfig> = {
       schema: Kicked,
       to: "host",
       receive(game, reported, by) {
+        confirmAction(game, by, reported.action);
         const kicker = game.players.get(by);
         if (kicker === undefined) return;
         const own = kicker === game.local;
@@ -125,11 +146,7 @@ export const kick: Content<"kick", KickConfig> = {
         if (!hostAccepts(game, by, at, NAME, config.cooldown)) return;
         const area = hitbox(at, aim);
         const entities = entitiesIn(game, area);
-        for (const entity of entities) {
-          applyDamage(entity, config.damage);
-          const distance = bodyLength(entity) * config.knockback;
-          knockBack(entity, at, distance, game.world.map, "stop");
-        }
+        for (const entity of entities) strike(game, entity, at);
         const players = playersIn(game, area, by);
         for (const player of players)
           hurtPlayer(game, player, config.damage, {
@@ -172,12 +189,16 @@ export const kick: Content<"kick", KickConfig> = {
           solidBodiesBut(game, local),
         );
         const area = hitbox(at, local.aim);
+        const entities = entitiesIn(game, area);
         const hits =
-          entitiesIn(game, area).length +
-          playersIn(game, area, game.localId).length;
+          entities.length + playersIn(game, area, game.localId).length;
         show(game, area, hits > 0);
         void game.sfx.play(SOUNDS.use, at, game.local);
-        kicked.send(game, { x: at.x, y: at.y, aim: local.aim });
+        const action = nextAction(game);
+        predict(game, action, entities, (entity) => {
+          strike(game, entity, at);
+        });
+        kicked.send(game, { x: at.x, y: at.y, aim: local.aim, action });
       },
     };
   },

@@ -7,8 +7,15 @@ import {
   hurtPlayer,
   knockBack,
   playersIn,
+  predict,
 } from "../../sim/index.js";
-import type { Circle, ItemUse, Point, Session } from "../../sim/index.js";
+import type {
+  Circle,
+  ItemUse,
+  Point,
+  Session,
+  WorldEntity,
+} from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
@@ -75,6 +82,11 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   /** Whether `area` touches anything a swing by player `by` hits. */
   const hits = (game: Session, area: Circle, by: string): boolean =>
     entitiesIn(game, area).length + playersIn(game, area, by).length > 0;
+  /** Hurts `entity` and knocks it away from a swinger at `at`. */
+  const strike = (game: Session, entity: WorldEntity, at: Point): void => {
+    applyDamage(entity, config.damage);
+    knockBack(entity, at, config.knockback, game.world.map, "stay");
+  };
   return {
     name: "Shovel",
     emoji: "🪏",
@@ -84,10 +96,7 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
       const area = hitbox(at, aim);
       const { center } = area;
       const hit = hits(game, area, by);
-      for (const entity of entitiesIn(game, area)) {
-        applyDamage(entity, config.damage);
-        knockBack(entity, at, config.knockback, game.world.map, "stay");
-      }
+      for (const entity of entitiesIn(game, area)) strike(game, entity, at);
       for (const player of playersIn(game, area, by))
         hurtPlayer(game, player, config.damage, {
           from: at,
@@ -95,6 +104,11 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
         });
       if (hit)
         broadcastNoise(game, { at: center, loudness: config.hitLoudness });
+    },
+    predict(game, at, aim, action) {
+      predict(game, action, entitiesIn(game, hitbox(at, aim)), (entity) => {
+        strike(game, entity, at);
+      });
     },
     show(game, at, aim, by) {
       const area = hitbox(at, aim);

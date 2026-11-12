@@ -35,7 +35,11 @@ export const testSimConfig: SimConfig = {
   arrival: { spread: 100 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
-  net: { smoothing: 12, useSlack: { distance: 40, seconds: 0.1 } },
+  net: {
+    smoothing: 12,
+    useSlack: { distance: 40, seconds: 0.1 },
+    predictionHold: 0.5,
+  },
   noise: { blur: 0.2 },
   footsteps: {
     walk: { interval: 0.5, loudness: 0.5 },
