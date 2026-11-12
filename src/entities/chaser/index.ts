@@ -8,9 +8,11 @@ import {
   defineEntity,
   directionalVision,
   isAreaFree,
+  makeSound,
   mulberry32Next,
   noisesHeardBy,
   rounded,
+  sound,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -19,6 +21,7 @@ import type {
   Rng,
   Scatter,
   Session,
+  Sound,
   Strike,
   TileMap,
 } from "../../sim/index.js";
@@ -112,7 +115,11 @@ type Wander = Extract<ChaserState, { mode: "wander" }>;
 /** Random points tried for a wander leg before standing a while longer. */
 const LEG_ATTEMPTS = 8;
 
-const SOUNDS = { bark: barkUrl, alert: alertUrl, attack: attackUrl } as const;
+const SOUNDS = {
+  bark: sound({ url: barkUrl }),
+  alert: sound({ url: alertUrl }),
+  attack: sound({ url: attackUrl }),
+} as const;
 
 const COLOURS = {
   wander: "#7d9a52",
@@ -434,8 +441,8 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
         .map((player) => ({ target: player.id, amount: config.attackDamage }));
     },
     cue(entity, previous, next, game) {
-      const play = (url: string): void => {
-        void game.sfx.play(url, entity, game.local);
+      const play = (made: Sound): void => {
+        makeSound(game, made, entity, entity.id);
       };
       if (next.alerts > previous.alerts) play(SOUNDS.alert);
       if (next.attacks > previous.attacks) play(SOUNDS.attack);
