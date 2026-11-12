@@ -1,12 +1,11 @@
 import { z } from "zod";
 import { solidBodiesBut } from "./collision.js";
-import { contentEvent } from "./content-event.js";
-import { applyDamage } from "./entity.js";
 import { forcePlayer } from "./forced-move.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import { dashEnd } from "./player.js";
 import type { Session } from "./session.js";
+import { worldData } from "./world-data.js";
 
 /** A push on a player: `distance` pixels straight away from `from`. */
 export interface Push {
@@ -14,19 +13,42 @@ export interface Push {
   readonly distance: number;
 }
 
-/** A blow as its player takes it: its damage. */
-const Blow = z.object({ amount: z.number().positive() });
-
-/** A blow the host deals one player, for that player's own client to take. */
-export const damaged = contentEvent({
-  schema: Blow,
-  to: "player",
-  from: "host",
-  receive(game, { amount }) {
-    applyDamage(game.local, amount);
-    game.reportNow = true;
+/**
+ * Health: any number from 0 up, Infinity included. JSON has no Infinity, so it travels as the
+ * string "Infinity". z.number() rejects NaN and ±Infinity.
+ */
+export const Health = z.codec(
+  z.union([z.number().min(0), z.literal("Infinity")]),
+  z.union([z.number().min(0), z.literal(Infinity)]),
+  {
+    decode: (wire) => (wire === "Infinity" ? Infinity : wire),
+    encode: (health) => (health === Infinity ? "Infinity" : health),
   },
+);
+
+/**
+ * Each player's health as the host keeps it, by player id; a player with no entry is at full.
+ * It travels with the world state, so every client, a late joiner and the next host included,
+ * holds it.
+ */
+export const playerHealth = worldData({
+  schema: z.record(z.string(), Health),
+  initial: {},
 });
+
+/** `player`'s health on the host's record, at most its full. */
+function recordedHealth(game: Session, player: Player): number {
+  return Math.min(
+    playerHealth.get(game)[player.id] ?? player.maxHealth,
+    player.maxHealth,
+  );
+}
+
+/** Shows every player's health as the host's record has it, whatever this client set it to. */
+export function followHealth(game: Session): void {
+  for (const player of game.players.values())
+    player.health = recordedHealth(game, player);
+}
 
 /**
  * As the host, knocks `player` along `push`, as far as walls and other bodies let it go from
@@ -50,20 +72,25 @@ function knockPlayer(game: Session, player: Player, push: Push): void {
 }
 
 /**
- * Deals `amount` damage to `player`, and `push` if given, as the host. The local player takes
- * the damage at once, and a remote one is sent it, since each player keeps its own health. The
- * push is a move the host forces on the player.
+ * Deals `amount` damage to `player`, and `push` if given, as the host: the damage comes off the
+ * host's record of the player's health, which every client shows, and the push is a move the
+ * host forces on the player. Returns the health the player has left on the record; the host
+ * alone declares a player down, once that reaches 0. On a client not hosting, or for a player
+ * not in the session, does nothing and returns the health this client shows.
  */
 export function hurtPlayer(
   game: Session,
   player: Player,
   amount: number,
   push?: Push,
-): void {
-  if (game.players.get(player.id) !== player) return;
+): number {
+  if (!game.hosting || game.players.get(player.id) !== player)
+    return player.health;
   if (amount > 0) {
-    if (player === game.local) applyDamage(player, amount);
-    else damaged.send(game, player.id, { amount });
+    const left = Math.max(0, recordedHealth(game, player) - amount);
+    playerHealth.set(game, { ...playerHealth.get(game), [player.id]: left });
+    player.health = left;
   }
   if (push !== undefined) knockPlayer(game, player, push);
+  return player.health;
 }

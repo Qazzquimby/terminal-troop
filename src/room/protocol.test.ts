@@ -1,7 +1,8 @@
 import { omit } from "lodash-es";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { NetEvent } from "../net/index.js";
-import { Health, roomMessages } from "./protocol.js";
+import { Health } from "../sim/index.js";
+import { roomMessages } from "./protocol.js";
 import type { Message, RoomMessages, WireMessage } from "./protocol.js";
 
 const messages = roomMessages(3);
@@ -13,7 +14,6 @@ const state = {
   x: 1,
   y: 2,
   aim: 0,
-  health: 100,
   epoch: 0,
   content: {},
 };
@@ -110,11 +110,9 @@ describe("the message table", () => {
       x: number;
       y: number;
       aim: number;
-      health: number | "Infinity";
       epoch: number;
       content: Record<string, unknown>;
     }>();
-    expectTypeOf<Message<"state">["health"]>().toEqualTypeOf<number>();
     expectTypeOf<Message<"state">["content"]>().toEqualTypeOf<
       Record<string, unknown>
     >();
@@ -210,8 +208,6 @@ describe("the message table", () => {
     [NetEvent.BYE, { id: 7 }],
     [NetEvent.STATE, { ...state, x: Number.NaN }],
     [NetEvent.STATE, omit(state, "aim")],
-    [NetEvent.STATE, omit(state, "health")],
-    [NetEvent.STATE, { ...state, health: -1 }],
     [NetEvent.STATE, omit(state, "epoch")],
     [NetEvent.STATE, { ...state, epoch: -1 }],
     [NetEvent.STATE, { ...state, epoch: 1.5 }],

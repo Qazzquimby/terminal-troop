@@ -169,7 +169,6 @@ test("a remote player holds the item it reports, and nothing for an unknown or n
       x: 450,
       y: 300,
       aim: 0,
-      health: 100,
       epoch: 0,
       content: { "core/items": held },
     });

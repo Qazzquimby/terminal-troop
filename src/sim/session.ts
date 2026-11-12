@@ -16,6 +16,7 @@ import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
+import { followHealth } from "./health.js";
 import type { ForcedMove } from "./forced-move.js";
 import {
   correctPlayer,
@@ -308,6 +309,7 @@ export function updateSession(
   else followEntities(game, dt);
 
   separateSessionBodies(game);
+  followHealth(game);
 }
 
 /**
@@ -323,7 +325,6 @@ export function playerState(game: Session): PlayerState {
     x: at.x,
     y: at.y,
     aim: local.aim,
-    health: local.health,
     epoch: local.epoch,
     content: contentState(game),
   };
@@ -361,7 +362,6 @@ export function applyRemoteState(
   }
 
   player.name = state.name;
-  player.health = Math.min(state.health, player.maxHealth);
   applyContentState(game, player, state.content);
 
   player.taim = state.aim;
