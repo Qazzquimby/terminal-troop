@@ -141,7 +141,17 @@ export const testFlashConfig: FlashConfig = {
   colour: { hit: "#f00", miss: "#888" },
 };
 
+const SILENT: Awaited<ReturnType<Sfx["play"]>> = {
+  stop: () => undefined,
+  setVolume: () => undefined,
+  setPosition: () => undefined,
+};
+
 /** Sound effects for sessions under test; nothing plays. */
 export function testSfx(): Sfx {
-  return createSfx({ full: 0, silent: 1000, pan: 500 });
+  return {
+    ...createSfx({ full: 0, silent: 1000, pan: 500 }),
+    play: () => Promise.resolve(SILENT),
+    playLoop: () => Promise.resolve(SILENT),
+  };
 }
