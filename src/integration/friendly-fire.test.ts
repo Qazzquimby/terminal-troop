@@ -89,7 +89,12 @@ async function pair() {
       localId: id,
       world: "dev",
       transport: hub.transport(id, []).port,
-      voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
+      voice: createNullVoice({
+        mode: "open",
+        muted: false,
+        volume: 1,
+        inputDevice: null,
+      }),
       sfx: testSfx(),
       scope: createScope(),
       clock,
@@ -151,7 +156,7 @@ function playerOn(room: Room, id: string) {
 const LEFT = { x: 150, y: 300 };
 /** Where a kick from LEFT, facing right, lands once its lunge is done. */
 const KICK_AT = { x: LEFT.x + PLAYER_LENGTH + kick.reach, y: LEFT.y };
-/** Inside a shovel's hitbox from LEFT facing right, past its centre so the push goes right. */
+/** Inside a shovel's hitbox from LEFT facing right, so the push, away from the swinger, goes right. */
 const SWING_AT = { x: LEFT.x + shovel.reach + 5, y: LEFT.y };
 
 test("the spots the tests use are clear of walls, push included", () => {
@@ -169,7 +174,7 @@ test("the spots the tests use are clear of walls, push included", () => {
     ).toBe(true);
 });
 
-test("a guest's swing hurts the host's player and pushes it away from the hitbox", async () => {
+test("a guest's swing hurts the host's player and pushes it away from the swinger", async () => {
   const { a, b, exchange, place, settle } = await pair();
   place(SWING_AT, LEFT);
   exchange({ b: swingRight(sessionOf(b)) });
@@ -178,10 +183,8 @@ test("a guest's swing hurts the host's player and pushes it away from the hitbox
   settle();
   expect(host.x).toBeCloseTo(SWING_AT.x + shovel.knockback);
   expect(host.y).toBeCloseTo(SWING_AT.y);
-  expect(playerOn(b, "a")).toMatchObject({
-    health: FULL - shovel.damage,
-    tx: host.x,
-  });
+  expect(playerOn(b, "a").health).toBe(FULL - shovel.damage);
+  expect(playerOn(b, "a").tx).toBeCloseTo(host.x, 1);
   expect(sessionOf(b).local.use?.hit).toBe(true);
 });
 
@@ -193,10 +196,8 @@ test("a guest's kick hurts the host's player and knocks it away from the kicker"
   expect(host.health).toBe(FULL - kick.damage);
   settle();
   expect(host.x).toBeCloseTo(KICK_AT.x + KICKED);
-  expect(playerOn(b, "a")).toMatchObject({
-    health: FULL - kick.damage,
-    tx: host.x,
-  });
+  expect(playerOn(b, "a").health).toBe(FULL - kick.damage);
+  expect(playerOn(b, "a").tx).toBeCloseTo(host.x, 1);
 });
 
 test("a host's kick hurts a guest, which knocks itself back, and both clients see it", async () => {
@@ -210,11 +211,9 @@ test("a host's kick hurts a guest, which knocks itself back, and both clients se
   settle();
   expect(guest.x).toBeCloseTo(KICK_AT.x + KICKED);
   expect(guest.y).toBeCloseTo(KICK_AT.y);
-  expect(playerOn(a, "b")).toMatchObject({
-    health: FULL - kick.damage,
-    tx: guest.x,
-    ty: guest.y,
-  });
+  expect(playerOn(a, "b").health).toBe(FULL - kick.damage);
+  expect(playerOn(a, "b").tx).toBeCloseTo(guest.x, 1);
+  expect(playerOn(a, "b").ty).toBeCloseTo(guest.y, 1);
   expect(sessionOf(a).local.health).toBe(FULL);
 });
 
@@ -290,7 +289,10 @@ test("one swing on the host hurts the world entity and the player it catches ali
       to: "them",
       payload: {
         amount: shovel.damage,
-        push: { aim: Math.atan2(10, 5), distance: shovel.knockback },
+        push: {
+          aim: Math.atan2(10, shovel.reach + 5),
+          distance: shovel.knockback,
+        },
       },
     }),
   );

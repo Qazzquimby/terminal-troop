@@ -1,4 +1,4 @@
-import { NetEvent } from "../net/index.js";
+import { NetEvent, unbatch } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
@@ -6,7 +6,6 @@ type Handlers = Parameters<Transport["join"]>[1];
 /** Room tuning for tests, in real milliseconds. */
 export const testRoomConfig = {
   sendHz: 15,
-  entityHz: 10,
   fullSnapshotMs: 5000,
   heartbeatMs: 1000,
   presence: { awayAfterMs: 3500, goneSilentMs: 30_000, goneHiddenMs: 180_000 },
@@ -71,6 +70,16 @@ export function createManualClock() {
 const overJson = (payload: unknown): unknown =>
   payload === undefined ? undefined : JSON.parse(JSON.stringify(payload));
 
+/** `value` to the tenth of a pixel that positions travel at. */
+export const tenth = (value: number): number => Math.round(value * 10) / 10;
+
+/** The messages one broadcast carries: those of a batch, or the one sent. */
+export const messages = (
+  event: NetEvent,
+  payload: unknown,
+): { event: NetEvent; payload: unknown }[] =>
+  event === NetEvent.BATCH ? unbatch(payload) : [{ event, payload }];
+
 /**
  * Transports that deliver to every other member of the same room, synchronously, each payload
  * through JSON.
@@ -107,8 +116,13 @@ export function createHub() {
         return Promise.resolve();
       },
       send(event, payload) {
-        if (event !== NetEvent.STATE && event !== NetEvent.HEARTBEAT)
-          log.push(`send ${event}`);
+        for (const message of messages(event, payload)) {
+          if (
+            message.event !== NetEvent.STATE &&
+            message.event !== NetEvent.HEARTBEAT
+          )
+            log.push(`send ${message.event}`);
+        }
         const self = members.get(name);
         if (self === undefined) return Promise.resolve();
         for (const [other, member] of members) {
@@ -140,7 +154,7 @@ export function createHub() {
     const heard: { event: string; payload: unknown }[] = [];
     const handlers: Handlers = {};
     for (const event of Object.values(NetEvent)) {
-      handlers[event] = (payload) => heard.push({ event, payload });
+      handlers[event] = (payload) => heard.push(...messages(event, payload));
     }
     members.set("listener", { room, handlers });
     const send = (event: NetEvent, payload: unknown): void => {

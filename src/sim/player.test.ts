@@ -65,30 +65,27 @@ function run(player: Player, world: World, sprint: boolean, steps: number) {
   hold(player, world, { sprint }, steps);
 }
 
-function startPlayer(world: World): Player {
-  const player = createPlayer("p", "P", world, rules);
-  player.x = 500;
-  player.y = 2500;
-  return player;
+function startPlayer(): Player {
+  return createPlayer("p", "P", { x: 500, y: 2500 }, rules);
 }
 
 test("walking reaches normal top speed", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   run(player, world, false, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED);
 });
 
 test("holding sprint reaches the higher top speed", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   run(player, world, true, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * SPRINT_MULTIPLIER);
 });
 
 test("releasing sprint decelerates back to normal speed", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   run(player, world, true, 60);
 
   run(player, world, false, 1);
@@ -101,7 +98,7 @@ test("releasing sprint decelerates back to normal speed", () => {
 
 test("holding sprint while standing still does not drain stamina", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   hold(player, world, { move: { x: 0, y: 0 }, sprint: true }, 300);
   expect(player.stamina.value).toBe(STAMINA_MAX);
 });
@@ -115,7 +112,7 @@ function pressCrouch(player: Player, world: World) {
 
 test("a crouch press crouches, standing still too, until the next press stands it up", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   pressCrouch(player, world);
   expect(movement.get(player)).toEqual({ mode: "crouch", moving: false });
   hold(player, world, STILL, 30);
@@ -127,7 +124,7 @@ test("a crouch press crouches, standing still too, until the next press stands i
 
 test("crouching moves at the lower top speed, and reports it crouches", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   pressCrouch(player, world);
   hold(player, world, {}, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * CROUCH_MULTIPLIER);
@@ -136,7 +133,7 @@ test("crouching moves at the lower top speed, and reports it crouches", () => {
 
 test("sprinting stands a crouching player up, and it stays up after", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   pressCrouch(player, world);
   hold(player, world, { sprint: true }, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED * SPRINT_MULTIPLIER);
@@ -149,7 +146,7 @@ test("sprinting stands a crouching player up, and it stays up after", () => {
 
 test("holding sprint while crouched and standing still keeps it crouched", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   pressCrouch(player, world);
   hold(player, world, { ...STILL, sprint: true }, 30);
   expect(movement.get(player).mode).toBe("crouch");
@@ -158,7 +155,7 @@ test("holding sprint while crouched and standing still keeps it crouched", () =>
 
 test("running out of stamina drops sprint to walk speed until recovered", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   run(player, world, true, 60 * 4);
   expect(player.stamina.exhausted).toBe(true);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED);
@@ -192,7 +189,7 @@ const post = (x: number, y: number): CollisionBody => ({
 
 test("a dash carries the player its distance over its time, then ends", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   const landing = startDash(player, Math.PI / 2, 28, 0.1, world.map, []);
   expect(landing.x).toBeCloseTo(500);
   expect(landing.y).toBeCloseTo(2528);
@@ -204,7 +201,7 @@ test("a dash carries the player its distance over its time, then ends", () => {
 
 test("a dash stops at a wall, and says where", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   player.x = 20;
   const landing = startDash(player, Math.PI, 28, 0.1, world.map, []);
   expect(landing.x).toBeGreaterThanOrEqual(14);
@@ -215,7 +212,7 @@ test("a dash stops at a wall, and says where", () => {
 
 test("a dash stops touching a body in its way, and says where", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   const others = [post(540, 2500)];
   const landing = startDash(player, 0, 28, 0.1, world.map, others);
   expect(landing.x).toBeCloseTo(511);
@@ -225,7 +222,7 @@ test("a dash stops touching a body in its way, and says where", () => {
 
 test("a dash goes on once a body in its way has moved off", () => {
   const world = openWorld();
-  const player = startPlayer(world);
+  const player = startPlayer();
   const others = [post(531, 2500)];
   startDash(player, 0, 28, 0.1, world.map, others);
   dash(player, world, 2, others);

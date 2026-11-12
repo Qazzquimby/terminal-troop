@@ -8,6 +8,7 @@ import {
   spawnEntity,
 } from "./entities.js";
 import { applyDamage } from "./entity.js";
+import { rounded } from "./rounded.js";
 import type { Session } from "./session.js";
 import { createSession, updateSession } from "./session.js";
 
@@ -237,6 +238,21 @@ describe("snapshots", () => {
     const other = session("other");
     applyEntitySnapshot(other, entitySnapshot(host));
     expect(entitySnapshot(other)).toEqual(entitySnapshot(host));
+  });
+
+  test("a snapshot carries each entity's data as its kind encodes it", () => {
+    const host = session("host");
+    registerEntityType(host, "timer", {
+      radius: 5,
+      maxHealth: 1,
+      data: z.object({ left: rounded(2) }),
+      draw: () => undefined,
+    });
+    spawnEntity(host, "timer", 100, 300, { left: 1.23456 });
+    expect(entitySnapshot(host).map(({ data }) => data)).toEqual([
+      { left: 1.23 },
+    ]);
+    expect(host.entities.get("host:1")?.data).toEqual({ left: 1.23456 });
   });
 
   test("entities missing from a snapshot are removed", () => {

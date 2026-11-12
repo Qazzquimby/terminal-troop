@@ -1,4 +1,6 @@
 import type { Sfx } from "../audio/index.js";
+import { arrivalPoint, canStandAt, rallyPoint } from "./arrival.js";
+import type { ArrivalConfig } from "./arrival.js";
 import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies, solidBodiesBut } from "./collision.js";
@@ -18,7 +20,7 @@ import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import type { ItemDefinition } from "./inventory.js";
 import { snapPrevious, storePrevious } from "./interpolation.js";
-import type { ViewConfig, World, WorldKind } from "./map.js";
+import type { Point, Rng, ViewConfig, World, WorldKind } from "./map.js";
 import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
 import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
 import {
@@ -53,6 +55,7 @@ export interface SimConfig extends PlayerRules {
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
   readonly worldItems: WorldItemConfig;
+  readonly arrival: ArrivalConfig;
 }
 
 export interface Session {
@@ -63,6 +66,8 @@ export interface Session {
   readonly world: World;
   /** Seeded by the room code, so the same on every client in the room. */
   readonly seed: number;
+  /** Where the world's starting things gather and new players arrive; seeded like `seed`. */
+  readonly rally: Point;
   readonly sfx: Sfx;
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
@@ -112,7 +117,19 @@ export interface Session {
   reportNow: boolean;
 }
 
-function roomSeed(code: string, base: number): number {
+/** Where the local player starts. */
+export interface Start {
+  /**
+   * Where it stood when last in this world. Taken if a player can stand there; otherwise the
+   * player arrives as if new to the world.
+   */
+  readonly at?: Point | undefined;
+  /** Picks the spot a player new to the world arrives at; `Math.random` by default. */
+  readonly rng?: Rng | undefined;
+}
+
+/** The seed of the room `code` in worlds seeded by `base`. */
+export function roomSeed(code: string, base: number): number {
   let seed = base;
   for (const character of code) {
     seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
@@ -137,10 +154,23 @@ export function createSession(
   worldKind: WorldKind,
   sfx: Sfx,
   config: SimConfig,
+  start: Start = {},
 ): Session {
   const seed = roomSeed(roomCode, config.world.seed);
   const world = buildRoomWorld(seed, worldKind, config);
-  const local = createPlayer(localId, name, world, config);
+  const { radius } = config.player;
+  const rally = rallyPoint(world, seed, radius);
+  const position =
+    start.at !== undefined && canStandAt(world, start.at, radius)
+      ? start.at
+      : arrivalPoint(
+          world,
+          rally,
+          radius,
+          config.arrival.spread,
+          start.rng ?? Math.random,
+        );
+  const local = createPlayer(localId, name, position, config);
 
   const game: Session = {
     localId,
@@ -148,6 +178,7 @@ export function createSession(
     local,
     world,
     seed,
+    rally,
     sfx,
     players: new Map([[localId, local]]),
     entities: new Map(),
@@ -268,10 +299,8 @@ export function applyRemoteState(
 
   const known = game.players.get(state.id);
   const player =
-    known ?? createPlayer(state.id, state.name, game.world, game.config);
+    known ?? createPlayer(state.id, state.name, state, game.config);
   if (known === undefined) {
-    player.x = state.x;
-    player.y = state.y;
     player.aim = state.aim;
     snapPrevious(player);
     game.players.set(state.id, player);

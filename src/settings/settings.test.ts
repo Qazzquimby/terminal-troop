@@ -25,7 +25,7 @@ const throwingStorage: SettingsStorage = {
 test("a fresh store has the defaults", () => {
   const store = createSettingsStore(memoryStorage());
   expect(store.get()).toEqual({
-    voice: { mode: "pushToTalk", muted: false, volume: 1 },
+    voice: { mode: "pushToTalk", muted: false, volume: 1, inputDevice: null },
     audio: { masterVolume: 1 },
   });
 });
@@ -38,7 +38,7 @@ test("update merges into the current settings and persists them", () => {
   store.update({ audio: { masterVolume: 0.25 } });
 
   const expected = {
-    voice: { mode: "pushToTalk", muted: true, volume: 1 },
+    voice: { mode: "pushToTalk", muted: true, volume: 1, inputDevice: null },
     audio: { masterVolume: 0.25 },
   };
   expect(store.get()).toEqual(expected);
@@ -67,6 +67,7 @@ test("update ignores invalid values and keeps the current ones", () => {
     mode: "open",
     muted: false,
     volume: 0.5,
+    inputDevice: null,
   });
 });
 
@@ -82,7 +83,7 @@ test("partially valid stored data keeps its valid fields", () => {
   });
   const store = createSettingsStore(memoryStorage(stored));
   expect(store.get()).toEqual({
-    voice: { mode: "pushToTalk", muted: false, volume: 0.4 },
+    voice: { mode: "pushToTalk", muted: false, volume: 0.4, inputDevice: null },
     audio: { masterVolume: 1 },
   });
 });
@@ -114,4 +115,21 @@ test("throwing storage falls back to defaults and still applies updates", () => 
 
   expect(store.get().audio.masterVolume).toBe(0.5);
   expect(listener).toHaveBeenCalledTimes(1);
+});
+
+test("the chosen microphone persists until it is set back to the default", () => {
+  const storage = memoryStorage();
+  const store = createSettingsStore(storage);
+  store.update({ voice: { inputDevice: "usb-mic" } });
+  expect(createSettingsStore(storage).get().voice.inputDevice).toBe("usb-mic");
+
+  store.update({ voice: { inputDevice: null } });
+  expect(createSettingsStore(storage).get().voice.inputDevice).toBeNull();
+});
+
+test("a stored device that is not a string loads as the default", () => {
+  const stored = JSON.stringify({ voice: { inputDevice: 7 } });
+  expect(
+    createSettingsStore(memoryStorage(stored)).get().voice.inputDevice,
+  ).toBeNull();
 });

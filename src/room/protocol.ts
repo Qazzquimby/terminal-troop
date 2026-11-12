@@ -1,7 +1,17 @@
 import { z } from "zod";
 import { NetEvent } from "../net/index.js";
+import { rounded } from "../sim/index.js";
 
 const PlayerId = z.string().min(1).max(64);
+
+/**
+ * A position in the world, to a tenth of a pixel. Wall faces and body sizes are whole pixels,
+ * so rounding never carries a body that is clear of every wall into one.
+ */
+const Coordinate = rounded(1);
+
+/** A facing in radians, to a hundredth. */
+const Angle = rounded(2);
 
 /**
  * Health: any number from 0 up, Infinity included. JSON has no Infinity, so it travels as the
@@ -28,9 +38,9 @@ function stateMessage(nameMax: number) {
       decode: (name) => name.slice(0, nameMax),
       encode: (name) => name,
     }),
-    x: z.number(),
-    y: z.number(),
-    aim: z.number(),
+    x: Coordinate,
+    y: Coordinate,
+    aim: Angle,
     health: Health,
     content: z.record(z.string(), z.unknown()),
   });
@@ -74,8 +84,8 @@ const EntitiesMessage = z.object({
       z.object({
         id: EntityId,
         kind: z.number().int().min(1),
-        x: z.number(),
-        y: z.number(),
+        x: Coordinate,
+        y: Coordinate,
         health: Health,
         data: z.unknown(),
       }),
@@ -113,6 +123,8 @@ export function roomMessages(nameMax: number) {
 
     // The voice room parses its own signals.
     [NetEvent.SIGNAL]: z.unknown(),
+    // The batching transport unpacks batches before the room sees them.
+    [NetEvent.BATCH]: z.unknown(),
   } as const satisfies Record<NetEvent, z.ZodType>;
 }
 

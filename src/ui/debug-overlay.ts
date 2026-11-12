@@ -70,18 +70,20 @@ export interface DebugInfo {
   readonly perf: PerfSnapshot;
   /** Null outside a room. */
   readonly room: RoomDebugInfo | null;
+  /** The mic and each voice connection, one line or more each. */
+  readonly voice: readonly string[];
 }
 
 const ms = (value: number): string => value.toFixed(1);
 const percent = (share: number): string => `${(share * 100).toFixed(0)}%`;
 
-function formatDebug({ perf, room }: DebugInfo): string {
+function formatDebug({ perf, room, voice }: DebugInfo): string {
   const lines = [
     `fps     ${perf.fps.toFixed(0)}`,
     `frame   avg ${ms(perf.frameMsAvg)}  max ${ms(perf.frameMsMax)} ms`,
     `draw    avg ${ms(perf.drawMsAvg)} ms`,
   ];
-  if (room === null) return lines.join("\n");
+  if (room === null) return [...lines, ...voice].join("\n");
 
   lines.push(
     `steps   avg ${perf.stepsAvg.toFixed(2)}  0: ${percent(perf.zeroStepShare)}  2+: ${percent(perf.multiStepShare)}`,
@@ -93,6 +95,7 @@ function formatDebug({ perf, room }: DebugInfo): string {
       (remote) =>
         `  ${remote.name.padEnd(8)} ${remote.presence.padEnd(7)} ${remote.ageMs.toFixed(0)} ms`,
     ),
+    ...voice,
   );
   return lines.join("\n");
 }

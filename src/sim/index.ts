@@ -9,6 +9,7 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export { rounded } from "./rounded.js";
 export { spawnWorldItem } from "./world-items.js";
 export {
   defineEntity,
@@ -30,6 +31,7 @@ export type {
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { HeldSlot, Inventory } from "./inventory.js";
+export { removeItem } from "./inventory.js";
 export {
   isAreaFree,
   mulberry32,
@@ -69,6 +71,7 @@ export {
   playerState,
   remotePlayers,
   removePlayer,
+  roomSeed,
   updateSession,
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";

@@ -10,6 +10,7 @@ import {
   isAreaFree,
   mulberry32Next,
   noisesHeardBy,
+  rounded,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -54,7 +55,11 @@ export interface ChaserConfig {
   readonly hearingRange: number;
 }
 
-const Waypoint = z.object({ x: z.number(), y: z.number() });
+/** A point, sent to a tenth of a pixel. */
+const Waypoint = z.object({ x: rounded(1), y: rounded(1) });
+
+/** Seconds, sent to a hundredth. */
+const Seconds = rounded(2, z.number().min(0));
 
 const Route = z.array(Waypoint).max(MAX_WAYPOINTS);
 
@@ -70,9 +75,9 @@ const Count = z.number().int().min(0);
 /** What a chaser keeps whichever mode it is in. */
 const Shared = {
   /** Seconds until the next bark. */
-  nextBark: z.number().min(0),
+  nextBark: Seconds,
   /** Seconds until the chaser may attack again. */
-  attackCooldown: z.number().min(0),
+  attackCooldown: Seconds,
   /** Whether it attacks in this step. */
   attacking: z.boolean(),
   /** Counts of barks, chases started and attacks, so every client hears each one. */
@@ -83,7 +88,8 @@ const Shared = {
   route: Route,
   /** Where a chase is headed, or null while wandering. */
   target: Waypoint.nullable(),
-  facing: z.number(),
+  /** Radians, sent to a hundredth. */
+  facing: rounded(2),
 };
 
 /**
@@ -95,7 +101,7 @@ export const ChaserState = z.discriminatedUnion("mode", [
   z.object({
     ...Shared,
     mode: z.literal("wander"),
-    pause: z.number().min(0),
+    pause: Seconds,
     noiseTarget: Waypoint.nullable(),
   }),
   z.object({ ...Shared, mode: z.literal("chase") }),

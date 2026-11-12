@@ -136,12 +136,12 @@ export interface Scatter {
 /**
  * Where a new world puts a kind's starting entities:
  * - scatter: at random free spots seeded by the room; `data` draws from the same generator
- * - host: one beside the hosting player, `offset` from it, or at the nearest free spot
+ * - rally: one at the world's rally point, where new players arrive, or at the nearest free spot
  * - a function: spawns them itself
  */
 export type SpawnRule<S> =
   | (Scatter & { readonly at: "scatter"; readonly data: (rng: Rng) => S })
-  | { readonly at: "host"; readonly offset: Point; readonly data: S }
+  | { readonly at: "rally"; readonly data: S }
   | ((spawn: (at: Point, data: S) => WorldEntity, game: Session) => void);
 
 /** A kind's definition, and where a new world puts its starting entities; none without `spawn`. */
@@ -204,16 +204,12 @@ function spawnByRule<S>(
 ): void {
   if (typeof rule === "function") {
     rule(spawn, game);
-  } else if (rule.at === "host") {
-    const target = {
-      x: game.local.x + rule.offset.x,
-      y: game.local.y + rule.offset.y,
-    };
-    const { map } = game.world;
+  } else if (rule.at === "rally") {
+    const { rally, world } = game;
     spawn(
-      isAreaFree(map, target.x, target.y, radius)
-        ? target
-        : nearestFreePoint(map, radius, target),
+      isAreaFree(world.map, rally.x, rally.y, radius)
+        ? rally
+        : nearestFreePoint(world.map, radius, rally),
       rule.data,
     );
   } else {
@@ -258,15 +254,10 @@ export function defineEntity<N extends string, C, S>(
   };
 }
 
-/** A stack each player starts with, in a slot of its own. */
-interface StartingStack {
-  readonly slot: number;
-  readonly quantity: number;
-}
-
 /** What every item spec has, usable or not. */
 interface ItemBase extends Omit<ItemDefinition, "id"> {
-  readonly starting?: StartingStack;
+  /** The slot each player starts with it in, if any; no two items may share one. */
+  readonly startingSlot?: number;
   /** Where a new world lays it on the ground, one item each, if anywhere. */
   readonly scatter?: Scatter;
   /** The state the item keeps on every player, if any. */
@@ -306,8 +297,8 @@ export function defineItem<N extends string, C>(
       const item: ItemDefinition & { readonly id: N } = {
         id: name,
         name: spec.name,
-        maxStack: spec.maxStack,
         emoji: spec.emoji,
+        ...(spec.drop === undefined ? {} : { drop: spec.drop }),
       };
       const { scatter } = spec;
       return {
@@ -322,10 +313,8 @@ export function defineItem<N extends string, C>(
             spec.cooldown === undefined ? undefined : spec,
           );
           registerWorldItems(game);
-          if (spec.starting !== undefined) {
-            const { slot, quantity } = spec.starting;
-            placeItem(game.local.inventory, slot, item, quantity);
-          }
+          if (spec.startingSlot !== undefined)
+            placeItem(game.local.inventory, spec.startingSlot, item);
         },
         populate(game) {
           if (scatter === undefined) return;

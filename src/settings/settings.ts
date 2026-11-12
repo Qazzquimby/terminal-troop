@@ -9,6 +9,8 @@ export interface Settings {
     readonly mode: VoiceMode;
     readonly muted: boolean;
     readonly volume: number;
+    /** The microphone to capture, by device id; null for the browser default. */
+    readonly inputDevice: string | null;
   };
   readonly audio: {
     readonly masterVolume: number;
@@ -29,7 +31,12 @@ export interface SettingsStorage {
 type Listener = (settings: Settings) => void;
 
 export const DEFAULT_SETTINGS: Settings = {
-  voice: { mode: "pushToTalk", muted: false, volume: 1 },
+  voice: {
+    mode: "pushToTalk",
+    muted: false,
+    volume: 1,
+    inputDevice: null,
+  },
   audio: { masterVolume: 1 },
 };
 
@@ -48,6 +55,7 @@ function schemaFallingBackTo(fallback: Settings) {
           mode: z.enum(VOICE_MODES).catch(fallback.voice.mode),
           muted: z.boolean().catch(fallback.voice.muted),
           volume: unit.catch(fallback.voice.volume),
+          inputDevice: z.string().nullable().catch(fallback.voice.inputDevice),
         })
         .catch(fallback.voice),
       audio: z

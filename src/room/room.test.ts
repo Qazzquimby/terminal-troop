@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   createHub,
   createManualClock,
+  tenth,
   testRoomConfig,
 } from "../integration/room-helpers.js";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
@@ -40,9 +41,8 @@ const idle = {
   secondary: false,
   interact: false,
 };
-const heartbeat = roomMessages(testSimConfig.player.nameMax)[
-  NetEvent.HEARTBEAT
-];
+const messages = roomMessages(testSimConfig.player.nameMax);
+const heartbeat = messages[NetEvent.HEARTBEAT];
 
 /** Lets pending promise callbacks run, so a held join is waiting on its gate. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -102,9 +102,8 @@ const biters: WorldContent = {
  */
 const poke = defineItem("poke", (cooldown: number) => ({
   name: "Poke",
-  maxStack: 1,
   emoji: "👉",
-  starting: { slot: 1, quantity: 1 },
+  startingSlot: 1,
   cooldown,
   apply(game, at, aim) {
     const x = at.x + Math.cos(aim) * 20;
@@ -128,7 +127,12 @@ function recordingVoice(
   log: string[],
   failures: { peerFailed: (id: string) => void }[],
 ): Voice {
-  const voice = createNullVoice({ mode: "open", muted: false, volume: 1 });
+  const voice = createNullVoice({
+    mode: "open",
+    muted: false,
+    volume: 1,
+    inputDevice: null,
+  });
   return {
     ...voice,
     join: (_id, _send, events) => {
@@ -460,7 +464,6 @@ describe("players and voice", () => {
     expect(seen()).toEqual({
       id: "poke",
       name: "Poke",
-      maxStack: 1,
       emoji: "👉",
     });
     expect(joined(a.room).session.players.get("b")?.inventory).toEqual(
@@ -557,7 +560,6 @@ describe("content's player state", () => {
       })).create({ lamp: undefined }),
       defineItem("lamp", () => ({
         name: "Lamp",
-        maxStack: 1,
         emoji: "🪔",
         player: fuel,
         cooldown: 1,
@@ -752,20 +754,62 @@ describe("state sends", () => {
     return { ...ctx, states };
   }
 
-  test("frames send state at most sendHz times a second", async () => {
-    const { room, states } = await watched();
-    room.frame(1);
+  test("frames send a changed state at most sendHz times a second", async () => {
+    const { room, session, states } = await watched();
+    const turn = (now: number) => {
+      session.local.aim += 0.1;
+      room.frame(now);
+    };
+    turn(1);
     expect(states()).toBe(0);
-    room.frame(SEND_GAP + 1);
+    turn(SEND_GAP + 1);
     expect(states()).toBe(1);
-    room.frame(SEND_GAP + 2);
+    turn(SEND_GAP + 2);
     expect(states()).toBe(1);
-    room.frame(2 * SEND_GAP + 2);
+    turn(2 * SEND_GAP + 2);
     expect(states()).toBe(2);
   });
 
-  test("a HELLO forces a state send inside the gap", async () => {
+  test("a state that has not changed waits for the heartbeat, which carries it whatever", async () => {
+    const { room, session, other, states, clock } = await watched();
+    const beats = () =>
+      other.heard.filter(({ event }) => event === NetEvent.HEARTBEAT).length;
+    session.local.aim += 0.1;
+    room.frame(SEND_GAP + 1);
+    expect(states()).toBe(1);
+    for (let frame = 2; frame <= 14; frame++) room.frame(frame * SEND_GAP + 1);
+    expect(states()).toBe(1);
+    session.local.aim += 0.001;
+    room.frame(15 * SEND_GAP + 1);
+    expect(states()).toBe(1);
+
+    clock.advance(1000);
+    expect(beats()).toBe(0);
+    room.frame(1000 + SEND_GAP);
+    // Alone, it hosts, so the tick carries its entities too.
+    expect(other.heard.slice(-3).map(({ event }) => event)).toEqual([
+      NetEvent.HEARTBEAT,
+      NetEvent.STATE,
+      NetEvent.ENTITIES,
+    ]);
+    expect(states()).toBe(2);
+  });
+
+  test("a page whose frames stopped beats at once, its state with it", async () => {
     const { room, other, states, clock } = await watched();
+    room.frame(SEND_GAP + 1);
+    clock.advance(1000);
+    expect(states()).toBe(0);
+    clock.advance(2000);
+    expect(other.heard.map(({ event }) => event)).toEqual([
+      NetEvent.HEARTBEAT,
+      NetEvent.STATE,
+    ]);
+  });
+
+  test("a HELLO forces a state send inside the gap", async () => {
+    const { room, session, other, states, clock } = await watched();
+    session.local.aim += 0.1;
     room.frame(SEND_GAP + 1);
     clock.advance(SEND_GAP + 2);
     other.send(NetEvent.HELLO, { id: "x" });
@@ -773,7 +817,9 @@ describe("state sends", () => {
     const last = other.heard
       .filter((message) => message.event === NetEvent.STATE)
       .at(-1);
-    expect(last?.payload).toEqual(playerState(joined(room).session));
+    expect(last?.payload).toEqual(
+      messages[NetEvent.STATE].encode(playerState(joined(room).session)),
+    );
   });
 
   test("hiding sends a hidden heartbeat at once", async () => {
@@ -992,9 +1038,11 @@ describe("host", () => {
     expect(hosts()).toEqual(["c", "a", "a"]);
 
     hub.heal();
-    // States reach c before any heartbeat, so it sees the others active while still solo.
-    get("a").room.frame(clock.now());
-    get("b").room.frame(clock.now());
+    // States that changed reach c before any heartbeat, so it sees the others active while still solo.
+    for (const id of ["a", "b"]) {
+      joined(get(id).room).session.local.aim += 1;
+      get(id).room.frame(clock.now());
+    }
     expect(get("c").room.presenceOf("a")?.kind).toBe("present");
     clock.advance(8000);
     expect(hosts()).toEqual(["a", "a", "a"]);
@@ -1093,15 +1141,15 @@ describe("host", () => {
     const placed = (player: Player) =>
       [...sessionOf(player).entities.values()].map(({ id, x, y }) => ({
         id,
-        x,
-        y,
+        x: tenth(x),
+        y: tenth(y),
       }));
     /** Where `player` is easing each entity to. */
     const targets = (player: Player) =>
       [...sessionOf(player).entities.values()].map(({ id, tx, ty }) => ({
         id,
-        x: tx,
-        y: ty,
+        x: tenth(tx),
+        y: tenth(ty),
       }));
     /** Runs one step of simulation on `player`, without letting it send. */
     const step = (player: Player) => {
@@ -1408,7 +1456,7 @@ describe("host", () => {
         const blob = sessionOf(a).entities.get("a:2") ?? { x: NaN, y: NaN };
         standAt(b, { x: blob.x - 20, y: blob.y });
         const local = sessionOf(b).local;
-        expect(local.inventory.map((stack) => stack?.item.id ?? null)).toEqual([
+        expect(local.inventory.map((item) => item?.id ?? null)).toEqual([
           null,
           "poke",
           null,

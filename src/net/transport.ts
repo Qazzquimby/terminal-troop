@@ -11,6 +11,9 @@ export const NetEvent = {
 
   /** Voice connection setup: addressed to one player, but broadcast to the room. */
   SIGNAL: "signal",
+
+  /** Several of the others, sent as one broadcast; the batching transport unpacks it. */
+  BATCH: "batch",
 } as const;
 export type NetEvent = (typeof NetEvent)[keyof typeof NetEvent];
 

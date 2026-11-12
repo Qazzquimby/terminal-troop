@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { createRoom } from "../room/index.js";
@@ -32,11 +32,13 @@ const idle: Controls = {
 };
 const reach: Controls = { ...idle, interact: true };
 
-/** A bolt: an item that does nothing, lying about to be picked up. */
+const BOLT_DROP = "bolt-drop.mp3";
+
+/** A bolt: an item that does nothing, lying about to be picked up, and clinks when dropped. */
 const bolt = defineItem("bolt", () => ({
   name: "Bolt",
-  maxStack: 1,
   emoji: "🔩",
+  drop: { url: BOLT_DROP, volume: 1 },
 }));
 
 /** No chasers, so nothing moves; the cruiser beside the first host. */
@@ -59,7 +61,7 @@ function place(room: Room, at: Point): void {
 }
 
 const carried = (room: Room): (string | null)[] =>
-  sessionOf(room).local.inventory.map((stack) => stack?.item.id ?? null);
+  sessionOf(room).local.inventory.map((item) => item?.id ?? null);
 
 /** Clients `ids` joined to one room on a hub that sends every payload through JSON, the first hosting. */
 async function crew(...ids: string[]) {
@@ -71,7 +73,12 @@ async function crew(...ids: string[]) {
       localId: id,
       world: "dev",
       transport: hub.transport(id, []).port,
-      voice: createNullVoice({ mode: "open", muted: false, volume: 1 }),
+      voice: createNullVoice({
+        mode: "open",
+        muted: false,
+        volume: 1,
+        inputDevice: null,
+      }),
       sfx: testSfx(),
       scope: createScope(),
       clock,
@@ -83,6 +90,11 @@ async function crew(...ids: string[]) {
       onPeerFailed: () => undefined,
     });
     await room.join("BOLTS", id.toUpperCase());
+    vi.spyOn(sessionOf(room).sfx, "play").mockResolvedValue({
+      stop: () => undefined,
+      setVolume: () => undefined,
+      setPosition: () => undefined,
+    });
     rooms.set(id, room);
   }
   clock.advance(1000);
@@ -247,7 +259,7 @@ test("standing on a bolt with a full inventory, E drops the held item instead", 
   const lying = layBolt(host, exchange);
   const definition = sessionOf(b).itemDefinitions.get("bolt");
   if (definition === undefined) throw new Error("no bolt");
-  sessionOf(b).local.inventory.fill({ item: definition, quantity: 1 });
+  sessionOf(b).local.inventory.fill(definition);
   sessionOf(b).local.held = 2;
   place(b, SPOT);
   exchange();
@@ -267,7 +279,7 @@ test("a bolt granted to an inventory that filled meanwhile goes back to the worl
   updateSession(sessionOf(b), reach, DT);
   const definition = sessionOf(b).itemDefinitions.get("bolt");
   if (definition === undefined) throw new Error("no bolt");
-  sessionOf(b).local.inventory.fill({ item: definition, quantity: 1 });
+  sessionOf(b).local.inventory.fill(definition);
   exchange();
   exchange();
   expect(sessionOf(host).entities.has(lying.id)).toBe(false);
@@ -294,11 +306,17 @@ function holdBolt(room: Room): void {
   const game = sessionOf(room);
   const definition = game.itemDefinitions.get("bolt");
   if (definition === undefined) throw new Error("no bolt");
-  game.local.inventory[1] = { item: definition, quantity: 1 };
+  game.local.inventory[1] = definition;
   game.local.held = 1;
 }
 
-test("with nothing in reach, E drops the held item where the player stands, on every client", async () => {
+/** Whether `room`'s client played the bolt's drop sound. */
+const clinked = (room: Room): boolean =>
+  vi
+    .mocked(sessionOf(room).sfx.play)
+    .mock.calls.some(([url]) => url === BOLT_DROP);
+
+test("with nothing in reach, E drops the held item where the player stands, on every client, with its sound", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   holdBolt(b);
@@ -308,6 +326,9 @@ test("with nothing in reach, E drops the held item where the player stands, on e
   expect(carried(b)).toEqual([null, null, null, null]);
   expect(boltsAt(host, SPOT)).toBe(1);
   expect(boltsAt(b, SPOT)).toBe(1);
+  exchange();
+  expect(clinked(host)).toBe(true);
+  expect(clinked(b)).toBe(true);
 });
 
 test("E picks up what is in reach rather than drop the held item", async () => {

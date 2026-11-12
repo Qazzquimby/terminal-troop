@@ -77,6 +77,23 @@ const PickUp = z.object({
 const Dropped = z.object({ item: ItemId, x: z.number(), y: z.number() });
 
 /**
+ * An item the host laid in the world, for every client to hear land where it was dropped: its
+ * item's drop sound, if it has one.
+ */
+export const landed = contentEvent({
+  schema: Dropped,
+  to: "all",
+  from: "host",
+  receive(game, { item, x, y }) {
+    const sound = game.itemDefinitions.get(item)?.drop;
+    if (sound !== undefined)
+      void game.sfx.play(sound.url, { x, y }, game.local, {
+        volume: sound.volume,
+      });
+  },
+});
+
+/**
  * An item a player let go of, laid in the world where it stood if the host knows the item and
  * the spot is near where the player was last heard. The player's own client has already taken
  * it out of its inventory.
@@ -88,6 +105,7 @@ export const dropped = contentEvent({
     if (!game.hosting || !game.itemDefinitions.has(item)) return;
     if (!hostAccepts(game, by, { x, y }, DROP, 0)) return;
     spawnWorldItem(game, { x, y }, item);
+    landed.send(game, { item, x, y });
   },
 });
 
@@ -107,7 +125,7 @@ export const granted = contentEvent({
   receive(game, { item }) {
     const definition = game.itemDefinitions.get(item);
     if (definition === undefined) return;
-    if (addItem(game.local.inventory, definition, 1) > 0) letGo(game, item);
+    if (!addItem(game.local.inventory, definition)) letGo(game, item);
   },
 });
 
@@ -163,8 +181,6 @@ export function interact(game: Session): void {
     return;
   }
   if (local.held === null) return;
-  const stack = local.inventory[local.held];
-  if (stack === null || stack === undefined) return;
-  removeItem(local.inventory, local.held, 1);
-  letGo(game, stack.item.id);
+  const item = removeItem(local.inventory, local.held);
+  if (item !== null) letGo(game, item.id);
 }
