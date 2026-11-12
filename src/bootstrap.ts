@@ -10,6 +10,9 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
+  CONTROLS_HINT,
+  TALK_HINT,
+  controlsHintText,
   createInventoryHud,
   createDebugOverlay,
   createMicIndicatorView,
@@ -74,7 +77,6 @@ const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
-const baseHint = controlsHint.textContent.trim();
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -156,10 +158,11 @@ element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
   voice.configure(current.voice);
-  controlsHint.textContent =
+  controlsHint.textContent = controlsHintText(
     current.voice.mode === "pushToTalk"
-      ? `${baseHint} · ${talkKey} to talk`
-      : baseHint;
+      ? [...CONTROLS_HINT, TALK_HINT]
+      : CONTROLS_HINT,
+  );
 }
 applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));

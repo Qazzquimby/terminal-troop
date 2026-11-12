@@ -76,6 +76,38 @@ export function actionKeyLabel(action: Action): string {
   return keyLabel(ACTIONS[action].keys[0]);
 }
 
+export type Bindings = Readonly<
+  Record<Action, { readonly keys: readonly string[] }>
+>;
+
+/**
+ * Display text for the keys bound to `actions` taken together, e.g. "WASD / ↑←↓→"
+ * for the four move actions or "Shift" for sprint. The nth keys of every action form
+ * one group; a group of single characters runs together, others join with " / ".
+ * Repeated labels and groups are shown once.
+ */
+export function keysLabel(
+  actions: readonly Action[],
+  bindings: Bindings = ACTIONS,
+): string {
+  const depth = Math.max(0, ...actions.map((a) => bindings[a].keys.length));
+  const groups: string[] = [];
+  for (let i = 0; i < depth; i++) {
+    const labels = [
+      ...new Set(
+        actions.flatMap((a) => {
+          const code = bindings[a].keys[i];
+          return code === undefined ? [] : [keyLabel(code)];
+        }),
+      ),
+    ];
+    const compact = labels.length > 1 && labels.every((l) => l.length === 1);
+    const group = labels.join(compact ? "" : " / ");
+    if (group !== "" && !groups.includes(group)) groups.push(group);
+  }
+  return groups.join(" / ");
+}
+
 /**
  * What input is for right now: the contexts named in `ACTIONS` (`play`, `menu`),
  * plus `text`, focus in a text field, where no action is active.
