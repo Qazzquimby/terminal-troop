@@ -14,6 +14,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  tenth,
   testRoomConfig,
 } from "./room-helpers.js";
 import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
@@ -128,7 +129,9 @@ test("both players first join by the cruiser, apart", async () => {
   b.frame(clock.now());
 
   const cruiser = cruiserOf(sessionOf(b));
-  expect(cruiser).toEqual(sessionOf(a).rally);
+  const { rally } = sessionOf(a);
+  // The cruiser reaches b as the host sent it, to a tenth of a pixel.
+  expect(cruiser).toEqual({ x: tenth(rally.x), y: tenth(rally.y) });
   for (const room of [a, b]) {
     const { local, world } = sessionOf(room);
     expect(distance(local, cruiser)).toBeLessThanOrEqual(SPREAD);

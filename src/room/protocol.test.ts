@@ -17,6 +17,35 @@ const state = {
   content: {},
 };
 
+describe("rounding", () => {
+  test("a STATE sends its position to a tenth of a pixel and its aim to a hundredth", () => {
+    const schema = messages[NetEvent.STATE];
+    const wire = schema.encode({
+      ...state,
+      x: 6383.650081222386,
+      y: 2070.0499,
+      aim: -2.827866375587991,
+    });
+    expect(wire).toMatchObject({ x: 6383.7, y: 2070, aim: -2.83 });
+    const heard = schema.parse(JSON.parse(JSON.stringify(wire)));
+    expect(heard.x).toBeCloseTo(6383.650081222386, 1);
+    expect(heard.aim).toBeCloseTo(-2.827866375587991, 2);
+  });
+
+  test("a snapshot sends each entity's position to a tenth of a pixel", () => {
+    const wire = messages[NetEvent.ENTITIES].encode({
+      host: "h",
+      full: true,
+      entities: [
+        { id: "h:1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} },
+      ],
+      removed: [],
+      world: {},
+    });
+    expect(wire.entities[0]).toMatchObject({ x: 10, y: 20 });
+  });
+});
+
 describe("health", () => {
   test.each([0, 12.5, Infinity])(
     "%d survives encoding and decoding",

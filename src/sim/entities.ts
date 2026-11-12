@@ -264,11 +264,19 @@ export function cueEntities(game: Session): void {
   });
 }
 
-/** Every entity in the session, as a host sends them. */
+/** Every entity in the session, as a host sends them: each one's data encoded by its kind. */
 export function entitySnapshot(game: Session): EntitySnapshot[] {
-  return [...game.entities.values()].map(
-    ({ id, kind, x, y, health, data }) => ({ id, kind, x, y, health, data }),
-  );
+  return [...game.entities.values()].map(({ id, kind, x, y, health, data }) => {
+    const encoded = game.entityTypes.get(kind)?.data.safeEncode(data);
+    return {
+      id,
+      kind,
+      x,
+      y,
+      health,
+      data: encoded?.success === true ? encoded.data : data,
+    };
+  });
 }
 
 /**

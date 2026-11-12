@@ -10,6 +10,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  tenth,
   testRoomConfig,
 } from "./room-helpers.js";
 import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
@@ -108,6 +109,7 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   const spot = freeSpotNear(sessionOf(b), chaserOf(a), 250);
   Object.assign(sessionOf(b).local, { ...spot, prevX: spot.x, prevY: spot.y });
   steps(b, { ...still, move: { x: 1, y: 0 }, sprint: true }, DT);
+  clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
   b.frame(clock.now());
   steps(a, still, 1);
   a.frame(clock.now());
@@ -117,14 +119,14 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   expect(Math.hypot(heard.x - spot.x, heard.y - spot.y)).toBeLessThan(
     250 * testSimConfig.noise.blur + 10,
   );
-  expect(noiseTarget(b)).toEqual(heard);
+  expect(noiseTarget(b)).toEqual({ x: tenth(heard.x), y: tenth(heard.y) });
 
   await a.leave();
   clock.advance(3000);
   expect(b.hostId()).toBe("b");
   const before = Math.hypot(chaserOf(b).x - heard.x, chaserOf(b).y - heard.y);
   steps(b, still, 1);
-  expect(noiseTarget(b)).toEqual(heard);
+  expect(noiseTarget(b)).toEqual({ x: tenth(heard.x), y: tenth(heard.y) });
   expect(
     Math.hypot(chaserOf(b).x - heard.x, chaserOf(b).y - heard.y),
   ).toBeLessThan(before);

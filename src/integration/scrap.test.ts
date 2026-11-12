@@ -10,6 +10,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  tenth,
   testRoomConfig,
 } from "./room-helpers.js";
 import {
@@ -296,7 +297,7 @@ test("a new world lays its configured scrap about, the same on every client", as
         (entity) =>
           entity.kind === sessionOf(room).kindIds.get("core/world-item"),
       )
-      .map(({ id, x, y, data }) => ({ id, x, y, data }));
+      .map(({ id, x, y, data }) => ({ id, x: tenth(x), y: tenth(y), data }));
   expect(lying(get("a"))).toHaveLength(3);
   expect(lying(get("a"))[0]?.data).toEqual({ item: "scrap" });
   expect(lying(get("b"))).toEqual(lying(get("a")));

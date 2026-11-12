@@ -6,10 +6,14 @@ import { entityContent } from "../entities/index.js";
 import { NetEvent } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { randomFreePosition, updateSession } from "../sim/index.js";
+import {
+  entitySnapshot,
+  randomFreePosition,
+  updateSession,
+} from "../sim/index.js";
 import type { Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
-import { createManualClock, testRoomConfig } from "./room-helpers.js";
+import { createManualClock, tenth, testRoomConfig } from "./room-helpers.js";
 import {
   testEntitiesConfig,
   testSfx,
@@ -96,8 +100,8 @@ test("a joining client learns about existing players through HELLO", async () =>
   const { a, b } = await pair();
   const seen = sessionOf(b).players.get("a");
   expect(seen?.name).toBe("A");
-  expect(seen?.x).toBe(sessionOf(a).local.x);
-  expect(seen?.y).toBe(sessionOf(a).local.y);
+  expect(seen?.x).toBeCloseTo(sessionOf(a).local.x, 1);
+  expect(seen?.y).toBeCloseTo(sessionOf(a).local.y, 1);
   expect(sessionOf(a).players.get("b")?.name).toBe("B");
 });
 
@@ -113,7 +117,8 @@ test("remote players are smoothed toward their latest reported position", async 
 
   const remote = sessionOf(b).players.get("a");
   if (remote === undefined) throw new Error("b never saw a");
-  expect({ x: remote.tx, y: remote.ty }).toEqual(target);
+  expect(remote.tx).toBeCloseTo(target.x, 1);
+  expect(remote.ty).toBeCloseTo(target.y, 1);
   const gapBefore = Math.hypot(target.x - remote.x, target.y - remote.y);
 
   updateSession(sessionOf(b), idle, 1 / 60);
@@ -130,7 +135,7 @@ test("state sends are throttled to the send rate", async () => {
   a.frame(1);
   await flush();
 
-  expect(sessionOf(b).players.get("a")?.tx).toBe(sentX);
+  expect(sessionOf(b).players.get("a")?.tx).toBeCloseTo(sentX, 1);
 });
 
 test("leaving says BYE and the other side drops the player", async () => {
@@ -156,14 +161,20 @@ test("a hidden player that stops sending state but keeps heartbeating stays, awa
   expect(a.presenceOf("b")?.kind).toBe("present");
 });
 
-const snapshotOf = (room: Room) =>
-  [...sessionOf(room).entities.values()].map(({ id, kind, tx, ty, data }) => ({
-    id,
-    kind,
-    x: tx,
-    y: ty,
-    data,
-  }));
+/** Each entity where `room` eases it to, and its data as sent. */
+const snapshotOf = (room: Room) => {
+  const game = sessionOf(room);
+  return entitySnapshot(game).map(({ id, kind, data }) => {
+    const entity = game.entities.get(id);
+    return {
+      id,
+      kind,
+      x: tenth(entity?.tx ?? NaN),
+      y: tenth(entity?.ty ?? NaN),
+      data,
+    };
+  });
+};
 
 /** A pair, the host elected and the first snapshot sent. */
 async function hosted(): Promise<{ a: Room; b: Room }> {

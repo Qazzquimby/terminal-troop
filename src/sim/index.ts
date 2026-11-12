@@ -9,6 +9,7 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type { EntityDefinition, Strike, WorldEntity } from "./entities.js";
+export { rounded } from "./rounded.js";
 export { spawnWorldItem } from "./world-items.js";
 export {
   defineEntity,

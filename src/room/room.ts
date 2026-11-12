@@ -1,6 +1,6 @@
 import type { Sfx } from "../audio/index.js";
 import type { Scope } from "../lib/scope/index.js";
-import { NetEvent } from "../net/index.js";
+import { NetEvent, createBatchingTransport } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 import {
   applyEntityChanges,
@@ -44,17 +44,21 @@ import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 
 /** How the room shares state with its other players. */
 export interface RoomConfig {
-  /** Most state sends per second. */
+  /**
+   * Network ticks per second. A tick sends, as one broadcast, the local player's state if it
+   * changed since it was last sent, and the entities while hosting.
+   */
   readonly sendHz: number;
-  /** Most entity snapshots per second, while hosting. */
-  readonly entityHz: number;
   /**
    * Milliseconds between full entity snapshots, while hosting. Between them a snapshot carries
    * only the entities that changed and the ids of those gone; a full one, also sent to each
    * newcomer and as a new host's first, mends what a lost snapshot missed.
    */
   readonly fullSnapshotMs: number;
-  /** Milliseconds between heartbeats, and between presence sweeps. */
+  /**
+   * Milliseconds between heartbeats, and between presence sweeps. A shown page's heartbeat
+   * carries its player's state whether or not that changed, and goes out with the next tick.
+   */
   readonly heartbeatMs: number;
   readonly presence: PresenceTiming;
 }
@@ -131,9 +135,9 @@ export interface Room {
   /** Says BYE, hangs up voice and leaves the channel. */
   leave(): Promise<void>;
   /**
-   * Runs after the simulation steps of a frame: sends state, routes the content events sent in
-   * those steps, sends the entities while hosting, plays the entities' sound cues, then mixes
-   * voice.
+   * Runs after the simulation steps of a frame: on a tick sends what the tick carries, sends the
+   * state at once when it must go out now, and routes the content events sent in those steps,
+   * all in one broadcast; then plays the entities' sound cues and mixes voice.
    */
   frame(now: number): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
@@ -163,16 +167,22 @@ interface Link {
   voiceRoom: VoiceRoom | null;
   /** The remote players `voiceRoom` was last told to connect to. */
   peers: ReadonlySet<string>;
-  lastSent: number;
-  /** The next frame sends state whatever the throttle says. */
+  /** When the next tick is due. */
+  nextTick: number;
+  /** The local player's state as last sent, as JSON; null before the first. */
+  lastState: string | null;
+  /** The next frame sends state whether or not it ticks, or the state changed. */
   forceState: boolean;
+  /** A frame ran since the last pulse. */
+  framed: boolean;
+  /** The next tick carries a heartbeat. */
+  beatDue: boolean;
   /** Undefined until the first view is heard or the first heartbeat elects one. */
   host: HostView | undefined;
   /** The host view each remote player last sent; null before it sent one. */
   readonly views: Map<string, HostView | null>;
   /** When the last heartbeat was due to go out. */
   lastPulse: number;
-  lastEntitiesSent: number;
   /** When the last full entity snapshot went out. */
   lastFullSent: number;
   /** Each entity as this client last sent it while hosting, by id; empty while not hosting. */
@@ -185,7 +195,8 @@ const ALREADY_CONNECTING = "Already connecting.";
 const LEFT_WHILE_CONNECTING = "Left before the room was joined.";
 
 export function createRoom(deps: RoomDeps): Room {
-  const { transport, clock, config } = deps;
+  const { clock, config } = deps;
+  const { transport, batch } = createBatchingTransport(deps.transport);
   let localId = deps.localId;
   let state: RoomState = { kind: "lobby", error: null };
   /** The scope of the room joined or being joined. */
@@ -210,12 +221,16 @@ export function createRoom(deps: RoomDeps): Room {
     deps.onChange();
   }
 
-  function sendState(room: Link, now: number, force = false): void {
-    if (!force && now - room.lastSent < 1000 / config.sendHz) return;
-    room.lastSent = now;
+  /** Sends the local player's state when forced, or on a tick when it changed since last sent. */
+  function sendState(room: Link, force: boolean, ticking = false): void {
+    if (!force && !ticking) return;
+    const wire = messages[NetEvent.STATE].encode(playerState(room.session));
+    const json = JSON.stringify(wire);
+    if (!force && json === room.lastState) return;
+    room.lastState = json;
     room.forceState = false;
     room.session.reportNow = false;
-    void send(NetEvent.STATE, playerState(room.session));
+    void transport.send(NetEvent.STATE, wire);
   }
 
   /**
@@ -239,13 +254,11 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   /**
-   * Sends the entities and the world state, at most `entityHz` times a second unless forced: in
-   * full when forced, as this client's first while hosting, or every `fullSnapshotMs`; otherwise
-   * only the entities changed since the last send, and the ids of those gone.
+   * Sends the entities and the world state: in full when forced, as this client's first while
+   * hosting, or every `fullSnapshotMs`; otherwise only the entities changed since the last
+   * send, and the ids of those gone.
    */
   function sendEntities(room: Link, now: number, force = false): void {
-    if (!force && now - room.lastEntitiesSent < 1000 / config.entityHz) return;
-    room.lastEntitiesSent = now;
     const entities = entitySnapshot(room.session);
     const current = new Map(
       entities.map((entity) => [entity.id, JSON.stringify(entity)]),
@@ -285,6 +298,29 @@ export function createRoom(deps: RoomDeps): Room {
       for (const content of deps.content) content.populate(room.session);
       room.populated = true;
     }
+  }
+
+  /**
+   * Sends what a tick carries, and schedules the next: a heartbeat when one is due, the local
+   * player's state if it changed since last sent, must go out now, or goes with a heartbeat, and
+   * the entities while hosting.
+   */
+  function tick(room: Link, now: number): void {
+    const interval = 1000 / config.sendHz;
+    // Ticks keep to their schedule, so frames that fall just short of one do not slow them.
+    room.nextTick = Math.max(room.nextTick, now - interval / 2) + interval;
+    if (room.beatDue) beatNow(room);
+    else sendState(room, room.forceState || room.session.reportNow, true);
+    if (room.host?.id === localId) sendEntities(room, now);
+  }
+
+  /** A heartbeat, with the local player's state while the page is shown. */
+  function beatNow(room: Link): void {
+    room.beatDue = false;
+    batch(() => {
+      sendHeartbeat(room);
+      if (!hidden) sendState(room, true);
+    });
   }
 
   function sendHeartbeat(room: Link): void {
@@ -341,7 +377,10 @@ export function createRoom(deps: RoomDeps): Room {
       return (payload) => {
         if (room.scope.disposed) return;
         const parsed = messages[event].safeParse(payload);
-        if (parsed.success) handle(parsed.data);
+        if (parsed.success)
+          batch(() => {
+            handle(parsed.data);
+          });
       };
     }
     return {
@@ -394,7 +433,7 @@ export function createRoom(deps: RoomDeps): Room {
           if (room.host?.id === message.id) handOver(room, message.id);
         }
         if (room.clashed) return;
-        sendState(room, clock.now(), true);
+        sendState(room, true);
         // The newcomer learns the host view at once, and a hidden page undoes the visible STATE.
         sendHeartbeat(room);
         if (room.host?.id === localId) sendEntities(room, clock.now(), true);
@@ -450,7 +489,8 @@ export function createRoom(deps: RoomDeps): Room {
 
   /**
    * Moves every remote player along by the time, elects a host if the one held no longer
-   * qualifies, then says the local player is still here.
+   * qualifies, then says the local player is still here: with the next tick while frames run,
+   * otherwise at once.
    */
   function pulse(room: Link): void {
     if (room.scope.disposed) return;
@@ -467,7 +507,9 @@ export function createRoom(deps: RoomDeps): Room {
         room,
         elect(room.host, { id: localId, active: !hidden }, remotes(room)),
       );
-    sendHeartbeat(room);
+    if (hidden || !room.framed) beatNow(room);
+    else room.beatDue = true;
+    room.framed = false;
   }
 
   /**
@@ -512,12 +554,14 @@ export function createRoom(deps: RoomDeps): Room {
       roster: createRoster(config.presence),
       voiceRoom: null,
       peers: new Set(),
-      lastSent: -Infinity,
+      nextTick: clock.now() + 1000 / config.sendHz,
+      lastState: null,
       forceState: false,
+      framed: false,
+      beatDue: false,
       host: undefined,
       views: new Map(),
       lastPulse: clock.now(),
-      lastEntitiesSent: -Infinity,
       lastFullSent: -Infinity,
       sent: new Map(),
       populated: false,
@@ -553,8 +597,10 @@ export function createRoom(deps: RoomDeps): Room {
       room.clashed ? Promise.resolve() : send(NetEvent.BYE, { id }),
     );
     room.joinedAt = clock.now();
-    void send(NetEvent.HELLO, { id });
-    sendState(room, clock.now(), true);
+    batch(() => {
+      void send(NetEvent.HELLO, { id });
+      sendState(room, true);
+    });
     return room;
   }
 
@@ -622,10 +668,13 @@ export function createRoom(deps: RoomDeps): Room {
     frame(now) {
       if (link === null) return;
       const room = link;
-      sendState(room, now, room.forceState || room.session.reportNow);
-      for (const outgoing of room.session.outbox.splice(0))
-        route(room, outgoing);
-      if (room.host?.id === localId) sendEntities(room, now);
+      room.framed = true;
+      batch(() => {
+        if (now >= room.nextTick) tick(room, now);
+        else sendState(room, room.forceState || room.session.reportNow);
+        for (const outgoing of room.session.outbox.splice(0))
+          route(room, outgoing);
+      });
       cueEntities(room.session);
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
