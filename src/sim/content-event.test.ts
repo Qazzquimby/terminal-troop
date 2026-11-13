@@ -141,7 +141,6 @@ describe("content events", () => {
     expect(
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
-      ["core/noise", ["made"]],
       ["core/position", ["forced"]],
       ["core/world-items", ["pickUp", "drop"]],
       ["core/actions", ["effects"]],

@@ -20,9 +20,9 @@ import {
   addressOf,
   createHub,
   createManualClock,
-  EFFECTS,
   KICK,
   messages,
+  showsKick,
   testRoomConfig,
 } from "./room-helpers.js";
 import {
@@ -87,7 +87,7 @@ function delayed(port: Transport, delayMs: () => number) {
       if (message.event !== NetEvent.CONTENT) continue;
       const address = addressOf(message.payload);
       if (address === KICK) counts.kicks++;
-      if (address === EFFECTS) counts.shown++;
+      if (showsKick(message.payload)) counts.shown++;
     }
     queue.push({ at: null, send: () => void port.send(event, payload) });
     return Promise.resolve();

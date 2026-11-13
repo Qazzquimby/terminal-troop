@@ -533,14 +533,24 @@ export function dash(game: Session, actor: Player, made: ActorDash): void {
 }
 
 /**
- * Shows and sounds `made`: on the actor's client as it acts, and on every other client once the
- * host applies the action, which makes its noise, once, on every client. Only for an action
- * being applied.
+ * Shows and sounds `made`, and makes its noise, once, on every client:
+ * - in an action, the actor makes it: its own client plays it as it acts, and every other client
+ *   once the host applies the action
+ * - outside one, `by`, the player or entity whose doing it is, makes it, and only the host's
+ *   does: an entity's update, say. Every client, the host's own included, plays it once it
+ *   arrives from the host; an effect made on any other client is dropped.
  */
-export function effect(game: Session, made: Effect): void {
+export function effect(
+  game: Session,
+  made: Effect,
+  by?: { readonly id: string },
+): void {
   const run = runs.get(game);
-  if (run === undefined) throw new Error("An effect outside an action");
-  if (run.mode === "predict") play(game, game.localId, made);
+  if (run === undefined) {
+    if (by === undefined)
+      throw new Error("An effect outside an action names whose it is");
+    if (game.hosting) effected.send(game, { by: by.id, effects: [sent(made)] });
+  } else if (run.mode === "predict") play(game, game.localId, made);
   else run.effects.push(made);
 }
 

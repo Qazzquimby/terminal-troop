@@ -6,7 +6,7 @@ import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
   defineEntity,
-  makeSound,
+  effect,
   sound,
   spawnEntity,
   updateSession,
@@ -41,18 +41,18 @@ const entities = {
   },
 };
 
-const RING = sound({ url: "ring.mp3", noise: 300 });
-const Bell = z.object({ rings: z.number().int().min(0) });
+const RING = sound({ url: "ring.mp3" });
+const Bell = z.object({ ring: z.boolean() });
 
-/** A bell that rings, on every client, each time its count goes up. */
+/** A bell that rings, as an effect from the host, in each step it is set to ring. */
 const bell = defineEntity("bell", () => ({
   radius: 10,
   maxHealth: 1,
   data: Bell,
-  update: (_entity, data) => data,
-  cue(entity, previous, next, game) {
-    if (next.rings > previous.rings)
-      makeSound(game, RING, { x: entity.x, y: entity.y }, entity.id);
+  update(entity, data, _dt, game) {
+    if (data.ring)
+      effect(game, { at: entity, sound: RING, noise: 300 }, entity);
+    return { ring: false };
   },
   draw: () => undefined,
 })).create({ bell: {} });
@@ -111,16 +111,16 @@ function exchange(
 const noises = (rooms: Room[]) =>
   rooms.map((room) => sessionOf(room).noises.length);
 
-test("a sound every client plays from a cue makes one noise, from the host", async () => {
+test("an entity's effect on the host plays on every client and makes one noise on each", async () => {
   const { a, b, clock } = await pair();
   const host = sessionOf(a);
   const guest = sessionOf(b);
   const played = [vi.spyOn(host.sfx, "play"), vi.spyOn(guest.sfx, "play")];
-  const ringer = spawnEntity(host, "bell", 200, 200, { rings: 0 });
+  const ringer = spawnEntity(host, "bell", 200, 200, { ring: false });
   exchange(clock, [a, b]);
   expect(guest.entities.has(ringer.id)).toBe(true);
 
-  ringer.data = { rings: 1 };
+  ringer.data = { ring: true };
   const heard: number[][] = [];
   for (let frame = 0; frame < 4; frame++) {
     exchange(clock, [a, b]);
@@ -136,19 +136,26 @@ test("a sound every client plays from a cue makes one noise, from the host", asy
   expect(host.noises).toEqual([]);
 });
 
-test("a sound the host makes is heard once by every client; one a guest makes, by none", async () => {
+test("an effect outside an action the host makes is heard once by every client; one a guest makes, by none", async () => {
   const { a, b, clock } = await pair();
   const host = sessionOf(a);
   const guest = sessionOf(b);
+  const played = vi.spyOn(guest.sfx, "play");
+  const made = { at: { x: 50, y: 60 }, sound: RING, noise: 300 };
 
-  makeSound(host, RING, { x: 50, y: 60 });
+  effect(host, made, { id: "z" });
   exchange(clock, [a, b]);
   expect(noises([a, b])).toEqual([1, 1]);
-  expect(guest.noises).toEqual([{ at: { x: 50, y: 60 }, radius: 300 }]);
+  expect(guest.noises).toEqual([
+    { at: { x: 50, y: 60 }, radius: 300, source: "z" },
+  ]);
+  expect(played).toHaveBeenCalledOnce();
 
-  makeSound(guest, RING, { x: 50, y: 60 });
+  effect(guest, made, { id: "z" });
+  expect(guest.outbox).toEqual([]);
   for (let frame = 0; frame < 3; frame++) {
     exchange(clock, [a, b]);
     expect(noises([a, b])).toEqual([0, 0]);
   }
+  expect(played).toHaveBeenCalledOnce();
 });

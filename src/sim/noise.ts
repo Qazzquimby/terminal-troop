@@ -1,5 +1,3 @@
-import { z } from "zod";
-import { contentEvent } from "./content-event.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
 
@@ -74,40 +72,4 @@ export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
     });
   }
   return heard;
-}
-
-/** A noise as it travels from the host. */
-const NoiseMade = z.object({
-  x: z.number(),
-  y: z.number(),
-  radius: z.number().min(0),
-  source: z.string().min(1).max(64).nullable(),
-});
-
-/** A noise the host made, sent to every client, the host's own included, to make there. */
-export const noiseMade = contentEvent({
-  schema: NoiseMade,
-  to: "all",
-  from: "host",
-  receive(game, { x, y, radius, source }) {
-    emitNoise(
-      game,
-      source === null
-        ? { at: { x, y }, radius }
-        : { at: { x, y }, radius, source },
-    );
-  },
-});
-
-/**
- * Makes `noise` on every client, in the step after the room sends it: for noise that starts
- * where only the host runs, such as an entity's update or an item's effect.
- */
-export function broadcastNoise(game: Session, noise: Noise): void {
-  noiseMade.send(game, {
-    x: noise.at.x,
-    y: noise.at.y,
-    radius: noise.radius,
-    source: noise.source ?? null,
-  });
 }

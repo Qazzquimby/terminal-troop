@@ -2,7 +2,6 @@ export { isSweepFree, solidBodiesBut } from "./collision.js";
 export {
   applyEntityChanges,
   applyEntitySnapshot,
-  cueEntities,
   entitySnapshot,
   registerEntityType,
   removeEntity,
@@ -32,6 +31,7 @@ export {
   effect,
   hurt,
   push,
+  spawn,
   take,
 } from "./actions.js";
 export type { Action } from "./actions.js";
@@ -79,10 +79,9 @@ export {
 } from "./world-data.js";
 export { movement } from "./movement.js";
 export { speak } from "./voice-noise.js";
-export { broadcastNoise, noisesHeardBy } from "./noise.js";
+export { noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
-export { makeSound, sound } from "./sound.js";
-export type { Sound } from "./sound.js";
+export { sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
 export { registerItem } from "./use.js";
 export {

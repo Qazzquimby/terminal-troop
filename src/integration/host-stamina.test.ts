@@ -354,7 +354,7 @@ test("a new host reckons every player's stamina full, then holds them to it", as
   expect(reckoned(newHost, "c").value).toBe(stamina.max + slack);
   run(EMPTYING - 0.5, { c: pacing(1) });
   expect(client("b").net.counts.corrections).toBe(0);
-  run(2, { c: pacing(1) });
+  run(3, { c: pacing(1) });
   expect(reckoned(newHost, "c").exhausted).toBe(true);
   expect(client("b").net.counts.corrections).toBeGreaterThan(0);
 });

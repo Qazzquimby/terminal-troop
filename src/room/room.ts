@@ -7,7 +7,6 @@ import {
   applyEntitySnapshot,
   applyRemoteState,
   applyWorldEntries,
-  cueEntities,
   createSession,
   entityDelta,
   entitySnapshot,
@@ -143,7 +142,7 @@ export interface Room {
   /**
    * Runs after the simulation steps of a frame: on a tick sends what the tick carries, sends the
    * state at once when it must go out now, and routes the content events sent in those steps,
-   * all in one broadcast; then plays the entities' sound cues and mixes voice.
+   * all in one broadcast; then mixes voice.
    */
   frame(now: number): void;
   /** Whether the page is hidden; says so in a heartbeat at once. */
@@ -761,7 +760,6 @@ export function createRoom(deps: RoomDeps): Room {
         for (const outgoing of room.session.outbox.splice(0))
           route(room, outgoing);
       });
-      cueEntities(room.session);
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
     },

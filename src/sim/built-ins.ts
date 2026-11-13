@@ -5,7 +5,6 @@ import type { ContentEvents } from "./content-event.js";
 import { forcedMoves } from "./forced-move.js";
 import { playerHealth } from "./health.js";
 import { movement } from "./movement.js";
-import { noiseMade } from "./noise.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import { handledActions } from "./prediction.js";
@@ -38,8 +37,6 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/movement": { player: movement },
   /** How far each player's speech carries, which its voice noise follows. */
   "core/voice": { player: voiceNoise },
-  /** Each noise the host makes, made again on every client. */
-  "core/noise": { events: { made: noiseMade } },
   /** Each player's health, which the host alone changes. */
   "core/health": { world: { players: playerHealth } },
   /**
@@ -54,7 +51,10 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/world-items": { actions: [pickUp, drop] },
   /** The latest action the host has handled from each player, which ends what that player's client predicted. */
   "core/predictions": { world: { handled: handledActions } },
-  /** What each action the host applied shows and sounds, and the noise it makes. */
+  /**
+   * What each action the host applied, or each entity on the host, shows and sounds, and the
+   * noise it makes.
+   */
   "core/actions": { events: actionEvents },
 };
 

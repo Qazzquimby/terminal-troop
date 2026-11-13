@@ -52,7 +52,10 @@ const heartbeat = messages[NetEvent.HEARTBEAT];
 /** Lets pending promise callbacks run, so a held join is waiting on its gate. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** Three blobs start across the dev square, each drifting right at 20px/s with 10 health, and heard stepping. */
+/** What a blob sounds each second it drifts. */
+const STEP = sound({ url: "step" });
+
+/** Three blobs start across the dev square, each drifting right at 20px/s with 10 health, heard each second. */
 const blobs: WorldContent = {
   name: "entity/blob",
   register(session) {
@@ -60,13 +63,11 @@ const blobs: WorldContent = {
       radius: 10,
       maxHealth: 10,
       data: z.object({ steps: z.number().int() }),
-      update(entity, data) {
+      update(entity, data, _dt, game) {
         entity.vx = 20;
-        return { steps: data.steps + 1 };
-      },
-      cue(entity, previous, next, game) {
-        if (next.steps > previous.steps)
-          void game.sfx.play("step", entity, game.local);
+        const steps = data.steps + 1;
+        if (steps % 60 === 0) effect(game, { at: entity, sound: STEP }, entity);
+        return { steps };
       },
       draw: () => undefined,
     });
@@ -1401,25 +1402,25 @@ describe("host", () => {
       expect(targets(get("b"))).toEqual(placed(get("a")));
     });
 
-    test("every client hears each entity's cues at most once a frame, from where it stands", async () => {
+    test("every client hears each entity's effects once, from where it stands, once the host sends them", async () => {
       const { clock, get } = await gather(["a", "b"]);
       const steps = (player: Player) =>
         player.sounds.filter(({ url }) => url === "step");
       clock.advance(1000);
       play(get("a"), 0);
       get("b").room.frame(clock.now());
-      expect(steps(get("a"))).toEqual([]);
-      expect(steps(get("b"))).toEqual([]);
 
       clock.advance(2000);
       play(get("a"), 1);
-      expect(steps(get("a"))).toHaveLength(3);
-      get("b").room.frame(clock.now());
-      expect(steps(get("b")).map(({ listener }) => listener)).toEqual(
-        Array(3).fill(sessionOf(get("b")).local),
-      );
-      get("b").room.frame(clock.now());
-      expect(steps(get("b"))).toHaveLength(3);
+      expect(steps(get("a"))).toEqual([]);
+      expect(steps(get("b"))).toEqual([]);
+      for (const id of ["a", "b"]) step(get(id));
+      for (const id of ["a", "b"])
+        expect(steps(get(id)).map(({ listener }) => listener)).toEqual(
+          Array(3).fill(sessionOf(get(id)).local),
+        );
+      for (const id of ["a", "b"]) step(get(id));
+      for (const id of ["a", "b"]) expect(steps(get(id))).toHaveLength(3);
     });
 
     describe("health", () => {

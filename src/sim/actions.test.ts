@@ -140,11 +140,37 @@ test("a guest acting predicts what it does to world entities, held, and leaves p
   expect(game.forcedSeen.size).toBe(0);
 });
 
-test("an effect outside an action is an error", () => {
+test("an effect outside an action must name whose it is", () => {
   const { game } = session();
   expect(() => {
     effect(game, { at: { x: 0, y: 0 } });
   }).toThrow();
+});
+
+const LOUD = sound({ url: "loud.mp3", volume: 0.5 });
+
+test("an effect outside an action, on the host, plays on its own client only once it comes back, at its volume, with its noise", () => {
+  const { game, play, post } = session();
+  effect(game, { at: at(post), sound: LOUD, noise: 250 }, post);
+  effect(game, { at: at(post), sound: BONK }, post);
+  expect(play).not.toHaveBeenCalled();
+  expect(game.outbox.map(({ event }) => event)).toEqual(["effects", "effects"]);
+  deliverOwn(game);
+  receive(game);
+  expect(play.mock.calls).toEqual([
+    ["loud.mp3", at(post), game.local, { volume: 0.5 }],
+    ["bonk.mp3", at(post), game.local, {}],
+  ]);
+  expect(game.noises).toEqual([{ at: at(post), radius: 250, source: post.id }]);
+});
+
+test("an effect outside an action, off the host, is dropped", () => {
+  const { game, play, post } = session();
+  game.hosting = false;
+  effect(game, { at: at(post), sound: LOUD, noise: 250 }, post);
+  expect(game.outbox).toEqual([]);
+  expect(play).not.toHaveBeenCalled();
+  expect(game.noises).toEqual([]);
 });
 
 test("an action unregistered, or registered under a name taken, is an error", () => {

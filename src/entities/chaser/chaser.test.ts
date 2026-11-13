@@ -11,9 +11,9 @@ import {
   applyEntitySnapshot,
   applyRemoteState,
   createSession,
-  cueEntities,
   entitySnapshot,
   isAreaFree,
+  receiveEvent,
   registerContent,
   spawnEntity,
   takeWorldEntries,
@@ -76,11 +76,26 @@ function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
 const stateOf = (entity: WorldEntity): ChaserState =>
   ChaserState.parse(entity.data);
 
-/** Steps `seconds`, one step a frame. */
+/**
+ * Hands each event `from` sent to `to`, as the room does, and applies them there at once:
+ * sent by the host, which `from` is.
+ */
+function deliver(from: Session, to: Session = from): void {
+  for (const { content, event, to: target, payload } of from.outbox.splice(0))
+    receiveEvent(
+      to,
+      { from: from.localId, to: target, content, event, payload },
+      from.localId,
+    );
+  for (const { event, payload, sender } of to.inbox.splice(0))
+    event.receive(to, payload, sender);
+}
+
+/** Steps `seconds`, one step a frame, each sound the host sends heard at once. */
 function run(game: Session, seconds: number): void {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, idle, DT);
-    cueEntities(game);
+    deliver(game);
   }
 }
 
@@ -88,7 +103,7 @@ function run(game: Session, seconds: number): void {
 function runUntil(game: Session, seconds: number, done: () => boolean) {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, idle, DT);
-    cueEntities(game);
+    deliver(game);
     if (done()) return true;
   }
   return false;
@@ -334,18 +349,23 @@ describe("sounds", () => {
     expect(attacks()).toBe(2);
   });
 
-  test("many steps in one frame play each sound at most once", () => {
-    const game = world(blind);
-    const zombie = chaserAt(game, 450, 300);
-    for (let step = 0; step < 30 / DT; step++) updateSession(game, idle, DT);
-    expect(stateOf(zombie).barks).toBeGreaterThan(1);
-    cueEntities(game);
-    expect(played(game)).toEqual([barkUrl]);
-    cueEntities(game);
-    expect(played(game)).toHaveLength(1);
+  test("a client following the host's snapshots alone sounds nothing", () => {
+    const host = world(blind);
+    chaserAt(host, 450, 300);
+    const follower = world(blind);
+    follower.hosting = false;
+    for (let step = 0; step < config.barkGap.max / DT; step++) {
+      updateSession(host, idle, DT);
+      deliver(host);
+      applyEntitySnapshot(follower, entitySnapshot(host));
+      updateSession(follower, idle, DT);
+    }
+    expect(played(host)).toContain(barkUrl);
+    expect(follower.outbox).toEqual([]);
+    expect(played(follower)).toEqual([]);
   });
 
-  test("a client following snapshots hears what they change, from where it stands", () => {
+  test("a client following the host hears what its chasers do, from where it stands", () => {
     const host = world();
     standAt(host, 500, 300);
     chaserAt(host, 300, 300);
@@ -353,12 +373,13 @@ describe("sounds", () => {
     follower.hosting = false;
     standAt(follower, 100, 500);
     applyEntitySnapshot(follower, entitySnapshot(host));
-    cueEntities(follower);
+    deliver(host, follower);
     expect(played(follower)).toEqual([]);
 
-    run(host, DT);
+    updateSession(host, idle, DT);
     applyEntitySnapshot(follower, entitySnapshot(host));
-    cueEntities(follower);
+    expect(played(follower)).toEqual([]);
+    deliver(host, follower);
     expect(played(follower)).toEqual([alertUrl]);
     expect(vi.mocked(follower.sfx.play).mock.calls[0]?.[2]).toBe(
       follower.local,

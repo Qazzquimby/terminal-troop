@@ -119,12 +119,7 @@ export const drop = defineAction("drop", {
     const at = { x, y };
     spawn(game, WORLD_ITEM, at, { item });
     const sound = game.itemDefinitions.get(item)?.drop;
-    if (sound === undefined) return;
-    effect(game, {
-      at,
-      sound,
-      ...(sound.noise !== undefined && { noise: sound.noise }),
-    });
+    if (sound !== undefined) effect(game, { at, sound });
   },
 });
 
