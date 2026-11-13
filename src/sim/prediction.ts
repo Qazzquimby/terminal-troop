@@ -29,25 +29,6 @@ export function nextAction(game: Session): number {
 }
 
 /**
- * Applies `effect` at once to this client's copy of each of `entities`, as the host will once it
- * handles the local player's `action`, and holds what it predicted against the host's snapshots
- * until the host confirms the action, or `net.predictionHold` passes; the entity then eases to
- * the host's position. Does nothing while hosting: the host applies the action itself.
- */
-export function predict(
-  game: Session,
-  action: number,
-  entities: readonly WorldEntity[],
-  effect: (entity: WorldEntity) => void,
-): void {
-  if (game.hosting) return;
-  for (const entity of entities) {
-    hold(game, action, entity);
-    effect(entity);
-  }
-}
-
-/**
  * Holds `entity` as this client is about to predict what the local action `action` does to it:
  * its position and health stay as predicted against the host's snapshots until the host confirms
  * the action, or `net.predictionHold` passes.
