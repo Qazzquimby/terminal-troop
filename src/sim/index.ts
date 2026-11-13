@@ -88,7 +88,13 @@ export { makeSound, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
 export { registerItem } from "./use.js";
-export { giveItem, heldItemOf, heldSlot, itemIn } from "./inventories.js";
+export {
+  giveItem,
+  heldItemOf,
+  heldSlot,
+  itemIn,
+  takeItem,
+} from "./inventories.js";
 export type { ItemUse } from "./use.js";
 
 export {
