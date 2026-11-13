@@ -3,7 +3,7 @@ import type { Inventory, ItemDefinition } from "./inventory.js";
 import { heldItem, ItemId } from "./inventory.js";
 import type { Player } from "./player.js";
 import { playerData } from "./player-data.js";
-import { confirmAction, handledActions } from "./prediction.js";
+import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
 
@@ -92,18 +92,9 @@ export function takeItem(
   return true;
 }
 
-/**
- * As the host, confirms player `by`'s item action `action` handled, accepted or not, and sends
- * the player's items again with the confirmation, so its client settles on them even if it
- * missed an earlier change.
- */
-export function settleItemAction(
-  game: Session,
-  by: string,
-  action: number,
-): void {
+/** As the host, sends player `by`'s items again, as they are, with the next world state. */
+export function resendItems(game: Session, by: string): void {
   if (!game.hosting) return;
-  confirmAction(game, by, action);
   setSlots(game, by, slotsOf(game, by));
   game.worldChanged.add(inventories);
 }

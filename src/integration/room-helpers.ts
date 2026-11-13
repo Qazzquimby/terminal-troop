@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NetEvent, unbatch } from "../net/index.js";
 import type { Transport } from "../net/index.js";
+import type { Session } from "../sim/index.js";
 
 type Handlers = Parameters<Transport["join"]>[1];
 
@@ -86,6 +87,25 @@ export function addressOf(message: unknown): string | null {
 /** What kicks travel to the host as, and what an action the host applied sends everyone. */
 export const KICK = "move/kick.kick";
 export const EFFECTS = "core/actions.effects";
+
+/**
+ * Sends the host the action at `address`, as `entry.name`, with `input`, as a tampered client
+ * could: past its own client's checks, and predicting nothing. Numbered past its latest action.
+ */
+export function forgeAction(
+  game: Session,
+  address: string,
+  input: unknown,
+): void {
+  const dot = address.lastIndexOf(".");
+  game.outbox.push({
+    content: address.slice(0, dot),
+    event: address.slice(dot + 1),
+    route: "host",
+    to: null,
+    payload: { action: ++game.lastAction, input },
+  });
+}
 
 /** The messages one broadcast carries: those of a batch, or the one sent. */
 export const messages = (

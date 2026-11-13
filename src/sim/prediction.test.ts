@@ -6,8 +6,8 @@ import type { WorldEntity } from "./entities.js";
 import {
   confirmAction,
   handledActions,
+  hold,
   nextAction,
-  predict,
 } from "./prediction.js";
 import { applyRemoteState, createSession, updateSession } from "./session.js";
 import type { Session } from "./session.js";
@@ -48,8 +48,12 @@ function guest(): { game: Session; post: WorldEntity } {
   return { game, post };
 }
 
-/** A hit that moves `entity` 50px right and takes 4 health. */
-const hit = (entity: WorldEntity): void => {
+/**
+ * A hit the local action `action` predicts on `entity`, held: moves it 50px right and takes 4
+ * health.
+ */
+const hit = (game: Session, action: number, entity: WorldEntity): void => {
+  hold(game, action, entity);
   entity.x += 50;
   entity.health -= 4;
 };
@@ -71,7 +75,7 @@ test("actions are numbered from 1", () => {
 test("a guest's prediction holds against the host until the host has handled the action", () => {
   const { game, post } = guest();
   const action = nextAction(game);
-  predict(game, action, [post], hit);
+  hit(game, action, post);
   expect(post).toMatchObject({ x: 350, health: 6 });
   hear(game, 300, 10);
   updateSession(game, idle, DT);
@@ -112,14 +116,9 @@ test("the host forgets players who have left as it confirms another's action", (
   expect(handledActions.get(host)).toEqual({ h: 1 });
 });
 
-test("the host predicts nothing, and a guest that takes over lets go, where it drew each entity and at the health last heard", () => {
+test("a guest that takes over lets go of what it predicted, where it drew each entity and at the health last heard", () => {
   const { game, post } = guest();
-  game.hosting = true;
-  predict(game, nextAction(game), [post], hit);
-  expect(post).toMatchObject({ x: 300, health: 10 });
-
-  game.hosting = false;
-  predict(game, nextAction(game), [post], hit);
+  hit(game, nextAction(game), post);
   hear(game, 300, 10);
   game.hosting = true;
   updateSession(game, idle, DT);

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   createHub,
   createManualClock,
+  forgeAction,
   tenth,
   testRoomConfig,
 } from "../integration/room-helpers.js";
@@ -9,8 +10,10 @@ import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { createScope } from "../lib/scope/index.js";
 import { NetEvent } from "../net/index.js";
 import {
-  applyDamage,
   contentEvent,
+  effect,
+  hurt,
+  sound,
   Health,
   heldSlot,
   heldItemOf,
@@ -98,25 +101,31 @@ const biters: WorldContent = {
   populate: () => undefined,
 };
 
+const POKE = sound({ url: "poke" });
+
 /**
  * A poke, in every player's second slot from the start: 4 damage to every entity within 30px of
- * a point 20px ahead, at most once per configured cooldown.
+ * a point 20px ahead, at most once per configured cooldown, sounded and shown where its user
+ * stood.
  */
 const poke = defineItem("poke", (cooldown: number) => ({
   name: "Poke",
   emoji: "👉",
   startingSlot: 1,
-  cooldown,
-  apply(game, at, aim) {
-    const x = at.x + Math.cos(aim) * 20;
-    const y = at.y + Math.sin(aim) * 20;
-    for (const entity of game.entities.values()) {
-      if (Math.hypot(entity.x - x, entity.y - y) <= 30) applyDamage(entity, 4);
-    }
-  },
-  show(game, at) {
-    void game.sfx.play("poke", at, game.local);
-    return { center: { x: at.x, y: at.y }, hit: false };
+  use: {
+    cooldown,
+    apply(game, _user, { x, y, aim }) {
+      const ahead = { x: x + Math.cos(aim) * 20, y: y + Math.sin(aim) * 20 };
+      for (const entity of [...game.entities.values()]) {
+        if (Math.hypot(entity.x - ahead.x, entity.y - ahead.y) <= 30)
+          hurt(game, entity, 4);
+      }
+      effect(game, {
+        at: { x, y },
+        sound: POKE,
+        use: { item: "poke", hit: false },
+      });
+    },
   },
   draw: () => undefined,
 })).create({ poke: 0.5 });
@@ -561,9 +570,7 @@ describe("content's player state", () => {
         name: "Lamp",
         emoji: "🪔",
         player: fuel,
-        cooldown: 1,
-        apply: () => undefined,
-        show: (_game, at) => ({ center: at, hit: false }),
+        use: { cooldown: 1, apply: () => undefined },
         draw: () => undefined,
       })).create({ lamp: undefined }),
     ];
@@ -1422,15 +1429,12 @@ describe("host", () => {
         player.room.frame(player.clock.now());
       };
 
-      /** Hands `use` to the room as the local player's use, skipping its own cooldown. */
+      /**
+       * Hands `use` to the room as the local player's use of its poke, skipping its own cooldown,
+       * and predicting nothing.
+       */
       const sendUse = (player: Player, use: Point & { aim: number }) => {
-        sessionOf(player).outbox.push({
-          content: "core/items",
-          event: "use",
-          route: "all",
-          to: null,
-          payload: { item: "poke", slot: 1, ...use, action: 1 },
-        });
+        forgeAction(sessionOf(player), "item/poke.use", { slot: 1, ...use });
         player.room.frame(player.clock.now());
       };
 
@@ -1485,7 +1489,11 @@ describe("host", () => {
         b.room.frame(b.clock.now());
         expect(local.held).toBe(1);
         expect(local.use?.item).toBe("poke");
+        expect(healthOf(b, "2")).toBe(6);
         expect(sessionOf(a).players.get("b")?.use).toBeNull();
+        // The host applies it, then hears what it showed in what it sent everyone.
+        step(a);
+        a.room.frame(a.clock.now());
         step(a);
         const seen = sessionOf(a).players.get("b");
         expect(seen?.use).toMatchObject({ item: "poke", hit: false });
@@ -1522,6 +1530,9 @@ describe("host", () => {
         const from = swing(b);
         expect(pokes(a)).toEqual([]);
         step(a);
+        a.room.frame(a.clock.now());
+        step(a);
+        step(b);
         expect(pokes(b)).toEqual([
           { url: "poke", origin: from, listener: sessionOf(b).local },
         ]);
@@ -1530,6 +1541,8 @@ describe("host", () => {
         ]);
 
         swing(a);
+        step(a);
+        a.room.frame(a.clock.now());
         step(b);
         expect(pokes(a)).toHaveLength(2);
         expect(pokes(b)).toHaveLength(2);
@@ -1539,6 +1552,8 @@ describe("host", () => {
         const { a, b } = await hosted();
         standAt(b, { x: 400, y: 500 });
         sendUse(b, { x: 400, y: 500, aim: 0 });
+        step(a);
+        a.room.frame(a.clock.now());
         step(a);
         step(b);
         expect(sessionOf(a).players.get("b")?.use).toEqual({
@@ -1560,13 +1575,21 @@ describe("host", () => {
         expect(healthOf(b, "2")).toBe(6);
       });
 
-      test("a use far from where the host last saw its player does nothing", async () => {
+      test("a use from further than its player could have gone since the host last heard it does nothing", async () => {
         const { a, b } = await hosted();
         const blob = sessionOf(a).entities.get("2") ?? { x: NaN, y: NaN };
-        standAt(b, { x: blob.x - 200, y: blob.y });
+        // Past the settle time, still reporting where it stands, so the host holds it to its speed.
+        const { settleSeconds } = testSimConfig.net.moves;
+        for (let tick = 0; tick < settleSeconds * 10 + 2; tick++) {
+          standAt(b, { x: blob.x - 200, y: blob.y });
+          play(a, 0.1);
+        }
         sendUse(b, { x: blob.x - 20, y: blob.y, aim: 0 });
         play(a, 1 / 60);
         expect(healthOf(a, "2")).toBe(10);
+        sendUse(b, { x: blob.x - 200, y: blob.y, aim: Math.PI });
+        play(a, 1 / 60);
+        expect(sessionOf(a).readyAt.get("item/poke.use")?.has("b")).toBe(true);
       });
 
       test("a monster's strike comes off the host's record at once, and every client sees it once the record arrives", async () => {

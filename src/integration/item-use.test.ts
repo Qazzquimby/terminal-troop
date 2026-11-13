@@ -25,6 +25,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  forgeAction,
   testRoomConfig,
 } from "./room-helpers.js";
 import {
@@ -181,7 +182,7 @@ test("a remote player holds what the host's record has in the slot it reports, a
   expect(report(null)).toBeNull();
 });
 
-test("the use control swings the held shovel at the step's sim time and sends it to everyone", () => {
+test("the use control swings the held shovel at the step's sim time and sends it to the host", () => {
   const game = session();
   wait(game, 0.5);
   updateSession(game, swing, DT);
@@ -191,17 +192,18 @@ test("the use control swings the held shovel at the step's sim time and sends it
   });
   expect(game.outbox).toEqual([
     {
-      content: "core/items",
+      content: "item/shovel",
       event: "use",
-      route: "all",
+      route: "host",
       to: null,
       payload: {
-        item: "shovel",
-        slot: 0,
-        x: game.local.x,
-        y: game.local.y,
-        aim: game.local.aim,
         action: 1,
+        input: {
+          slot: 0,
+          x: game.local.x,
+          y: game.local.y,
+          aim: game.local.aim,
+        },
       },
     },
   ]);
@@ -259,7 +261,9 @@ test("a swing that hits nothing shows a miss, and makes no noise", () => {
   standAt(game, { x: 450, y: 300 });
   swingRight(game);
   expect(game.local.use?.hit).toBe(false);
-  expect(game.outbox).toEqual([]);
+  deliverOwn(game);
+  updateSession(game, idle, DT);
+  expect(game.noises).toEqual([]);
 });
 
 test("a swing that hits sends its noise to everyone, which the host then makes and hears", () => {
@@ -269,17 +273,13 @@ test("a swing that hits sends its noise to everyone, which the host then makes a
   swingRight(game);
   const center = { x: 450 + shovel.reach, y: 300 };
   expect(game.outbox).toEqual([
-    {
-      content: "core/noise",
-      event: "made",
-      route: "all",
-      to: null,
-      payload: { ...center, radius: shovel.hitNoiseRadius, source: null },
-    },
+    expect.objectContaining({ content: "core/actions", route: "all" }),
   ]);
   deliverOwn(game);
   updateSession(game, idle, DT);
-  expect(game.noises).toEqual([{ at: center, radius: shovel.hitNoiseRadius }]);
+  expect(game.noises).toEqual([
+    { at: center, radius: shovel.hitNoiseRadius, source: "me" },
+  ]);
   const ripples = createRipples(testRippleConfig, mulberry32(1));
   ripples.hear(game, game.time * 1000);
   expect(ripples.list).toEqual([
@@ -433,13 +433,7 @@ test("the host ignores a guest's use of an item its record does not have in the 
   exchange({ ...idle, select: 1 });
   const guest = sessionOf(b);
   const { x, y } = guest.local;
-  guest.outbox.push({
-    content: "core/items",
-    event: "use",
-    route: "all",
-    to: null,
-    payload: { item: "shovel", slot: 1, x, y, aim: 0, action: 1 },
-  });
+  forgeAction(guest, "item/shovel.use", { slot: 1, x, y, aim: 0 });
   exchange();
   const host = sessionOf(a);
   expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth);

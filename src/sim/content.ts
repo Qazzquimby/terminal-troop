@@ -15,8 +15,8 @@ import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
 import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
-import { registerItem } from "./use.js";
-import type { ItemBehaviour } from "./use.js";
+import { itemUse, registerItem } from "./use.js";
+import type { ItemUse, UseSpec } from "./use.js";
 import { registerWorldItems, spawnWorldItem } from "./world-items.js";
 
 /**
@@ -287,22 +287,32 @@ interface ItemBase extends Omit<ItemDefinition, "id"> {
   readonly player?: PlayerData<unknown>;
   /** The events the item sends and receives, by key. */
   readonly events?: ContentEvents;
+  /** What its players can do with it, past using it, each sent under its name. */
+  readonly actions?: readonly Action<never>[];
   /** The state the item keeps once for the world, by the key each part travels under. */
   readonly world?: WorldDataSet;
   /** Acts on the local player's controls, each step, once the player has moved. */
   act?(game: Session, controls: Controls): void;
 }
 
+/** An item a player uses while it holds it, on the use control. */
+interface Usable {
+  /** What using it does: an action, sent as `use`. */
+  readonly use: UseSpec;
+  /** Draws a use of it as of sim time `time`; does nothing once the use has finished. */
+  draw(ctx: CanvasRenderingContext2D, use: ItemUse, time: number): void;
+}
+
 /** An item that does nothing when used. */
 interface Unusable {
-  readonly cooldown?: undefined;
+  readonly use?: undefined;
 }
 
 /**
  * An item's definition, less its id, which is its content name; what using it does, if it is
  * usable; where each player starts with it, and where a new world lays it, if anywhere.
  */
-export type ItemSpec = ItemBase & (ItemBehaviour | Unusable);
+export type ItemSpec = ItemBase & (Usable | Unusable);
 
 /**
  * A content entry of one item, registered as the item id `name` and configured by the slice
@@ -324,17 +334,21 @@ export function defineItem<N extends string, C>(
         ...(spec.drop === undefined ? {} : { drop: spec.drop }),
       };
       const { scatter } = spec;
+      const behaviour =
+        spec.use === undefined
+          ? undefined
+          : { use: itemUse(name, spec.use), draw: spec.draw.bind(spec) };
       return {
         name: `item/${name}`,
         player: spec.player,
         world: spec.world,
         events: spec.events,
+        actions: [
+          ...(behaviour === undefined ? [] : [behaviour.use]),
+          ...(spec.actions ?? []),
+        ],
         register(game) {
-          registerItem(
-            game,
-            item,
-            spec.cooldown === undefined ? undefined : spec,
-          );
+          registerItem(game, item, behaviour);
           registerWorldItems(game);
           if (spec.startingSlot === undefined) return;
           placeItem(game.starting, spec.startingSlot, item);

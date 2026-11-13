@@ -68,7 +68,7 @@ const blindChasers = (count: number) => ({
  */
 const sim: SimConfig = {
   ...testSimConfig,
-  net: { ...testSimConfig.net, useSlack: { distance: 40, seconds: 0.3 } },
+  net: { ...testSimConfig.net, useSlack: { seconds: 0.3 } },
 };
 
 const HOST = { x: 450, y: 150 };
