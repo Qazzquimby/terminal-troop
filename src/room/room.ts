@@ -177,6 +177,8 @@ interface Link {
   nextTick: number;
   /** The local player's state as last sent, as JSON; null before the first. */
   lastState: string | null;
+  /** The forced-move epoch the local player's state last went out with. */
+  sentEpoch: number;
   /** The next frame sends state whether or not it ticks, or the state changed. */
   forceState: boolean;
   /** A frame ran since the last pulse. */
@@ -234,13 +236,19 @@ export function createRoom(deps: RoomDeps): Room {
     deps.onChange();
   }
 
-  /** Sends the local player's state when forced, or on a tick when it changed since last sent. */
-  function sendState(room: Link, force: boolean, ticking = false): void {
+  /**
+   * Sends the local player's state when forced or when it has taken a forced move since last sent,
+   * which every client holds its position back for, or on a tick when it changed since last sent.
+   */
+  function sendState(room: Link, forced: boolean, ticking = false): void {
+    const { epoch } = room.session.local;
+    const force = forced || epoch !== room.sentEpoch;
     if (!force && !ticking) return;
     const wire = messages[NetEvent.STATE].encode(playerState(room.session));
     const json = JSON.stringify(wire);
     if (!force && json === room.lastState) return;
     room.lastState = json;
+    room.sentEpoch = epoch;
     room.forceState = false;
     room.session.reportNow = false;
     void transport.send(NetEvent.STATE, wire);
@@ -631,6 +639,7 @@ export function createRoom(deps: RoomDeps): Room {
       peers: new Set(),
       nextTick: clock.now() + 1000 / config.sendHz,
       lastState: null,
+      sentEpoch: 0,
       forceState: false,
       framed: false,
       beatDue: false,

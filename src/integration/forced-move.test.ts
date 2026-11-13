@@ -5,6 +5,7 @@ import {
   expectedEpoch,
   hurtPlayer,
   isAreaFree,
+  push,
   startDash,
 } from "../sim/index.js";
 import type { Point } from "../sim/index.js";
@@ -156,10 +157,12 @@ test("a knockback slides the victim to the host's end point on every client alik
   const { rooms, room, step, run } = await crew("a", "b", "c");
   const start = { x: SPOTS.b.x, y: SPOTS.b.y };
   const end = { x: start.x + PUSH, y: start.y };
-  hurtPlayer(sessionOf(room("a")), playerOn(room("a"), "b"), 0, {
-    from: { x: start.x - 30, y: start.y },
-    distance: PUSH,
-  });
+  push(
+    sessionOf(room("a")),
+    playerOn(room("a"), "b"),
+    { x: start.x - 30, y: start.y },
+    PUSH,
+  );
   const steps = Math.ceil(knockbackSeconds / DT) + 4;
   const paths = new Map<string, number[]>(
     [...rooms.keys()].map((id) => [id, []]),
@@ -193,10 +196,8 @@ test("a knockback on the host's own player slides it on every client", async () 
   const game = sessionOf(room("a"));
   const start = { x: game.local.x, y: game.local.y };
   const end = { x: start.x, y: start.y + PUSH };
-  hurtPlayer(game, game.local, 10, {
-    from: { x: start.x, y: start.y - 30 },
-    distance: PUSH,
-  });
+  hurtPlayer(game, game.local, 10);
+  push(game, game.local, { x: start.x, y: start.y - 30 }, PUSH);
   expect(game.local.health).toBe(testSimConfig.player.maxHealth - 10);
   expect(game.local.dash?.to).toEqual(end);
   expect(game.local.epoch).toBe(1);
@@ -237,10 +238,13 @@ test("a victim that ignores the push stays at the forced spot on every client un
   guest.ignoresForcedMoves = true;
   const start = { x: SPOTS.b.x, y: SPOTS.b.y };
   const end = { x: start.x + PUSH, y: start.y };
-  hurtPlayer(sessionOf(room("a")), playerOn(room("a"), "b"), 5, {
-    from: { x: start.x - 30, y: start.y },
-    distance: PUSH,
-  });
+  hurtPlayer(sessionOf(room("a")), playerOn(room("a"), "b"), 5);
+  push(
+    sessionOf(room("a")),
+    playerOn(room("a"), "b"),
+    { x: start.x - 30, y: start.y },
+    PUSH,
+  );
   run(1000, { b: walkUp });
   expect(guest.local.epoch).toBe(0);
   expect(guest.local.y).toBeLessThan(start.y - 100);

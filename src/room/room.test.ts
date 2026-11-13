@@ -805,6 +805,18 @@ describe("state sends", () => {
     expect(states()).toBe(2);
   });
 
+  test("a state that has taken a forced move goes out on the next frame, inside the gap, once", async () => {
+    const { room, session, states } = await watched();
+    session.local.aim += 0.1;
+    room.frame(SEND_GAP + 1);
+    expect(states()).toBe(1);
+    session.local.epoch = 1;
+    room.frame(SEND_GAP + 2);
+    expect(states()).toBe(2);
+    room.frame(SEND_GAP + 3);
+    expect(states()).toBe(2);
+  });
+
   test("a page whose frames stopped beats at once, its state with it", async () => {
     const { room, other, states, clock } = await watched();
     room.frame(SEND_GAP + 1);

@@ -1,10 +1,6 @@
 import { z } from "zod";
-import { canStandAt } from "./arrival.js";
-import { nearestFreePoint } from "./collision.js";
-import { contentEvent } from "./content-event.js";
 import { snapPrevious } from "./interpolation.js";
 import type { Point } from "./map.js";
-import { rebaseMoves } from "./move-checks.js";
 import type { Player, PlayerState } from "./player.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
@@ -18,7 +14,7 @@ type Slide = z.infer<typeof Slide>;
  * player from 1; where it puts the player; and, for a slide rather than a jump, how long the
  * player takes to slide there.
  */
-const ForcedMove = z.object({
+export const ForcedMove = z.object({
   epoch: z.number().int().positive(),
   to: z.object({ x: z.number(), y: z.number() }),
   slide: Slide.optional(),
@@ -80,18 +76,21 @@ function moveAs(player: Player, { to, slide }: ForcedMove): void {
 }
 
 /**
- * Takes the forced move `move` on player `target`, once. The local player moves and reports at
- * once. Any other player's copy goes there too, unless it already stands where a STATE that
+ * Takes the forced move `move` on player `target`, once. The local player moves at once, and the
+ * room reports its new epoch straight away. Any other player's copy goes there too, unless it already stands where a STATE that
  * took the move put it.
  */
-function takeForcedMove(game: Session, target: string, move: ForcedMove): void {
+export function takeForcedMove(
+  game: Session,
+  target: string,
+  move: ForcedMove,
+): void {
   if (target === game.localId) {
     const { local } = game;
     if (move.epoch <= local.epoch || game.ignoresForcedMoves) return;
     local.epoch = move.epoch;
     game.epochSettled = true;
     moveAs(local, move);
-    game.reportNow = true;
     return;
   }
   if (move.epoch <= (game.forcedSeen.get(target)?.epoch ?? 0)) return;
@@ -99,19 +98,6 @@ function takeForcedMove(game: Session, target: string, move: ForcedMove): void {
   const copy = game.players.get(target);
   if (copy !== undefined && copy.epoch < move.epoch) moveAs(copy, move);
 }
-
-/** A move the host forces on one player, for every client to take. */
-const forced = contentEvent({
-  schema: ForcedMove.extend({ target: z.string() }),
-  to: "all",
-  from: "host",
-  receive(game, { target, ...move }) {
-    takeForcedMove(game, target, move);
-  },
-});
-
-/** The events forced moves travel as, by key. */
-export const forcedMoveEvents = { forced };
 
 /**
  * Takes the forced moves the world state holds that this client has not. The local player's
@@ -161,43 +147,4 @@ export function takeOverForcedMoves(game: Session): void {
     game.forcedSeen.set(id, move);
   }
   forcedMoves.set(game, moves);
-}
-
-/**
- * As the host, moves `player` to `to` under a new epoch, as a slide over `slide.seconds` or at
- * once, on every client: the local player here at once, and every other client's copy of the
- * player as the move reaches it. The player's own client reports the new epoch once it takes
- * the move, and until it does every client holds its reported position back, so its copies stay
- * where the host put it. Does nothing on a client not hosting, or for a player not in the session.
- */
-export function forcePlayer(
-  game: Session,
-  player: Player,
-  to: Point,
-  slide?: Slide,
-): void {
-  if (!game.hosting || game.players.get(player.id) !== player) return;
-  const epoch = Math.max(expectedEpoch(game, player.id), player.heardEpoch) + 1;
-  const move: ForcedMove = {
-    epoch,
-    to: { x: to.x, y: to.y },
-    ...(slide !== undefined && { slide }),
-  };
-  takeForcedMove(game, player.id, move);
-  if (player !== game.local) rebaseMoves(game, player.id, move.to);
-  forcedMoves.set(game, { ...forcedMoves.get(game), [player.id]: move });
-  forced.send(game, { target: player.id, ...move });
-}
-
-/**
- * As the host, moves `player` to `at` at once, or to the nearest point a player can stand when
- * `at` is blocked. An `at` that is not a finite point is ignored.
- */
-export function correctPlayer(game: Session, player: Player, at: Point): void {
-  if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
-  const { radius } = game.config.player;
-  const to = canStandAt(game.world, at, radius)
-    ? at
-    : nearestFreePoint(game.world.map, radius, at);
-  forcePlayer(game, player, to);
 }

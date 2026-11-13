@@ -26,6 +26,7 @@ export {
 export { contentEvent, receiveEvent } from "./content-event.js";
 export {
   changeWorld,
+  correctPlayer,
   dash,
   defineAction,
   effect,
@@ -63,11 +64,7 @@ export type {
   WorldKind,
 } from "./map.js";
 export { showFlash } from "./flashes.js";
-export {
-  correctPlayer,
-  expectedEpoch,
-  takeOverForcedMoves,
-} from "./forced-move.js";
+export { expectedEpoch, takeOverForcedMoves } from "./forced-move.js";
 export { restartMoveChecks } from "./move-checks.js";
 
 export { Health, hurtPlayer } from "./health.js";

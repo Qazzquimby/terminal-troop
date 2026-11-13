@@ -1,8 +1,8 @@
-import { actionEvents, registerActions } from "./actions.js";
+import { actionEvents, forcedMoveEvents, registerActions } from "./actions.js";
 import type { Action } from "./actions.js";
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
-import { forcedMoveEvents, forcedMoves } from "./forced-move.js";
+import { forcedMoves } from "./forced-move.js";
 import { playerHealth } from "./health.js";
 import { movement } from "./movement.js";
 import { noiseMade } from "./noise.js";
