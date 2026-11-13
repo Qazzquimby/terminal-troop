@@ -2,7 +2,8 @@ import { describe, expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { Noise } from "./noise.js";
 import type { Controls } from "./player.js";
-import { applyRemoteState, createSession, updateSession } from "./session.js";
+import { heardAt } from "../integration/heard.js";
+import { createSession, updateSession } from "./session.js";
 import type { Session } from "./session.js";
 
 const DT = 1 / 60;
@@ -84,16 +85,11 @@ describe("the local player's footsteps", () => {
 });
 
 describe("a remote player's footsteps", () => {
-  const report = (game: Session, content: Record<string, unknown>) =>
-    applyRemoteState(game, {
-      id: "them",
-      name: "THEM",
-      x: 700,
-      y: 300,
-      aim: 0,
-      epoch: 0,
-      content,
-    });
+  /** The host's word on the remote player, which a guest follows. */
+  const report = (game: Session, content: Record<string, unknown>) => {
+    game.hosting = false;
+    heardAt(game, "them", { x: 700, y: 300 }, { content });
+  };
 
   test("follow the movement it reports, from where it stands", () => {
     const game = session();

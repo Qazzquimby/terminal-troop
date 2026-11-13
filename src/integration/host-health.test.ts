@@ -85,12 +85,9 @@ test("a kick on a guest lowers its health on every client, and the guest's own w
   hub.listener("dev:FRIEND").send(NetEvent.STATE, {
     id: "b",
     name: "B",
-    x: guest.x,
-    y: guest.y,
     aim: 0,
     health: FULL,
-    epoch: guest.epoch,
-    content: {},
+    content: { "core/health": FULL },
   });
   run(500);
   expect(healthEverywhere(rooms, "b")).toEqual([

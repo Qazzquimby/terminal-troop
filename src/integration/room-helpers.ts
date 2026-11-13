@@ -8,6 +8,7 @@ type Handlers = Parameters<Transport["join"]>[1];
 /** Room tuning for tests, in real milliseconds. */
 export const testRoomConfig = {
   sendHz: 15,
+  facingMs: 200,
   fullSnapshotMs: 5000,
   heartbeatMs: 1000,
   presence: { awayAfterMs: 3500, goneSilentMs: 30_000, goneHiddenMs: 180_000 },
@@ -107,7 +108,8 @@ export function showsKick(message: unknown): boolean {
 
 /**
  * Sends the host the action at `address`, as `entry.name`, with `input`, as a tampered client
- * could: past its own client's checks, and predicting nothing. Numbered past its latest action.
+ * could: past its own client's checks, and predicting nothing. Numbered past its latest action,
+ * and made in its latest step.
  */
 export function forgeAction(
   game: Session,
@@ -120,7 +122,7 @@ export function forgeAction(
     event: address.slice(dot + 1),
     route: "host",
     to: null,
-    payload: { action: ++game.lastAction, input },
+    payload: { action: ++game.lastAction, step: game.step, input },
   });
 }
 
@@ -273,20 +275,16 @@ export function createHub() {
 
 /**
  * A transport whose sends arrive `delayMs()` after they are sent, in the order sent, and that
- * counts the corrections (forced moves that jump rather than slide), kicks and kicks shown it
- * sends. While held, what is sent waits until released, then arrives all at once.
+ * counts the kicks and kicks shown it sends. While held, what is sent waits until released, then arrives all at once.
  */
 export function delayed(port: Transport, delayMs: () => number) {
   const queue: { at: number | null; send: () => void }[] = [];
   let last = 0;
   let held = false;
-  const counts = { corrections: 0, kicks: 0, shown: 0 };
+  const counts = { kicks: 0, shown: 0 };
   const send: Transport["send"] = (event, payload) => {
     for (const message of messages(event, payload)) {
       if (message.event !== NetEvent.CONTENT) continue;
-      const json = JSON.stringify(message.payload);
-      if (json.includes('"core/position"') && !json.includes('"slide"'))
-        counts.corrections++;
       const address = addressOf(message.payload);
       if (address === KICK) counts.kicks++;
       if (showsKick(message.payload)) counts.shown++;

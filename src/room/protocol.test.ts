@@ -11,26 +11,50 @@ const messages = roomMessages(3);
 const state = {
   id: "x",
   name: "X",
-  x: 1,
-  y: 2,
   aim: 0,
-  epoch: 0,
   content: {},
 };
 
+/** A player as a host's snapshot carries it. */
+const player = {
+  id: "x",
+  name: "X",
+  step: 12,
+  x: 6383.650081222386,
+  y: 2070.0499,
+  vx: 1.5,
+  vy: -2.25,
+  stamina: { value: 33.333333333333336, exhausted: false, rested: 0.6 },
+  crouched: false,
+  dash: { vx: 100, vy: 0, seconds: 0.1, to: { x: 6400, y: 2070 } },
+  steer: { move: { x: 0.6, y: -0.8 }, sprint: true, held: 0 },
+  content: { "core/movement": { mode: "sprint", moving: true } },
+};
+
 describe("rounding", () => {
-  test("a STATE sends its position to a tenth of a pixel and its aim to a hundredth", () => {
+  test("a STATE sends its aim to a hundredth, and where it starts as it is", () => {
     const schema = messages[NetEvent.STATE];
-    const wire = schema.encode({
-      ...state,
-      x: 6383.650081222386,
-      y: 2070.0499,
-      aim: -2.827866375587991,
-    });
-    expect(wire).toMatchObject({ x: 6383.7, y: 2070, aim: -2.83 });
+    const at = { x: 6383.650081222386, y: 2070.0499 };
+    const wire = schema.encode({ ...state, aim: -2.827866375587991, at });
+    expect(wire).toMatchObject({ aim: -2.83, at });
     const heard = schema.parse(JSON.parse(JSON.stringify(wire)));
-    expect(heard.x).toBeCloseTo(6383.650081222386, 1);
     expect(heard.aim).toBeCloseTo(-2.827866375587991, 2);
+  });
+
+  test("a snapshot sends each player as the host runs it, unrounded, so its own client can tell it ran the same", () => {
+    const snapshot = {
+      host: "h",
+      origin: "o",
+      full: false,
+      time: 1,
+      entities: [],
+      changed: [],
+      removed: [],
+      players: [player],
+    };
+    const schema = messages[NetEvent.ENTITIES];
+    const wire: unknown = JSON.parse(JSON.stringify(schema.encode(snapshot)));
+    expect(schema.parse(wire)).toEqual(snapshot);
   });
 
   test("a snapshot sends each entity's position to a tenth of a pixel", () => {
@@ -42,6 +66,7 @@ describe("rounding", () => {
       entities: [{ id: "1", kind: 1, x: 10.04, y: 19.96, health: 1, data: {} }],
       changed: [{ id: "2", x: 5.06 }],
       removed: [],
+      players: [],
     });
     expect(wire.entities[0]).toMatchObject({ x: 10, y: 20 });
     expect(wire.changed[0]).toEqual({ id: "2", x: 5.1 });
@@ -86,6 +111,7 @@ describe("health", () => {
       ],
       changed: [{ id: "3", health: Infinity, patch: { a: 1 } }],
       removed: [],
+      players: [],
     };
     const schema = messages[NetEvent.ENTITIES];
     const wire: unknown = JSON.parse(JSON.stringify(schema.encode(snapshot)));
@@ -107,11 +133,9 @@ describe("the message table", () => {
     expectTypeOf<WireMessage<"state">>().toEqualTypeOf<{
       id: string;
       name: string;
-      x: number;
-      y: number;
       aim: number;
-      epoch: number;
       content: Record<string, unknown>;
+      at?: { x: number; y: number } | undefined;
     }>();
     expectTypeOf<Message<"state">["content"]>().toEqualTypeOf<
       Record<string, unknown>
@@ -143,6 +167,7 @@ describe("the message table", () => {
         patch?: Record<string, unknown> | undefined;
       }[];
       removed: string[];
+      players: Message<"entities">["players"];
     }>();
     expectTypeOf<Message<"world">>().toEqualTypeOf<{
       host: string;
@@ -206,11 +231,9 @@ describe("the message table", () => {
   test.each([
     [NetEvent.HELLO, { id: "" }],
     [NetEvent.BYE, { id: 7 }],
-    [NetEvent.STATE, { ...state, x: Number.NaN }],
+    [NetEvent.STATE, { ...state, at: { x: Number.NaN, y: 0 } }],
+    [NetEvent.STATE, { ...state, at: { x: 1 } }],
     [NetEvent.STATE, omit(state, "aim")],
-    [NetEvent.STATE, omit(state, "epoch")],
-    [NetEvent.STATE, { ...state, epoch: -1 }],
-    [NetEvent.STATE, { ...state, epoch: 1.5 }],
     [NetEvent.STATE, omit(state, "content")],
     [NetEvent.STATE, { ...state, content: null }],
     [NetEvent.STATE, { ...state, content: "shovel" }],
@@ -231,6 +254,32 @@ describe("the message table", () => {
       { id: "x", hidden: false, host: { id: "x", term: 0 } },
     ],
     [NetEvent.ENTITIES, { host: "x" }],
+    [
+      NetEvent.ENTITIES,
+      {
+        host: "x",
+        origin: "x",
+        full: true,
+        time: 0,
+        entities: [],
+        changed: [],
+        removed: [],
+        players: [{ ...player, x: Number.NaN }],
+      },
+    ],
+    [
+      NetEvent.ENTITIES,
+      {
+        host: "x",
+        origin: "x",
+        full: true,
+        time: 0,
+        entities: [],
+        changed: [],
+        removed: [],
+        players: [{ ...player, steer: { ...player.steer, held: 64 } }],
+      },
+    ],
     [
       NetEvent.ENTITIES,
       {

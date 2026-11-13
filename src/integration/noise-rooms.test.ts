@@ -17,6 +17,7 @@ import {
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
+import { teleport } from "./crew.js";
 import {
   createHub,
   createManualClock,
@@ -76,6 +77,26 @@ function steps(
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, controls, DT);
     ripples?.hear(game, game.time * 1000);
+  }
+}
+
+/**
+ * Steps and frames each of `rooms` with its controls, `seconds` of steps on one clock, hearing
+ * each step into its ripples when given, as a frame does.
+ */
+function together(
+  clock: ReturnType<typeof createManualClock>,
+  rooms: readonly (readonly [Room, Controls, Ripples?])[],
+  seconds: number,
+): void {
+  for (let step = 0; step < Math.round(seconds / DT); step++) {
+    for (const [room, controls, ripples] of rooms) {
+      const game = sessionOf(room);
+      updateSession(game, controls, DT);
+      ripples?.hear(game, game.time * 1000);
+      room.frame(clock.now());
+    }
+    clock.advance(clock.now() + DT * 1000);
   }
 }
 
@@ -161,13 +182,34 @@ async function pair() {
 test("a chaser drawn by a remote player's sprinting keeps investigating when the host changes", async () => {
   const { a, b, clock } = await pair();
 
+  // The host puts b there, and b's own client takes it from the host's snapshots.
   const spot = freeSpotNear(sessionOf(b), chaserOf(a), 250);
-  Object.assign(sessionOf(b).local, { ...spot, prevX: spot.x, prevY: spot.y });
-  steps(b, { ...still, move: { x: 1, y: 0 }, sprint: true }, DT);
-  clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
-  b.frame(clock.now());
-  steps(a, still, 1);
-  a.frame(clock.now());
+  teleport([sessionOf(a), sessionOf(b)], "b", spot);
+  together(
+    clock,
+    [
+      [a, still],
+      [b, still],
+    ],
+    0.5,
+  );
+  const sprint = { ...still, move: { x: 1, y: 0 }, sprint: true };
+  together(
+    clock,
+    [
+      [a, still],
+      [b, sprint],
+    ],
+    2 * DT,
+  );
+  together(
+    clock,
+    [
+      [a, still],
+      [b, still],
+    ],
+    1,
+  );
 
   const heard = noiseTarget(a);
   if (heard === null) throw new Error("the chaser heard nothing");
@@ -187,18 +229,39 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   ).toBeLessThan(before);
 });
 
-test("each client sees the other's footsteps, worked out from its state, and the host's noise", async () => {
+test("each client sees the other's footsteps, worked out from how the host runs it, and the host's noise", async () => {
   const { a, b, clock } = await pair();
   const host = sessionOf(a);
   const guest = sessionOf(b);
   const heardByHost = createRipples(testRippleConfig, mulberry32(1));
   const heardByGuest = createRipples(testRippleConfig, mulberry32(2));
   const spot = freeSpotNear(guest, host.local, 100);
-  Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
-  steps(b, { ...still, move: { x: 1, y: 0 } }, DT, heardByGuest);
-  clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
-  b.frame(clock.now());
-  steps(a, still, 1, heardByHost);
+  teleport([host, guest], "b", spot);
+  together(
+    clock,
+    [
+      [a, still],
+      [b, still],
+    ],
+    0.5,
+  );
+  together(
+    clock,
+    [
+      [a, still, heardByHost],
+      [b, { ...still, move: { x: 1, y: 0 } }, heardByGuest],
+    ],
+    DT,
+  );
+  together(
+    clock,
+    [
+      [a, still, heardByHost],
+      [b, still, heardByGuest],
+    ],
+    0.4,
+  );
+  // The host runs the guest's first step, as it walks off, and hears its footstep with no event.
   expect(heardByHost.list).toHaveLength(1);
   expect(host.outbox).toEqual([]);
 
@@ -222,9 +285,9 @@ test("a shouting guest draws a chaser from beyond walking range, its voice rippl
   expect(distance).toBeGreaterThan(testSimConfig.footsteps.walk.radius);
   expect(distance).toBeLessThan(voiceNoise.radius.loud);
   const spot = freeSpotNear(guest, chaserOf(a), distance);
-  Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
+  teleport([host, guest], "b", spot);
   const near = freeSpotNear(host, spot, 100);
-  Object.assign(host.local, { ...near, prevX: near.x, prevY: near.y });
+  teleport([host, guest], "a", near);
   const heardByHost = createRipples(testRippleConfig, mulberry32(1));
   /** The noises the guest's voice made on the host. */
   let voices = 0;
@@ -243,8 +306,6 @@ test("a shouting guest draws a chaser from beyond walking range, its voice rippl
     }
   };
 
-  steps(b, { ...still, move: { x: 1, y: 0 } }, DT);
-  Object.assign(guest.local, { ...spot, prevX: spot.x, prevY: spot.y });
   run(1, 0);
   expect(noiseTarget(a)).toBeNull();
   const quiet = broadcastsBy("b");

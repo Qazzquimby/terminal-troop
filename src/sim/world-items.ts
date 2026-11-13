@@ -71,27 +71,25 @@ function lyingItem(game: Session, entity: WorldEntity): string | null {
   return parsed.success ? parsed.data.item : null;
 }
 
-const Spot = { x: z.number(), y: z.number() };
+/** Whether `player`'s body touches `entity`. */
+const touches = (player: Point & { radius: number }, entity: WorldEntity) =>
+  Math.hypot(entity.x - player.x, entity.y - player.y) <=
+  player.radius + entity.radius;
 
 /**
- * A player's pickup of a lying item, from where it stood. The host takes it if the item still
- * lies in the world, the player's body touches it from there, and the host's record has room for
- * it; it takes the item out of the world, which its snapshots carry to everyone, then puts it in
- * the player's first empty slot. The player's own client shows it in its items at once, and does
- * not reach for it again while the host answers.
+ * A player's pickup of a lying item. The host takes it if the item still lies in the world, the
+ * player's body touches it, and the host's record has room for it; it takes the item out of the
+ * world, which its snapshots carry to everyone, then puts it in the player's first empty slot.
+ * The player's own client shows it in its items at once, and does not reach for it again while
+ * the host answers.
  */
 export const pickUp = defineAction("pickUp", {
-  input: z.object({ id: z.string().min(1).max(80), ...Spot }),
+  input: z.object({ id: z.string().min(1).max(80) }),
   cooldown: (game) => game.config.worldItems.cooldown,
-  stood: (_player, { x, y }) => ({ at: { x, y } }),
-  check(game, player, { id, x, y }) {
+  check(game, player, { id }) {
     const entity = game.entities.get(id);
     if (entity === undefined || lyingItem(game, entity) === null) return false;
-    const reach = game.config.player.radius + entity.radius;
-    return (
-      Math.hypot(entity.x - x, entity.y - y) <= reach &&
-      hasRoom(game, player.id)
-    );
+    return touches(player, entity) && hasRoom(game, player.id);
   },
   apply(game, player, { id }) {
     const entity = game.entities.get(id);
@@ -103,20 +101,19 @@ export const pickUp = defineAction("pickUp", {
 });
 
 /**
- * A player letting go of the item in a slot, where it stood. The host takes it if its record has
+ * A player letting go of the item in a slot, where it stands. The host takes it if its record has
  * an item in the slot: it takes the item out of the slot and lays it in the world there. The
  * player's own client shows it gone from its items at once, and every client hears it land, with
  * its item's drop sound, if it has one.
  */
 export const drop = defineAction("drop", {
-  input: z.object({ slot: z.number().int().min(0).max(63), ...Spot }),
+  input: z.object({ slot: z.number().int().min(0).max(63) }),
   cooldown: (game) => game.config.worldItems.dropCooldown,
-  stood: (_player, { x, y }) => ({ at: { x, y } }),
   check: (game, player, { slot }) => itemIn(game, player.id, slot) !== null,
-  apply(game, player, { slot, x, y }) {
+  apply(game, player, { slot }) {
     const item = take(game, player, slot);
     if (item === null) return;
-    const at = { x, y };
+    const at = { x: player.x, y: player.y };
     spawn(game, WORLD_ITEM, at, { item });
     const sound = game.itemDefinitions.get(item)?.drop;
     if (sound !== undefined) effect(game, { at, sound });
@@ -131,8 +128,8 @@ function nearestTouching(game: Session): WorldEntity | null {
   for (const entity of game.entities.values()) {
     if (lyingItem(game, entity) === null || isReaching(game, entity.id))
       continue;
+    if (!touches(local, entity)) continue;
     const distance = Math.hypot(entity.x - local.x, entity.y - local.y);
-    if (distance > local.radius + entity.radius) continue;
     if (distance >= nearestDistance) continue;
     nearest = entity;
     nearestDistance = distance;
@@ -146,13 +143,12 @@ function nearestTouching(game: Session): WorldEntity | null {
  */
 export function interact(game: Session): void {
   const { local } = game;
-  const at = { x: local.x, y: local.y };
   const nearest = isFull(local.inventory) ? null : nearestTouching(game);
   if (nearest !== null) {
-    pickUp.perform(game, { id: nearest.id, ...at });
+    pickUp.perform(game, { id: nearest.id });
     return;
   }
   const slot = local.held;
   if (slot === null || (local.inventory[slot] ?? null) === null) return;
-  drop.perform(game, { slot, ...at });
+  drop.perform(game, { slot });
 }

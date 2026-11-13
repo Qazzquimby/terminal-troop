@@ -105,39 +105,6 @@ test("a joining client learns about existing players through HELLO", async () =>
   expect(sessionOf(a).players.get("b")?.name).toBe("B");
 });
 
-test("remote players are smoothed toward their latest reported position", async () => {
-  const { a, b } = await pair();
-  const local = sessionOf(a).local;
-  // Reports inside a wall are rejected, so move to another known-free spot.
-  const target = randomFreePosition(sessionOf(a).world, local.radius);
-  local.x = target.x;
-  local.y = target.y;
-  a.frame(SEND_GAP + 1);
-  await flush();
-
-  const remote = sessionOf(b).players.get("a");
-  if (remote === undefined) throw new Error("b never saw a");
-  expect(remote.tx).toBeCloseTo(target.x, 1);
-  expect(remote.ty).toBeCloseTo(target.y, 1);
-  const gapBefore = Math.hypot(target.x - remote.x, target.y - remote.y);
-
-  updateSession(sessionOf(b), idle, 1 / 60);
-  const gapAfter = Math.hypot(target.x - remote.x, target.y - remote.y);
-  expect(gapAfter).toBeLessThan(gapBefore);
-  expect(gapAfter).toBeGreaterThan(0);
-});
-
-test("state sends are throttled to the send rate", async () => {
-  const { a, b } = await pair();
-  const local = sessionOf(a).local;
-  const sentX = local.x;
-  local.x += 5;
-  a.frame(1);
-  await flush();
-
-  expect(sessionOf(b).players.get("a")?.tx).toBeCloseTo(sentX, 1);
-});
-
 test("leaving says BYE and the other side drops the player", async () => {
   const { a, b } = await pair();
   await b.leave();
@@ -185,6 +152,41 @@ async function hosted(): Promise<{ a: Room; b: Room }> {
   await flush();
   return rooms;
 }
+
+test("remote players ease toward where the host's snapshot last put them", async () => {
+  const { a, b } = await hosted();
+  const local = sessionOf(a).local;
+  const target = randomFreePosition(sessionOf(a).world, local.radius);
+  local.x = target.x;
+  local.y = target.y;
+  a.frame(clock.now() + SEND_GAP + 1);
+  await flush();
+
+  const remote = sessionOf(b).players.get("a");
+  if (remote === undefined) throw new Error("b never saw a");
+  expect(remote.tx).toBeCloseTo(target.x, 5);
+  expect(remote.ty).toBeCloseTo(target.y, 5);
+  const gapBefore = Math.hypot(target.x - remote.x, target.y - remote.y);
+
+  updateSession(sessionOf(b), idle, 1 / 60);
+  const gapAfter = Math.hypot(target.x - remote.x, target.y - remote.y);
+  expect(gapAfter).toBeLessThan(gapBefore);
+  expect(gapAfter).toBeGreaterThan(0);
+});
+
+test("the host's players go out with its ticks, not between them", async () => {
+  const { a, b } = await hosted();
+  const local = sessionOf(a).local;
+  const sentX = local.x;
+  local.x += 5;
+  a.frame(clock.now() + 1);
+  await flush();
+  expect(sessionOf(b).players.get("a")?.tx).toBeCloseTo(sentX, 5);
+
+  a.frame(clock.now() + SEND_GAP + 1);
+  await flush();
+  expect(sessionOf(b).players.get("a")?.tx).toBeCloseTo(sentX + 5, 5);
+});
 
 test("the host's entities reach the other client, ids, kinds, spots and state alike", async () => {
   const { a, b } = await hosted();

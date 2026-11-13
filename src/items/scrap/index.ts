@@ -1,10 +1,9 @@
 import { z } from "zod";
 import {
   changeWorld,
-  defineAction,
   defineItem,
   effect,
-  heldItemOf,
+  heldSlot,
   itemIn,
   sound,
   take,
@@ -49,40 +48,19 @@ function nearCruiser(game: Session, at: Point, radius: number): boolean {
   return false;
 }
 
-/** A sale as its seller sends it: the slot its scrap is in, and where the seller stood. */
-const Sale = z.object({
-  slot: z.number().int().min(0).max(63),
-  x: z.number(),
-  y: z.number(),
-});
-
 /**
- * Scrap: lies about the world from the start, and sells one at a time while its holder stands
- * by the cruiser, at most once each sell interval.
+ * Scrap: lies about the world from the start, and sells one at a time while its holder stands by
+ * the cruiser, at most once each sell interval.
  *
- * A sale is an action. The seller's client shows the scrap gone at once. The host takes it if its
- * record has scrap in the slot the sale names, and the seller stood by a cruiser where it says,
- * as the host would take a move there: it takes the scrap out of the seller's slot and adds the
- * credit to the world. Either way the seller's items then follow the host's record, which brings
- * back scrap a refused sale showed gone, and scrap still held by the cruiser is sold again. Every
- * client plays the sale's sound.
+ * Selling is the host's rule: each step it sells for every player that holds scrap by a cruiser,
+ * as the host runs the player, and whose interval has run. It takes the scrap out of the player's
+ * items and adds the credit to the world, which reach every client with the world state, and
+ * every client plays the sale's sound.
  */
 export const scrap = defineItem("scrap", (config: ScrapConfig) => {
   const cashout = sound({ url: cashoutUrl, volume: config.volume });
-
-  const sell = defineAction("sell", {
-    input: Sale,
-    cooldown: config.sellInterval,
-    stood: (_seller, { x, y }) => ({ at: { x, y } }),
-    check: (game, seller, { slot, x, y }) =>
-      itemIn(game, seller.id, slot) === ITEM &&
-      nearCruiser(game, { x, y }, config.cashoutRadius),
-    apply(game, seller, { slot, x, y }) {
-      if (take(game, seller, slot, ITEM) === null) return;
-      changeWorld(game, credit, (value) => value + config.value);
-      effect(game, { at: { x, y }, sound: cashout });
-    },
-  });
+  /** When, on the host's clock, each player may next sell, by player id, per session. */
+  const nextSale = new WeakMap<Session, Map<string, number>>();
 
   return {
     name: "Scrap",
@@ -90,12 +68,23 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
     drop: sound({ url: dropUrl, volume: config.volume }),
     scatter: config.scatter,
     world: { credit },
-    actions: [sell],
-    act(game) {
-      const { local } = game;
-      if (local.held === null || heldItemOf(game, local)?.id !== ITEM) return;
-      if (!nearCruiser(game, local, config.cashoutRadius)) return;
-      sell.perform(game, { slot: local.held, x: local.x, y: local.y });
+    step(game) {
+      const due = nextSale.get(game) ?? new Map<string, number>();
+      nextSale.set(game, due);
+      for (const seller of game.players.values()) {
+        const slot = heldSlot.get(seller);
+        if (slot === null || itemIn(game, seller.id, slot) !== ITEM) continue;
+        if (game.time < (due.get(seller.id) ?? -Infinity)) continue;
+        if (!nearCruiser(game, seller, config.cashoutRadius)) continue;
+        if (take(game, seller, slot, ITEM) === null) continue;
+        due.set(seller.id, game.time + config.sellInterval);
+        changeWorld(game, credit, (value) => value + config.value);
+        effect(
+          game,
+          { at: { x: seller.x, y: seller.y }, sound: cashout },
+          seller,
+        );
+      }
     },
   };
 });

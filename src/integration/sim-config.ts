@@ -15,11 +15,7 @@ import type { SimConfig } from "../sim/index.js";
  * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
  * where it was made. Walking steps every 0.5s, heard 150px off; sprinting every 0.25s, 450px off;
  * crouching, at half speed, every 0.75s, 60px off. A player new to a world starts within 100px of its
- * rally point. The host holds each player to its top speed over the last 1.5s of its reports, and
- * reckons its stamina with 0.3s of sprinting over a full bar, and lets a kick borrow 0.25s of
- * regeneration it has not reckoned yet: the report that a player stopped sprinting waits up to
- * 1/15s for its tick and two steps for a frame where a kick goes at once, and either travels 60
- * to 180ms. Speech is judged by its loudest level over 0.5s: from 0.3 it carries
+ * rally point. A guest holds what it predicted of an entity for up to 0.5s. Speech is judged by its loudest level over 0.5s: from 0.3 it carries
  * 100px, up to 500px from 0.8, in steps of 50px, rippling every 0.4s.
  */
 export const testSimConfig: SimConfig = {
@@ -40,19 +36,7 @@ export const testSimConfig: SimConfig = {
   arrival: { spread: 100 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
-  net: {
-    smoothing: 12,
-    useSlack: { seconds: 0.1 },
-    predictionHold: 0.5,
-    moves: {
-      slack: 10,
-      lateSeconds: 0.2,
-      windowSeconds: 1.5,
-      settleSeconds: 1,
-      roundTripSeconds: 0.5,
-    },
-    stamina: { slack: 9, lateSeconds: 0.25 },
-  },
+  net: { smoothing: 12, predictionHold: 0.5 },
   noise: { blur: 0.2 },
   footsteps: {
     walk: { interval: 0.5, radius: 150 },
@@ -149,8 +133,7 @@ export const testItemsConfig: ItemsConfig = {
 /**
  * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
  * test chaser falls to its fourth, sending what it hits two of its own body lengths away. It costs
- * a third of the test stamina bar, at most twice a second. The host turns it down if the kicker
- * says its lunge ended more than 20px from where the host reckons it did.
+ * a third of the test stamina bar, at most twice a second.
  */
 export const testMovesConfig: MovesConfig = {
   kick: {
@@ -160,7 +143,7 @@ export const testMovesConfig: MovesConfig = {
     knockback: 2,
     cooldown: 0.5,
     stamina: 30,
-    lunge: { lengths: 1, seconds: 0.1, slack: 20 },
+    lunge: { lengths: 1, seconds: 0.1 },
     noiseRadius: 300,
   },
 };

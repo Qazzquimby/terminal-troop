@@ -151,8 +151,9 @@ test("an effect outside an action the host makes is heard once by every client; 
   ]);
   expect(played).toHaveBeenCalledOnce();
 
+  const queued = guest.outbox.length;
   effect(guest, made, { id: "z" });
-  expect(guest.outbox).toEqual([]);
+  expect(guest.outbox).toHaveLength(queued);
   for (let frame = 0; frame < 3; frame++) {
     exchange(clock, [a, b]);
     expect(noises([a, b])).toEqual([0, 0]);

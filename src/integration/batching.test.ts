@@ -87,7 +87,7 @@ test("a room handles each message of a batch, dropping one that does not parse a
   const { room, other } = await joinedWithListener();
   const session = sessionOf(room);
   const spot = randomFreePosition(session.world, session.local.radius);
-  const state = { id: "x", name: "X", ...spot, aim: 0, epoch: 0 };
+  const state = { id: "x", name: "X", aim: 0, at: spot };
   other.send(NetEvent.BATCH, {
     messages: [
       [NetEvent.STATE, { ...state, id: "y", name: 5, content: {} }],
@@ -109,9 +109,12 @@ const still = {
   },
 };
 
-/** Each player walks its own way, turning slowly. */
+/** Each player walks its own way as keys would steer it, a new one each half second. */
 const walking = (index: number, time: number): Controls => ({
-  move: { x: Math.cos(time + index), y: Math.sin(time + index) },
+  move: {
+    x: Math.round(Math.cos(Math.floor(time * 2) + index)),
+    y: Math.round(Math.sin(Math.floor(time * 2) + index)),
+  },
   aim: { x: 1, y: 0 },
   sprint: false,
   crouch: false,
@@ -184,6 +187,9 @@ test("each player sends about one broadcast a tick, however many messages it car
   expect(counted).toBeLessThanOrEqual(
     players.length ** 2 * (testRoomConfig.sendHz + 1),
   );
+  // A guest sends its steer only as it changes, and its facing at most every facingMs.
+  for (const sent of sentPerS.slice(1))
+    expect(sent).toBeLessThan(testRoomConfig.sendHz / 2);
   // Unbatched, the host's entities and state would each have been a broadcast of their own.
   const host = rooms[0]?.hostId();
   expect(host).toBe("a");

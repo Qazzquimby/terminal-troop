@@ -10,7 +10,8 @@ import {
 } from "./collision.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
 import { isAreaFree } from "./map.js";
-import { applyRemoteState, createSession, updateSession } from "./session.js";
+import { heardAt } from "../integration/heard.js";
+import { createSession, updateSession } from "./session.js";
 
 test("wall movement stops at the collision face", () => {
   const map = mapWithCenterWall();
@@ -166,17 +167,10 @@ test("noncolliding entities do not separate from players", () => {
   expect(entity).toMatchObject({ x: 400, y: 300 });
 });
 
-test("player separation does not move remote players", () => {
+test("a guest's player steps out of a remote player, which stays where the host put it", () => {
   const game = collisionSession();
-  applyRemoteState(game, {
-    id: "peer",
-    name: "PEER",
-    x: 400,
-    y: 300,
-    aim: 0,
-    epoch: 0,
-    content: {},
-  });
+  game.hosting = false;
+  heardAt(game, "peer", { x: 400, y: 300 });
 
   updateSession(game, idle, 1 / 60);
 

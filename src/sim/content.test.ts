@@ -224,7 +224,9 @@ describe("defineItem", () => {
       name: "FLASK",
       emoji: "🧪",
     });
-    const use = { slot: 0, x: 0, y: 0, aim: 0 };
+    // As a guest, which acts before the host checks its slot.
+    game.hosting = false;
+    const use = { slot: 0, aim: 0 };
     expect(game.items.get("flask")?.use.perform(game, use)).toBe(true);
     expect(game.localReadyAt.get("item/flask.use")).toBe(game.time + 2);
     expect(game.entities.size).toBe(0);

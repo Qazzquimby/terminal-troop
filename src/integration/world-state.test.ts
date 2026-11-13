@@ -168,7 +168,6 @@ test("the host sends its world state in full every fullSnapshotMs", async () => 
       { a: [null, null, null, null], b: [null, null, null, null] },
     ],
     "core/health.players": [0, {}],
-    "core/position.forced": [0, {}],
     "core/predictions.handled": [0, {}],
   });
 });

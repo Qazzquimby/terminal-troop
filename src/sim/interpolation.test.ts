@@ -5,7 +5,8 @@ import { randomFreePosition } from "./map.js";
 import type { Player } from "./player.js";
 import { createPlayer } from "./player.js";
 import type { Session } from "./session.js";
-import { createSession, applyRemoteState, updateSession } from "./session.js";
+import { heardAt, reportedAt } from "../integration/heard.js";
+import { createSession, updateSession } from "./session.js";
 
 const FIXED_DT = 1 / 60;
 const PLAYER_RADIUS = testSimConfig.player.radius;
@@ -63,31 +64,15 @@ test("after a step the local player's previous position is its pre-step position
   expect({ x: game.local.prevX, y: game.local.prevY }).toEqual(start);
 });
 
-test("a remote player first seen in a state snaps there, then interpolates", () => {
+test("a remote player first seen in a host snapshot snaps there, then interpolates", () => {
   const game = session();
+  game.hosting = false;
   const first = randomFreePosition(game.world, PLAYER_RADIUS);
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    ...first,
-    aim: 0,
-    epoch: 0,
-    content: {},
-  });
-
-  const remote = game.players.get("them");
-  if (remote === undefined) throw new Error("remote player was not created");
+  const remote = heardAt(game, "them", first);
   expect(remote).toMatchObject({ ...first, prevX: first.x, prevY: first.y });
 
   const next = randomFreePosition(game.world, PLAYER_RADIUS);
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    ...next,
-    aim: 0,
-    epoch: 0,
-    content: {},
-  });
+  heardAt(game, "them", next);
   updateSession(game, walkRight, FIXED_DT);
 
   expect({ x: remote.prevX, y: remote.prevY }).toEqual(first);
@@ -115,21 +100,15 @@ test("lerpAngle takes the shortest arc across the ±π wrap", () => {
 });
 
 function remoteAt(game: Session, aim: number): Player {
-  const position = randomFreePosition(game.world, PLAYER_RADIUS);
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    ...position,
+  return reportedAt(
+    game,
+    "them",
+    randomFreePosition(game.world, PLAYER_RADIUS),
     aim,
-    epoch: 0,
-    content: {},
-  });
-  const remote = game.players.get("them");
-  if (remote === undefined) throw new Error("remote player was not created");
-  return remote;
+  );
 }
 
-test("a remote player first seen snaps its aim and previous aim to the state", () => {
+test("a remote player first heard snaps its aim and previous aim to the one it reports", () => {
   const remote = remoteAt(session(), degrees(120));
   expect(remote.aim).toBeCloseTo(degrees(120));
   expect(remote.prevAim).toBeCloseTo(degrees(120));
@@ -139,15 +118,7 @@ test("a remote player first seen snaps its aim and previous aim to the state", (
 test("remote aim eases towards the network target across the wrap, storing the previous aim each step", () => {
   const game = session();
   const remote = remoteAt(game, degrees(170));
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    x: remote.tx,
-    y: remote.ty,
-    aim: degrees(-170),
-    epoch: 0,
-    content: {},
-  });
+  reportedAt(game, "them", remote, degrees(-170));
 
   updateSession(game, walkRight, FIXED_DT);
   const afterOne = remote.aim;

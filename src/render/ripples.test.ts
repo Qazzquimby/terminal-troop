@@ -4,8 +4,8 @@ import {
   testSfx,
   testSimConfig,
 } from "../integration/sim-config.js";
+import { heardAt } from "../integration/heard.js";
 import {
-  applyRemoteState,
   createSession,
   effect,
   mulberry32,
@@ -60,21 +60,22 @@ function steps(
     step(game, ripples, controls);
 }
 
-/** A remote player at `x` along the local player's row, walking or in another gait. */
+/**
+ * A remote player at `x` along the local player's row, walking or in another gait, as a guest
+ * hears it from the host's snapshot.
+ */
 function walkerAt(
   game: Session,
   x: number,
   mode: "walk" | "sprint" = "walk",
 ): void {
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    x,
-    y: 300,
-    aim: 0,
-    epoch: 0,
-    content: { "core/movement": { mode, moving: true } },
-  });
+  game.hosting = false;
+  heardAt(
+    game,
+    "them",
+    { x, y: 300 },
+    { content: { "core/movement": { mode, moving: true } } },
+  );
 }
 
 describe("footstep ripples", () => {
@@ -106,7 +107,10 @@ describe("footstep ripples", () => {
         (ripple?.at.y ?? 0) - 300,
       ),
     ).toBeLessThanOrEqual(distance * testSimConfig.noise.blur);
-    expect(game.outbox).toEqual([]);
+    // Only the guest's own steer goes to the host: no event carries the footstep.
+    expect(
+      game.outbox.filter(({ content }) => content !== "core/steering"),
+    ).toEqual([]);
   });
 
   test("the local player sees only the footsteps whose radius reaches it", () => {

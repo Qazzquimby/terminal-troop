@@ -1,10 +1,9 @@
 import type { Sfx } from "../audio/index.js";
 import { arrivalPoint, canStandAt, rallyPoint } from "./arrival.js";
 import type { ArrivalConfig } from "./arrival.js";
-import { correctPlayer } from "./actions.js";
 import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
-import { separateBodies, solidBodiesBut } from "./collision.js";
+import { separateBodies } from "./collision.js";
 import type {
   ContentEvent,
   Delivery,
@@ -18,49 +17,44 @@ import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
 import { followHealth } from "./health.js";
-import type { ForcedMove } from "./forced-move.js";
-import { followForcedMoves, positionHeld } from "./forced-move.js";
 import type { FootstepConfig } from "./footsteps.js";
-import type { Moving } from "./interpolation.js";
-import { followInventories, reportHeld } from "./inventories.js";
+import { followInventories } from "./inventories.js";
 import type { InventoryHold } from "./inventories.js";
 import type { Inventory, ItemDefinition } from "./inventory.js";
 import { createInventory } from "./inventory.js";
-import { snapPrevious, storePrevious } from "./interpolation.js";
+import { storePrevious } from "./interpolation.js";
+import type { Moving } from "./interpolation.js";
 import type { Point, Rng, ViewConfig, World, WorldKind } from "./map.js";
-import { buildDevWorld, buildWorld, isAreaFree, mulberry32 } from "./map.js";
-import type { Controls, Player, PlayerRules, PlayerState } from "./player.js";
-import {
-  createPlayer,
-  smoothPlayer,
-  stepDash,
-  updatePlayer,
-} from "./player.js";
+import { buildDevWorld, buildWorld, mulberry32 } from "./map.js";
+import type { Controls, Player, PlayerRules } from "./player.js";
+import { createPlayer } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
-import { checkMove } from "./move-checks.js";
-import { trackStamina } from "./stamina-checks.js";
-import type { StaminaCheck, StaminaCheckConfig } from "./stamina-checks.js";
-import type { MoveCheck, MoveCheckConfig, MoveVerdict } from "./move-checks.js";
 import type { PlayerData } from "./player-data.js";
 import type { HeldWorldValue, WorldData } from "./world-data.js";
 import type { Prediction } from "./prediction.js";
 import { emitVoices } from "./voice-noise.js";
 import type { SpokenLevel, VoiceNoiseConfig } from "./voice-noise.js";
 import { settlePredictions } from "./prediction.js";
-import { applyContentState, contentState } from "./player-data.js";
-import type { ItemBehaviour, UseSlack } from "./use.js";
+import {
+  createPilot,
+  forgetPlayer,
+  moveRemotePlayers,
+  steerLocal,
+} from "./steering.js";
+import type { Corrections, Feed, Pilot, PlayerEntry } from "./steering.js";
+import type { ItemBehaviour } from "./use.js";
 import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 import { interact } from "./world-items.js";
 import type { WorldItemConfig } from "./world-items.js";
 
-/** How remote players follow the state they report. */
+/** How clients follow the host. */
 interface SyncConfig {
-  /** Rate, per second, at which remote players ease towards their reported state. */
+  /**
+   * Rate, per second, at which bodies a client does not run ease towards where the host last put
+   * them, and remote players turn towards the facing they last reported.
+   */
   readonly smoothing: number;
-  readonly useSlack: UseSlack;
-  readonly moves: MoveCheckConfig;
-  readonly stamina: StaminaCheckConfig;
   /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
   readonly predictionHold: number;
 }
@@ -100,6 +94,8 @@ export interface Session {
   hosting: boolean;
   /** Sim seconds stepped since the session began. */
   time: number;
+  /** Steps run since the session began. */
+  step: number;
   /**
    * Sim seconds on the world's clock, which entities keep their deadlines by. Every client steps
    * it, and takes the host's from each snapshot, so whoever hosts next goes on from it.
@@ -143,29 +139,22 @@ export interface Session {
   readonly readyAt: Map<string, Map<string, number>>;
   /** When, in sim seconds, the local player may next act, by what the action is timed under. */
   readonly localReadyAt: Map<string, number>;
-  /** While hosting, how each remote player has moved, by player id. */
-  readonly moveChecks: Map<string, MoveCheck>;
-  /** While hosting, what this client reckons of each remote player's stamina, by player id. */
-  readonly staminaChecks: Map<string, StaminaCheck>;
+  /** The local player's own steps, kept while another client hosts. */
+  readonly pilot: Pilot;
+  /** While hosting, how this client runs each remote player from what it sends, by player id. */
+  readonly feeds: Map<string, Feed>;
+  /** Each player as the latest host snapshot carried it, by player id. */
+  readonly heard: Map<string, PlayerEntry>;
+  /** How the host has corrected where this client put its own player. */
+  readonly corrections: Corrections;
   /** The content registered with it, in order. */
   readonly contents: WorldContent[];
   /** The flashes shown in the latest step; each step starts by clearing them. */
   readonly flashes: Flash[];
   /** What this client predicted of each entity, held until the host confirms it, by entity id. */
   readonly predictions: Map<string, Prediction>;
-  /** The latest forced move this client has heard of on each remote player, by player id. */
-  readonly forcedSeen: Map<string, ForcedMove>;
-  /** The local player's epoch has settled on the room's count: heard from the host, or hosting. */
-  epochSettled: boolean;
-  /** For trying out a client that cheats: the local player takes no forced moves. */
-  ignoresForcedMoves: boolean;
   /** The number of the local player's latest action; 0 before its first. */
   lastAction: number;
-  /**
-   * The local player's state changed in a way the others should hear at once; the room sends
-   * it in its next frame, and clears this.
-   */
-  reportNow: boolean;
 }
 
 /** Where the local player starts. */
@@ -238,6 +227,7 @@ export function createSession(
     nextEntityId: 1,
     hosting: true,
     time: 0,
+    step: 0,
     worldTime: 0,
     items: new Map(),
     itemDefinitions: new Map(),
@@ -255,16 +245,14 @@ export function createSession(
     spoken: [],
     readyAt: new Map(),
     localReadyAt: new Map(),
-    moveChecks: new Map(),
-    staminaChecks: new Map(),
+    pilot: createPilot(),
+    feeds: new Map(),
+    heard: new Map(),
+    corrections: { count: 0, total: 0, largest: 0 },
     contents: [],
     flashes: [],
     predictions: new Map(),
-    forcedSeen: new Map(),
-    epochSettled: false,
-    ignoresForcedMoves: false,
     lastAction: 0,
-    reportNow: false,
   };
   registerBuiltIns(game);
   return game;
@@ -280,24 +268,20 @@ function movingBodies(game: Session): Moving[] {
   return [...game.players.values(), ...game.entities.values()];
 }
 
-function separateSessionBodies(game: Session): void {
+/**
+ * As the host, steps each entity that collides out of every other body it overlaps. Players
+ * step out of what they overlap as they move.
+ */
+function separateEntities(game: Session): void {
   const entities = [...game.entities.values()].filter(
     (entity) => entity.collides,
   );
   const bodies = [...game.players.values(), ...entities];
-  const movable = new Set<CollisionBody>([game.local]);
-  if (game.hosting) {
-    entities.forEach((entity) => movable.add(entity));
-  }
-
-  separateBodies(bodies, game.world.map, movable);
-
-  if (game.hosting) {
-    entities.forEach((entity) => {
-      entity.tx = entity.x;
-      entity.ty = entity.y;
-    });
-  }
+  separateBodies(bodies, game.world.map, new Set<CollisionBody>(entities));
+  entities.forEach((entity) => {
+    entity.tx = entity.x;
+    entity.ty = entity.y;
+  });
 }
 
 export function updateSession(
@@ -306,101 +290,34 @@ export function updateSession(
   dt: number,
 ): void {
   game.time += dt;
+  game.step += 1;
   game.worldTime += dt;
   game.noises.length = 0;
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
-  updatePlayer(game.local, controls, dt, game.world.map, game.config);
-  stepDash(game.local, dt, game.world.map, solidBodiesBut(game, game.local));
-  reportHeld(game);
+  steerLocal(game, controls, dt);
   if (controls.use) useHeldItem(game);
   if (controls.interact) interact(game);
   for (const content of game.contents) content.act?.(game, controls);
 
-  for (const player of remotePlayers(game)) {
-    smoothPlayer(player, dt, game.config.net.smoothing);
-    stepDash(player, dt, game.world.map, solidBodiesBut(game, player));
-  }
-
   applyEvents(game);
+  moveRemotePlayers(game, dt);
   followInventories(game);
-  followForcedMoves(game);
   emitFootsteps(game, dt);
   emitVoices(game, dt);
   settlePredictions(game);
   if (game.hosting) {
-    trackStamina(game, dt);
     updateEntities(game, dt);
     for (const content of game.contents) content.step?.(game, dt);
+    separateEntities(game);
   } else followEntities(game, dt);
 
-  separateSessionBodies(game);
   followHealth(game);
-}
-
-/**
- * The local player's state, as its STATE reports it. While it slides where the host forced it,
- * it reports where the slide ends, where every client is already moving it.
- */
-export function playerState(game: Session): PlayerState {
-  const { local } = game;
-  const at = local.dash?.to ?? local;
-  return {
-    id: local.id,
-    name: local.name,
-    x: at.x,
-    y: at.y,
-    aim: local.aim,
-    epoch: local.epoch,
-    content: contentState(game),
-  };
 }
 
 /** Drops a remote player; false when there is none by that id. */
 export function removePlayer(game: Session, id: string): boolean {
   if (id === game.localId) return false;
-  game.moveChecks.delete(id);
-  game.staminaChecks.delete(id);
+  forgetPlayer(game, id);
   return game.players.delete(id);
-}
-
-/**
- * Applies a remote player's reported state: "added" when the player is new to the session,
- * "rejected" for the local player's own id or a position inside a wall. A known player's position
- * stays put while `positionHeld` holds it back; the rest applies, since forced moves only move
- * players. While hosting, a position beyond the player's reach is not taken: the player is
- * corrected back where it last stood.
- */
-export function applyRemoteState(
-  game: Session,
-  state: PlayerState,
-): "added" | "updated" | "rejected" {
-  if (state.id === game.localId) return "rejected";
-  if (!isAreaFree(game.world.map, state.x, state.y, game.config.player.radius))
-    return "rejected";
-
-  const known = game.players.get(state.id);
-  const player =
-    known ?? createPlayer(state.id, state.name, state, game.config);
-  if (known === undefined) {
-    player.aim = state.aim;
-    snapPrevious(player);
-    game.players.set(state.id, player);
-  }
-
-  player.name = state.name;
-  applyContentState(game, player, state.content);
-
-  player.taim = state.aim;
-  player.heardEpoch = Math.max(player.heardEpoch, state.epoch);
-  if (known !== undefined && positionHeld(game, state)) return "updated";
-  const verdict: MoveVerdict = game.hosting
-    ? checkMove(game, player.id, state)
-    : { kind: "take" };
-  if (verdict.kind === "take") {
-    player.tx = state.x;
-    player.ty = state.y;
-    player.epoch = state.epoch;
-  } else correctPlayer(game, player, verdict.to);
-  return known === undefined ? "added" : "updated";
 }

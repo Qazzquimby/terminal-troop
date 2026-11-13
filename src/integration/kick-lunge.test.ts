@@ -1,5 +1,4 @@
 import { expect, test, vi } from "vitest";
-import { z } from "zod";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { moveContent } from "../moves/index.js";
@@ -8,13 +7,7 @@ import type { Transport } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import { updateSession } from "../sim/index.js";
-import type {
-  Controls,
-  Point,
-  Session,
-  SimConfig,
-  WorldEntity,
-} from "../sim/index.js";
+import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
   addressOf,
@@ -25,6 +18,7 @@ import {
   showsKick,
   testRoomConfig,
 } from "./room-helpers.js";
+import { teleport } from "./crew.js";
 import {
   testEntitiesConfig,
   testMovesConfig,
@@ -33,7 +27,6 @@ import {
 } from "./sim-config.js";
 
 const DT = 1 / 60;
-const { settleSeconds } = testSimConfig.net.moves;
 const PLAYER_LENGTH = testSimConfig.player.radius * 2;
 const idle: Controls = {
   move: { x: 0, y: 0 },
@@ -46,7 +39,7 @@ const idle: Controls = {
   interact: false,
 };
 
-/** Kicks that cost next to no stamina, so only the lunge can turn one down. */
+/** Kicks that cost next to no stamina, so only their cooldown holds them back. */
 const moves = {
   kick: { ...testMovesConfig.kick, stamina: 1 },
 };
@@ -61,15 +54,6 @@ const blindChasers = (count: number) => ({
     spawn: { ...testEntitiesConfig.chaser.spawn, count, clearance: 100 },
   },
 });
-
-/**
- * The test sim, with a kick on cooldown taken as much as 0.3s early, as in play, so that kicks
- * the jitter brings closer together than their cooldown are not turned down for it.
- */
-const sim: SimConfig = {
-  ...testSimConfig,
-  net: { ...testSimConfig.net, useSlack: { seconds: 0.3 } },
-};
 
 const HOST = { x: 450, y: 150 };
 const GUEST = { x: 150, y: 300 };
@@ -116,15 +100,11 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-function standAt(game: Session, at: Point): void {
-  Object.assign(game.local, { ...at, prevX: at.x, prevY: at.y });
-}
-
 type Driver = (game: Session, time: number) => Controls;
 
 /**
  * A host and a guest joined to one room on a JSON hub with `chasers` blind chasers, each send
- * arriving 60 to 180ms later, and stepped past the settle time, on `sim`. The guest's frames,
+ * arriving 60 to 180ms later, each player at its spot. The guest's frames,
  * which send what it has to send, come every one to three steps, as a browser's do when they
  * fall behind the sim.
  */
@@ -153,7 +133,7 @@ async function room(chasers = 4) {
       scope: createScope(),
       clock,
       config: testRoomConfig,
-      sim,
+      sim: testSimConfig,
       content: [...entityContent(blindChasers(chasers)), ...moveContent(moves)],
       falloff: { full: 100, silent: 600, pan: 300 },
       onChange: () => undefined,
@@ -170,12 +150,8 @@ async function room(chasers = 4) {
     if (found === undefined) throw new Error(`no client ${id}`);
     return { ...found, game: () => sessionOf(found.room) };
   };
-  for (const [id, at] of [
-    ["a", HOST],
-    ["b", GUEST],
-  ] as const) {
+  for (const id of ["a", "b"]) {
     const game = client(id).game();
-    standAt(game, at);
     vi.spyOn(game.sfx, "play").mockResolvedValue({
       stop: () => undefined,
       setVolume: () => undefined,
@@ -186,10 +162,9 @@ async function room(chasers = 4) {
   let steps = 0;
   const unframed = new Set<string>();
   /**
-   * Steps both clients once, the guest by `driver` or standing still and `tamper`ing with what
-   * it is about to send, then a step's time.
+   * Steps both clients once, the guest by `driver` or standing still, then a step's time.
    */
-  function step(driver?: Driver, tamper?: (game: Session) => void): void {
+  function step(driver?: Driver): void {
     steps++;
     for (const [id, { room: joined, net }] of clients) {
       const game = sessionOf(joined);
@@ -198,7 +173,6 @@ async function room(chasers = 4) {
       updateSession(game, controls, DT);
       if (id === "b" && steps % 5 < 3 && steps % 7 !== 0) unframed.add(id);
       else unframed.delete(id);
-      if (id === "b") tamper?.(game);
       if (unframed.has(id)) continue;
       joined.frame(clock.now());
       net.stamp(clock.now());
@@ -209,7 +183,11 @@ async function room(chasers = 4) {
   function run(seconds: number, driver?: Driver): void {
     for (let i = 0; i < Math.round(seconds / DT); i++) step(driver);
   }
-  run(settleSeconds + 0.5);
+  run(0.5);
+  const games = [client("a").game(), client("b").game()];
+  teleport(games, "a", HOST);
+  teleport(games, "b", GUEST);
+  run(1);
   const chaser = (id: string): WorldEntity => {
     const [found] = client(id).game().entities.values();
     if (found === undefined) throw new Error("no chaser");
@@ -274,40 +252,16 @@ test("a guest sprinting along a wall, kicking along and into it as it turns, is 
 /** Where a kick that lunged `to` facing right lands its hitbox. */
 const hitboxOf = (to: Point): Point => ({ x: to.x + kick.reach, y: to.y });
 
-const Spot = z.object({ x: z.number(), y: z.number() });
-/** A lunge as a kick reports it, and the rest. */
-const Reported = z.looseObject({ from: Spot, to: Spot });
-/** A kick as it is sent: its action number and its lunge. */
-const Sent = z.looseObject({ input: Reported });
-/** A lunge as a kick reports it. */
-type Lunge = Pick<z.infer<typeof Reported>, "from" | "to">;
-
-/** Swaps the lunge of the kick `guest` is about to send, if any, for `forged`'s of it. */
-function forge(guest: Session, forged: (honest: Lunge) => Lunge): void {
-  const index = guest.outbox.findIndex((sent) => addressOf(sent) === KICK);
-  const sent = guest.outbox[index];
-  if (sent === undefined) return;
-  const payload = Sent.parse(sent.payload);
-  guest.outbox[index] = {
-    ...sent,
-    payload: {
-      ...payload,
-      input: { ...payload.input, ...forged(payload.input) },
-    },
-  };
-}
-
 /** Faces right, kicking if `kicks`. */
 const facingRight =
   (kicks: boolean): Driver =>
   (game) => ({ ...idle, secondary: kicks, aim: aiming(game, 0) });
 
 /**
- * A guest that kicks a chaser right in front of it, with its lunge `forged` before it goes:
- * whether the host took the kick, whether the
+ * A guest that kicks a chaser right in front of it: whether the host took the kick, whether the
  * guest predicted a hit, and whether it still holds one.
  */
-async function forgedKick(forged: (honest: Lunge) => Lunge) {
+async function kickAhead() {
   const { client, chaser, run, step } = await room(1);
   const guest = client("b").game();
   run(0.5, facingRight(false));
@@ -324,9 +278,7 @@ async function forgedKick(forged: (honest: Lunge) => Lunge) {
       ty: target.y,
     });
   const shown = client("a").net.counts.shown;
-  step(facingRight(true), (game) => {
-    forge(game, forged);
-  });
+  step(facingRight(true));
   const predicted = guest.predictions.size > 0;
   run(0.6, facingRight(false));
   return {
@@ -336,26 +288,12 @@ async function forgedKick(forged: (honest: Lunge) => Lunge) {
   };
 }
 
-test("a kick from where the guest stands lands", async () => {
-  const result = await forgedKick((honest) => honest);
-  expect(result.landed).toBe(true);
-});
-
-test("a kick that says it lunged further than a lunge goes is turned down and confirmed", async () => {
-  const result = await forgedKick(({ from }) => ({
-    from,
-    to: { x: from.x + PLAYER_LENGTH + kick.lunge.slack + 20, y: from.y },
-  }));
-  expect(result).toEqual({ landed: false, predicted: true, held: false });
-});
-
-test("a kick that says its lunge started far from where the guest was heard is turned down and confirmed", async () => {
-  const away = (at: Point): Point => ({ x: at.x, y: at.y + 200 });
-  const result = await forgedKick(({ from, to }) => ({
-    from: away(from),
-    to: away(to),
-  }));
-  expect(result).toEqual({ landed: false, predicted: true, held: false });
+test("a kick from where the guest stands lands, and the host's word ends its prediction", async () => {
+  expect(await kickAhead()).toEqual({
+    landed: true,
+    predicted: true,
+    held: false,
+  });
 });
 
 test("a guest's kick knocks the chaser back on the step it kicks, and the guest lunges its full length", async () => {

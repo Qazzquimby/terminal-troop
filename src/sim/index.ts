@@ -1,4 +1,4 @@
-export { isSweepFree, solidBodiesBut } from "./collision.js";
+export { isSweepFree } from "./collision.js";
 export {
   applyEntityChanges,
   applyEntitySnapshot,
@@ -25,7 +25,6 @@ export {
 export { contentEvent, receiveEvent } from "./content-event.js";
 export {
   changeWorld,
-  correctPlayer,
   dash,
   defineAction,
   effect,
@@ -64,13 +63,23 @@ export type {
   WorldKind,
 } from "./map.js";
 export { showFlash } from "./flashes.js";
-export { expectedEpoch, takeOverForcedMoves } from "./forced-move.js";
-export { restartMoveChecks } from "./move-checks.js";
+export {
+  alter,
+  applyPlayerEntries,
+  followNewHost,
+  haltSteering,
+  hearPlayer,
+  playerEntries,
+  PlayerEntry,
+  playerReport,
+  PlayerReport,
+  takeOverPlayers,
+} from "./steering.js";
 
 export { Health, hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Entity } from "./entity.js";
-export { aimAt, createPlayer, dashEnd, startDash } from "./player.js";
+export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
 export {
   applyWorldEntries,
@@ -94,9 +103,7 @@ export {
 export type { ItemUse } from "./use.js";
 
 export {
-  applyRemoteState,
   createSession,
-  playerState,
   remotePlayers,
   removePlayer,
   roomSeed,
