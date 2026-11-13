@@ -42,14 +42,22 @@ export function predict(
 ): void {
   if (game.hosting) return;
   for (const entity of entities) {
-    const health = game.predictions.get(entity.id)?.health ?? entity.health;
+    hold(game, action, entity);
     effect(entity);
-    game.predictions.set(entity.id, {
-      action,
-      until: game.time + game.config.net.predictionHold,
-      health,
-    });
   }
+}
+
+/**
+ * Holds `entity` as this client is about to predict what the local action `action` does to it:
+ * its position and health stay as predicted against the host's snapshots until the host confirms
+ * the action, or `net.predictionHold` passes.
+ */
+export function hold(game: Session, action: number, entity: WorldEntity): void {
+  game.predictions.set(entity.id, {
+    action,
+    until: game.time + game.config.net.predictionHold,
+    health: game.predictions.get(entity.id)?.health ?? entity.health,
+  });
 }
 
 /**

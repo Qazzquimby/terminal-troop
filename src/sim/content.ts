@@ -1,3 +1,5 @@
+import { registerActions } from "./actions.js";
+import type { Action } from "./actions.js";
 import { nearestFreePoint } from "./collision.js";
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
@@ -35,6 +37,8 @@ export interface WorldContent {
   readonly name: ContentName;
   /** The state it keeps on every player, if any. */
   readonly player?: PlayerData<unknown> | undefined;
+  /** What its players can do, each sent under its name. */
+  readonly actions?: readonly Action<never>[] | undefined;
   /** The state it keeps once for the world, by the key each part travels under. */
   readonly world?: WorldDataSet | undefined;
   /** The events it sends and receives, by the key each travels under. */
@@ -74,6 +78,8 @@ export function registerContent(
       registerWorldData(game, content.name, content.world);
     if (content.events !== undefined)
       registerEvents(game, content.name, content.events);
+    if (content.actions !== undefined)
+      registerActions(game, content.name, content.actions);
     content.register(game);
     game.contents.push(content);
   }
