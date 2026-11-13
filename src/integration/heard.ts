@@ -3,7 +3,7 @@ import type { Player, PlayerEntry, Point, Session } from "../sim/index.js";
 import { testSimConfig } from "./sim-config.js";
 
 /** Player `id` as a host's snapshot carries it: at rest at `at`, unless `fields` say otherwise. */
-function entryOf(
+export function entryOf(
   id: string,
   at: Point,
   fields: Partial<PlayerEntry> = {},

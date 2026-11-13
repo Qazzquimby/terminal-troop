@@ -87,6 +87,12 @@ interface CrewSetup {
   readonly delay?: () => number;
 }
 
+/** Sends arriving 60 to 180ms later, in a fixed jittered sequence. */
+export function jitter(): () => number {
+  let sends = 0;
+  return () => 60 + ((sends++ * 37) % 120);
+}
+
 /** Clients `ids` joined to one room on a JSON hub, the first hosting, each at its spot. */
 export async function crew(setup: CrewSetup, ...ids: string[]) {
   const { spots, content = [], delay } = setup;
