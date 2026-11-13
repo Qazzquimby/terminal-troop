@@ -1,7 +1,7 @@
 import type { MessageRates } from "../net/index.js";
 import type { PerfSnapshot } from "../perf-stats/index.js";
 import { remotePlayers } from "../sim/index.js";
-import type { Session } from "../sim/index.js";
+import type { Corrections, Session } from "../sim/index.js";
 
 /** UI tuning. */
 export interface UiConfig {
@@ -24,6 +24,8 @@ interface RoomView {
 
 interface RoomDebugInfo {
   readonly net: MessageRates;
+  /** How the host has corrected where this client put its own player. */
+  readonly corrections: Corrections;
   readonly playerCount: number;
   /** The host's name, "you" for the local player, its id when its name is unknown, or "none". */
   readonly host: string;
@@ -48,6 +50,7 @@ export function roomDebugInfo(
   const hostId = room.hostId();
   return {
     net: rates,
+    corrections: { ...session.corrections },
     playerCount: session.players.size,
     host:
       hostId === undefined
@@ -75,6 +78,12 @@ export interface DebugInfo {
 }
 
 const ms = (value: number): string => value.toFixed(1);
+
+/** How often the host corrected the local player, and by how far on average and at most. */
+function fixes({ count, total, largest }: Corrections): string {
+  const average = count === 0 ? 0 : total / count;
+  return `fixes   ${String(count)}  avg ${average.toFixed(1)}  max ${largest.toFixed(1)} px`;
+}
 const percent = (share: number): string => `${(share * 100).toFixed(0)}%`;
 
 function formatDebug({ perf, room, voice }: DebugInfo): string {
@@ -89,6 +98,7 @@ function formatDebug({ perf, room, voice }: DebugInfo): string {
     `steps   avg ${perf.stepsAvg.toFixed(2)}  0: ${percent(perf.zeroStepShare)}  2+: ${percent(perf.multiStepShare)}`,
     `update  avg ${ms(perf.updateMsAvg)} ms`,
     `net     sent ${String(room.net.sentPerS)}/s  recv ${String(room.net.receivedPerS)}/s`,
+    fixes(room.corrections),
     `host    ${room.host}`,
     `players ${String(room.playerCount)}`,
     ...room.remotes.map(

@@ -6,7 +6,7 @@ import { receiveEvent } from "./content-event.js";
 import type { Controls, Player } from "./player.js";
 import type { Session } from "./session.js";
 import { createSession, updateSession } from "./session.js";
-import { applyPlayerEntries } from "./steering.js";
+import { applyPlayerEntries, drawnLocal } from "./steering.js";
 
 const DT = 1 / 60;
 const START = { x: 300, y: 300 };
@@ -124,4 +124,33 @@ test("a guest that ran a step as the host did keeps going, uncorrected", () => {
   );
   expect(game.corrections.count).toBe(0);
   expect({ x: game.local.x, y: game.local.y }).toEqual(at);
+});
+
+test("a guest the host put elsewhere takes the host's word, runs its later steps again on top, and is drawn easing there", () => {
+  const game = guest(20);
+  const before = { x: game.local.x, y: game.local.y };
+  const host = guest(10);
+  applyPlayerEntries(
+    game,
+    [
+      entryOf(
+        "g",
+        { x: host.local.x, y: host.local.y + 30 },
+        {
+          step: 10,
+          vx: host.local.vx,
+          vy: host.local.vy,
+          stamina: host.local.stamina,
+        },
+      ),
+    ],
+    () => true,
+  );
+  expect(game.corrections).toMatchObject({ count: 1 });
+  expect(game.local.x).toBeCloseTo(before.x, 6);
+  expect(game.local.y).toBeCloseTo(before.y + 30, 6);
+  expect(drawnLocal(game, 1)).toEqual(before);
+  run(game, 30);
+  const drawn = drawnLocal(game, 1);
+  expect(Math.abs(drawn.y - game.local.y)).toBeLessThan(0.1);
 });

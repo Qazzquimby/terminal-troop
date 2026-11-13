@@ -5,7 +5,7 @@ import { separateBody, solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { heldSlot } from "./inventories.js";
 import { selectSlot } from "./inventory.js";
-import { lerpAngle, snapPrevious } from "./interpolation.js";
+import { lerpAngle, renderPosition, snapPrevious } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
 import type { Point } from "./map.js";
 import { applyContentState, contentState } from "./player-data.js";
@@ -42,6 +42,10 @@ const LEAD_STEPS = 6;
 const CATCH_UP_STEPS = 120;
 /** How far apart two runs of a step may end and still count as the same. */
 const SAME = 1e-3;
+/** Seconds over which the local player is drawn easing out of a correction, as a time constant. */
+const EASE_SECONDS = 0.08;
+/** Pixels past which a correction is drawn at once rather than eased: a jump, not a nudge. */
+const EASE_UP_TO = 120;
 
 /** What a player steers with, held from step to step until it changes. */
 interface Steer {
@@ -161,6 +165,11 @@ export interface Pilot {
   placed: boolean;
   /** The next step steers nothing, as the page hides. */
   halted: boolean;
+  /**
+   * How far from where it is the local player is drawn, easing to nothing: where the host's
+   * corrections moved it from, so a correction shows as a quick slide rather than a jump.
+   */
+  shown: Point;
 }
 
 /** An item a player sent the host, waiting for the host's run of the player to reach its step. */
@@ -205,6 +214,7 @@ export function createPilot(): Pilot {
     steered: false,
     placed: false,
     halted: false,
+    shown: { x: 0, y: 0 },
   };
 }
 
@@ -505,6 +515,8 @@ export function steerLocal(
       };
   pilot.halted = false;
   pilot.steer = input.steer;
+  const ease = Math.exp(-dt / EASE_SECONDS);
+  pilot.shown = { x: pilot.shown.x * ease, y: pilot.shown.y * ease };
   movePlayer(game, local, input, dt);
   heldSlot.set(local, local.held);
   if (game.hosting) return;
@@ -623,6 +635,12 @@ function reconcile(game: Session, entry: PlayerEntry): void {
   }
   const moved = Math.hypot(local.x - before.x, local.y - before.y);
   if (moved <= SAME) return;
+  const shown = {
+    x: pilot.shown.x + before.x - local.x,
+    y: pilot.shown.y + before.y - local.y,
+  };
+  pilot.shown =
+    Math.hypot(shown.x, shown.y) > EASE_UP_TO ? { x: 0, y: 0 } : shown;
   const { corrections } = game;
   corrections.count++;
   corrections.total += moved;
@@ -748,6 +766,13 @@ export function followNewHost(game: Session): void {
     player.tx = player.x;
     player.ty = player.y;
   }
+}
+
+/** Where the local player is drawn, `alpha` of the way into the next step. */
+export function drawnLocal(game: Session, alpha: number): Point {
+  const at = renderPosition(game.local, alpha);
+  const { shown } = game.pilot;
+  return { x: at.x + shown.x, y: at.y + shown.y };
 }
 
 /** Forgets what this client ran or heard of player `id`, as it leaves. */

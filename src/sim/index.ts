@@ -66,6 +66,7 @@ export { showFlash } from "./flashes.js";
 export {
   alter,
   applyPlayerEntries,
+  drawnLocal,
   followNewHost,
   haltSteering,
   hearPlayer,
@@ -75,6 +76,7 @@ export {
   PlayerReport,
   takeOverPlayers,
 } from "./steering.js";
+export type { Corrections } from "./steering.js";
 
 export { Health, hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";

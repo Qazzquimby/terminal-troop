@@ -28,6 +28,7 @@ test("room info lists remote players with their presence and the age of their la
 
   expect(roomDebugInfo(withRemote(), 1250, rates, room)).toEqual({
     net: rates,
+    corrections: { count: 0, total: 0, largest: 0 },
     playerCount: 2,
     host: "you",
     remotes: [{ name: "THEM", presence: "away", ageMs: 250 }],
