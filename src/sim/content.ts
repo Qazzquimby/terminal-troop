@@ -164,8 +164,6 @@ export interface EntitySpec<S> extends EntityDefinition<S> {
   readonly spawn?: SpawnRule<S>;
   /** The state the kind keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
-  /** The events the kind sends and receives, by key. */
-  readonly events?: ContentEvents;
   /** The state the kind keeps once for the world, by the key each part travels under. */
   readonly world?: WorldDataSet;
   /** Runs on the host, each step, once the entities have moved. */
@@ -259,7 +257,6 @@ export function defineEntity<N extends string, C, S>(
         name: `entity/${name}`,
         player: spec.player,
         world: spec.world,
-        events: spec.events,
         register(game) {
           kind.register(game);
         },
@@ -285,8 +282,6 @@ interface ItemBase extends Omit<ItemDefinition, "id"> {
   readonly scatter?: Scatter;
   /** The state the item keeps on every player, if any. */
   readonly player?: PlayerData<unknown>;
-  /** The events the item sends and receives, by key. */
-  readonly events?: ContentEvents;
   /** What its players can do with it, past using it, each sent under its name. */
   readonly actions?: readonly Action<never>[];
   /** The state the item keeps once for the world, by the key each part travels under. */
@@ -342,7 +337,6 @@ export function defineItem<N extends string, C>(
         name: `item/${name}`,
         player: spec.player,
         world: spec.world,
-        events: spec.events,
         actions: [
           ...(behaviour === undefined ? [] : [behaviour.use]),
           ...(spec.actions ?? []),
