@@ -67,9 +67,7 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
       name: "Torch",
       emoji: "🔦",
       player: lit,
-      cooldown: 1,
-      apply: () => undefined,
-      show: (_game, at) => ({ center: at, hit: false }),
+      use: { cooldown: 1, apply: () => undefined },
       draw: () => undefined,
     })).create({ torch: undefined }),
   ]);
@@ -114,9 +112,7 @@ test("an entity and an item of the same name keep their own state", () => {
       name: "Lamp",
       emoji: "🪔",
       player: fuel,
-      cooldown: 1,
-      apply: () => undefined,
-      show: (_game, at) => ({ center: at, hit: false }),
+      use: { cooldown: 1, apply: () => undefined },
       draw: () => undefined,
     })).create({ lamp: undefined }),
   ]);

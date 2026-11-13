@@ -9,6 +9,7 @@ import {
   itemIn,
   remotePlayers,
   removeEntity,
+  sound,
   spawnWorldItem,
   updateSession,
 } from "../sim/index.js";
@@ -17,6 +18,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  forgeAction,
   testRoomConfig,
 } from "./room-helpers.js";
 import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
@@ -40,7 +42,7 @@ const BOLT_DROP = "bolt-drop.mp3";
 const bolt = defineItem("bolt", () => ({
   name: "Bolt",
   emoji: "🔩",
-  drop: { url: BOLT_DROP, volume: 1 },
+  drop: sound({ url: BOLT_DROP, volume: 1 }),
 }));
 
 /** No chasers, so nothing moves; the cruiser beside the first host. */
@@ -153,6 +155,19 @@ async function crew(...ids: string[]) {
 
 const SPOT = { x: 300, y: 300 };
 
+/** What pickups and drops travel to the host as. */
+const PICK_UP = "core/world-items.pickUp";
+const DROP = "core/world-items.drop";
+
+/**
+ * Exchanges until the host's settle time after the players joined has passed, so it holds each
+ * player to where it could stand rather than taking its reports as they come.
+ */
+function settle(exchange: () => void): void {
+  const { settleSeconds } = testSimConfig.net.moves;
+  for (let step = 0; step < settleSeconds / DT + 1; step++) exchange();
+}
+
 /** Where each client starts, far from SPOT and each other, so no body pushes another off a spot. */
 const HOMES: readonly Point[] = [
   { x: 750, y: 500 },
@@ -244,11 +259,10 @@ test("a guest cannot take what is not a lying item, nor one out of its reach, no
     (entity) => entity.id !== lying.id,
   );
   if (cruiser === undefined) throw new Error("no cruiser");
+  settle(exchange);
   /** Sends the host a pickup as a tampered client could. */
   const forge = (id: string, at: Point): void => {
-    const event = guest.events.get("core/world-items")?.get("pickedUp");
-    if (event?.to !== "host") throw new Error("no event");
-    event.send(guest, { id, ...at, action: 1 });
+    forgeAction(guest, PICK_UP, { id, ...at });
     exchange();
   };
   forge(cruiser.id, { x: cruiser.x, y: cruiser.y });
@@ -285,9 +299,7 @@ test("the host refuses a pickup into an inventory its record has full, whatever 
   for (const slot of [0, 1, 2, 3]) holdBolt(host, b, slot);
   place(b, SPOT);
   exchange();
-  const event = guest.events.get("core/world-items")?.get("pickedUp");
-  if (event?.to !== "host") throw new Error("no event");
-  event.send(guest, { id: lying.id, ...SPOT, action: 1 });
+  forgeAction(guest, PICK_UP, { id: lying.id, ...SPOT });
   exchange();
   exchange();
   expect(sessionOf(host).entities.has(lying.id)).toBe(true);
@@ -385,10 +397,9 @@ test("the host lays nothing for a drop from where the player is not, and the pla
   holdBolt(host, b);
   place(b, SPOT);
   exchange();
-  const event = guest.events.get("core/world-items")?.get("dropped");
-  if (event?.to !== "host") throw new Error("no event");
+  settle(exchange);
   const far = { x: SPOT.x + 200, y: SPOT.y };
-  event.send(guest, { item: "bolt", slot: 1, ...far, action: 1 });
+  forgeAction(guest, DROP, { slot: 1, ...far });
   exchange();
   exchange();
   expect(boltsAt(host, far)).toBe(0);
@@ -402,10 +413,8 @@ test("the host lays nothing for a forged drop of an item the player does not hav
   const guest = sessionOf(b);
   place(b, SPOT);
   exchange();
-  const event = guest.events.get("core/world-items")?.get("dropped");
-  if (event?.to !== "host") throw new Error("no event");
   for (const slot of [0, 1, 2, 3]) {
-    event.send(guest, { item: "bolt", slot, ...SPOT, action: slot + 1 });
+    forgeAction(guest, DROP, { slot, ...SPOT });
     exchange();
   }
   exchange();

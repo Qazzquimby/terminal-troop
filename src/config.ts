@@ -110,7 +110,7 @@ export const config = {
   // its tick where a kick goes at once, and may take some 0.2s longer on the way.
   net: {
     smoothing: 12,
-    useSlack: { distance: 80, seconds: 0.3 },
+    useSlack: { seconds: 0.3 },
     predictionHold: 1,
     moves: {
       slack: 12,
@@ -207,7 +207,6 @@ export const config = {
       value: 1,
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
-      sellTimeout: 2,
       volume: 0.8,
       scatter: { count: 75, seed: 2, clearance: CELL * 3 },
     },

@@ -232,7 +232,7 @@ test.each([
   const moves = { kick: { ...testMovesConfig.kick, lunge } };
   const sim = {
     ...testSimConfig,
-    net: { ...testSimConfig.net, useSlack: { distance: 400, seconds: 0.1 } },
+    net: { ...testSimConfig.net, useSlack: { seconds: 0.1 } },
   };
   const { client, step, run } = await room(
     { a: HOST, b: GUEST },

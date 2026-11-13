@@ -16,6 +16,7 @@ import { createNullVoice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
+  forgeAction,
   tenth,
   testRoomConfig,
 } from "./room-helpers.js";
@@ -27,7 +28,20 @@ import {
 } from "./sim-config.js";
 
 const { scrap } = testItemsConfig;
+const { predictionHold } = testSimConfig.net;
 const DT = 1 / 60;
+
+/** What sales travel to the host as. */
+const SELL = "item/scrap.sell";
+
+/**
+ * Exchanges until the host's settle time after the players joined has passed, so it holds each
+ * player to where it could stand rather than taking its reports as they come.
+ */
+function settle(exchange: () => void): void {
+  const { settleSeconds } = testSimConfig.net.moves;
+  for (let step = 0; step < settleSeconds / DT + 1; step++) exchange();
+}
 const idle: Controls = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
@@ -232,15 +246,9 @@ test("a forged held slot sells nothing: the host checks the slot named against i
   const guest = sessionOf(b);
   place(b, byCruiser(b, 60));
   exchange();
-  const event = guest.events.get("item/scrap")?.get("sell");
-  if (event?.to !== "host") throw new Error("no event");
+  const { x, y } = guest.local;
   for (const slot of [0, 1, 2]) {
-    event.send(guest, {
-      sale: slot + 1,
-      slot,
-      ...guest.local,
-      action: slot + 1,
-    });
+    forgeAction(guest, SELL, { slot, x, y });
     exchange();
   }
   exchange();
@@ -293,13 +301,10 @@ test("the host refuses a sale from a player not holding scrap, or not by the cru
   place(b, byCruiser(b, 60));
   exchange();
   const forge = (at: Point): void => {
-    const event = guest.events.get("item/scrap")?.get("sell");
-    if (event?.to !== "host") throw new Error("no event");
-    event.send(guest, {
-      sale: 1,
+    forgeAction(guest, SELL, {
       slot: guest.local.held ?? 0,
-      ...at,
-      action: 1,
+      x: at.x,
+      y: at.y,
     });
     exchange();
     exchange();
@@ -307,13 +312,13 @@ test("the host refuses a sale from a player not holding scrap, or not by the cru
   forge(guest.local);
   place(b, byCruiser(b, scrap.cashoutRadius + 60));
   guest.local.held = 1;
-  exchange();
+  settle(exchange);
   forge(byCruiser(b, 60));
   expect(credit.get(sessionOf(get("a")))).toBe(0);
   expect(scrapCarried(b)).toBe(1);
 });
 
-test("a sale whose answer is lost is asked for again, and credited once", async () => {
+test("a sale whose answer is lost is sold again once its hold runs out, which the host refuses: credited once", async () => {
   const { get, exchange, hub, clock } = await crew("a", "b");
   const a = get("a");
   const b = get("b");
@@ -329,8 +334,10 @@ test("a sale whose answer is lost is asked for again, and credited once", async 
   hub.heal();
   expect(credit.get(sessionOf(a))).toBe(scrap.value);
   expect(scrapCarried(b)).toBe(1);
-  for (let step = 0; step < scrap.sellTimeout / DT + 1; step++)
+  for (let step = 0; step < predictionHold / DT + 1; step++)
     updateSession(sessionOf(b), idle, DT);
+  // Shown back once the hold ran out, and sold again.
+  expect(sessionOf(b).outbox.map(({ event }) => event)).toContain("sell");
   exchange();
   exchange();
   expect(credit.get(sessionOf(a))).toBe(scrap.value);
@@ -381,31 +388,6 @@ test("a new world lays its configured scrap about, the same on every client", as
   expect(lying(get("b"))).toEqual(lying(get("a")));
 });
 
-/** The latest sale each player sold, as `room`'s client holds the world. */
-function salesOn(room: Room): unknown {
-  const game = sessionOf(room);
-  return game.worldData.get("item/scrap.sales")?.get(game);
-}
-
-test("a new host knows which sales the last one sold", async () => {
-  const { get, exchange, clock } = await crew("a", "b", "c");
-  const c = get("c");
-  stock(get("a"), c, 2);
-  place(c, byCruiser(c, 60));
-  exchange();
-  exchange();
-  expect(salesOn(get("b"))).toEqual({ c: 1 });
-
-  await get("a").leave();
-  clock.advance(clock.now() + 3000);
-  expect(get("b").hostId()).toBe("b");
-  expect(salesOn(get("b"))).toEqual({ c: 1 });
-  sessionOf(c).local.held = 2;
-  for (let round = 0; round < 20; round++) exchange();
-  expect(salesOn(c)).toEqual({ c: 2 });
-  expect(credit.get(sessionOf(c))).toBe(scrap.value * 2);
-});
-
 test("a sale whose answer is lost as the host goes is credited once by the next host", async () => {
   const { get, exchange, hub, clock } = await crew("a", "b", "c");
   const a = get("a");
@@ -428,7 +410,7 @@ test("a sale whose answer is lost as the host goes is credited once by the next 
   await a.leave();
   clock.advance(clock.now() + 3000);
   expect(get("b").hostId()).toBe("b");
-  for (let step = 0; step < scrap.sellTimeout / DT + 1; step++)
+  for (let step = 0; step < predictionHold / DT + 1; step++)
     updateSession(sessionOf(c), idle, DT);
   exchange();
   exchange();

@@ -3,9 +3,19 @@ import { solidBodiesBut } from "./collision.js";
 import { contentEvent, registerEvents } from "./content-event.js";
 import type { ContentEvent } from "./content-event.js";
 import type { WorldEntity } from "./entities.js";
+import { removeEntity, spawnEntity } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
 import { hurtPlayer } from "./health.js";
+import {
+  giveItem,
+  itemIn,
+  predictInventory,
+  resendItems,
+  takeItem,
+} from "./inventories.js";
+import { addItem, ItemId, removeItem } from "./inventory.js";
+import type { Inventory } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
@@ -19,7 +29,7 @@ import { declaredSound } from "./sound.js";
 import type { Sound } from "./sound.js";
 import { spendStamina } from "./stamina.js";
 import { hostSpends } from "./stamina-checks.js";
-import { hostReady } from "./use.js";
+import type { WorldData } from "./world-data.js";
 
 /** Where an actor says it stood as it acted, and how far past the host's checks it may be. */
 interface Stood {
@@ -39,8 +49,8 @@ interface Stood {
 export interface ActionSpec<I> {
   /** What the actor's client sends: checked, encoded for the wire and decoded back. */
   readonly input: z.ZodType<I>;
-  /** Least time between two of one actor's; none when left out. */
-  readonly cooldown?: number;
+  /** Least time between two of one actor's, or what a session's config makes it; none when left out. */
+  readonly cooldown?: number | ((game: Session) => number);
   /** Stamina each costs the actor; an actor with less does not act. None when left out. */
   readonly stamina?: number;
   /** Where the actor says it stood, which the host holds to its checks on the actor's moves. */
@@ -49,7 +59,9 @@ export interface ActionSpec<I> {
   check?(game: Session, actor: Player, input: I): boolean;
   /**
    * What the action does, run on the actor's client as it acts and on the host once it accepts:
-   * reads the world, and changes it through `hurt`, `push`, `dash` and `effect`.
+   * reads the world, and changes it through `hurt`, `push`, `dash` and `effect`, the actor's items
+   * through `give` and `take`, and what only the host changes through `spawn`, `removeFromWorld`
+   * and `changeWorld`.
    */
   apply(game: Session, actor: Player, input: I): void;
 }
@@ -70,12 +82,21 @@ interface Flash {
   readonly hit: boolean;
 }
 
+/** An item use an effect shows its actor making, landing where the effect is. */
+interface Use {
+  readonly item: string;
+  /** Whether it connected with anything. */
+  readonly hit: boolean;
+}
+
 /** What an action shows and sounds, at one spot. */
 export interface Effect {
   readonly at: Point;
   /** Played there for every client's listener. */
   readonly sound?: Sound;
   readonly flash?: Flash;
+  /** Shown on the actor, as its item draws a use. */
+  readonly use?: Use;
   /** How far, in pixels, the noise it makes carries; none when left out. */
   readonly noise?: number;
 }
@@ -90,6 +111,8 @@ interface Run {
   readonly action: number;
   /** What the host is to send once it has applied the action. */
   readonly effects: Effect[];
+  /** Whether it predicted a change to the actor's items, which the host then sends again. */
+  items: boolean;
 }
 
 /** The action being applied on each session, if any. */
@@ -98,8 +121,12 @@ const runs = new WeakMap<Session, Run>();
 /** Each action's requests. */
 const requests = new WeakMap<Action<never>, ContentEvent<unknown>>();
 
-/** Plays `made`'s sound and shows its flash on this client. */
-function play(game: Session, { at, sound, flash }: Effect): void {
+/** Plays `made`'s sound and shows its flash on this client, and its use on player `by`. */
+function play(
+  game: Session,
+  by: string,
+  { at, sound, flash, use }: Effect,
+): void {
   if (sound !== undefined)
     void game.sfx.play(
       sound.url,
@@ -108,6 +135,9 @@ function play(game: Session, { at, sound, flash }: Effect): void {
       sound.volume === undefined ? {} : { volume: sound.volume },
     );
   if (flash !== undefined) showFlash(game, { at, ...flash });
+  const actor = game.players.get(by);
+  if (use !== undefined && actor !== undefined)
+    actor.use = { ...use, center: { x: at.x, y: at.y }, startedAt: game.time };
 }
 
 /** An effect as it travels: its sound by url. */
@@ -116,25 +146,28 @@ const SentEffect = z.object({
   y: z.number(),
   sound: z.string().max(512).optional(),
   flash: z.object({ radius: z.number().min(0), hit: z.boolean() }).optional(),
+  use: z.object({ item: ItemId, hit: z.boolean() }).optional(),
   noise: z.number().min(0).optional(),
 });
 type SentEffect = z.infer<typeof SentEffect>;
 
-const sent = ({ at, sound, flash, noise }: Effect): SentEffect => ({
+const sent = ({ at, sound, flash, use, noise }: Effect): SentEffect => ({
   x: at.x,
   y: at.y,
   ...(sound !== undefined && { sound: sound.url }),
   ...(flash !== undefined && { flash }),
+  ...(use !== undefined && { use }),
   ...(noise !== undefined && { noise }),
 });
 
 /** `effect` as it arrived; a sound no content declared plays nothing. */
-function arrived({ x, y, sound, flash, noise }: SentEffect): Effect {
+function arrived({ x, y, sound, flash, use, noise }: SentEffect): Effect {
   const declared = sound === undefined ? undefined : declaredSound(sound);
   return {
     at: { x, y },
     ...(declared !== undefined && { sound: declared }),
     ...(flash !== undefined && { flash }),
+    ...(use !== undefined && { use }),
     ...(noise !== undefined && { noise }),
   };
 }
@@ -152,7 +185,7 @@ const effected = contentEvent({
   from: "host",
   receive(game, { by, effects }) {
     for (const made of effects.map(arrived)) {
-      if (by !== game.localId) play(game, made);
+      if (by !== game.localId) play(game, by, made);
       if (made.noise !== undefined)
         emitNoise(game, { at: made.at, radius: made.noise, source: by });
     }
@@ -162,20 +195,42 @@ const effected = contentEvent({
 /** The events every action shares, by key. */
 export const actionEvents = { effects: effected };
 
-/** Runs `apply` as `run` on `game`, and returns the effects it left for the host to send. */
+/**
+ * Runs `apply` as `run` on `game`, and returns what it left: the effects for the host to send,
+ * and whether it predicted a change to the actor's items.
+ */
 function within(
   game: Session,
-  run: Omit<Run, "effects">,
+  run: Pick<Run, "mode" | "action">,
   apply: () => void,
-): Effect[] {
-  const effects: Effect[] = [];
-  runs.set(game, { ...run, effects });
+): Pick<Run, "effects" | "items"> {
+  const ran: Run = { ...run, effects: [], items: false };
+  runs.set(game, ran);
   try {
     apply();
   } finally {
     runs.delete(game);
   }
-  return effects;
+  return ran;
+}
+
+/**
+ * Whether the host takes an action by player `by`, timed under `key`, as off cooldown. A taken
+ * action starts `cooldown` seconds of it.
+ */
+function hostReady(
+  game: Session,
+  by: string,
+  key: string,
+  cooldown: number,
+): boolean {
+  const { seconds } = game.config.net.useSlack;
+  const timers = game.readyAt.get(key) ?? new Map<string, number>();
+  const readyAt = timers.get(by) ?? -Infinity;
+  if (game.time < readyAt - seconds) return false;
+  timers.set(by, game.time + cooldown);
+  game.readyAt.set(key, timers);
+  return true;
 }
 
 /**
@@ -191,9 +246,14 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
     return `${address.content}.${address.event}`;
   };
 
+  /** The action's cooldown in `game`, if it has one. */
+  const cooldownIn = (game: Session): number | undefined =>
+    typeof spec.cooldown === "function" ? spec.cooldown(game) : spec.cooldown;
+
   /** Whether the host takes `input` from `actor`; one it takes starts its cooldown. */
   const accepts = (game: Session, actor: Player, input: I): boolean => {
-    const { stamina, cooldown } = spec;
+    const { stamina } = spec;
+    const cooldown = cooldownIn(game);
     if (stamina !== undefined && !hostSpends(game, actor.id, stamina))
       return false;
     const stood = spec.stood?.(actor, input);
@@ -213,13 +273,18 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
     schema: z.object({
       action: z.number().int().positive(),
       input: spec.input,
+      /** Set when the actor's client predicted a change to its items. */
+      items: z.literal(true).optional(),
     }),
     to: "host",
-    receive(game, { action, input }, by) {
+    receive(game, { action, input, items }, by) {
       confirmAction(game, by, action);
+      // The actor's items go out again with the confirmation, so its client settles on them even
+      // if it missed an earlier change to them.
+      if (items === true) resendItems(game, by);
       const actor = game.players.get(by);
       if (actor === undefined || !accepts(game, actor, input)) return;
-      const effects = within(game, { mode: "host", action }, () => {
+      const { effects } = within(game, { mode: "host", action }, () => {
         spec.apply(game, actor, input);
       });
       if (effects.length > 0)
@@ -238,15 +303,24 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
         if (left === null) return false;
         local.stamina = left;
       }
-      if (spec.cooldown !== undefined)
-        game.localReadyAt.set(key, game.time + spec.cooldown);
+      const cooldown = cooldownIn(game);
+      if (cooldown !== undefined)
+        game.localReadyAt.set(key, game.time + cooldown);
       // The actor's state goes with the request, so the host checks it against a fresh report.
       game.reportNow = true;
       const number = nextAction(game);
-      within(game, { mode: "predict", action: number }, () => {
-        spec.apply(game, local, input);
+      const { items } = within(
+        game,
+        { mode: "predict", action: number },
+        () => {
+          spec.apply(game, local, input);
+        },
+      );
+      request.send(game, {
+        action: number,
+        input,
+        ...(items && { items: true as const }),
       });
-      request.send(game, { action: number, input });
       return true;
     },
   };
@@ -381,6 +455,104 @@ export function dash(game: Session, actor: Player, made: ActorDash): void {
 export function effect(game: Session, made: Effect): void {
   const run = runs.get(game);
   if (run === undefined) throw new Error("An effect outside an action");
-  if (run.mode === "predict") play(game, made);
+  if (run.mode === "predict") play(game, game.localId, made);
   else run.effects.push(made);
+}
+
+/** The run predicting the action on the actor's own client, if that is how it is being applied. */
+function predicting(game: Session): Run | null {
+  const run = runs.get(game);
+  return run?.mode === "predict" ? run : null;
+}
+
+/**
+ * Changes the local player's items as `run` predicts, held until the host has handled the action:
+ * they then take the host's record, which rolls back what the host refused. `reaching` is a lying
+ * item the action takes out of the world, which this client does not reach for again meanwhile.
+ */
+function predictItems(
+  game: Session,
+  run: Run,
+  change: (inventory: Inventory) => void,
+  reaching?: string,
+): void {
+  run.items = true;
+  predictInventory(game, run.action, change, reaching);
+}
+
+/**
+ * The item in `actor`'s `slot` as the action being applied sees it: as the actor's own client
+ * predicts its items while it acts, as the host keeps them otherwise. Null for none.
+ */
+function itemAt(game: Session, actor: Player, slot: number): string | null {
+  if (predicting(game) !== null && actor === game.local)
+    return actor.inventory[slot]?.id ?? null;
+  return itemIn(game, actor.id, slot);
+}
+
+/**
+ * Puts `item` in `actor`'s first empty slot: on the actor's own client at once, as predicted, and
+ * in the host's record once the host applies the action. Returns whether it went in.
+ */
+export function give(game: Session, actor: Player, item: string): boolean {
+  const run = predicting(game);
+  if (run === null) return giveItem(game, actor.id, item);
+  const definition = game.itemDefinitions.get(item);
+  if (definition === undefined || actor !== game.local) return false;
+  let fit = false;
+  predictItems(game, run, (inventory) => {
+    fit = addItem(inventory, definition);
+  });
+  return fit;
+}
+
+/**
+ * Takes the item out of `actor`'s `slot`, if it is `item`, or whatever it is when left out: on
+ * the actor's own client at once, as predicted, and out of the host's record once the host
+ * applies the action. Returns the item taken; null for none.
+ */
+export function take(
+  game: Session,
+  actor: Player,
+  slot: number,
+  item?: string,
+): string | null {
+  const held = itemAt(game, actor, slot);
+  if (held === null || (item !== undefined && held !== item)) return null;
+  const run = predicting(game);
+  if (run === null) return takeItem(game, actor.id, slot, held) ? held : null;
+  predictItems(game, run, (inventory) => removeItem(inventory, slot));
+  return held;
+}
+
+/**
+ * Takes `entity` out of the world, which only the host does; its snapshots carry that to every
+ * client. The actor's own client leaves it lying until then, but does not reach for it again.
+ */
+export function removeFromWorld(game: Session, entity: WorldEntity): void {
+  const run = predicting(game);
+  if (run !== null) predictItems(game, run, () => undefined, entity.id);
+  else if (scope(game) === "world") removeEntity(game, entity.id);
+}
+
+/**
+ * Spawns an entity of the kind `kind` at `at`, which only the host does; its snapshots carry it
+ * to every client.
+ */
+export function spawn(
+  game: Session,
+  kind: string,
+  at: Point,
+  data: unknown,
+): void {
+  if (scope(game) === "world") spawnEntity(game, kind, at.x, at.y, data);
+}
+
+/** Changes the world state `data` by `change`, which only the host does. */
+export function changeWorld<S>(
+  game: Session,
+  data: WorldData<S>,
+  change: (value: S) => S,
+): void {
+  if (scope(game) === "world") data.set(game, change(data.get(game)));
 }

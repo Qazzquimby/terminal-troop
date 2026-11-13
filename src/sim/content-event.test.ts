@@ -107,10 +107,8 @@ describe("content events", () => {
     const horn = defineItem("horn", () => ({
       name: "Horn",
       emoji: "📯",
-      cooldown: 1,
+      use: { cooldown: 1, apply: () => undefined },
       events: { honk },
-      apply: () => undefined,
-      show: (_game, at) => ({ center: at, hit: false }),
       draw: () => undefined,
     }));
     const game = session();
@@ -143,10 +141,9 @@ describe("content events", () => {
     expect(
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
-      ["core/items", ["use"]],
       ["core/noise", ["made"]],
       ["core/position", ["forced"]],
-      ["core/world-items", ["pickedUp", "dropped", "landed"]],
+      ["core/world-items", ["pickUp", "drop"]],
       ["core/actions", ["effects"]],
     ]);
   });

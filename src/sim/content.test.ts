@@ -1,7 +1,12 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import { defineEntity, defineItem, entityKind } from "./index.js";
+import {
+  defineEntity,
+  defineItem,
+  entityKind,
+  registerContent,
+} from "./index.js";
 import type {
   Content,
   ContentConfig,
@@ -204,9 +209,7 @@ describe("defineItem", () => {
       name: name.toUpperCase(),
       emoji: "🧪",
       ...(startingSlot === undefined ? {} : { startingSlot }),
-      cooldown,
-      apply: () => undefined,
-      show: (_game, at) => ({ center: { x: at.x, y: at.y }, hit: false }),
+      use: { cooldown, apply: () => undefined },
       draw: () => undefined,
     }));
 
@@ -214,13 +217,16 @@ describe("defineItem", () => {
     game.local.inventory.map((item) => item?.id ?? null);
 
   test("registers the item under its name, configured by the slice under that name", () => {
-    const game = populated(inert("flask").create({ flask: 2 }));
+    const game = session();
+    registerContent(game, [inert("flask").create({ flask: 2 })]);
     expect(game.itemDefinitions.get("flask")).toEqual({
       id: "flask",
       name: "FLASK",
       emoji: "🧪",
     });
-    expect(game.items.get("flask")?.cooldown).toBe(2);
+    const use = { slot: 0, x: 0, y: 0, aim: 0 };
+    expect(game.items.get("flask")?.use.perform(game, use)).toBe(true);
+    expect(game.localReadyAt.get("item/flask.use")).toBe(game.time + 2);
     expect(game.entities.size).toBe(0);
     expect(stocked(game)).toEqual([null, null, null, null]);
   });
