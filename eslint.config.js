@@ -55,6 +55,30 @@ const TS_RESTRICTED_SYNTAX = [
 
 const TEST_SOURCE = ["src/**/*.test.ts"];
 
+// Content declares what it does through the actions framework; the sim's network and host-record
+// primitives are the framework's to call.
+const CONTENT_SOURCE = [
+  "src/entities/**/*.ts",
+  "src/items/**/*.ts",
+  "src/moves/**/*.ts",
+];
+const NETWORK_PRIMITIVES = [
+  "contentEvent",
+  "receiveEvent",
+  "correctPlayer",
+  "hurtPlayer",
+  "giveItem",
+  "takeItem",
+  "spawnEntity",
+  "removeEntity",
+  "applyRemoteState",
+  "applyEntityChanges",
+  "applyEntitySnapshot",
+  "applyWorldEntries",
+  "takeWorldEntries",
+  "takeOverForcedMoves",
+];
+
 export default tseslint.config(
   { ignores: ["dist/", "node_modules/", ".claude/worktrees/"] },
   js.configs.recommended,
@@ -110,6 +134,25 @@ export default tseslint.config(
     // The input module (tests included) is the one place raw input is handled.
     files: ["src/input/**/*.ts"],
     rules: { "no-restricted-syntax": ["error", ...TS_RESTRICTED_SYNTAX] },
+  },
+  {
+    files: CONTENT_SOURCE,
+    ignores: TEST_SOURCE,
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/sim/index.js"],
+              importNames: NETWORK_PRIMITIVES,
+              message:
+                "Content acts through the actions framework (defineAction, hurt, push, effect, give, take, spawn, ...), not the sim's network or host-record primitives.",
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ["**/*.js", "**/*.mjs"],

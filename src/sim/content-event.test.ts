@@ -3,7 +3,7 @@ import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { contentEvent } from "./content-event.js";
 import type { PlayerEvent, RoomEvent } from "./content-event.js";
-import { defineEntity, defineItem, registerContent } from "./content.js";
+import { registerContent } from "./content.js";
 import type { WorldContent } from "./content.js";
 import { createSession } from "./session.js";
 import type { Session } from "./session.js";
@@ -86,62 +86,11 @@ describe("content events", () => {
     expect(game.outbox).toEqual([]);
   });
 
-  test("an item's and an entity's own events travel under their namespaced names", () => {
-    const honk = contentEvent({
-      schema: z.object({ pitch: z.number() }),
-      to: "all",
-      receive: () => undefined,
-    });
-    const hoot = contentEvent({
-      schema: z.object({ pitch: z.number() }),
-      to: "all",
-      receive: () => undefined,
-    });
-    const hornKind = defineEntity("horn", () => ({
-      radius: 10,
-      maxHealth: 10,
-      data: z.object({}),
-      events: { honk: hoot },
-      draw: () => undefined,
-    }));
-    const horn = defineItem("horn", () => ({
-      name: "Horn",
-      emoji: "📯",
-      use: { cooldown: 1, apply: () => undefined },
-      events: { honk },
-      draw: () => undefined,
-    }));
-    const game = session();
-    registerContent(game, [
-      hornKind.create({ horn: null }),
-      horn.create({ horn: null }),
-    ]);
-    hoot.send(game, { pitch: 1 });
-    honk.send(game, { pitch: 2 });
-    expect(game.outbox).toEqual([
-      {
-        content: "entity/horn",
-        event: "honk",
-        route: "all",
-        to: null,
-        payload: { pitch: 1 },
-      },
-      {
-        content: "item/horn",
-        event: "honk",
-        route: "all",
-        to: null,
-        payload: { pitch: 2 },
-      },
-    ]);
-  });
-
   test("every session has the engine's own events, under core", () => {
     const game = session();
     expect(
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
-      ["core/noise", ["made"]],
       ["core/position", ["forced"]],
       ["core/world-items", ["pickUp", "drop"]],
       ["core/actions", ["effects"]],

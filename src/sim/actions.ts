@@ -1,11 +1,18 @@
 import { z } from "zod";
-import { solidBodiesBut } from "./collision.js";
+import { canStandAt } from "./arrival.js";
+import { nearestFreePoint, solidBodiesBut } from "./collision.js";
 import { contentEvent, registerEvents } from "./content-event.js";
 import type { ContentEvent } from "./content-event.js";
 import type { WorldEntity } from "./entities.js";
 import { removeEntity, spawnEntity } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
+import {
+  expectedEpoch,
+  ForcedMove,
+  forcedMoves,
+  takeForcedMove,
+} from "./forced-move.js";
 import { hurtPlayer } from "./health.js";
 import {
   giveItem,
@@ -19,10 +26,10 @@ import type { Inventory } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
-import { allowMove, couldStand } from "./move-checks.js";
+import { allowMove, couldStand, rebaseMoves } from "./move-checks.js";
 import { emitNoise } from "./noise.js";
 import type { Player } from "./player.js";
-import { startDash } from "./player.js";
+import { dashEnd, startDash } from "./player.js";
 import { confirmAction, hold, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
 import { declaredSound } from "./sound.js";
@@ -194,6 +201,84 @@ const effected = contentEvent({
 
 /** The events every action shares, by key. */
 export const actionEvents = { effects: effected };
+
+/** A move the host forces on one player, for every client to take. */
+const forced = contentEvent({
+  schema: ForcedMove.extend({ target: z.string() }),
+  to: "all",
+  from: "host",
+  receive(game, { target, ...move }) {
+    takeForcedMove(game, target, move);
+  },
+});
+
+/** The events forced moves travel as, by key. */
+export const forcedMoveEvents = { forced };
+
+/**
+ * As the host, moves `player` to `to` under a new epoch, as a slide over `slide.seconds` or at
+ * once, on every client: the local player here at once, and every other client's copy of the
+ * player as the move reaches it. The player's own client reports the new epoch once it takes
+ * the move, and until it does every client holds its reported position back, so its copies stay
+ * where the host put it. Does nothing on a client not hosting, or for a player not in the session.
+ */
+function forcePlayer(
+  game: Session,
+  player: Player,
+  to: Point,
+  slide?: ForcedMove["slide"],
+): void {
+  if (!game.hosting || game.players.get(player.id) !== player) return;
+  const epoch = Math.max(expectedEpoch(game, player.id), player.heardEpoch) + 1;
+  const move: ForcedMove = {
+    epoch,
+    to: { x: to.x, y: to.y },
+    ...(slide !== undefined && { slide }),
+  };
+  takeForcedMove(game, player.id, move);
+  if (player !== game.local) rebaseMoves(game, player.id, move.to);
+  forcedMoves.set(game, { ...forcedMoves.get(game), [player.id]: move });
+  forced.send(game, { target: player.id, ...move });
+}
+
+/**
+ * As the host, moves `player` to `at` at once, or to the nearest point a player can stand when
+ * `at` is blocked. An `at` that is not a finite point is ignored.
+ */
+export function correctPlayer(game: Session, player: Player, at: Point): void {
+  if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
+  const { radius } = game.config.player;
+  const to = canStandAt(game.world, at, radius)
+    ? at
+    : nearestFreePoint(game.world.map, radius, at);
+  forcePlayer(game, player, to);
+}
+
+/**
+ * As the host, knocks `player` `distance` pixels straight away from `from`, as far as walls and
+ * other bodies let it go from where the host sees it, sliding there over the configured knockback
+ * time on every client. A push from where the player stands has no way to go, and is dropped.
+ */
+function knockPlayer(
+  game: Session,
+  player: Player,
+  from: Point,
+  distance: number,
+): void {
+  const dx = player.x - from.x;
+  const dy = player.y - from.y;
+  if (distance <= 0 || (dx === 0 && dy === 0)) return;
+  const to = dashEnd(
+    player,
+    Math.atan2(dy, dx),
+    distance,
+    game.world.map,
+    solidBodiesBut(game, player),
+  );
+  forcePlayer(game, player, to, {
+    seconds: game.config.player.knockbackSeconds,
+  });
+}
 
 /**
  * Runs `apply` as `run` on `game`, and returns what it left: the effects for the host to send,
@@ -414,7 +499,7 @@ export function push(
   if (found === null) return;
   if ("player" in found) {
     if (scope(game) === "world")
-      hurtPlayer(game, found.player, 0, { from, distance });
+      knockPlayer(game, found.player, from, distance);
   } else if (mayChange(game, found.entity))
     knockBack(found.entity, from, distance, game.world.map, blocked);
 }
@@ -448,14 +533,24 @@ export function dash(game: Session, actor: Player, made: ActorDash): void {
 }
 
 /**
- * Shows and sounds `made`: on the actor's client as it acts, and on every other client once the
- * host applies the action, which makes its noise, once, on every client. Only for an action
- * being applied.
+ * Shows and sounds `made`, and makes its noise, once, on every client:
+ * - in an action, the actor makes it: its own client plays it as it acts, and every other client
+ *   once the host applies the action
+ * - outside one, `by`, the player or entity whose doing it is, makes it, and only the host's
+ *   does: an entity's update, say. Every client, the host's own included, plays it once it
+ *   arrives from the host; an effect made on any other client is dropped.
  */
-export function effect(game: Session, made: Effect): void {
+export function effect(
+  game: Session,
+  made: Effect,
+  by?: { readonly id: string },
+): void {
   const run = runs.get(game);
-  if (run === undefined) throw new Error("An effect outside an action");
-  if (run.mode === "predict") play(game, game.localId, made);
+  if (run === undefined) {
+    if (by === undefined)
+      throw new Error("An effect outside an action names whose it is");
+    if (game.hosting) effected.send(game, { by: by.id, effects: [sent(made)] });
+  } else if (run.mode === "predict") play(game, game.localId, made);
   else run.effects.push(made);
 }
 

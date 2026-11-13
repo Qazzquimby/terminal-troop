@@ -7,13 +7,13 @@ import {
   canSeeFrom,
   defineEntity,
   directionalVision,
+  effect,
   isAreaFree,
-  makeSound,
   mulberry32Next,
   noisesHeardBy,
-  spawnEntity,
   rounded,
   sound,
+  spawn,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -22,9 +22,9 @@ import type {
   Rng,
   Scatter,
   Session,
-  Sound,
   Strike,
   TileMap,
+  WorldEntity,
 } from "../../sim/index.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
 import { spawning, stepSpawning } from "./spawning.js";
@@ -76,13 +76,11 @@ const Seed = z
   .min(-(2 ** 31))
   .max(2 ** 31 - 1);
 
-const Count = z.number().int().min(0);
-
 /**
  * What a chaser keeps whichever mode it is in. Snapshots carry only the fields that changed, so
  * its timers are deadlines on the world's clock, which change only when set. Each field says who
- * reads it: everyone, to draw it or play its sounds, or only the host, which sends it so that
- * whoever hosts next goes on from it.
+ * reads it: everyone, to draw it, or only the host, which sends it so that whoever hosts next goes
+ * on from it. Its sounds reach every client as effects, not through its state.
  */
 const Shared = {
   /** When it next barks. Host. */
@@ -91,10 +89,6 @@ const Shared = {
   attackAt: Time,
   /** Whether it attacks in this step. Host. */
   attacking: z.boolean(),
-  /** Counts of barks, chases started and attacks, so every client hears each one. Everyone. */
-  barks: Count,
-  alerts: Count,
-  attacks: Count,
   /** Host. */
   seed: Seed,
   /** Host. */
@@ -165,9 +159,6 @@ export function freshChaser(
     barkAt: now + result,
     attackAt: now,
     attacking: false,
-    barks: 0,
-    alerts: 0,
-    attacks: 0,
     facing: 0,
   };
 }
@@ -317,18 +308,8 @@ function stand(state: Wander, game: Session, config: ChaserConfig): Wander {
 
 /** What a chaser carries over from `state` on changing mode. */
 function kept(state: ChaserState) {
-  const { seed, barkAt, attackAt, attacking, barks, alerts, attacks, facing } =
-    state;
-  return {
-    seed,
-    barkAt,
-    attackAt,
-    attacking,
-    barks,
-    alerts,
-    attacks,
-    facing,
-  };
+  const { seed, barkAt, attackAt, attacking, facing } = state;
+  return { seed, barkAt, attackAt, attacking, facing };
 }
 
 /** Heads for `seen`, planning anew unless the chase already heads close enough to it. */
@@ -351,7 +332,6 @@ function pursue(
     mode: "chase",
     route: planRoute(map, config.radius, at, seen) ?? [],
     target: seen,
-    alerts: state.mode === "chase" ? state.alerts : state.alerts + 1,
   };
 }
 
@@ -420,7 +400,6 @@ function attack(
     ...state,
     attacking,
     attackAt: game.worldTime + config.attackCooldown,
-    attacks: state.attacks + 1,
   };
 }
 
@@ -436,8 +415,26 @@ function bark(
     ...state,
     seed,
     barkAt: game.worldTime + result,
-    barks: state.barks + 1,
   };
+}
+
+/**
+ * Sounds, as the host, on every client, what a step from `previous` to `next` did: a chase
+ * started, an attack or a bark.
+ */
+function cue(
+  entity: WorldEntity,
+  previous: ChaserState,
+  next: ChaserState,
+  game: Session,
+): void {
+  const made = [
+    previous.mode !== "chase" && next.mode === "chase" && SOUNDS.alert,
+    next.attacking && SOUNDS.attack,
+    next.barkAt !== previous.barkAt && SOUNDS.bark,
+  ];
+  for (const sound of made)
+    if (sound !== false) effect(game, { at: entity, sound }, entity);
 }
 
 function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
@@ -448,6 +445,7 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
     update(entity, state, dt, game) {
       const thought = think(state, entity, game, config);
       const next = bark(attack(thought, entity, game, config), game, config);
+      cue(entity, state, next, game);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
       const route = steer(entity, next.route, speed, dt);
@@ -467,15 +465,6 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
         )
         .map((player) => ({ target: player.id, amount: config.attackDamage }));
     },
-    cue(entity, previous, next, game) {
-      const play = (made: Sound): void => {
-        makeSound(game, made, entity, entity.id);
-      };
-      if (next.alerts > previous.alerts) play(SOUNDS.alert);
-      if (next.attacks > previous.attacks) play(SOUNDS.attack);
-      if (next.barks > previous.barks) play(SOUNDS.bark);
-    },
-
     draw(ctx, entity, state) {
       drawEmoji(ctx, entity, CHASER_GLYPH, entity.radius * 2);
       ctx.strokeStyle =
@@ -508,13 +497,7 @@ export const chaser = defineEntity(NAME, (config: ChaserConfig) => ({
   step(game: Session) {
     stepSpawning(game, NAME, config.radius, config.spawning, (at) => {
       const seed = Math.floor(Math.random() * 2 ** 32);
-      spawnEntity(
-        game,
-        NAME,
-        at.x,
-        at.y,
-        freshChaser(seed, game.worldTime, config),
-      );
+      spawn(game, NAME, at, freshChaser(seed, game.worldTime, config));
     });
   },
 }));

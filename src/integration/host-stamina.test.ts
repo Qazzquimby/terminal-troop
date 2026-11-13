@@ -354,7 +354,9 @@ test("a new host reckons every player's stamina full, then holds them to it", as
   expect(reckoned(newHost, "c").value).toBe(stamina.max + slack);
   run(EMPTYING - 0.5, { c: pacing(1) });
   expect(client("b").net.counts.corrections).toBe(0);
-  run(2, { c: pacing(1) });
+  // The reckoning runs out about 1s in, just as the pacing turns, so the first report fast enough
+  // past a walk to be corrected comes most of a second later. 3s leaves room for the delays.
+  run(3, { c: pacing(1) });
   expect(reckoned(newHost, "c").exhausted).toBe(true);
   expect(client("b").net.counts.corrections).toBeGreaterThan(0);
 });

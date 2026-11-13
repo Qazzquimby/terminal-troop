@@ -6,8 +6,8 @@ import {
 } from "../integration/sim-config.js";
 import {
   applyRemoteState,
-  broadcastNoise,
   createSession,
+  effect,
   mulberry32,
   receiveEvent,
   updateSession,
@@ -160,14 +160,14 @@ describe("noise from the host", () => {
 
   test("is sent once to everyone, and made and heard on a client that takes its sender for the host", () => {
     const { game: sender } = session();
-    broadcastNoise(sender, { at: { x: 200, y: 300 }, radius: 300 });
+    effect(sender, { at: { x: 200, y: 300 }, noise: 300 }, { id: "e1" });
     expect(sender.outbox).toEqual([
       {
-        content: "core/noise",
-        event: "made",
+        content: "core/actions",
+        event: "effects",
         route: "all",
         to: null,
-        payload: { x: 200, y: 300, radius: 300, source: null },
+        payload: { by: "e1", effects: [{ x: 200, y: 300, noise: 300 }] },
       },
     ]);
 
@@ -175,25 +175,17 @@ describe("noise from the host", () => {
     game.outbox.push(...sender.outbox);
     made(game, "host");
     step(game, ripples, idle);
-    expect(game.noises).toEqual([{ at: { x: 200, y: 300 }, radius: 300 }]);
+    expect(game.noises).toEqual([
+      { at: { x: 200, y: 300 }, radius: 300, source: "e1" },
+    ]);
     expect(ripples.list).toEqual([
       expect.objectContaining({ clarity: 1 - 100 / 300, radius: 300 }),
     ]);
   });
 
-  test("keeps its source", () => {
-    const { game } = session();
-    broadcastNoise(game, { at: { x: 200, y: 300 }, radius: 300, source: "e1" });
-    made(game, "host");
-    updateSession(game, idle, DT);
-    expect(game.noises).toEqual([
-      { at: { x: 200, y: 300 }, radius: 300, source: "e1" },
-    ]);
-  });
-
   test("is dropped when it comes from anyone else", () => {
     const { game, ripples } = session();
-    broadcastNoise(game, { at: { x: 200, y: 300 }, radius: 300 });
+    effect(game, { at: { x: 200, y: 300 }, noise: 300 }, { id: "e1" });
     made(game, "someone");
     step(game, ripples, idle);
     expect(game.noises).toEqual([]);

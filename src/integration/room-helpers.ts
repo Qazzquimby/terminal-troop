@@ -84,9 +84,26 @@ export function addressOf(message: unknown): string | null {
   return parsed.success ? `${parsed.data.content}.${parsed.data.event}` : null;
 }
 
-/** What kicks travel to the host as, and what an action the host applied sends everyone. */
+/** What kicks travel to the host as. */
 export const KICK = "move/kick.kick";
-export const EFFECTS = "core/actions.effects";
+
+/** The effects the host sends everyone, as they travel. */
+const Effects = z.looseObject({
+  content: z.literal("core/actions"),
+  event: z.literal("effects"),
+  payload: z.looseObject({
+    effects: z.array(z.looseObject({ flash: z.unknown().optional() })),
+  }),
+});
+
+/** Whether a content message shows a kick the host applied: effects with a flash, as a chaser's sounds are not. */
+export function showsKick(message: unknown): boolean {
+  const parsed = Effects.safeParse(message);
+  return (
+    parsed.success &&
+    parsed.data.payload.effects.some(({ flash }) => flash !== undefined)
+  );
+}
 
 /**
  * Sends the host the action at `address`, as `entry.name`, with `input`, as a tampered client
@@ -272,7 +289,7 @@ export function delayed(port: Transport, delayMs: () => number) {
         counts.corrections++;
       const address = addressOf(message.payload);
       if (address === KICK) counts.kicks++;
-      if (address === EFFECTS) counts.shown++;
+      if (showsKick(message.payload)) counts.shown++;
     }
     queue.push({ at: null, send: () => void port.send(event, payload) });
     return Promise.resolve();

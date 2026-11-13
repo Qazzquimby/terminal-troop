@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
@@ -45,7 +45,7 @@ function sessionOf(room: Room): Session {
 }
 
 /** What these tests read of a chaser's state as it travels. */
-const Chaser = z.object({ barkAt: z.number(), barks: z.number() });
+const Chaser = z.object({ barkAt: z.number() });
 
 /** Each chaser `room` holds, by id: where it is headed and its state as it travels. */
 function chasers(room: Room) {
@@ -63,8 +63,8 @@ function chasers(room: Room) {
   );
 }
 
-const barks = (room: Room): number[] =>
-  [...chasers(room).values()].map(({ data }) => Chaser.parse(data).barks);
+const barkAts = (room: Room): number[] =>
+  [...chasers(room).values()].map(({ data }) => Chaser.parse(data).barkAt);
 
 test("a new host runs each chaser on from the last snapshot, under the same id, its timers kept", async () => {
   const hub = createHub();
@@ -118,7 +118,7 @@ test("a new host runs each chaser on from the last snapshot, under the same id, 
   expect([...last.keys()]).toEqual(["1", "2", "3", "4"]);
   expect(chasers(b)).toEqual(last);
   expect(sessionOf(b).worldTime).toBeCloseTo(sessionOf(a).worldTime, 2);
-  const barked = barks(b);
+  const barked = barkAts(b);
 
   await a.leave();
   rooms.splice(0, 1);
@@ -128,11 +128,13 @@ test("a new host runs each chaser on from the last snapshot, under the same id, 
   for (const { data } of last.values())
     expect(Chaser.parse(data).barkAt).toBeGreaterThan(sessionOf(b).worldTime);
 
+  const heard = vi.spyOn(sessionOf(c).sfx, "play");
   play(entities.chaser.barkGap.max + 1);
   expect([...chasers(b).keys()]).toEqual([...last.keys()]);
   expect(chasers(b)).not.toEqual(last);
-  for (const [index, count] of barks(b).entries())
-    expect(count).toBeGreaterThan(barked[index] ?? Infinity);
+  for (const [index, at] of barkAts(b).entries())
+    expect(at).toBeGreaterThan(barked[index] ?? Infinity);
+  expect(heard.mock.calls.length).toBeGreaterThanOrEqual(last.size);
   clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
   b.frame(clock.now());
   expect(chasers(c)).toEqual(chasers(b));

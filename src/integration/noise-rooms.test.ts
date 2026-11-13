@@ -9,7 +9,7 @@ import type { Room } from "../room/index.js";
 import { createRipples } from "../render/index.js";
 import type { Ripples } from "../render/index.js";
 import {
-  broadcastNoise,
+  effect,
   isAreaFree,
   mulberry32,
   speak,
@@ -202,11 +202,11 @@ test("each client sees the other's footsteps, worked out from its state, and the
   expect(heardByHost.list).toHaveLength(1);
   expect(host.outbox).toEqual([]);
 
-  broadcastNoise(host, { at: host.local, radius: 300 });
+  effect(host, { at: host.local, noise: 300 }, { id: "e1" });
   a.frame(clock.now());
   steps(b, still, DT, heardByGuest);
   expect(guest.noises).toEqual([
-    { at: { x: host.local.x, y: host.local.y }, radius: 300 },
+    { at: { x: host.local.x, y: host.local.y }, radius: 300, source: "e1" },
   ]);
   expect(heardByGuest.list.at(-1)).toMatchObject({ radius: 300 });
   steps(a, still, DT);

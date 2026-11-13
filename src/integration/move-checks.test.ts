@@ -3,7 +3,7 @@ import { createScope } from "../lib/scope/index.js";
 import { moveContent } from "../moves/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { correctPlayer, hurtPlayer, updateSession } from "../sim/index.js";
+import { correctPlayer, push, updateSession } from "../sim/index.js";
 import type {
   Controls,
   Point,
@@ -260,10 +260,12 @@ test.each([
       [],
       delays(),
     );
-    hurtPlayer(client("a").game(), playerOn(client("a"), "b"), 0, {
-      from: { x: GUEST.x - 10, y: GUEST.y },
-      distance: 300,
-    });
+    push(
+      client("a").game(),
+      playerOn(client("a"), "b"),
+      { x: GUEST.x - 10, y: GUEST.y },
+      300,
+    );
     run(1);
     expect(client("a").net.counts.corrections).toBe(0);
     expectAt(client("a"), client("b"), { x: GUEST.x + 300, y: GUEST.y });

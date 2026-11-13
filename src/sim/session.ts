@@ -1,6 +1,7 @@
 import type { Sfx } from "../audio/index.js";
 import { arrivalPoint, canStandAt, rallyPoint } from "./arrival.js";
 import type { ArrivalConfig } from "./arrival.js";
+import { correctPlayer } from "./actions.js";
 import { registerBuiltIns } from "./built-ins.js";
 import type { CollisionBody } from "./collision.js";
 import { separateBodies, solidBodiesBut } from "./collision.js";
@@ -18,11 +19,7 @@ import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
 import { followHealth } from "./health.js";
 import type { ForcedMove } from "./forced-move.js";
-import {
-  correctPlayer,
-  followForcedMoves,
-  positionHeld,
-} from "./forced-move.js";
+import { followForcedMoves, positionHeld } from "./forced-move.js";
 import type { FootstepConfig } from "./footsteps.js";
 import type { Moving } from "./interpolation.js";
 import { followInventories, reportHeld } from "./inventories.js";

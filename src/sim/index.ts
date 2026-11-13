@@ -2,7 +2,6 @@ export { isSweepFree, solidBodiesBut } from "./collision.js";
 export {
   applyEntityChanges,
   applyEntitySnapshot,
-  cueEntities,
   entitySnapshot,
   registerEntityType,
   removeEntity,
@@ -26,11 +25,13 @@ export {
 export { contentEvent, receiveEvent } from "./content-event.js";
 export {
   changeWorld,
+  correctPlayer,
   dash,
   defineAction,
   effect,
   hurt,
   push,
+  spawn,
   take,
 } from "./actions.js";
 export type { Action } from "./actions.js";
@@ -63,11 +64,7 @@ export type {
   WorldKind,
 } from "./map.js";
 export { showFlash } from "./flashes.js";
-export {
-  correctPlayer,
-  expectedEpoch,
-  takeOverForcedMoves,
-} from "./forced-move.js";
+export { expectedEpoch, takeOverForcedMoves } from "./forced-move.js";
 export { restartMoveChecks } from "./move-checks.js";
 
 export { Health, hurtPlayer } from "./health.js";
@@ -82,10 +79,9 @@ export {
 } from "./world-data.js";
 export { movement } from "./movement.js";
 export { speak } from "./voice-noise.js";
-export { broadcastNoise, noisesHeardBy } from "./noise.js";
+export { noisesHeardBy } from "./noise.js";
 export type { Heard } from "./noise.js";
-export { makeSound, sound } from "./sound.js";
-export type { Sound } from "./sound.js";
+export { sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
 export { registerItem } from "./use.js";
 export {
