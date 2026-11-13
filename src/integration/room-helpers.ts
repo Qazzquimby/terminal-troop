@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { NetEvent, unbatch } from "../net/index.js";
 import type { Transport } from "../net/index.js";
 
@@ -72,6 +73,19 @@ const overJson = (payload: unknown): unknown =>
 
 /** `value` to the tenth of a pixel that positions travel at. */
 export const tenth = (value: number): number => Math.round(value * 10) / 10;
+
+/** A content event as it travels: its entry and key. */
+const Addressed = z.looseObject({ content: z.string(), event: z.string() });
+
+/** Where a content message is addressed, as `entry.key`; null for anything else. */
+export function addressOf(message: unknown): string | null {
+  const parsed = Addressed.safeParse(message);
+  return parsed.success ? `${parsed.data.content}.${parsed.data.event}` : null;
+}
+
+/** What kicks travel to the host as, and what an action the host applied sends everyone. */
+export const KICK = "move/kick.kick";
+export const EFFECTS = "core/actions.effects";
 
 /** The messages one broadcast carries: those of a batch, or the one sent. */
 export const messages = (
@@ -236,8 +250,9 @@ export function delayed(port: Transport, delayMs: () => number) {
       const json = JSON.stringify(message.payload);
       if (json.includes('"core/position"') && !json.includes('"slide"'))
         counts.corrections++;
-      if (json.includes('"kicked"')) counts.kicks++;
-      if (json.includes('"shown"')) counts.shown++;
+      const address = addressOf(message.payload);
+      if (address === KICK) counts.kicks++;
+      if (address === EFFECTS) counts.shown++;
     }
     queue.push({ at: null, send: () => void port.send(event, payload) });
     return Promise.resolve();

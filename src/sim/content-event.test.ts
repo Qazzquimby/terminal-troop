@@ -147,6 +147,7 @@ describe("content events", () => {
       ["core/noise", ["made"]],
       ["core/position", ["forced"]],
       ["core/world-items", ["pickedUp", "dropped", "landed"]],
+      ["core/actions", ["effects"]],
     ]);
   });
 

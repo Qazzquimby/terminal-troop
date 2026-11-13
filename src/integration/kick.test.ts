@@ -136,14 +136,16 @@ test("a kick lunges the kicker one body length, spends its stamina and goes to t
   expect(game.outbox).toEqual([
     {
       content: "move/kick",
-      event: "kicked",
+      event: "kick",
       route: "host",
       to: null,
       payload: {
-        from: { x: 300, y: 300 },
-        to: { x: 300 + PLAYER_LENGTH, y: 300 },
-        aim: 0,
         action: 1,
+        input: {
+          from: { x: 300, y: 300 },
+          to: { x: 300 + PLAYER_LENGTH, y: 300 },
+          aim: 0,
+        },
       },
     },
   ]);
@@ -182,8 +184,7 @@ test("kicking something close by, the lunge stops at it and the kick lands on it
   expect(game.flashes[0]?.at.x).toBeCloseTo(300 + 2 + kick.reach);
   expect(Math.abs((game.flashes[0]?.at.x ?? 0) - target.x)).toBeLessThan(5);
   expect(game.outbox[0]?.payload).toMatchObject({
-    from: { x: 300, y: 300 },
-    to: { x: 302, y: 300 },
+    input: { from: { x: 300, y: 300 }, to: { x: 302, y: 300 } },
   });
 });
 
@@ -426,10 +427,10 @@ function forgeKick(
 ): void {
   sessionOf(room).outbox.push({
     content: "move/kick",
-    event: "kicked",
+    event: "kick",
     route: "host",
     to: null,
-    payload: { ...lunge, action: 1 },
+    payload: { action: 1, input: lunge },
   });
 }
 

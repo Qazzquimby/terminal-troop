@@ -17,8 +17,11 @@ import type {
 } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
+  addressOf,
   createHub,
   createManualClock,
+  EFFECTS,
+  KICK,
   messages,
   testRoomConfig,
 } from "./room-helpers.js";
@@ -49,15 +52,15 @@ const moves = {
 };
 const { kick } = moves;
 
-/** Blind chasers wandering the dev square, in the way of lunges where each client sees them. */
-const entities = {
+/** `count` blind chasers wandering the dev square, in the way of lunges where each client sees them. */
+const blindChasers = (count: number) => ({
   ...testEntitiesConfig,
   chaser: {
     ...testEntitiesConfig.chaser,
     sightRange: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 4, clearance: 100 },
+    spawn: { ...testEntitiesConfig.chaser.spawn, count, clearance: 100 },
   },
-};
+});
 
 /**
  * The test sim, with a kick on cooldown taken as much as 0.3s early, as in play, so that kicks
@@ -82,9 +85,9 @@ function delayed(port: Transport, delayMs: () => number) {
   const send: Transport["send"] = (event, payload) => {
     for (const message of messages(event, payload)) {
       if (message.event !== NetEvent.CONTENT) continue;
-      const json = JSON.stringify(message.payload);
-      if (json.includes('"kicked"')) counts.kicks++;
-      if (json.includes('"shown"')) counts.shown++;
+      const address = addressOf(message.payload);
+      if (address === KICK) counts.kicks++;
+      if (address === EFFECTS) counts.shown++;
     }
     queue.push({ at: null, send: () => void port.send(event, payload) });
     return Promise.resolve();
@@ -120,11 +123,12 @@ function standAt(game: Session, at: Point): void {
 type Driver = (game: Session, time: number) => Controls;
 
 /**
- * A host and a guest joined to one room on a JSON hub, each send arriving 60 to 180ms later, and
- * stepped past the settle time, on `sim`. The guest's frames, which send what it has to send, come every
- * one to three steps, as a browser's do when they fall behind the sim.
+ * A host and a guest joined to one room on a JSON hub with `chasers` blind chasers, each send
+ * arriving 60 to 180ms later, and stepped past the settle time, on `sim`. The guest's frames,
+ * which send what it has to send, come every one to three steps, as a browser's do when they
+ * fall behind the sim.
  */
-async function room() {
+async function room(chasers = 4) {
   const hub = createHub();
   const clock = createManualClock();
   const clients = new Map<
@@ -150,7 +154,7 @@ async function room() {
       clock,
       config: testRoomConfig,
       sim,
-      content: [...entityContent(entities), ...moveContent(moves)],
+      content: [...entityContent(blindChasers(chasers)), ...moveContent(moves)],
       falloff: { full: 100, silent: 600, pan: 300 },
       onChange: () => undefined,
       onPeerFailed: () => undefined,
@@ -271,20 +275,25 @@ test("a guest sprinting along a wall, kicking along and into it as it turns, is 
 const hitboxOf = (to: Point): Point => ({ x: to.x + kick.reach, y: to.y });
 
 const Spot = z.object({ x: z.number(), y: z.number() });
-/** A kick as it is sent, its lunge and the rest. */
-const Sent = z.looseObject({ from: Spot, to: Spot });
+/** A lunge as a kick reports it, and the rest. */
+const Reported = z.looseObject({ from: Spot, to: Spot });
+/** A kick as it is sent: its action number and its lunge. */
+const Sent = z.looseObject({ input: Reported });
 /** A lunge as a kick reports it. */
-type Lunge = Pick<z.infer<typeof Sent>, "from" | "to">;
+type Lunge = Pick<z.infer<typeof Reported>, "from" | "to">;
 
 /** Swaps the lunge of the kick `guest` is about to send, if any, for `forged`'s of it. */
 function forge(guest: Session, forged: (honest: Lunge) => Lunge): void {
-  const index = guest.outbox.findIndex((sent) => sent.event === "kicked");
+  const index = guest.outbox.findIndex((sent) => addressOf(sent) === KICK);
   const sent = guest.outbox[index];
   if (sent === undefined) return;
   const payload = Sent.parse(sent.payload);
   guest.outbox[index] = {
     ...sent,
-    payload: { ...payload, ...forged(payload) },
+    payload: {
+      ...payload,
+      input: { ...payload.input, ...forged(payload.input) },
+    },
   };
 }
 
@@ -299,7 +308,7 @@ const facingRight =
  * guest predicted a hit, and whether it still holds one.
  */
 async function forgedKick(forged: (honest: Lunge) => Lunge) {
-  const { client, chaser, run, step } = await room();
+  const { client, chaser, run, step } = await room(1);
   const guest = client("b").game();
   run(0.5, facingRight(false));
   const target = hitboxOf({
@@ -347,4 +356,48 @@ test("a kick that says its lunge started far from where the guest was heard is t
     to: away(to),
   }));
   expect(result).toEqual({ landed: false, predicted: true, held: false });
+});
+
+test("a guest's kick knocks the chaser back on the step it kicks, and the guest lunges its full length", async () => {
+  const { client, chaser, run, step } = await room(1);
+  const guest = client("b").game();
+  run(0.5, facingRight(false));
+  const start = { x: guest.local.x, y: guest.local.y };
+  const target = hitboxOf({ x: start.x + PLAYER_LENGTH, y: start.y });
+  for (const id of ["a", "b"])
+    Object.assign(chaser(id), {
+      ...target,
+      prevX: target.x,
+      prevY: target.y,
+      tx: target.x,
+      ty: target.y,
+    });
+  const shown = client("a").net.counts.shown;
+  step(facingRight(true));
+  const chaserLength = testEntitiesConfig.chaser.radius * 2;
+  expect(chaser("b").x - target.x).toBeGreaterThan(
+    chaserLength * kick.knockback - 5,
+  );
+  run(kick.lunge.seconds + 0.5, facingRight(false));
+  expect(guest.local.x - start.x).toBeCloseTo(PLAYER_LENGTH, 0);
+  expect(guest.local.y).toBeCloseTo(start.y, 0);
+  expect(client("a").net.counts.shown).toBe(shown + 1);
+});
+
+test("a guest sprinting and turning about the room for a minute, kicking whenever it can, is never refused", async () => {
+  const { client, run } = await room();
+  run(60, (game, time) =>
+    sprintKicking(
+      time,
+      {
+        x: Math.cos(Math.floor(time / 0.6) * 2.4),
+        y: Math.sin(Math.floor(time / 0.6) * 2.4),
+      },
+      aiming(game, time * 5 + 2 * Math.sin(time * 7)),
+    ),
+  );
+  run(1);
+  const { kicks } = client("b").net.counts;
+  expect(kicks).toBeGreaterThan(80);
+  expect(client("a").net.counts.shown).toBe(kicks);
 });

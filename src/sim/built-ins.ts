@@ -1,3 +1,4 @@
+import { actionEvents } from "./actions.js";
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
 import { forcedMoveEvents, forcedMoves } from "./forced-move.js";
@@ -55,6 +56,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/world-items": { events: { pickedUp, dropped, landed } },
   /** The latest action the host has handled from each player, which ends what that player's client predicted. */
   "core/predictions": { world: { handled: handledActions } },
+  /** What each action the host applied shows and sounds, and the noise it makes. */
+  "core/actions": { events: actionEvents },
 };
 
 /** Registers the engine's own state and events with a new session. */

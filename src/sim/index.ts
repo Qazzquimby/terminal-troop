@@ -24,6 +24,8 @@ export {
   registerContent,
 } from "./content.js";
 export { contentEvent, receiveEvent } from "./content-event.js";
+export { dash, defineAction, effect, hurt, push } from "./actions.js";
+export type { Action } from "./actions.js";
 export type { OutgoingEvent } from "./content-event.js";
 export type {
   Content,
@@ -61,13 +63,11 @@ export {
   expectedEpoch,
   takeOverForcedMoves,
 } from "./forced-move.js";
-export { allowMove, couldStand, restartMoveChecks } from "./move-checks.js";
-export { confirmAction, nextAction, predict } from "./prediction.js";
+export { restartMoveChecks } from "./move-checks.js";
+export { nextAction, predict } from "./prediction.js";
 export { Health, hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
-export { spendStamina } from "./stamina.js";
-export { hostSpends } from "./stamina-checks.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer, dashEnd, startDash } from "./player.js";
 export { playerData } from "./player-data.js";
@@ -83,7 +83,7 @@ export type { Heard } from "./noise.js";
 export { makeSound, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
-export { hostAccepts, hostReady, registerItem } from "./use.js";
+export { hostAccepts, registerItem } from "./use.js";
 export {
   giveItem,
   heldItemOf,
