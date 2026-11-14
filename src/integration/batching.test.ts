@@ -1,5 +1,5 @@
 import { sum } from "lodash-es";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { entityContent } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
 import { createScope } from "../lib/scope/index.js";
@@ -11,7 +11,7 @@ import {
 import type { Transport } from "../net/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
-import { randomFreePosition, updateSession } from "../sim/index.js";
+import { mulberry32, randomFreePosition, updateSession } from "../sim/index.js";
 import type { Controls, Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import {
@@ -126,7 +126,14 @@ const walking = (index: number, time: number): Controls => ({
   holdingUse: false,
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 test("each player sends about one broadcast a tick, however many messages it carries", async () => {
+  // Spawns and scattered content draw from Math.random and change how much the host sends;
+  // seeded so the count is the same every run.
+  vi.spyOn(Math, "random").mockImplementation(mulberry32(3));
   const hub = createHub();
   const clock = createManualClock();
   const players = ["a", "b", "c", "d"];
