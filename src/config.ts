@@ -70,6 +70,9 @@ export const config = {
         door: { min: 1, max: 3 },
         loops: 0.35,
       },
+      // Half the rooms have a light fixture, and a third have power, so one room in six is lit.
+      // The road and yards are always lit, by sunlight. Monsters never appear in light.
+      lights: { fixture: 0.5, powered: 1 / 3 },
       // Monsters spawn, and loot is richer, up to 4x by distance from the road and 4x towards the
       // exit: 16x at the far right corner over the road at the start.
       danger: { road: 3, right: 3 },
@@ -229,7 +232,8 @@ export const config = {
       sounds: { bark: CELL * 8, alert: CELL * 10, attack: CELL * 5 },
     },
     cruiser: {
-      lightRadius: CELL * 12,
+      // Two headlights 14px apart at its front, each a 40 degree cone reaching 12 cells.
+      headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 7 },
       // Everyone in the exit escapes once the cruiser has waited there 20s.
       escape: { delay: 20, volume: 0.8 },
     },
@@ -293,6 +297,19 @@ export const config = {
       sellInterval: 0.25,
       volume: 0.8,
       scatter: { count: 75, seed: 2, clearance: CELL * 3 },
+    },
+    // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
+    // cells, past a player's own 6 cells of sight in the dark. Its click carries a cell.
+    flashlight: {
+      weight: 2,
+      uses: 300,
+      loot: { weight: 20, rarity: "common" },
+      range: CELL * 14,
+      angle: Math.PI * (2 / 9),
+      drain: 1,
+      cooldown: 0.25,
+      volume: 0.6,
+      clickNoiseRadius: CELL,
     },
     // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
     // most dangerous spot there is an even chance of a second, an uncommon item is twice as

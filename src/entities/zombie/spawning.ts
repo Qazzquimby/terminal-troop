@@ -1,12 +1,12 @@
 import { z } from "zod";
 import {
   dangerWeight,
-  inRect,
   isAreaFree,
   isSweepFree,
   worldData,
 } from "../../sim/index.js";
 import type { Point, Session } from "../../sim/index.js";
+import { spawnAllowed } from "../spawn-rules.js";
 
 /** How zombies keep arriving once a world has begun. Times are in sim seconds. */
 export interface SpawningConfig {
@@ -50,14 +50,6 @@ function countOf(game: Session, kind: string): number {
   let count = 0;
   for (const entity of game.entities.values()) if (entity.kind === id) count++;
   return count;
-}
-
-/**
- * Whether a zombie may appear at `at` at all: never in the world's start, where the players
- * gather. The hook for every other rule of where monsters may not appear, such as in light.
- */
-export function spawnAllowed(game: Session, at: Point): boolean {
-  return !inRect(game.world.layout.start, at);
 }
 
 /**
@@ -133,6 +125,7 @@ function memberPoints(
   const taken: Point[] = [leader];
   const fits = (at: Point) =>
     isAreaFree(map, at.x, at.y, radius) &&
+    spawnAllowed(game, at) &&
     nearestPlayerDistance(game, at) >= unseen &&
     taken.every(
       (other) => Math.hypot(other.x - at.x, other.y - at.y) >= radius * 2,

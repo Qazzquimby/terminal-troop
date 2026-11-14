@@ -4,11 +4,12 @@ import type {
   Layout,
   Rect,
   Rng,
-  Room,
   World,
   WorldConfig,
 } from "./map.js";
 import { AREA } from "./map.js";
+import { lightRooms } from "./light.js";
+import type { RoomLightConfig, UnlitRoom } from "./light.js";
 
 /** A whole-number span, both ends included. */
 interface Span {
@@ -64,6 +65,8 @@ export interface GenerationConfig {
      */
     readonly loops: number;
   };
+  /** Which rooms have light fixtures, and which have the power to light them. */
+  readonly lights: RoomLightConfig;
   /** How dangerous places are, by how far they are from the road and across the world. */
   readonly danger: DangerConfig;
   /** Columns at the left end of the road that are the start. */
@@ -626,8 +629,8 @@ function sealUnreached(grid: Grid, start: number): void {
 }
 
 /** The rooms as finally laid out, numbered afresh past any walled up, `grid.room` renumbered. */
-function finishRooms(grid: Grid, carved: readonly Carved[]): Room[] {
-  const rooms: Room[] = [];
+function finishRooms(grid: Grid, carved: readonly Carved[]): UnlitRoom[] {
+  const rooms: UnlitRoom[] = [];
   carved.forEach((room) => {
     const cells = room.cells.filter((i) => grid.room[i] !== -1);
     if (cells.length === 0) return;
@@ -701,7 +704,7 @@ export function buildWorld(config: WorldConfig, rng: Rng): World {
     grid,
     Math.floor((middle.top + middle.bottom) / 2) * cols + Math.floor(cols / 2),
   );
-  const rooms = finishRooms(grid, carved);
+  const rooms = lightRooms(finishRooms(grid, carved), generation.lights, rng);
   let farthest = 0;
   distance.forEach((d, i) => {
     if (grid.solid[i] !== 1) farthest = Math.max(farthest, d);

@@ -75,6 +75,10 @@ export interface Room {
   readonly cells: number;
   /** Whether it is a long, narrow room: a hallway. */
   readonly hallway: boolean;
+  /** Whether it has a light fixture, which lights it while it has power. */
+  readonly fixture: boolean;
+  /** Whether it has power; see `powerRooms`. */
+  readonly powered: boolean;
 }
 
 /** What the world's cells are part of, and where its journey starts and ends. */
@@ -144,9 +148,9 @@ export const DEV_PILLARS: readonly Cell[] = [
 const DEV_ZONE_COLS = 3;
 
 /**
- * One screen of open floor with two small pillars, all of it road: its leftmost three columns are
- * the start, its rightmost three the exit. Deterministic; the border is the edge of the world,
- * which `isSolid` already treats as solid.
+ * One screen of open floor with two small pillars, all of it one dark room, so the lights carried
+ * into it show: its leftmost three columns are the start, its rightmost three the exit.
+ * Deterministic; the border is the edge of the world, which `isSolid` already treats as solid.
  */
 export function buildDevWorld(
   cell: number,
@@ -172,9 +176,21 @@ export function buildDevWorld(
     H: view.height,
     map: { cell, cols, rows, solid },
     layout: {
-      area: solid.map((value) => (value === 1 ? AREA.wall : AREA.road)),
-      room: new Int16Array(cols * rows).fill(-1),
-      rooms: [],
+      area: solid.map((value) => (value === 1 ? AREA.wall : AREA.room)),
+      room: Int16Array.from(solid, (value) => (value === 1 ? -1 : 0)),
+      rooms: [
+        {
+          id: 0,
+          col: 0,
+          row: 0,
+          cols,
+          rows,
+          cells: solid.filter((value) => value === 0).length,
+          hallway: false,
+          fixture: false,
+          powered: false,
+        },
+      ],
       roadDistance: new Uint16Array(cols * rows),
       farthest: 0,
       start: { x: 0, y: 0, w: zone, h: view.height },

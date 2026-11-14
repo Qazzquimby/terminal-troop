@@ -46,7 +46,11 @@ export interface EntityDefinition<S> {
   readonly tags?: readonly string[];
   /** Parses the kind's state; an entity whose data fails it is neither spawned nor kept. */
   readonly data: z.ZodType<S>;
-  readonly light?: (entity: WorldEntity, data: S) => LightEmission | null;
+  /** The lights it gives off, if any: one, or several, such as a car's headlights. */
+  readonly light?: (
+    entity: WorldEntity,
+    data: S,
+  ) => LightEmission | readonly LightEmission[] | null;
   /** Steers the entity before it moves, and returns its next state. Runs only while hosting. */
   readonly update?: (
     entity: WorldEntity,
@@ -76,7 +80,7 @@ export interface EntityType {
   readonly collides: boolean;
   readonly tags: readonly string[];
   readonly data: z.ZodType;
-  light(entity: WorldEntity): LightEmission | null;
+  light(entity: WorldEntity): readonly LightEmission[];
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
   draw(
@@ -107,8 +111,9 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     data: schema,
     light(entity) {
       const parsed = schema.safeParse(entity.data);
-      if (!parsed.success) return null;
-      return definition.light?.(entity, parsed.data) ?? null;
+      if (!parsed.success) return [];
+      const light = definition.light?.(entity, parsed.data) ?? [];
+      return "range" in light ? [light] : light;
     },
     update(entity, dt, game) {
       const parsed = schema.safeParse(entity.data);
