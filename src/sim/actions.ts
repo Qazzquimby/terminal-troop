@@ -19,12 +19,12 @@ import type { Inventory } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
-import { emitNoise } from "./noise.js";
+import { emitNoise, kindTags } from "./noise.js";
 import type { Player } from "./player.js";
 import { dashEnd, startDash } from "./player.js";
 import { confirmAction, hold, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
-import { declaredSound } from "./sound.js";
+import { declaredSound, soundNoise } from "./sound.js";
 import type { Sound } from "./sound.js";
 import { spendStamina } from "./stamina.js";
 import { actorTime, alter, queueAction } from "./steering.js";
@@ -84,14 +84,29 @@ interface Use {
 /** What an action shows and sounds, at one spot. */
 export interface Effect {
   readonly at: Point;
-  /** Played there for every client's listener. */
+  /**
+   * Played there for every client's listener, as far as its range carries; one with a range also
+   * makes a noise out to it, unless `noise` says otherwise.
+   */
   readonly sound?: Sound;
   readonly flash?: Flash;
   /** Shown on the actor, as its item draws a use. */
   readonly use?: Use;
-  /** How far, in pixels, the noise it makes carries; none when left out. */
+  /**
+   * How far, in pixels, the noise it makes carries; as far as its sound's range when left out,
+   * and none for a sound without one.
+   */
   readonly noise?: number;
+  /**
+   * Tags its noise carries past its maker's kind, saying how it was made. Other clients get them
+   * as the host sends them, the maker's kind first.
+   */
+  readonly tags?: readonly string[];
 }
+
+/** How far the noise `made` makes carries, in pixels; undefined for none. */
+const noiseOf = (made: Effect): number | undefined =>
+  made.noise ?? (made.sound === undefined ? undefined : soundNoise(made.sound));
 
 /**
  * How an action is being applied on this client:
@@ -120,19 +135,20 @@ function play(
   { at, sound, flash, use }: Effect,
 ): void {
   if (sound !== undefined)
-    void game.sfx.play(
-      sound.url,
-      at,
-      game.local,
-      sound.volume === undefined ? {} : { volume: sound.volume },
-    );
+    void game.sfx.play(sound.url, at, game.local, {
+      ...(sound.volume !== undefined && { volume: sound.volume }),
+      ...(sound.range !== undefined && { range: sound.range }),
+    });
   if (flash !== undefined) showFlash(game, { at, ...flash });
   const actor = game.players.get(by);
   if (use !== undefined && actor !== undefined)
     actor.use = { ...use, center: { x: at.x, y: at.y }, startedAt: game.time };
 }
 
-/** An effect as it travels: its sound by url. */
+/**
+ * An effect as it travels: its sound by url, and its noise as the host worked it out, with every
+ * tag it carries.
+ */
 const SentEffect = z.object({
   x: z.number(),
   y: z.number(),
@@ -140,27 +156,44 @@ const SentEffect = z.object({
   flash: z.object({ radius: z.number().min(0), hit: z.boolean() }).optional(),
   use: z.object({ item: ItemId, hit: z.boolean() }).optional(),
   noise: z.number().min(0).optional(),
+  tags: z.array(z.string().min(1).max(32)).max(8).optional(),
 });
 type SentEffect = z.infer<typeof SentEffect>;
 
-const sent = ({ at, sound, flash, use, noise }: Effect): SentEffect => ({
-  x: at.x,
-  y: at.y,
-  ...(sound !== undefined && { sound: sound.url }),
-  ...(flash !== undefined && { flash }),
-  ...(use !== undefined && { use }),
-  ...(noise !== undefined && { noise }),
-});
-
-/** `effect` as it arrived; a sound no content declared plays nothing. */
-function arrived({ x, y, sound, flash, use, noise }: SentEffect): Effect {
-  const declared = sound === undefined ? undefined : declaredSound(sound);
+/** `made` as the host sends it on behalf of `by`, its noise tagged with `by`'s kind first. */
+function sent(game: Session, by: string, made: Effect): SentEffect {
+  const { at, sound, flash, use } = made;
+  const noise = noiseOf(made);
+  const tags =
+    noise === undefined ? [] : [...kindTags(game, by), ...(made.tags ?? [])];
   return {
-    at: { x, y },
-    ...(declared !== undefined && { sound: declared }),
+    x: at.x,
+    y: at.y,
+    ...(sound !== undefined && { sound: sound.url }),
     ...(flash !== undefined && { flash }),
     ...(use !== undefined && { use }),
     ...(noise !== undefined && { noise }),
+    ...(tags.length > 0 && { tags }),
+  };
+}
+
+/**
+ * `effect` as it arrived; a sound no content declared plays nothing. Its noise and tags are as
+ * the host sent them, the noise of its sound included.
+ */
+function arrived({ x, y, sound, flash, use, noise, tags }: SentEffect): {
+  readonly made: Effect;
+  readonly noise?: { readonly radius: number; readonly tags: string[] };
+} {
+  const declared = sound === undefined ? undefined : declaredSound(sound);
+  return {
+    made: {
+      at: { x, y },
+      ...(declared !== undefined && { sound: declared }),
+      ...(flash !== undefined && { flash }),
+      ...(use !== undefined && { use }),
+    },
+    ...(noise !== undefined && { noise: { radius: noise, tags: tags ?? [] } }),
   };
 }
 
@@ -178,10 +211,10 @@ const effected = contentEvent({
   to: "all",
   from: "host",
   receive(game, { by, effects, acted }) {
-    for (const made of effects.map(arrived)) {
+    for (const { made, noise } of effects.map(arrived)) {
       if (acted !== true || by !== game.localId) play(game, by, made);
-      if (made.noise !== undefined)
-        emitNoise(game, { at: made.at, radius: made.noise, source: by });
+      if (noise !== undefined)
+        emitNoise(game, { at: made.at, source: by, ...noise });
     }
   },
 });
@@ -291,7 +324,7 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
     if (effects.length > 0)
       effected.send(game, {
         by: actor.id,
-        effects: effects.map(sent),
+        effects: effects.map((made) => sent(game, actor.id, made)),
         acted: true,
       });
   };
@@ -533,7 +566,8 @@ export function effect(
   if (run === undefined) {
     if (by === undefined)
       throw new Error("An effect outside an action names whose it is");
-    if (game.hosting) effected.send(game, { by: by.id, effects: [sent(made)] });
+    if (game.hosting)
+      effected.send(game, { by: by.id, effects: [sent(game, by.id, made)] });
   } else if (run.mode === "predict") play(game, game.localId, made);
   else run.effects.push(made);
 }

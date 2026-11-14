@@ -9,11 +9,12 @@ import {
   createSession,
   effect,
   mulberry32,
+  PLAYER_TAG,
   receiveEvent,
   updateSession,
 } from "../sim/index.js";
 import type { Controls, Session } from "../sim/index.js";
-import { createRipples, rippleRing } from "./ripples.js";
+import { createRipples, edgeGlow, rippleRing } from "./ripples.js";
 import type { Ripple, Ripples } from "./ripples.js";
 
 const DT = 1 / 60;
@@ -85,8 +86,10 @@ describe("footstep ripples", () => {
     expect(ripples.list).toEqual([
       {
         at: { x: game.local.x, y: 300 },
+        origin: { x: game.local.x, y: 300 },
         clarity: 1,
         radius: footsteps.walk.radius,
+        player: true,
         startedAt: game.time * 1000,
       },
     ]);
@@ -180,11 +183,33 @@ describe("noise from the host", () => {
     made(game, "host");
     step(game, ripples, idle);
     expect(game.noises).toEqual([
-      { at: { x: 200, y: 300 }, radius: 300, source: "e1" },
+      { at: { x: 200, y: 300 }, radius: 300, source: "e1", tags: [] },
     ]);
     expect(ripples.list).toEqual([
-      expect.objectContaining({ clarity: 1 - 100 / 300, radius: 300 }),
+      expect.objectContaining({
+        clarity: 1 - 100 / 300,
+        radius: 300,
+        origin: { x: 200, y: 300 },
+        player: false,
+      }),
     ]);
+  });
+
+  test("a player's noise ripples as a player's, tagged by the host with its kind and how it was made", () => {
+    const { game: sender } = session();
+    effect(
+      sender,
+      { at: { x: 200, y: 300 }, noise: 300, tags: ["radio"] },
+      sender.local,
+    );
+    const { game, ripples } = session();
+    game.outbox.push(...sender.outbox);
+    made(game, "host");
+    step(game, ripples, idle);
+    expect(game.noises).toEqual([
+      expect.objectContaining({ tags: [PLAYER_TAG, "radio"] }),
+    ]);
+    expect(ripples.list).toEqual([expect.objectContaining({ player: true })]);
   });
 
   test("is dropped when it comes from anyone else", () => {
@@ -197,20 +222,27 @@ describe("noise from the host", () => {
   });
 });
 
-describe("a ripple's ring", () => {
-  const ripple = (clarity: number, radius = 100): Ripple => ({
-    at: { x: 0, y: 0 },
-    clarity,
-    radius,
-    startedAt: 10_000,
-  });
-  const ms = (seconds: number): number => seconds * 1000;
+/** A noise heard at 10s with `clarity`, carrying `radius`, made by something other than a player. */
+const ripple = (clarity: number, radius = 100): Ripple => ({
+  at: { x: 0, y: 0 },
+  origin: { x: 0, y: 0 },
+  clarity,
+  radius,
+  player: false,
+  startedAt: 10_000,
+});
+const ms = (seconds: number): number => seconds * 1000;
 
-  test("spreads out as it fades, and is gone outside its duration", () => {
-    const early = rippleRing(ripple(1), ms(10.1), config);
+describe("a ripple's ring", () => {
+  test("snaps out to full size within its expand time, then fades there, and is gone outside its duration", () => {
+    const early = rippleRing(ripple(1), ms(10 + config.expand / 2), config);
+    const grown = rippleRing(ripple(1), ms(10 + config.expand), config);
     const late = rippleRing(ripple(1), ms(10 + config.duration * 0.9), config);
-    expect(late?.radius).toBeGreaterThan(early?.radius ?? Infinity);
-    expect(late?.alpha).toBeLessThan(early?.alpha ?? 0);
+    expect(early?.radius).toBeLessThan(100);
+    expect(grown?.radius).toBeCloseTo(100);
+    expect(late?.radius).toBeCloseTo(100);
+    expect(late?.alpha).toBeLessThan(grown?.alpha ?? 0);
+    expect(grown?.alpha).toBeLessThan(early?.alpha ?? 0);
     expect(rippleRing(ripple(1), ms(9.9), config)).toBeNull();
     expect(rippleRing(ripple(1), ms(10 + config.duration), config)).toBeNull();
   });
@@ -230,5 +262,62 @@ describe("a ripple's ring", () => {
     );
     expect(radii.every((r) => r !== undefined && r <= 400)).toBe(true);
     expect(radii.at(-1)).toBeCloseTo(400, 1);
+  });
+});
+
+describe("an edge glow", () => {
+  const view = { width: 900, height: 600 };
+  const centre = { x: 450, y: 300 };
+  const { inset } = config.edge;
+
+  test("sits at the screen's edge, inset, the way the noise seemed to come from", () => {
+    const right = edgeGlow(ripple(1), ms(10.1), config, view, centre, {
+      x: 2000,
+      y: 300,
+    });
+    expect(right).toMatchObject({ x: 900 - inset, y: 300 });
+    const above = edgeGlow(ripple(1), ms(10.1), config, view, centre, {
+      x: 450,
+      y: -5000,
+    });
+    expect(above).toMatchObject({ x: 450, y: inset });
+    for (let angle = 0; angle < Math.PI * 2; angle += 0.3) {
+      const glow = edgeGlow(ripple(1), ms(10.1), config, view, centre, {
+        x: centre.x + Math.cos(angle) * 3000,
+        y: centre.y + Math.sin(angle) * 3000,
+      });
+      if (glow === null) throw new Error("no glow");
+      const onEdge = [
+        glow.x - inset,
+        900 - inset - glow.x,
+        glow.y - inset,
+        600 - inset - glow.y,
+      ];
+      expect(Math.min(...onEdge)).toBeCloseTo(0);
+      expect(Math.atan2(glow.y - centre.y, glow.x - centre.x)).toBeCloseTo(
+        Math.atan2(Math.sin(angle), Math.cos(angle)),
+      );
+    }
+  });
+
+  test("a noise on screen but unseen still glows at the edge, the way it lies", () => {
+    const glow = edgeGlow(ripple(1), ms(10.1), config, view, centre, {
+      x: 300,
+      y: 300,
+    });
+    expect(glow?.x).toBeCloseTo(inset);
+    expect(glow?.y).toBeCloseTo(300);
+  });
+
+  test("fades over the ripple's duration, fainter for a noise heard less clearly", () => {
+    const at = (clarity: number, seconds: number) =>
+      edgeGlow(ripple(clarity), ms(seconds), config, view, centre, {
+        x: 0,
+        y: 0,
+      });
+    expect(at(1, 10.4)?.alpha).toBeLessThan(at(1, 10.1)?.alpha ?? 0);
+    expect(at(0.2, 10.1)?.alpha).toBeLessThan(at(1, 10.1)?.alpha ?? 0);
+    expect(at(1, 9.9)).toBeNull();
+    expect(at(1, 10 + config.duration)).toBeNull();
   });
 });

@@ -22,6 +22,11 @@ export interface SpatialFalloff {
 interface PlayOptions {
   volume?: number;
   loop?: boolean;
+  /**
+   * How far a positioned sound is heard, in pixels: it fades to silence there instead of at the
+   * falloff's own distance.
+   */
+  range?: number;
 }
 
 /** @public */
@@ -76,7 +81,20 @@ export function spatialMix(
   };
 }
 
-/** Positioned sounds fade and pan by `falloff`. */
+/**
+ * `falloff` for a sound heard out to `range` pixels: silent there, and full no further out than
+ * the falloff has it, nor past the range.
+ */
+export function rangedFalloff(
+  falloff: SpatialFalloff,
+  range: number | undefined,
+): SpatialFalloff {
+  if (range === undefined) return falloff;
+  const silent = Math.max(range, Number.EPSILON);
+  return { ...falloff, full: Math.min(falloff.full, silent / 2), silent };
+}
+
+/** Positioned sounds fade and pan by `falloff`, or out to their own range. */
 export function createSfx(falloff: SpatialFalloff): Sfx {
   let audioContext: AudioContext | null = null;
   let master: GainNode | null = null;
@@ -130,15 +148,16 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     url: string,
     origin: Point | null,
     listener: Point | null,
-    { volume = 1, loop = false }: PlayOptions = {},
+    { volume = 1, loop = false, range }: PlayOptions = {},
   ): Promise<SoundHandle> {
+    const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
     const buffer = await loadBuffer(url);
 
     // Browsers usually require an AudioContext to be resumed after a user interaction.
     await context.resume();
 
-    let mix = spatialMix(origin, listener, falloff);
+    let mix = spatialMix(origin, listener, fades);
     let baseVolume = volume;
 
     const source = context.createBufferSource();
@@ -191,7 +210,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
 
       setPosition(newOrigin, newListener) {
         if (stopped) return;
-        mix = spatialMix(newOrigin, newListener, falloff);
+        mix = spatialMix(newOrigin, newListener, fades);
         gain.gain.value = mix.volume * baseVolume;
         panner.pan.value = mix.pan;
       },

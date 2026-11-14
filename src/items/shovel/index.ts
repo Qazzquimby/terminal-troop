@@ -28,8 +28,10 @@ export interface ShovelConfig {
   readonly duration: number;
   /** Volume of a swing's sound, 0..1. */
   readonly volume: number;
-  /** How far, in pixels, the noise of a swing that hits carries. */
+  /** How far, in pixels, a swing that hits is heard, and so how far its noise carries. */
   readonly hitNoiseRadius: number;
+  /** How far, in pixels, a swing that misses is heard, and so how far its noise carries. */
+  readonly missNoiseRadius: number;
 }
 
 /** A hitbox that fades out over `duration` seconds from `use.startedAt`; green when it connected. */
@@ -66,12 +68,21 @@ function drawHitbox(
 /**
  * The shovel: a short melee attack in front of the player, held in the first slot from the start.
  * A swing hurts every world entity and other player in front of the swinger and knocks each away
- * from it; every client hears it, from the swinger, and sees it land. One that hits makes a noise.
+ * from it; every client hears it, where it lands, and sees it land. Its sound makes a noise as
+ * far as it carries, further for a swing that hits.
  */
 export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   const sounds = {
-    hit: sound({ url: hitUrl, volume: config.volume }),
-    miss: sound({ url: missUrl, volume: config.volume }),
+    hit: sound({
+      url: hitUrl,
+      volume: config.volume,
+      range: config.hitNoiseRadius,
+    }),
+    miss: sound({
+      url: missUrl,
+      volume: config.volume,
+      range: config.missNoiseRadius,
+    }),
   };
   return {
     name: "Shovel",
@@ -91,11 +102,10 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
           push(game, body, at, config.knockback, "stay");
         }
         const hit = struck.length > 0;
-        effect(game, { at, sound: hit ? sounds.hit : sounds.miss });
         effect(game, {
           at: area.center,
+          sound: hit ? sounds.hit : sounds.miss,
           use: { item: "shovel", hit },
-          ...(hit && { noise: config.hitNoiseRadius }),
         });
       },
     },

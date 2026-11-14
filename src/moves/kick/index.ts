@@ -33,7 +33,7 @@ export interface KickConfig {
     readonly lengths: number;
     readonly seconds: number;
   };
-  /** How far, in pixels, a kick's noise carries. */
+  /** How far, in pixels, a kick is heard, and so how far its noise carries. */
   readonly noiseRadius: number;
 }
 
@@ -43,8 +43,6 @@ const bodyLength = (body: { readonly radius: number }): number =>
 
 /** A kick as its kicker sends it: which way it faces. */
 const Kick = z.object({ aim: z.number() });
-
-const SOUNDS = { use: sound({ url: useUrl }) } as const;
 
 /**
  * The kick: what every player can do empty-handed, whatever it holds, on the secondary action.
@@ -56,6 +54,7 @@ export const kick: Content<"kick", KickConfig> = {
   name: "kick",
   create(configs) {
     const config = configs.kick;
+    const thud = sound({ url: useUrl, range: config.noiseRadius });
     const lungeLength = (kicker: Player): number =>
       bodyLength(kicker) * config.lunge.lengths;
 
@@ -80,9 +79,8 @@ export const kick: Content<"kick", KickConfig> = {
         }
         effect(game, {
           at: area.center,
-          sound: SOUNDS.use,
+          sound: thud,
           flash: { radius: area.radius, hit: struck.length > 0 },
-          noise: config.noiseRadius,
         });
       },
     });

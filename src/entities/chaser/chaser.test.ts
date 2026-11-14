@@ -479,6 +479,28 @@ describe("hearing", () => {
     expect(distanceTo(zombie, 750, 300)).toBeLessThan(300 - 80);
   });
 
+  test("a bark is heard as far as its sound carries, tagged as a chaser's, and other chasers ignore it", () => {
+    const game = world(blind);
+    standAt(game, 100, 500);
+    const barker = chaserAt(game, 450, 300, 1);
+    const listener = chaserAt(game, 450 + config.sounds.bark / 2, 300, 2);
+    barker.data = { ...stateOf(barker), barkAt: game.worldTime };
+    listener.data = { ...stateOf(listener), barkAt: game.worldTime + 100 };
+    const barked = runUntil(game, 0.2, () =>
+      game.noises.some(({ source }) => source === barker.id),
+    );
+    expect(barked).toBe(true);
+    expect(game.noises).toEqual([
+      {
+        at: { x: 450, y: 300 },
+        radius: config.sounds.bark,
+        source: barker.id,
+        tags: ["chaser"],
+      },
+    ]);
+    expect(stateOf(listener)).toMatchObject({ noiseTarget: null });
+  });
+
   test("a player walking beyond the walk radius is not heard", () => {
     expect(footsteps.walk.radius).toBeLessThan(300);
     const game = world(blind);

@@ -269,7 +269,12 @@ test("each client sees the other's footsteps, worked out from how the host runs 
   a.frame(clock.now());
   steps(b, still, DT, heardByGuest);
   expect(guest.noises).toEqual([
-    { at: { x: host.local.x, y: host.local.y }, radius: 300, source: "e1" },
+    {
+      at: { x: host.local.x, y: host.local.y },
+      radius: 300,
+      source: "e1",
+      tags: [],
+    },
   ]);
   expect(heardByGuest.list.at(-1)).toMatchObject({ radius: 300 });
   steps(a, still, DT);

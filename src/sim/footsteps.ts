@@ -1,7 +1,10 @@
 import { movement } from "./movement.js";
 import type { MovementMode } from "./movement.js";
-import { emitNoise } from "./noise.js";
+import { makeNoise } from "./noise.js";
 import type { Session } from "./session.js";
+
+/** The tag a footstep's noise carries, past its maker's kind. */
+export const FOOTSTEP_TAG = "footstep";
 
 /** The footsteps of one gait. */
 interface Footstep {
@@ -29,10 +32,10 @@ export function emitFootsteps(game: Session, dt: number): void {
     if (player.stride > 0) continue;
     const footstep = game.config.footsteps[mode];
     player.stride = footstep.interval;
-    emitNoise(game, {
-      at: { x: player.x, y: player.y },
+    makeNoise(game, player, {
+      at: player,
       radius: footstep.radius,
-      source: player.id,
+      tags: [FOOTSTEP_TAG],
     });
   }
 }

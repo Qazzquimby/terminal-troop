@@ -22,6 +22,7 @@ import type {
   Rng,
   Scatter,
   Session,
+  Sound,
   Strike,
   TileMap,
   WorldEntity,
@@ -59,6 +60,12 @@ export interface ChaserConfig {
   readonly attackRange: number;
   /** Seconds between attacks. */
   readonly attackCooldown: number;
+  /** How far, in pixels, each of its sounds is heard, and so how far the noise it makes carries. */
+  readonly sounds: {
+    readonly bark: number;
+    readonly alert: number;
+    readonly attack: number;
+  };
 }
 
 /** A point, sent to a tenth of a pixel. */
@@ -122,12 +129,6 @@ type Wander = Extract<ChaserState, { mode: "wander" }>;
 
 /** Random points tried for a wander leg before standing a while longer. */
 const LEG_ATTEMPTS = 8;
-
-const SOUNDS = {
-  bark: sound({ url: barkUrl }),
-  alert: sound({ url: alertUrl }),
-  attack: sound({ url: attackUrl }),
-} as const;
 
 const COLOURS = {
   wander: "#7d9a52",
@@ -231,7 +232,10 @@ function wanderLeg(
   return null;
 }
 
-/** The clearest noise a chaser at `at` hears this step, or null, and its seed after listening. */
+/**
+ * The clearest noise a chaser at `at` hears this step, or null, and its seed after listening. It
+ * ignores other chasers' noise, its own included.
+ */
 function listen(
   state: Wander,
   at: Point,
@@ -239,7 +243,7 @@ function listen(
 ): { result: Heard | null; seed: number } {
   return withSeed(state.seed, (rng) => {
     let clearest: Heard | null = null;
-    for (const heard of noisesHeardBy(game, { at, rng })) {
+    for (const heard of noisesHeardBy(game, { at, rng, ignores: [NAME] })) {
       if (clearest === null || heard.clarity > clearest.clarity)
         clearest = heard;
     }
@@ -427,17 +431,30 @@ function cue(
   previous: ChaserState,
   next: ChaserState,
   game: Session,
+  sounds: Sounds,
 ): void {
   const made = [
-    previous.mode !== "chase" && next.mode === "chase" && SOUNDS.alert,
-    next.attacking && SOUNDS.attack,
-    next.barkAt !== previous.barkAt && SOUNDS.bark,
+    previous.mode !== "chase" && next.mode === "chase" && sounds.alert,
+    next.attacking && sounds.attack,
+    next.barkAt !== previous.barkAt && sounds.bark,
   ];
   for (const sound of made)
     if (sound !== false) effect(game, { at: entity, sound }, entity);
 }
 
+/** A chaser's sounds, each heard, and making noise, out to its range. */
+interface Sounds {
+  readonly bark: Sound;
+  readonly alert: Sound;
+  readonly attack: Sound;
+}
+
 function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
+  const sounds: Sounds = {
+    bark: sound({ url: barkUrl, range: config.sounds.bark }),
+    alert: sound({ url: alertUrl, range: config.sounds.alert }),
+    attack: sound({ url: attackUrl, range: config.sounds.attack }),
+  };
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
@@ -445,7 +462,7 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
     update(entity, state, dt, game) {
       const thought = think(state, entity, game, config);
       const next = bark(attack(thought, entity, game, config), game, config);
-      cue(entity, state, next, game);
+      cue(entity, state, next, game, sounds);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
       const route = steer(entity, next.route, speed, dt);
