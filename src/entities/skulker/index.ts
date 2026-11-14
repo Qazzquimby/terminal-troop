@@ -1,0 +1,379 @@
+import { z } from "zod";
+import { drawEmoji, drawFacing } from "../../render/index.js";
+import {
+  canSeeFrom,
+  defineEntity,
+  directionalVision,
+  distanceToWall,
+  effect,
+  INERT_TAG,
+  livingPlayers,
+  rounded,
+  sound,
+} from "../../sim/index.js";
+import type {
+  EntityDefinition,
+  Point,
+  Scatter,
+  Session,
+  Sound,
+  Strike,
+  WorldEntity,
+} from "../../sim/index.js";
+import {
+  nearest,
+  preyNear,
+  Route,
+  strikeEach,
+  strikeIf,
+  Time,
+  walk,
+  Waypoint,
+} from "../hunt.js";
+import { drawRing, touching } from "../bodies.js";
+import { avoidingWhere, planRoute } from "../route.js";
+import { arrivals } from "../spawning.js";
+import type { SpawningConfig } from "../spawning.js";
+
+// The files may not be in yet: a missing one plays nothing, but its noise is still made.
+const retreatUrl = new URL("./sfx/retreat.mp3", import.meta.url).href;
+const enragedUrl = new URL("./sfx/enraged.mp3", import.meta.url).href;
+const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
+
+/**
+ * The skulker: knows where every player is and which way they face, creeps up on the nearest out
+ * of everyone's sight, backs off when looked at, and goes wild when hurt. Distances in pixels,
+ * times in sim seconds.
+ */
+export interface SkulkerConfig {
+  /** Where a new world puts its first; none, as a rule, so they only arrive later. */
+  readonly spawn: Scatter;
+  readonly spawning: SpawningConfig;
+  readonly radius: number;
+  readonly maxHealth: number;
+  /** Its speed, in pixels a second. */
+  readonly speed: number;
+  /** Damage dealt to each body it touches. */
+  readonly damage: number;
+  /** Seconds between two touches' damage. */
+  readonly attackCooldown: number;
+  /** How far down a player's view cone it counts as watched, light or no light. */
+  readonly watchRange: number;
+  /** Least distance a retreat keeps from every player, where it can. */
+  readonly retreatDistance: number;
+  /** Seconds a retreat lasts before it hunts again. */
+  readonly retreatSeconds: number;
+  /** Seconds its rage lasts before it hunts again. */
+  readonly enragedSeconds: number;
+  /** Seconds between plans of its route. */
+  readonly repathInterval: number;
+  /** How far each of its sounds is heard, and so how far the noise it makes carries. */
+  readonly sounds: {
+    readonly retreat: number;
+    readonly enraged: number;
+    readonly attack: number;
+  };
+}
+
+const NAME = "skulker";
+
+const GLYPH = "👤";
+
+/** Kinds it pays no mind, even raging: what is not alive. */
+const IGNORES = [INERT_TAG];
+
+/** A cell's middle and its four corners, as offsets from the middle. */
+const CORNERS = [
+  [0, 0],
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
+] as const;
+
+const COLOURS = {
+  hunt: "#4b4f63",
+  retreat: "#7e8bb0",
+  enraged: "#e0302a",
+} as const;
+
+/**
+ * Everyone reads its mode, to draw it, and its facing; the rest only the host reads.
+ * - hunt: heads for the nearest living player by a way no player watches
+ * - retreat: heads home, keeping its distance from every player, until `until`
+ * - enraged: runs straight at the nearest living body until `until`
+ * `home` is where it arrived, null until it first steps; `health` is its health as last stepped,
+ * so a drop shows it was hurt.
+ */
+export const SkulkerState = z.object({
+  mode: z.enum(["hunt", "retreat", "enraged"]),
+  until: Time,
+  home: Waypoint.nullable(),
+  route: Route,
+  repathAt: Time,
+  attackAt: Time,
+  attacking: z.boolean(),
+  health: z.number(),
+  facing: rounded(2),
+});
+
+export type SkulkerState = z.output<typeof SkulkerState>;
+
+type Mode = SkulkerState["mode"];
+
+/** A fresh skulker's state at world time `now`, at full `health`. */
+export function freshSkulker(now: number, health: number): SkulkerState {
+  return {
+    mode: "hunt",
+    until: now,
+    home: null,
+    route: [],
+    repathAt: now,
+    attackAt: now,
+    attacking: false,
+    health,
+    facing: 0,
+  };
+}
+
+/**
+ * Whether any living player watches a point: it lies within their view cone, out to the watch
+ * range, with nothing in the way. Light plays no part, nor what lies behind a player.
+ */
+function watcher(game: Session, config: SkulkerConfig): (at: Point) => boolean {
+  const cones = livingPlayers(game).map(
+    (player) =>
+      directionalVision(
+        player,
+        player.aim,
+        game.config.vision,
+        config.watchRange,
+      )[0],
+  );
+  return (at) => cones.some((cone) => canSeeFrom(game.world.map, cone, at));
+}
+
+/** How far `at` is from the nearest living player; Infinity with none. */
+function playerDistance(game: Session, at: Point): number {
+  const player = nearest(at, livingPlayers(game));
+  return player === null
+    ? Infinity
+    : Math.hypot(player.x - at.x, player.y - at.y);
+}
+
+/**
+ * Its way home keeping at least the retreat distance from every player, or, while a player is
+ * already nearer than that, never nearer than it stands now. With no such way, straight away from
+ * the nearest player as far as the walls let it run.
+ */
+function retreatRoute(
+  game: Session,
+  self: WorldEntity,
+  home: Point,
+  config: SkulkerConfig,
+): Point[] {
+  const { map } = game.world;
+  const keep = Math.min(config.retreatDistance, playerDistance(game, self));
+  const avoid = avoidingWhere(map, (at) => playerDistance(game, at) < keep);
+  const route = planRoute(map, self.radius, self, home, avoid);
+  if (route !== null) return route;
+  const player = nearest(self, livingPlayers(game));
+  if (player === null) return [];
+  const away = Math.atan2(self.y - player.y, self.x - player.x);
+  const direction = { x: Math.cos(away), y: Math.sin(away) };
+  const run =
+    distanceToWall(map, self, direction, config.retreatDistance) - self.radius;
+  if (run <= 0) return [];
+  return [{ x: self.x + direction.x * run, y: self.y + direction.y * run }];
+}
+
+/** Its route for its mode, planned now. */
+function plan(
+  game: Session,
+  self: WorldEntity,
+  state: SkulkerState,
+  config: SkulkerConfig,
+): Point[] {
+  const { map } = game.world;
+  switch (state.mode) {
+    case "hunt": {
+      const quarry = nearest(self, livingPlayers(game));
+      if (quarry === null) return [];
+      const watched = watcher(game, config);
+      // A cell any part of which is watched, its middle or near any corner, is kept out of, so
+      // a body heading through the cells left never steps into view. The last cell or so up to
+      // its quarry it takes whatever way, to reach it at all.
+      const inset = map.cell * 0.45;
+      const avoid = avoidingWhere(
+        map,
+        (at) =>
+          Math.hypot(at.x - quarry.x, at.y - quarry.y) > map.cell * 1.5 &&
+          CORNERS.some(([dx, dy]) =>
+            watched({ x: at.x + dx * inset, y: at.y + dy * inset }),
+          ),
+      );
+      return planRoute(map, self.radius, self, quarry, avoid) ?? [];
+    }
+    case "retreat":
+      return retreatRoute(game, self, state.home ?? self, config);
+    case "enraged": {
+      const prey = nearest(
+        self,
+        preyNear(game, self, () => Infinity, IGNORES),
+      );
+      if (prey === null) return [];
+      return (
+        planRoute(map, self.radius, self, prey) ?? [{ x: prey.x, y: prey.y }]
+      );
+    }
+  }
+}
+
+/** `state` in `mode` until `until`, planning anew at once, at world time `now`. */
+function enter(
+  state: SkulkerState,
+  mode: Mode,
+  now: number,
+  until: number,
+): SkulkerState {
+  return { ...state, mode, until, route: [], repathAt: now };
+}
+
+/**
+ * The mode it moves to: hurt, it rages; a rage or retreat run out goes back to the hunt; and a
+ * hunt that any player's gaze falls on turns to retreat.
+ */
+function think(
+  state: SkulkerState,
+  self: WorldEntity,
+  game: Session,
+  config: SkulkerConfig,
+): SkulkerState {
+  const now = game.worldTime;
+  if (self.health < state.health)
+    return enter(state, "enraged", now, now + config.enragedSeconds);
+  if (state.mode !== "hunt" && now >= state.until)
+    return enter(state, "hunt", now, now);
+  if (state.mode === "hunt" && watcher(game, config)(self))
+    return enter(state, "retreat", now, now + config.retreatSeconds);
+  return state;
+}
+
+/** `state` with its route replanned, when due. */
+function replan(
+  state: SkulkerState,
+  self: WorldEntity,
+  game: Session,
+  config: SkulkerConfig,
+): SkulkerState {
+  const now = game.worldTime;
+  if (now < state.repathAt) return state;
+  return {
+    ...state,
+    route: plan(game, self, state, config),
+    repathAt: now + config.repathInterval,
+  };
+}
+
+interface Sounds {
+  readonly retreat: Sound;
+  readonly enraged: Sound;
+  readonly attack: Sound;
+}
+
+/**
+ * Sounds, as the host, on every client, what a step from `previous` to `next` did: a retreat or a
+ * rage begun, or a strike.
+ */
+function cue(
+  self: WorldEntity,
+  previous: SkulkerState,
+  next: SkulkerState,
+  game: Session,
+  sounds: Sounds,
+): void {
+  const entered = previous.mode !== next.mode || previous.until !== next.until;
+  const made = [
+    entered && next.mode === "retreat" && sounds.retreat,
+    entered && next.mode === "enraged" && sounds.enraged,
+    next.attacking && sounds.attack,
+  ];
+  for (const sound of made)
+    if (sound !== false)
+      effect(game, { at: { x: self.x, y: self.y }, sound }, self);
+}
+
+function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
+  const sounds: Sounds = {
+    retreat: sound({ url: retreatUrl, range: config.sounds.retreat }),
+    enraged: sound({ url: enragedUrl, range: config.sounds.enraged }),
+    attack: sound({ url: attackUrl, range: config.sounds.attack }),
+  };
+  return {
+    radius: config.radius,
+    maxHealth: config.maxHealth,
+    data: SkulkerState,
+    update(entity, state, dt, game) {
+      const settled =
+        state.home === null
+          ? { ...state, home: { x: entity.x, y: entity.y } }
+          : state;
+      const thought = replan(
+        think(settled, entity, game, config),
+        entity,
+        game,
+        config,
+      );
+      const next = strikeIf(
+        { ...thought, health: entity.health },
+        game.worldTime,
+        touching(game, entity, IGNORES).length > 0,
+        config.attackCooldown,
+      );
+      cue(entity, state, next, game, sounds);
+      return walk(entity, next, config.speed, dt);
+    },
+    strikes(entity, state, game): Strike[] {
+      // A blow on whatever it touches, the step it strikes.
+      const struck = state.attacking ? touching(game, entity, IGNORES) : [];
+      return strikeEach(struck, config.damage);
+    },
+    draw(ctx, entity, state, now) {
+      ctx.save();
+      // Raging, it shakes; hunting, it is hard to make out.
+      const shake = state.mode === "enraged" ? Math.sin(now / 25) * 1.5 : 0;
+      const at = { x: entity.x + shake, y: entity.y };
+      ctx.globalAlpha = state.mode === "hunt" ? 0.7 : 1;
+      drawEmoji(ctx, at, GLYPH, entity.radius * 2);
+      drawRing(
+        ctx,
+        { ...at, radius: entity.radius },
+        COLOURS[state.mode],
+        2,
+        0,
+      );
+      drawFacing(ctx, at, state.facing, entity.radius * 1.5);
+      ctx.restore();
+    },
+  };
+}
+
+/**
+ * The skulker: rare, one at a time, arriving in the dark out of every player's sight. It knows
+ * where every player is and which way each faces, and creeps up on the nearest along a way no
+ * player looks down, faster than a walk. Caught in a player's gaze, it hisses and backs off to
+ * where it arrived, keeping well away, for a long while. Hurt, it shrieks and runs at whatever
+ * lives nearest, for a short while. Whatever it touches takes a killing blow. Light means nothing
+ * to it once it is about; a stun holds it like anything else.
+ */
+export const skulker = defineEntity(NAME, (config: SkulkerConfig) => ({
+  ...definition(config),
+  ...arrivals({
+    kind: NAME,
+    radius: config.radius,
+    config: config.spawning,
+    scatter: config.spawn,
+    fresh: (_seed: number, game: Session) =>
+      freshSkulker(game.worldTime, config.maxHealth),
+  }),
+}));

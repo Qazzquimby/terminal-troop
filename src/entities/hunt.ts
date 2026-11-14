@@ -170,3 +170,15 @@ function faced(
 ): number {
   return body.vx === 0 && body.vy === 0 ? facing : Math.atan2(body.vy, body.vx);
 }
+
+/**
+ * `state` striking this step, at world time `now`, when `able` and its cooldown is over, after
+ * which it waits `cooldown` seconds.
+ */
+export function strikeIf<
+  S extends { readonly attackAt: number; readonly attacking: boolean },
+>(state: S, now: number, able: boolean, cooldown: number): S {
+  const attacking = able && now >= state.attackAt;
+  if (!attacking) return { ...state, attacking };
+  return { ...state, attacking, attackAt: now + cooldown };
+}

@@ -7,6 +7,8 @@ import { lurcher } from "./lurcher/index.js";
 import { blister } from "./blister/index.js";
 import { witch } from "./witch/index.js";
 import { idol } from "./idol/index.js";
+import { skulker } from "./skulker/index.js";
+import { magpie } from "./magpie/index.js";
 
 export {
   departingIn,
@@ -26,6 +28,8 @@ const ENTITIES = [
   blister,
   witch,
   idol,
+  skulker,
+  magpie,
 ] as const;
 
 /** Each entry's config, under its name. */

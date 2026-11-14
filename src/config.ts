@@ -462,6 +462,81 @@ export const config = {
       step: { interval: 0.3, range: CELL * 14 },
       strikeRange: CELL * 8,
     },
+    // Rare and alone: none in a new world, the first after 4 minutes, then a try every 4 minutes,
+    // never more than one, never within 30 cells of a player. Five shovel hits fell it; it moves
+    // at 1.2 times a walk, and touching it costs 100 health, once a second. A player sees it down
+    // their view cone as far as a flashlight reaches, 14 cells. Seen, it backs off for 25s,
+    // keeping 12 cells from every player where it can; hurt, it rages for 10s. It replans twice a
+    // second. Its hiss as it backs off carries 6 cells, its shriek of rage 16, its strike 8.
+    skulker: {
+      spawn: { count: 0, seed: 15, clearance: CELL * 30 },
+      spawning: {
+        firstGap: 240,
+        lastGap: 240,
+        rampSeconds: 600,
+        maxAlive: 1,
+        tries: 24,
+        unseenDistance: CELL * 30,
+        group: { min: 1, max: 1, spread: 0 },
+      },
+      radius: 14,
+      maxHealth: SHOVEL_DAMAGE * 5,
+      speed: PLAYER_SPEED * 1.2,
+      damage: 100,
+      attackCooldown: 1,
+      watchRange: CELL * 14,
+      retreatDistance: CELL * 12,
+      retreatSeconds: 25,
+      enragedSeconds: 10,
+      repathInterval: 0.5,
+      sounds: { retreat: CELL * 6, enraged: CELL * 16, attack: CELL * 8 },
+    },
+    // Groups of 3 to 5 sharing a nest: about three groups in a new world, another every 3 minutes
+    // at first, every 90s after ten minutes, never more than 16, never within 14 cells of a player.
+    // Three shovel hits fell one. It forages at 0.8 times a walk and chases at 1.1, sees 6 cells,
+    // and searches 16 spots up to 15 cells from its nest. It guards 4 cells round the nest for 15s,
+    // is spooked by a player within 8 cells for 5s, and bites its quarry for 10 once a second. A
+    // nest's revenge lasts until the thief is 5 cells from what it stole. Its chitter carries 4
+    // cells every 5 to 10s, its alarm 10, its pick-up 3, its bite 5.
+    magpie: {
+      spawn: {
+        count: { density: 0.1, min: 1 },
+        seed: 17,
+        clearance: CELL * 14,
+      },
+      spawning: {
+        firstGap: 180,
+        lastGap: 90,
+        rampSeconds: 600,
+        maxAlive: 16,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: { min: 3, max: 5, spread: CELL * 2 },
+      },
+      radius: 13,
+      maxHealth: SHOVEL_DAMAGE * 3,
+      wanderSpeed: PLAYER_SPEED * 0.8,
+      chaseSpeed: PLAYER_SPEED * 1.1,
+      sightRange: CELL * 6,
+      search: { count: 16, range: CELL * 15, tries: 64 },
+      nestRadius: CELL * 4,
+      dropRadius: CELL * 1.5,
+      spookRange: CELL * 8,
+      spookSeconds: 5,
+      guardSeconds: 15,
+      revengeRange: CELL * 5,
+      damage: 10,
+      attackRange: 30,
+      attackCooldown: 1,
+      repathInterval: 0.5,
+      chitterGap: { min: 5, max: 10 },
+      sounds: {
+        chitter: CELL * 4,
+        alarm: CELL * 10,
+        pickUp: CELL * 3,
+        attack: CELL * 5,
+      },
+    },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.

@@ -149,6 +149,7 @@ export type { SimClockConfig } from "./sim-clock.js";
 export {
   canSeeFrom,
   directionalVision,
+  distanceToWall,
   emittedLights,
   isVisible,
   lightSources,

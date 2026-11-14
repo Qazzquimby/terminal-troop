@@ -74,6 +74,11 @@ export interface EntityDefinition<S> {
     data: S,
     game: Session,
   ) => readonly Strike[];
+  /**
+   * What happens as the entity dies, just before it is gone, such as dropping what it carried.
+   * Runs only while hosting.
+   */
+  readonly dies?: (entity: WorldEntity, data: S, game: Session) => void;
   readonly draw: (
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -94,6 +99,7 @@ export interface EntityType {
   light(entity: WorldEntity): readonly LightEmission[];
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
+  dies(entity: WorldEntity, game: Session): void;
   draw(
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -136,6 +142,10 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return [];
       return definition.strikes?.(entity, parsed.data, game) ?? [];
+    },
+    dies(entity, game) {
+      const parsed = schema.safeParse(entity.data);
+      if (parsed.success) definition.dies?.(entity, parsed.data, game);
     },
     draw(ctx, entity, now, game) {
       const parsed = schema.safeParse(entity.data);
@@ -272,10 +282,12 @@ export function updateEntities(game: Session, dt: number): void {
   });
 }
 
-/** Removes every entity that has been destroyed. */
+/** Removes every entity that has been destroyed, the host first letting its kind see it die. */
 function cullDeadEntities(game: Session): void {
   for (const [id, entity] of game.entities) {
-    if (isDead(entity)) game.entities.delete(id);
+    if (!isDead(entity)) continue;
+    if (game.hosting) game.entityTypes.get(entity.kind)?.dies(entity, game);
+    game.entities.delete(id);
   }
 }
 
