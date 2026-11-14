@@ -11,6 +11,7 @@ import {
   effect,
   hasKindTag,
   INERT_TAG,
+  ITEM_TAG,
   isAreaFree,
   mulberry32Next,
   noisesHeardBy,
@@ -208,7 +209,7 @@ function preyNear(
     if (body.id === hunter.id) continue;
     const distance = Math.hypot(body.x - hunter.x, body.y - hunter.y);
     if (distance > reach(body)) continue;
-    if (hasKindTag(game, body.id, IGNORES)) continue;
+    if (hasKindTag(game, body.id, [...IGNORES, ITEM_TAG])) continue;
     near.push(body);
   }
   return near;

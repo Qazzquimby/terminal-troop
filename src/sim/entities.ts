@@ -30,6 +30,12 @@ export interface WorldEntity extends Entity, Interpolated, Tracked {
  */
 export const INERT_TAG = "inert";
 
+/**
+ * A kind tag for items lying in the world, corpses included. Hunters pass over them as prey and
+ * traps don't take them for a body, but noise an item makes (a radio, a walkie) is still heard.
+ */
+export const ITEM_TAG = "item";
+
 /** Damage an entity deals to `target`, a player or another world entity. */
 export interface Strike {
   readonly target: string;

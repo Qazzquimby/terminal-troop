@@ -3,6 +3,7 @@ export {
   applyEntityChanges,
   applyEntitySnapshot,
   INERT_TAG,
+  ITEM_TAG,
   entitySnapshot,
   registerEntityType,
   removeEntity,

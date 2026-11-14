@@ -15,6 +15,7 @@ import {
   entitySnapshot,
   INERT_TAG,
   isAreaFree,
+  ITEM_TAG,
   receiveEvent,
   registerContent,
   registerEntityType,
@@ -567,7 +568,7 @@ describe("hearing", () => {
 });
 
 describe("prey", () => {
-  /** The world with a living kind, "deer", and one tagged inert, "mine", besides zombies. */
+  /** The world with a living kind, "deer", one tagged inert, "mine", and a lying item, "loot". */
   function wild(): Session {
     const game = world();
     const body = { radius: 10, data: z.object({}), draw: () => undefined };
@@ -576,6 +577,11 @@ describe("prey", () => {
       ...body,
       maxHealth: 100,
       tags: [INERT_TAG],
+    });
+    registerEntityType(game, "loot", {
+      ...body,
+      maxHealth: 100,
+      tags: [ITEM_TAG],
     });
     // Far past the zombie's sight, so only what is placed near it draws it.
     standAt(game, 750, 50);
@@ -597,15 +603,17 @@ describe("prey", () => {
     expect(played(game)).toContain(attackUrl);
   });
 
-  test("passes over other zombies and things tagged inert", () => {
+  test("passes over other zombies, things tagged inert, and items lying about", () => {
     const game = wild();
     const mine = spawnEntity(game, "mine", 300, 400, {});
+    const loot = spawnEntity(game, "loot", 250, 430, {});
     const other = zombieAt(game, 350, 400, 2);
     Object.assign(other, { data: { ...stateOf(other), barkAt: 1e6 } });
     const zombie = zombieAt(game, 200, 400);
     run(game, 1);
     expect(stateOf(zombie).mode).toBe("wander");
     expect(mine.health).toBe(mine.maxHealth);
+    expect(loot.health).toBe(loot.maxHealth);
     expect(other.health).toBe(other.maxHealth);
   });
 });
