@@ -215,10 +215,14 @@ test("groups come in sizes between the least and the most", () => {
   const game = world({
     ...SPAWNING,
     maxAlive: 1000,
+    firstGap: 0.5,
+    lastGap: 0.5,
+    rampSeconds: 1,
     group: { min: 1, max: 5, spread: 100 },
   });
   const sizes = new Map<number, number>();
-  for (const { time } of play(game, SPAWNING.rampSeconds + 40))
+  // Short gaps, so enough groups arrive without simulating a crowd for minutes.
+  for (const { time } of play(game, 10))
     sizes.set(time, (sizes.get(time) ?? 0) + 1);
   const counts = [...sizes.values()];
   expect(counts.length).toBeGreaterThan(10);
