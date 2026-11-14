@@ -19,8 +19,10 @@ Rules for any agent working in this repo.
 
 ## Writing on GitHub
 
-- At the start of a session, before any write, ask for permission for the writes the work will need: pushing, opening or editing PRs, filing or editing issues, comments, and project board changes. Once given, it covers the rest of that session.
-- Anything an agent posts to GitHub under a person's account (PR descriptions, issues, comments, reviews) starts with a banner naming the model, so readers know a person didn't write it:
+It should always be obvious when an agent wrote something, not the person whose account posted it. This covers prose: PR descriptions, issues, comments and reviews. Mechanical writes (pushing, merging, labels, moving board items) are not covered.
+
+- At the start of a session, ask for permission before posting prose under someone's account. Once given, it covers the rest of that session.
+- Every piece of prose an agent posts starts with a banner naming the model:
 
   ```markdown
   > [!NOTE]
