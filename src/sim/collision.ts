@@ -262,6 +262,21 @@ export function separateBodies(
   }
 }
 
+/** Pushes `body` out of each of `others` it overlaps, leaving them where they are. */
+export function separateBody(
+  body: CollisionBody,
+  others: readonly CollisionBody[],
+  map: TileMap,
+): void {
+  const movable = new Set([body]);
+  for (let pass = 0; pass < SEPARATION_PASSES; pass++) {
+    let moved = false;
+    for (const other of others)
+      if (separatePair(body, other, map, movable)) moved = true;
+    if (!moved) return;
+  }
+}
+
 /**
  * How far `body` can move from where it stands along the unit vector `direction` before it
  * touches any of `others`; Infinity when none is in the way. One it already touches ahead of it

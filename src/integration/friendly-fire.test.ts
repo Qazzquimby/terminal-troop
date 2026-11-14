@@ -6,10 +6,8 @@ import { moveContent } from "../moves/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
-  applyRemoteState,
   createSession,
   isAreaFree,
-  receiveEvent,
   registerContent,
   registerEntityType,
   spawnEntity,
@@ -17,6 +15,8 @@ import {
 } from "../sim/index.js";
 import type { Controls, Point, Session } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
+import { teleport } from "./crew.js";
+import { reportedAt } from "./heard.js";
 import {
   createHub,
   createManualClock,
@@ -116,31 +116,36 @@ async function pair() {
   mute(sessionOf(b));
   clock.advance(1000);
   expect(a.hostId()).toBe("a");
-  /** Runs one step on each client and lets every message through, 200ms later. */
-  const exchange = (controls: { a?: Controls; b?: Controls } = {}): void => {
-    updateSession(sessionOf(b), controls.b ?? idle, DT);
-    b.frame(clock.now());
-    updateSession(sessionOf(a), controls.a ?? idle, DT);
-    clock.advance(clock.now() + 200);
-    a.frame(clock.now());
-    updateSession(sessionOf(b), idle, DT);
-  };
-  /** Exchanges until any push has played out and every client has heard where it ended. */
-  const settle = (): void => {
-    for (let round = 0; round < 20; round++) exchange();
-  };
-  /** Puts the host's player at `host` and the guest's at `guest`, still, as both know them. */
-  const place = (host: Point, guest: Point): void => {
-    for (const [room, at, other] of [
-      [a, host, b],
-      [b, guest, a],
+  /** One step and frame on each client, `controls` by client id, each sending as it ticks. */
+  const step = (controls: { a?: Controls; b?: Controls } = {}): void => {
+    for (const [room, steer] of [
+      [a, controls.a],
+      [b, controls.b],
     ] as const) {
-      standAt(sessionOf(room), at);
-      const seen = sessionOf(other).players.get(sessionOf(room).localId);
-      Object.assign(seen ?? {}, { ...at, tx: at.x, ty: at.y });
+      updateSession(sessionOf(room), steer ?? idle, DT);
+      clock.advance(clock.now() + 1000 * (DT / 2));
+      room.frame(clock.now());
     }
-    exchange();
-    exchange();
+  };
+  /**
+   * One step on `controls`, then a third of a second more: long enough for the host's run of
+   * the guest, which trails the guest's own, to take in what it sent, and for the guest to hear
+   * back.
+   */
+  const exchange = (controls: { a?: Controls; b?: Controls } = {}): void => {
+    step(controls);
+    for (let more = 0; more < 20; more++) step();
+  };
+  /** Runs until any push has played out and every client has heard where it ended. */
+  const settle = (): void => {
+    for (let more = 0; more < 60; more++) step();
+  };
+  /** Puts the host's player at `host` and the guest's at `guest`, still, as the host would. */
+  const place = (host: Point, guest: Point): void => {
+    const games = [sessionOf(a), sessionOf(b)];
+    teleport(games, "a", host);
+    teleport(games, "b", guest);
+    settle();
   };
   return { a, b, exchange, place, settle };
 }
@@ -200,20 +205,18 @@ test("a guest's kick hurts the host's player and knocks it away from the kicker"
   expect(playerOn(b, "a").tx).toBeCloseTo(host.x, 1);
 });
 
-test("a host's kick hurts a guest, which knocks itself back, and both clients see it", async () => {
+test("a host's kick hurts a guest, whose own client lands it where the host knocks it, and both clients see it", async () => {
   const { a, b, exchange, place, settle } = await pair();
   place(LEFT, KICK_AT);
   exchange({ a: kickRight(sessionOf(a)) });
-  exchange();
   const guest = sessionOf(b).local;
   expect(guest.health).toBe(FULL - kick.damage);
-  expect(guest.x).toBeLessThan(KICK_AT.x + KICKED / 2);
   settle();
   expect(guest.x).toBeCloseTo(KICK_AT.x + KICKED);
   expect(guest.y).toBeCloseTo(KICK_AT.y);
   expect(playerOn(a, "b").health).toBe(FULL - kick.damage);
-  expect(playerOn(a, "b").tx).toBeCloseTo(guest.x, 1);
-  expect(playerOn(a, "b").ty).toBeCloseTo(guest.y, 1);
+  expect(playerOn(a, "b").x).toBeCloseTo(guest.x, 1);
+  expect(playerOn(a, "b").y).toBeCloseTo(guest.y, 1);
   expect(sessionOf(a).local.health).toBe(FULL);
 });
 
@@ -263,43 +266,20 @@ test("one swing on the host hurts the world entity and the player it catches ali
     draw: () => undefined,
   });
   standAt(game, LEFT);
-  const dummy = spawnEntity(game, "dummy", SWING_AT.x, SWING_AT.y - 10, {});
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    ...SWING_AT,
-    y: SWING_AT.y + 10,
-    aim: 0,
-    epoch: 0,
-    content: {},
+  const dummy = spawnEntity(game, "dummy", SWING_AT.x, SWING_AT.y - 15, {});
+  const them = reportedAt(game, "them", {
+    x: SWING_AT.x,
+    y: SWING_AT.y + 15,
   });
   updateSession(game, swingRight(game), DT);
-  for (const { content, event, to, payload } of game.outbox.splice(0))
-    receiveEvent(
-      game,
-      { from: game.localId, to, content, event, payload },
-      game.localId,
-    );
-  updateSession(game, idle, DT);
   expect(dummy.health).toBe(40 - shovel.damage);
-  expect(game.players.get("them")?.health).toBe(FULL - shovel.damage);
-  const aim = Math.atan2(10, shovel.reach + 5);
-  const forced = game.outbox.find((sent) => sent.content === "core/position");
-  expect(forced).toMatchObject({
-    event: "forced",
-    route: "all",
-    payload: {
-      target: "them",
-      epoch: 1,
-      slide: { seconds: testSimConfig.player.knockbackSeconds },
-    },
-  });
-  const { to } = z
-    .object({ to: z.object({ x: z.number(), y: z.number() }) })
-    .parse(forced?.payload);
+  expect(them.health).toBe(FULL - shovel.damage);
+  // The host knocks the player itself: a slide on its copy, which every other client follows.
+  const aim = Math.atan2(15, shovel.reach + 5);
+  const to = them.dash?.to ?? { x: NaN, y: NaN };
   expect(to.x).toBeCloseTo(SWING_AT.x + Math.cos(aim) * shovel.knockback, 5);
   expect(to.y).toBeCloseTo(
-    SWING_AT.y + 10 + Math.sin(aim) * shovel.knockback,
+    SWING_AT.y + 15 + Math.sin(aim) * shovel.knockback,
     5,
   );
   expect(game.local.health).toBe(FULL);

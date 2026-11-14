@@ -15,12 +15,32 @@ import {
 } from "./index.js";
 import type { Action, WorldContent, WorldEntity } from "./index.js";
 import { changeWorld, give, removeFromWorld, spawn, take } from "./actions.js";
-import { giveItem, inventories, itemIn, takeItem } from "./inventories.js";
+import { giveItem, inventories, itemIn } from "./inventories.js";
 import { createPlayer } from "./player.js";
 import { registerItem } from "./use.js";
 import { worldData } from "./world-data.js";
 import type { Session } from "./session.js";
-import { createSession } from "./session.js";
+import { createSession, updateSession } from "./session.js";
+import { idle } from "../integration/crew.js";
+
+/**
+ * Hands the host a request from remote player `from` for the action at `content`.`event`, made
+ * in its step 0, then runs the host until its run of the player reaches that step.
+ */
+function hostHears(
+  game: Session,
+  from: string,
+  content: string,
+  event: string,
+  payload: Record<string, unknown>,
+): void {
+  receiveEvent(
+    game,
+    { from, to: null, content, event, payload: { step: 0, ...payload } },
+    game.localId,
+  );
+  for (let i = 0; i < 10; i++) updateSession(game, idle, 1 / 60);
+}
 
 const BONK = sound({ url: "bonk.mp3" });
 const Target = z.object({ target: z.string() });
@@ -96,20 +116,14 @@ function receive(game: Session): void {
 
 const at = (entity: WorldEntity) => ({ x: entity.x, y: entity.y });
 
-test("a host acting itself changes nothing until its request comes back, then applies it once", () => {
+test("a host acting itself applies it at once, plays it here, and sends its effects to the rest", () => {
   const { game, play, post } = session();
   expect(bonk.perform(game, { target: post.id })).toBe(true);
-  expect(post.health).toBe(50);
-  expect(at(post)).toEqual({ x: 150, y: 100 });
+  expect(post.health).toBe(45);
+  expect(post.x).toBeCloseTo(180);
   expect(game.local.dash).not.toBeNull();
   expect(play).toHaveBeenCalledTimes(1);
   expect(game.flashes).toHaveLength(1);
-  expect(game.outbox.map(({ event }) => event)).toEqual(["bonk"]);
-
-  deliverOwn(game);
-  receive(game);
-  expect(post.health).toBe(45);
-  expect(post.x).toBeCloseTo(180);
   expect(game.outbox.map(({ event }) => event)).toEqual(["effects"]);
 
   deliverOwn(game);
@@ -137,7 +151,11 @@ test("a guest acting predicts what it does to world entities, held, and leaves p
   bonk.perform(game, { target: other.id });
   expect(other.health).toBe(other.maxHealth);
   expect({ x: other.x, y: other.y }).toEqual({ x: 100, y: 160 });
-  expect(game.forcedSeen.size).toBe(0);
+  // Each request names the step the guest acted in, which the host applies it in.
+  expect(game.outbox.map(({ payload }) => payload)).toMatchObject([
+    { action: 1, step: game.step },
+    { action: 2, step: game.step },
+  ]);
 });
 
 test("an effect outside an action must name whose it is", () => {
@@ -278,43 +296,44 @@ test("a guest's trade shows in its items at once, held, and changes nothing only
   expect(game.inventoryHold).toMatchObject({ action: 2, reaching: [post.id] });
   expect(game.entities.has(post.id)).toBe(true);
   expect(game.outbox.map(({ payload }) => payload)).toEqual([
-    { action: 1, input: { slot: 0 }, items: true },
-    { action: 2, input: { slot: 0, pick: post.id }, items: true },
+    { action: 1, step: 0, input: { slot: 0 }, items: true },
+    { action: 2, step: 0, input: { slot: 0, pick: post.id }, items: true },
   ]);
 });
 
-test("a host's own trade shows in its items at once, and changes the host's record and the world once, as it applies it", () => {
+test("a host's own trade changes its record and the world at once, and its items follow in the step", () => {
   const { game, post } = trading();
   trade.perform(game, { slot: 0 });
-  expect(carried(game)).toEqual([null, null, null, null]);
-  expect(itemIn(game, game.localId, 0)).toBe(PEBBLE.id);
-  expect(posts(game)).toBe(1);
-  expect(traded.get(game)).toBe(0);
-  deliverOwn(game);
-  receive(game);
   expect(itemIn(game, game.localId, 0)).toBeNull();
   expect(posts(game)).toBe(2);
   expect(traded.get(game)).toBe(1);
+  updateSession(game, idle, 1 / 60);
+  expect(carried(game)).toEqual([null, null, null, null]);
 
   game.time += 1;
   trade.perform(game, { slot: 0, pick: post.id });
-  expect(carried(game)).toEqual([PEBBLE.id, null, null, null]);
-  expect(game.entities.has(post.id)).toBe(true);
-  deliverOwn(game);
-  receive(game);
   expect(game.entities.has(post.id)).toBe(false);
   expect(itemIn(game, game.localId, 0)).toBe(PEBBLE.id);
+  updateSession(game, idle, 1 / 60);
+  expect(carried(game)).toEqual([PEBBLE.id, null, null, null]);
 });
 
-test("the host refuses a trade of an empty slot: its record and the world stay as they were, and the actor's items go out again", () => {
+test("the host refuses a guest's trade of an empty slot: its record and the world stay as they were, and the actor's items go out again", () => {
   const { game } = trading();
-  takeItem(game, game.localId, 0, PEBBLE.id);
+  game.players.set(
+    "them",
+    createPlayer("them", "THEM", { x: 300, y: 300 }, testSimConfig),
+  );
+  updateSession(game, idle, 1 / 60);
   game.worldChanged.clear();
-  trade.perform(game, { slot: 0 });
-  deliverOwn(game);
-  receive(game);
+  hostHears(game, "them", "move/trade", "trade", {
+    action: 1,
+    input: { slot: 0 },
+    items: true,
+  });
   expect(posts(game)).toBe(1);
   expect(traded.get(game)).toBe(0);
+  expect(itemIn(game, "them", 0)).toBeNull();
   expect(game.worldChanged.has(inventories)).toBe(true);
 });
 
@@ -344,18 +363,8 @@ test("an effect's use shows on the actor: on its own client as it acts, on every
   const use = { item: "pebble", center: { x: 7, y: 8 }, hit: true };
   expect(game.local.use).toEqual({ ...use, startedAt: game.time });
   game.local.use = null;
-  receiveEvent(
-    game,
-    {
-      from: "them",
-      to: null,
-      content: "move/show",
-      event: "show",
-      payload: { action: 1, input: {} },
-    },
-    game.localId,
-  );
-  receive(game);
+  game.outbox.length = 0;
+  hostHears(game, "them", "move/show", "show", { action: 1, input: {} });
   deliverOwn(game);
   receive(game);
   expect(other.use).toEqual({ ...use, startedAt: game.time });

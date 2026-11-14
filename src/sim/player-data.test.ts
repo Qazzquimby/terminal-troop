@@ -2,12 +2,13 @@ import { expect, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import {
-  applyRemoteState,
   createSession,
   defineEntity,
   defineItem,
+  hearPlayer,
   playerData,
-  playerState,
+  playerEntries,
+  playerReport,
   registerContent,
 } from "./index.js";
 import type { ContentName, WorldContent } from "./index.js";
@@ -72,23 +73,40 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
     })).create({ torch: undefined }),
   ]);
   lit.set(game.local, true);
-  expect(playerState(game).content).toEqual({
-    "core/items": 0,
-    "core/movement": { mode: "walk", moving: false },
+  expect(playerReport(game).content).toEqual({
     "core/voice": 0,
     "entity/bat": "Infinity",
     "item/torch": true,
   });
 });
 
-test("every session reports the held item, how it moves and how far its speech carries, with no content listed", () => {
+test("every session reports how far its speech carries, and sends the held slot and how each player moves with the players, with no content listed", () => {
   const game = session();
   registerContent(game, []);
-  expect(playerState(game).content).toEqual({
-    "core/items": 0,
-    "core/movement": { mode: "walk", moving: false },
-    "core/voice": 0,
+  expect(playerReport(game).content).toEqual({ "core/voice": 0 });
+  expect(playerEntries(game).map(({ content }) => content)).toEqual([
+    { "core/items": 0, "core/movement": { mode: "walk", moving: false } },
+  ]);
+});
+
+test("state the simulation sets goes with the host's players, not the player's STATE", () => {
+  const game = session();
+  const tired = playerData({
+    schema: z.boolean(),
+    initial: () => false,
+    simulated: true,
   });
+  registerContent(game, [
+    {
+      name: "move/tire",
+      player: tired,
+      register: () => undefined,
+      populate: () => undefined,
+    },
+  ]);
+  tired.set(game.local, true);
+  expect(playerReport(game).content).not.toHaveProperty("move/tire");
+  expect(playerEntries(game)[0]?.content).toMatchObject({ "move/tire": true });
 });
 
 test("content is named for where it comes from, and only the engine's own is core", () => {
@@ -116,9 +134,7 @@ test("an entity and an item of the same name keep their own state", () => {
       draw: () => undefined,
     })).create({ lamp: undefined }),
   ]);
-  expect(playerState(game).content).toEqual({
-    "core/items": 0,
-    "core/movement": { mode: "walk", moving: false },
+  expect(playerReport(game).content).toEqual({
     "core/voice": 0,
     "entity/lamp": 1,
     "item/lamp": 2,
@@ -136,9 +152,10 @@ test("a remote player's reported values are decoded by each entry's own schema",
       populate: () => undefined,
     },
   ]);
-  applyRemoteState(game, {
-    ...playerState(game),
+  hearPlayer(game, {
+    ...playerReport(game),
     id: "them",
+    at: { x: 300, y: 300 },
     content: { "item/gun": "Infinity" },
   });
   const them = game.players.get("them");

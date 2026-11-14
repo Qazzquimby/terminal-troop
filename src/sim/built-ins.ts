@@ -1,14 +1,14 @@
-import { actionEvents, forcedMoveEvents, registerActions } from "./actions.js";
+import { actionEvents, registerActions } from "./actions.js";
 import type { Action } from "./actions.js";
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
-import { forcedMoves } from "./forced-move.js";
 import { playerHealth } from "./health.js";
 import { movement } from "./movement.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
+import { steeringEvents } from "./steering.js";
 import { heldSlot, inventories } from "./inventories.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
@@ -39,14 +39,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/voice": { player: voiceNoise },
   /** Each player's health, which the host alone changes. */
   "core/health": { world: { players: playerHealth } },
-  /**
-   * Each move the host forces on a player, a correction or a knockback, and the latest on each
-   * player for clients that missed it.
-   */
-  "core/position": {
-    events: forcedMoveEvents,
-    world: { forced: forcedMoves },
-  },
+  /** What each player steers with, sent to the host as it changes. */
+  "core/steering": { events: steeringEvents },
   /** Items lying in the world, picked up and dropped. */
   "core/world-items": { actions: [pickUp, drop] },
   /** The latest action the host has handled from each player, which ends what that player's client predicted. */

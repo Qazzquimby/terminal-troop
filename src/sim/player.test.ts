@@ -231,3 +231,15 @@ test("a dash goes on once a body in its way has moved off", () => {
   dash(player, world, 10, others);
   expect(player.x).toBeGreaterThan(520);
 });
+
+test("a knockback with nowhere to go holds the player where it stands for its time", () => {
+  const world = openWorld();
+  const player = startPlayer();
+  const at = { x: player.x, y: player.y };
+  player.dash = { vx: 0, vy: 0, seconds: 0.1, to: at };
+  dash(player, world, 3, [post(at.x + 30, at.y)]);
+  expect({ x: player.x, y: player.y }).toEqual(at);
+  dash(player, world, 9);
+  expect({ x: player.x, y: player.y }).toEqual(at);
+  expect(player.dash).toBeNull();
+});

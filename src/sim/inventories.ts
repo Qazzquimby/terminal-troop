@@ -161,29 +161,20 @@ export function followInventories(game: Session): void {
 }
 
 /**
- * The slot each player holds, or null for none: the local player's as selected, a remote
- * player's as it last reported. Any slot may be held; what is in it is the host's to say.
+ * The slot each player holds, or null for none, as the player last steered it: its simulation
+ * sets it, so others hear it from the host. Any slot may be held; what is in it is the host's
+ * to say.
  */
 export const heldSlot = playerData({
   schema: z.number().int().min(0).max(63).nullable(),
   initial: (player: Player) => player.held,
+  simulated: true,
 });
-
-/**
- * Keeps the local player's reported slot in step with its selection. A change goes out at once,
- * so others see the newly held item without waiting.
- */
-export function reportHeld(game: Session): void {
-  const { local } = game;
-  if (local.content.has(heldSlot) && heldSlot.get(local) === local.held) return;
-  heldSlot.set(local, local.held);
-  game.reportNow = true;
-}
 
 /**
  * The item `player` holds; null when it holds nothing, or an item this client does not know. The
  * local player's is from its own items as predicted; a remote player's is what the host keeps in
- * the slot it reports holding.
+ * the slot it holds.
  */
 export function heldItemOf(
   game: Session,

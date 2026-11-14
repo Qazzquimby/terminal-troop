@@ -26,13 +26,12 @@ import {
   delayed,
   testRoomConfig,
 } from "./room-helpers.js";
-import { idle } from "./crew.js";
+import { idle, teleport } from "./crew.js";
 import { testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
-const { settleSeconds } = testSimConfig.net.moves;
 
-/** A poke: hurts and shoves one dummy within reach of where the poker says it stood. */
+/** A poke: hurts and shoves one dummy within reach of where the poker stands. */
 const POKE = {
   damage: 10,
   shove: 30,
@@ -45,24 +44,24 @@ const POKE = {
 const BOOP = sound({ url: "boop.mp3" });
 const FULL = 100;
 
-const Poke = z.object({ target: z.string(), x: z.number(), y: z.number() });
+const Poke = z.object({ target: z.string() });
 
 const poke = defineAction("poke", {
   input: Poke,
   cooldown: POKE.cooldown,
   stamina: POKE.stamina,
-  stood: (_poker, { x, y }) => ({ at: { x, y } }),
-  check(game, _poker, { target, x, y }) {
+  check(game, poker, { target }) {
     const dummy = game.entities.get(target);
     return (
-      dummy !== undefined && Math.hypot(dummy.x - x, dummy.y - y) <= POKE.reach
+      dummy !== undefined &&
+      Math.hypot(dummy.x - poker.x, dummy.y - poker.y) <= POKE.reach
     );
   },
-  apply(game, _poker, { target, x, y }) {
+  apply(game, poker, { target }) {
     const dummy = game.entities.get(target);
     if (dummy === undefined) return;
     hurt(game, dummy, POKE.damage);
-    push(game, dummy, { x, y }, POKE.shove);
+    push(game, dummy, poker, POKE.shove);
     effect(game, {
       at: { x: dummy.x, y: dummy.y },
       sound: BOOP,
@@ -116,7 +115,7 @@ interface Seen {
 
 /**
  * The host `a`, the guest `b` that pokes and the guest `c` that watches, joined to one room on a
- * JSON hub, each send arriving 60 to 180ms later, and stepped past the settle time.
+ * JSON hub, each send arriving 60 to 180ms later, each at its spot.
  */
 async function room() {
   const hub = createHub();
@@ -196,11 +195,9 @@ async function room() {
   }
   // Players arrive at random before they are placed, and may shove the dummies.
   const [near, far] = [...client("a").game().entities.keys()];
+  const games = () => [...clients.keys()].map((id) => client(id).game());
   for (let round = 0; round < 2; round++) {
-    for (const [id, at] of Object.entries(SPOTS)) {
-      const { local } = client(id).game();
-      Object.assign(local, { ...at, prevX: at.x, prevY: at.y });
-    }
+    for (const [id, at] of Object.entries(SPOTS)) teleport(games(), id, at);
     for (const [id, at] of [
       [near, NEAR],
       [far, FAR],
@@ -209,7 +206,7 @@ async function room() {
         const found = sessionOf(each).entities.get(id ?? "");
         Object.assign(found ?? {}, { ...at, tx: at.x, ty: at.y });
       }
-    run(settleSeconds);
+    run(1);
   }
   expect(client("a").room.hostId()).toBe("a");
 
@@ -221,24 +218,20 @@ async function room() {
     if (found === undefined) throw new Error(`no dummy near ${String(at.x)}`);
     return found;
   };
-  /**
-   * Client `id` pokes `target` from where its player stands, or from `from`, between steps, and
-   * counts the flashes it shows as it does.
-   */
-  const pokeFrom = (id: string, target: WorldEntity, from?: Point): boolean => {
+  /** Client `id` pokes `target` between steps, and counts the flashes it shows as it does. */
+  const pokeFrom = (id: string, target: WorldEntity): boolean => {
     const { game, seen } = client(id);
     const session = game();
-    const at = from ?? session.local;
     const flashes = session.flashes.length;
-    const poked = poke.perform(session, {
-      target: target.id,
-      x: at.x,
-      y: at.y,
-    });
+    const poked = poke.perform(session, { target: target.id });
     seen.flashes += session.flashes.length - flashes;
     return poked;
   };
-  return { client, dummy, pokeFrom, run, step };
+  /** Puts player `id` at `at` where the host runs it, and on every other client. */
+  const place = (id: string, at: Point): void => {
+    teleport(games(), id, at);
+  };
+  return { client, dummy, pokeFrom, place, run, step };
 }
 
 test("a guest's poke shows at once, held until the host confirms it, then settles on the host's state", async () => {
@@ -288,11 +281,13 @@ test("a poke plays once on the poker's client and once on every other, and the h
   expect(dummy("a", NEAR).health).toBe(FULL - POKE.damage);
 });
 
-test("the host's own poke applies once, and plays once on every client", async () => {
-  const { client, dummy, pokeFrom, run } = await room();
+test("the host's own poke applies at once, and plays once on every client", async () => {
+  const { client, dummy, place, pokeFrom, run } = await room();
+  place("a", { x: NEAR.x - 100, y: NEAR.y + 50 });
+  run(0.5);
   const target = dummy("a", NEAR);
-  pokeFrom("a", target, { x: NEAR.x - 100, y: NEAR.y });
-  expect(target.health).toBe(FULL);
+  pokeFrom("a", target);
+  expect(target.health).toBe(FULL - POKE.damage);
   run(1);
   expect(target.health).toBe(FULL - POKE.damage);
   expect(dummy("b", NEAR).health).toBe(FULL - POKE.damage);
@@ -303,7 +298,7 @@ test("the host's own poke applies once, and plays once on every client", async (
     ]);
 });
 
-test("the host holds a guest to the poke's cooldown, however its client counts", async () => {
+test("the host holds a guest to the poke's cooldown on the guest's own clock, however its client counts", async () => {
   const { client, dummy, pokeFrom, run } = await room();
   const guest = client("b").game();
   pokeFrom("b", dummy("b", NEAR));
@@ -316,7 +311,7 @@ test("the host holds a guest to the poke's cooldown, however its client counts",
   expect(client("a").net.counts.shown).toBe(1);
 });
 
-test("a guest without the stamina does not poke, and the host refuses one it reckons the guest cannot afford", async () => {
+test("a guest without the stamina does not poke, and the host refuses one its own run of the guest cannot afford", async () => {
   const { client, dummy, pokeFrom, run } = await room();
   const guest = client("b").game();
   guest.local.stamina = {
@@ -327,25 +322,32 @@ test("a guest without the stamina does not poke, and the host refuses one it rec
   expect(pokeFrom("b", dummy("b", NEAR))).toBe(false);
   expect(guest.local.stamina.value).toBe(POKE.stamina - 1);
   guest.local.stamina = { value: FULL, exhausted: false, rested: 0 };
-  const reckoned = client("a").game().staminaChecks.get("b");
-  if (reckoned === undefined) throw new Error("no reckoning of b");
-  reckoned.stamina = { value: 0, exhausted: true, rested: 0 };
-  reckoned.owed = Infinity;
+  const onHost = client("a").game().players.get("b");
+  if (onHost === undefined) throw new Error("the host has no b");
+  onHost.stamina = { value: 0, exhausted: true, rested: 0 };
   expect(pokeFrom("b", dummy("b", NEAR))).toBe(true);
   run(1);
   expect(dummy("a", NEAR).health).toBe(FULL);
   expect(client("a").net.counts.shown).toBe(0);
+  // The guest takes the host's word on its stamina.
+  expect(guest.local.stamina.value).toBeLessThan(FULL - POKE.stamina);
 });
 
-test("the host refuses a poke from where it does not reckon the guest could stand", async () => {
-  const { client, dummy, pokeFrom, run } = await room();
+test("the host judges a poke from where it runs the poker, whatever the poker's client shows", async () => {
+  const { client, dummy, place, pokeFrom, run } = await room();
+  const guest = client("b").game();
   const target = dummy("b", NEAR);
-  const nearby = { x: NEAR.x, y: NEAR.y - 60 };
-  pokeFrom("b", target, nearby);
+  const before = { x: guest.local.x, y: guest.local.y };
+  // The host puts the guest out of reach; the guest pokes before it hears so.
+  place("b", { x: SPOTS.b?.x ?? 0, y: 480 });
+  expect(guest.local).toMatchObject(before);
+  pokeFrom("b", target);
   run(1);
   expect(dummy("a", NEAR).health).toBe(FULL);
   expect(client("a").net.counts.shown).toBe(0);
-  run(POKE.cooldown);
+  expect(guest.local.y).toBeCloseTo(480, 0);
+  place("b", before);
+  run(Math.max(POKE.cooldown, 1));
   pokeFrom("b", target);
   run(1);
   expect(dummy("a", NEAR).health).toBe(FULL - POKE.damage);

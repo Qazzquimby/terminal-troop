@@ -19,11 +19,9 @@ export interface ItemUse {
   readonly startedAt: number;
 }
 
-/** A use of a held item as its user sends it: the slot it holds the item in, where it stood and which way it faced. */
+/** A use of a held item as its user sends it: the slot it holds the item in, and which way it faced. */
 const ItemUseInput = z.object({
   slot: z.number().int().min(0).max(63),
-  x: z.number(),
-  y: z.number(),
   aim: z.number(),
 });
 type ItemUseInput = z.infer<typeof ItemUseInput>;
@@ -33,8 +31,8 @@ export interface UseSpec {
   /** Least time between one player's uses, in sim seconds. */
   readonly cooldown: number;
   /**
-   * Applies `use` by `user`, as an action: on the user's own client as it uses the item, and on
-   * the host once it accepts.
+   * Applies `use` by `user`, from where the user stands, as an action: on the user's own client
+   * as it uses the item, and on the host once it accepts.
    */
   apply(game: Session, user: Player, use: ItemUseInput): void;
 }
@@ -47,21 +45,14 @@ export interface ItemBehaviour {
   draw(ctx: CanvasRenderingContext2D, use: ItemUse, time: number): void;
 }
 
-/** How far the host trusts when a player's action arrives. */
-export interface UseSlack {
-  /** How much sooner than its cooldown allows an action may arrive, in seconds. */
-  readonly seconds: number;
-}
-
 /**
- * The action of using the item `id`: the host takes it from where the user says it stood, as it
- * would take a move there, and only if its record has the item in the slot the use names.
+ * The action of using the item `id`: the host takes it only if its record has the item in the
+ * slot the use names.
  */
 export const itemUse = (id: string, spec: UseSpec): Action<ItemUseInput> =>
   defineAction("use", {
     input: ItemUseInput,
     cooldown: spec.cooldown,
-    stood: (_user, { x, y }) => ({ at: { x, y } }),
     check: (game, user, { slot }) => itemIn(game, user.id, slot) === id,
     apply: (game, user, use) => {
       spec.apply(game, user, use);
@@ -80,15 +71,13 @@ export function registerItem(
   if (behaviour !== undefined) game.items.set(item.id, behaviour);
 }
 
-/** Uses the local player's held item, if it is usable: from where it stands, the way it faces. */
+/** Uses the local player's held item, if it is usable, the way it faces. */
 export function useHeldItem(game: Session): void {
   const { local } = game;
   const item = heldItem(local.inventory, local.held);
   if (item === null || local.held === null) return;
   game.items.get(item.id)?.use.perform(game, {
     slot: local.held,
-    x: local.x,
-    y: local.y,
     aim: local.aim,
   });
 }

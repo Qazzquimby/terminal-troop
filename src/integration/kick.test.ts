@@ -1,13 +1,9 @@
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import { entityContent } from "../entities/index.js";
-import { createScope } from "../lib/scope/index.js";
 import { moveContent } from "../moves/index.js";
-import { createFlashes } from "../render/index.js";
-import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import {
-  applyRemoteState,
   createSession,
   isAreaFree,
   receiveEvent,
@@ -17,15 +13,10 @@ import {
   updateSession,
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
-import { createNullVoice } from "../voice/index.js";
-import {
-  createHub,
-  createManualClock,
-  testRoomConfig,
-} from "./room-helpers.js";
+import { crew, playerOn, sessionOf } from "./crew.js";
+import { reportedAt } from "./heard.js";
 import {
   testEntitiesConfig,
-  testFlashConfig,
   testMovesConfig,
   testSfx,
   testSimConfig,
@@ -126,27 +117,21 @@ const hitboxRightOf = (at: Point): Point => ({
   y: at.y,
 });
 
-test("a kick lunges the kicker one body length, spends its stamina and goes to the host", () => {
+test("a guest's kick lunges the kicker one body length, spends its stamina and goes to the host as its aim", () => {
   const game = session();
+  game.hosting = false;
   standAt(game, { x: 300, y: 300 });
   updateSession(game, kickRight(game), DT);
   expect(game.local.stamina.value).toBe(
     testSimConfig.stamina.max - kick.stamina,
   );
-  expect(game.outbox).toEqual([
+  expect(game.outbox.filter(({ content }) => content === "move/kick")).toEqual([
     {
       content: "move/kick",
       event: "kick",
       route: "host",
       to: null,
-      payload: {
-        action: 1,
-        input: {
-          from: { x: 300, y: 300 },
-          to: { x: 300 + PLAYER_LENGTH, y: 300 },
-          aim: 0,
-        },
-      },
+      payload: { action: 1, step: game.step, input: { aim: 0 } },
     },
   ]);
   wait(game, kick.lunge.seconds + DT);
@@ -179,27 +164,20 @@ test("kicking something close by, the lunge stops at it and the kick lands on it
   standAt(game, { x: 300, y: 300 });
   const touching = testSimConfig.player.radius + DUMMY_LENGTH / 2;
   const target = spawnEntity(game, DUMMY, 300 + touching + 2, 300, {});
+  const before = target.x;
   updateSession(game, kickRight(game), DT);
   expect(game.flashes).toHaveLength(1);
   expect(game.flashes[0]?.at.x).toBeCloseTo(300 + 2 + kick.reach);
-  expect(Math.abs((game.flashes[0]?.at.x ?? 0) - target.x)).toBeLessThan(5);
-  expect(game.outbox[0]?.payload).toMatchObject({
-    input: { from: { x: 300, y: 300 }, to: { x: 302, y: 300 } },
-  });
+  expect(Math.abs((game.flashes[0]?.at.x ?? 0) - before)).toBeLessThan(5);
+  expect(target.health).toBe(40 - kick.damage);
 });
 
-test("the lunge never runs into a player in the way", () => {
+test("a guest's lunge never runs into a player in the way", () => {
   const game = session();
+  // A guest leaves pushing players to the host, so the one in the way stays put.
+  game.hosting = false;
   standAt(game, { x: 300, y: 300 });
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    x: 340,
-    y: 300,
-    aim: 0,
-    epoch: 0,
-    content: {},
-  });
+  reportedAt(game, "them", { x: 340, y: 300 });
   updateSession(game, kickRight(game), DT);
   const reached: number[] = [];
   for (let step = 0; step < 10; step++) {
@@ -277,13 +255,7 @@ test("a kick waits out its cooldown on the kicker's client", () => {
   expect(game.outbox).toHaveLength(1);
 });
 
-// Over a room: two clients on a hub that sends every payload through JSON.
-
-function sessionOf(room: Room): Session {
-  const state = room.state();
-  if (state.kind !== "joined") throw new Error(`not joined: ${state.kind}`);
-  return state.session;
-}
+// Over a room: the host `a` and the guest `b` on a hub that sends every payload through JSON.
 
 function chaserOf(room: Room): WorldEntity {
   const [chaser] = sessionOf(room).entities.values();
@@ -291,110 +263,99 @@ function chaserOf(room: Room): WorldEntity {
   return chaser;
 }
 
-/** Two clients joined to one room on the same hub, `a` hosting. */
-async function pair() {
-  const hub = createHub();
-  const clock = createManualClock();
-  const client = (id: string): Room =>
-    createRoom({
-      localId: id,
-      world: "dev",
-      transport: hub.transport(id, []).port,
-      voice: createNullVoice({
-        mode: "open",
-        muted: false,
-        volume: 1,
-        inputDevice: null,
-      }),
-      sfx: testSfx(),
-      scope: createScope(),
-      clock,
-      config: testRoomConfig,
-      sim: testSimConfig,
-      content: [...entityContent(entities), ...moveContent(testMovesConfig)],
-      falloff: { full: 100, silent: 600, pan: 300 },
-      onChange: () => undefined,
-      onPeerFailed: () => undefined,
-    });
-  const a = client("a");
-  const b = client("b");
-  await a.join("KICK", "A");
-  await b.join("KICK", "B");
-  clock.advance(1000);
-  expect(a.hostId()).toBe("a");
-  /** What each client draws of the blows it sees land, as its frames would. */
-  const seen = {
-    a: createFlashes(testFlashConfig),
-    b: createFlashes(testFlashConfig),
-  };
-  const step = (room: Room, controls: Controls): void => {
-    updateSession(sessionOf(room), controls, DT);
-    seen[room === a ? "a" : "b"].see(sessionOf(room), clock.now());
-  };
-  /** Runs one step on each client and lets every message through, 200ms later. */
-  const exchange = (controls: { a?: Controls; b?: Controls } = {}): void => {
-    step(b, controls.b ?? idle);
-    b.frame(clock.now());
-    step(a, controls.a ?? idle);
-    clock.advance(clock.now() + 200);
-    a.frame(clock.now());
-    step(b, idle);
-  };
-  return { a, b, clock, exchange, seen, step };
-}
-
-/** Puts `room`'s local player at `at`, still. */
-function place(room: Room, at: Point): void {
-  standAt(sessionOf(room), at);
-}
-
 /** Two clear spots side by side in the dev square, the guest's left of the chaser. */
+const HOST = { x: 450, y: 150 };
 const GUEST = { x: 150, y: 300 };
 const TARGET = hitboxRightOf(GUEST);
 
-/** The guest at GUEST and the chaser in its kick's hitbox, as the host knows them. */
+/** What each client showed and heard of the blows it saw land, step by step. */
+interface Seen {
+  readonly flashes: Session["flashes"][number][];
+  readonly noises: Session["noises"][number][];
+}
+
+/** `a` hosting and `b` its guest, each at its spot, the chaser in the guest's kick's hitbox. */
 async function lineUp() {
-  const room = await pair();
-  const { a, b, exchange } = room;
-  place(a, { x: 450, y: 150 });
-  place(b, GUEST);
-  Object.assign(chaserOf(a), { ...TARGET, tx: TARGET.x, ty: TARGET.y });
-  exchange();
-  exchange();
-  expect(isAreaFree(sessionOf(a).world.map, TARGET.x, TARGET.y, 15)).toBe(true);
-  return room;
+  const room = await crew(
+    {
+      spots: { a: HOST, b: GUEST },
+      content: [...entityContent(entities), ...moveContent(testMovesConfig)],
+    },
+    "a",
+    "b",
+  );
+  const seen: Record<string, Seen> = {
+    a: { flashes: [], noises: [] },
+    b: { flashes: [], noises: [] },
+  };
+  /** Steps both clients once, `b` with `controls`, noting what each showed and heard. */
+  const step = (controls: Controls = idle): void => {
+    room.step({ b: controls });
+    for (const id of ["a", "b"]) {
+      const game = sessionOf(room.room(id));
+      seen[id]?.flashes.push(...game.flashes);
+      seen[id]?.noises.push(...game.noises);
+    }
+  };
+  const run = (seconds: number, controls: Controls = idle): void => {
+    for (let count = 0; count < Math.round(seconds / DT); count++)
+      step(controls);
+  };
+  /** Puts the chaser at `at` on the host, which the guest hears. */
+  const putChaser = (at: Point): void => {
+    Object.assign(chaserOf(room.room("a")), { ...at, tx: at.x, ty: at.y });
+  };
+  putChaser(TARGET);
+  run(0.5);
+  for (const id of ["a", "b"]) {
+    seen[id]?.flashes.splice(0);
+    seen[id]?.noises.splice(0);
+  }
+  expect(chaserOf(room.room("b")).tx).toBeCloseTo(TARGET.x, 0);
+  expect(
+    isAreaFree(sessionOf(room.room("a")).world.map, TARGET.x, TARGET.y, 15),
+  ).toBe(true);
+  return {
+    ...room,
+    a: room.room("a"),
+    b: room.room("b"),
+    seen,
+    step,
+    run,
+    putChaser,
+  };
 }
 
 test("a guest's kick hurts and knocks back on the host, and both clients see it", async () => {
-  const { a, b, exchange, seen, step } = await lineUp();
-  const guest = sessionOf(b);
-  exchange({ b: kickRight(guest) });
-
+  const { a, b, seen, step, run } = await lineUp();
+  step(kickRight(sessionOf(b)));
+  run(0.5);
   const onHost = chaserOf(a);
   expect(onHost.health).toBe(entities.chaser.maxHealth - kick.damage);
   expect(onHost.x - TARGET.x).toBeGreaterThan(
     DUMMY_LENGTH * kick.knockback - 5,
   );
   expect(chaserOf(b)).toMatchObject({ health: onHost.health, tx: onHost.x });
-  step(a, idle);
   const flash = { at: TARGET, radius: kick.radius, hit: true };
-  expect(seen.a.list).toEqual([expect.objectContaining(flash)]);
-  expect(seen.b.list).toEqual([expect.objectContaining(flash)]);
+  expect(seen.a?.flashes).toEqual([expect.objectContaining(flash)]);
+  expect(seen.b?.flashes).toEqual([expect.objectContaining(flash)]);
 });
 
-test("the host turns down a kick still on cooldown, however the guest's client counts", async () => {
-  const { a, b, exchange } = await lineUp();
+test("the host turns down a kick still on cooldown on the guest's own clock, however the guest's client counts", async () => {
+  const { a, b, step, run, putChaser } = await lineUp();
   const guest = sessionOf(b);
-  exchange({ b: kickRight(guest) });
-  Object.assign(chaserOf(a), { ...TARGET, tx: TARGET.x, ty: TARGET.y });
+  step(kickRight(guest));
+  run(0.3);
+  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
+  putChaser(hitboxRightOf(playerOn(a, "b")));
   guest.localReadyAt.clear();
-  place(b, GUEST);
-  exchange({ b: kickRight(guest) });
+  step(kickRight(guest));
+  run(0.5);
   expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
 });
 
 test("a guest without the stamina sends no kick", async () => {
-  const { a, b, exchange } = await lineUp();
+  const { a, b, step, run } = await lineUp();
   const guest = sessionOf(b);
   guest.local.stamina = {
     value: kick.stamina / 2,
@@ -402,79 +363,67 @@ test("a guest without the stamina sends no kick", async () => {
     rested: 0,
   };
   updateSession(guest, kickRight(guest), DT);
-  expect(guest.outbox).toEqual([]);
-  exchange();
+  expect(guest.outbox.filter(({ content }) => content === "move/kick")).toEqual(
+    [],
+  );
+  step();
+  run(0.5);
   expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
 });
 
-test("a kick makes a noise from its hitbox on every client, the kicker its source", async () => {
-  const { a, b, exchange } = await lineUp();
-  exchange({ b: kickRight(sessionOf(b)) });
+test("a kick makes one noise from its hitbox on every client, the kicker its source", async () => {
+  const { b, seen, step, run } = await lineUp();
+  step(kickRight(sessionOf(b)));
+  run(0.5);
   const noise = {
     at: { x: TARGET.x, y: TARGET.y },
     radius: kick.noiseRadius,
     source: "b",
   };
-  expect(sessionOf(b).noises).toEqual([noise]);
-  updateSession(sessionOf(a), idle, DT);
-  expect(sessionOf(a).noises).toEqual([noise]);
+  const kicks = (id: string) =>
+    seen[id]?.noises.filter(({ radius }) => radius === kick.noiseRadius);
+  expect(kicks("a")).toEqual([noise]);
+  expect(kicks("b")).toEqual([noise]);
 });
 
-/** Sends a kick from `room`'s client as if it lunged `from` `to`, whatever its lunge did. */
-function forgeKick(
-  room: Room,
-  lunge: { from: Point; to: Point; aim: number },
-): void {
-  sessionOf(room).outbox.push({
+/** Sends a kick facing `aim` from `room`'s client, past its own client's checks. */
+function forgeKick(room: Room, aim: number): void {
+  const game = sessionOf(room);
+  game.outbox.push({
     content: "move/kick",
     event: "kick",
     route: "host",
     to: null,
-    payload: { action: 1, input: lunge },
+    payload: { action: ++game.lastAction, step: game.step, input: { aim } },
   });
 }
 
-test("the host turns down a kick that says it lunged further than the host reckons", async () => {
-  const { a, b, exchange, seen, step } = await lineUp();
-  const facingRight = { ...idle, aim: { x: GUEST.x + 1000, y: GUEST.y } };
-  exchange({ b: facingRight });
-  forgeKick(b, { from: GUEST, to: { x: GUEST.x, y: GUEST.y + 30 }, aim: 0 });
-  exchange({ b: facingRight });
-  step(a, idle);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
-  expect(seen.a.list).toEqual([]);
-  expect(seen.b.list).toEqual([]);
-});
-
-test("the host turns down a kick that says it lunged further than a lunge goes", async () => {
-  const { a, b, exchange, seen, step } = await lineUp();
-  const facingRight = { ...idle, aim: { x: GUEST.x + 1000, y: GUEST.y } };
-  exchange({ b: facingRight });
-  const to = { x: GUEST.x + PLAYER_LENGTH + kick.lunge.slack + 10, y: GUEST.y };
-  forgeKick(b, { from: GUEST, to, aim: 0 });
-  exchange({ b: facingRight });
-  step(a, idle);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
-  expect(seen.a.list).toEqual([]);
+test("the host lunges a kicker from where it runs it, whatever the kicker's client shows", async () => {
+  const { a, b, seen, step, run } = await lineUp();
+  const guest = sessionOf(b);
+  // The guest's own client has it far from the chaser; the host has it by it.
+  Object.assign(guest.local, { y: GUEST.y + 200 });
+  forgeKick(b, 0);
+  step();
+  run(0.5);
+  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
+  expect(seen.a?.flashes[0]?.at.x).toBeCloseTo(TARGET.x, 0);
+  expect(seen.a?.flashes[0]?.at.y).toBeCloseTo(TARGET.y, 0);
+  // And the host puts the guest back where it runs it.
+  expect(guest.local.y).toBeCloseTo(GUEST.y, 0);
 });
 
 test("a kick whose lunge the host sees stopped by a wall lands where the host reckons", async () => {
-  const { a, b, exchange, seen, step } = await pair();
+  const { a, seen, step, run, place } = await lineUp();
   const wall = sessionOf(a).world.W;
   const start = { x: wall - 25, y: 300 };
-  place(a, { x: 450, y: 150 });
-  place(b, start);
+  place("b", start);
   const facingWall = { ...idle, aim: { x: wall + 1000, y: start.y } };
-  exchange({ b: facingWall });
-  exchange({ b: facingWall });
-  forgeKick(b, {
-    from: start,
-    to: { x: start.x + PLAYER_LENGTH, y: start.y },
-    aim: 0,
-  });
-  exchange({ b: facingWall });
-  step(a, idle);
-  const flash = seen.a.list[0];
+  run(1, facingWall);
+  seen.a?.flashes.splice(0);
+  step({ ...facingWall, secondary: true });
+  run(0.5, facingWall);
+  const flash = seen.a?.flashes[0];
   if (flash === undefined) throw new Error("no kick landed");
   const end = flash.at.x - kick.reach;
   expect(end).toBeGreaterThan(start.x);
@@ -482,13 +431,11 @@ test("a kick whose lunge the host sees stopped by a wall lands where the host re
   expect(flash.at.y).toBeCloseTo(start.y);
 });
 
-test("a guest that turns and kicks between its ticks lands the kick where it aimed", async () => {
-  const { a, b, clock, exchange } = await lineUp();
-  exchange();
-  b.frame(clock.now());
+test("a guest that turns and kicks in one step lands the kick where it aimed", async () => {
+  const { a, b, step, run } = await lineUp();
   const guest = sessionOf(b);
-  updateSession(guest, kickRight(guest), DT);
-  b.frame(clock.now());
-  updateSession(sessionOf(a), idle, DT);
+  run(0.3, { ...idle, aim: { x: GUEST.x, y: GUEST.y - 1000 } });
+  step(kickRight(guest));
+  run(0.5);
   expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
 });

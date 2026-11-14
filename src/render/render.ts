@@ -18,6 +18,7 @@ import {
   litWalls,
   movement,
   renderAim,
+  drawnLocal,
   renderPosition,
   visibilityPolygon,
   visionOrigins,
@@ -527,7 +528,7 @@ export function interpolatedView(
     ...body,
     ...renderPosition(body, alpha),
   });
-  const placed = at(game.local);
+  const placed = { ...game.local, ...drawnLocal(game, alpha) };
   const local = { ...placed, aim: aimAt(placed, mouse) };
   const players = new Map(
     [...game.players].map(([id, player]) => [

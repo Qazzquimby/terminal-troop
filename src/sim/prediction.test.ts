@@ -9,7 +9,8 @@ import {
   hold,
   nextAction,
 } from "./prediction.js";
-import { applyRemoteState, createSession, updateSession } from "./session.js";
+import { reportedAt } from "../integration/heard.js";
+import { createSession, updateSession } from "./session.js";
 import type { Session } from "./session.js";
 import type { Controls } from "./player.js";
 import { applyWorldEntries, takeWorldEntries } from "./world-data.js";
@@ -84,15 +85,7 @@ test("a guest's prediction holds against the host until the host has handled the
   const host = createSession("h", "H", "PREDICT", "dev", testSfx(), {
     ...testSimConfig,
   });
-  applyRemoteState(host, {
-    id: "me",
-    name: "ME",
-    x: 100,
-    y: 100,
-    aim: 0,
-    epoch: 0,
-    content: {},
-  });
+  reportedAt(host, "me", { x: 100, y: 100 });
   confirmAction(host, "me", action);
   hear(game, 340, 6);
   applyWorldEntries(

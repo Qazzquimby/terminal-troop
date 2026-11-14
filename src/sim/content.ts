@@ -286,8 +286,8 @@ interface ItemBase extends Omit<ItemDefinition, "id"> {
   readonly actions?: readonly Action<never>[];
   /** The state the item keeps once for the world, by the key each part travels under. */
   readonly world?: WorldDataSet;
-  /** Acts on the local player's controls, each step, once the player has moved. */
-  act?(game: Session, controls: Controls): void;
+  /** Runs on the host, each step, once the entities have moved: for the rules the item keeps. */
+  step?(game: Session, dt: number): void;
 }
 
 /** An item a player uses while it holds it, on the use control. */
@@ -359,8 +359,8 @@ export function defineItem<N extends string, C>(
             spawnWorldItem(game, at, name),
           );
         },
-        act(game, controls) {
-          spec.act?.(game, controls);
+        step(game, dt) {
+          spec.step?.(game, dt);
         },
       };
     },

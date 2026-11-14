@@ -1,7 +1,7 @@
 import {
   createSimClock,
+  drawnLocal,
   remotePlayers,
-  renderPosition,
   speak,
   updateSession,
 } from "./sim/index.js";
@@ -383,7 +383,7 @@ function frame(): void {
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
-    updateCamera(camera, renderPosition(session.local, alpha), frameSeconds);
+    updateCamera(camera, drawnLocal(session, alpha), frameSeconds);
     const drawStart = performance.now();
     draw(
       ctx,

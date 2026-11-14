@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NetEvent } from "../net/index.js";
-import { Health, rounded } from "../sim/index.js";
+import { Health, PlayerEntry, PlayerReport, rounded } from "../sim/index.js";
 
 const PlayerId = z.string().min(1).max(64);
 
@@ -14,23 +14,20 @@ const Coordinate = rounded(1);
 const Angle = rounded(2);
 
 /**
- * A STATE payload, its name cut to `nameMax` characters when heard. `epoch` counts the moves the
- * host has forced on the sender that it has taken. `content` holds each content
- * entry's state for the sender by the entry's name; each entry parses its own, so a value its
- * entry rejects, or of an entry this client lacks, is dropped where it is applied.
+ * A STATE payload: what the sender reports of itself, its name cut to `nameMax` characters when
+ * heard. `content` holds each content entry's reported state for the sender by the entry's name;
+ * each entry parses its own, so a value its entry rejects, or of an entry this client lacks, is
+ * dropped where it is applied. Where the sender is goes with the host's snapshots, and `at` only
+ * says where it starts, until a host has placed it.
  */
 function stateMessage(nameMax: number) {
-  return z.object({
+  return PlayerReport.extend({
     id: PlayerId,
     name: z.codec(z.string(), z.string(), {
       decode: (name) => name.slice(0, nameMax),
       encode: (name) => name,
     }),
-    x: Coordinate,
-    y: Coordinate,
     aim: Angle,
-    epoch: z.number().int().min(0),
-    content: z.record(z.string(), z.unknown()),
   });
 }
 
@@ -55,6 +52,9 @@ const HeartbeatMessage = PresenceMessage.extend({
 
 /** Most entities a snapshot carries, and most ids it says are gone. */
 const MAX_ENTITIES = 4096;
+
+/** Most players a snapshot carries. */
+const MAX_PLAYERS = 256;
 
 const EntityId = z.string().min(1).max(80);
 
@@ -83,7 +83,8 @@ const EntityChange = z.object({
  * and the time on its world's clock, to a hundredth of a second. A full snapshot carries every
  * entity whole; any other the entities new since the sender's last, what changed of the others,
  * and the ids of those gone. Each kind parses its own data, so an entity its kind rejects is
- * dropped where it is applied.
+ * dropped where it is applied. `players` carries every player the host runs, itself included,
+ * in a full snapshot, and otherwise those whose entry changed since its last.
  */
 const EntitiesMessage = z.object({
   host: PlayerId,
@@ -93,6 +94,7 @@ const EntitiesMessage = z.object({
   entities: z.array(EntityEntry).max(MAX_ENTITIES),
   changed: z.array(EntityChange).max(MAX_ENTITIES),
   removed: z.array(EntityId).max(MAX_ENTITIES),
+  players: z.array(PlayerEntry).max(MAX_PLAYERS),
 });
 
 /**

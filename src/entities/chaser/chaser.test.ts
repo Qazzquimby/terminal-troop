@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import alertUrl from "./sfx/alert.mp3";
 import attackUrl from "./sfx/attack.mp3";
 import barkUrl from "./sfx/bark.mp3";
+import { reportedAt } from "../../integration/heard.js";
 import {
   testEntitiesConfig,
   testSfx,
@@ -9,7 +10,6 @@ import {
 } from "../../integration/sim-config.js";
 import {
   applyEntitySnapshot,
-  applyRemoteState,
   createSession,
   entitySnapshot,
   isAreaFree,
@@ -361,7 +361,10 @@ describe("sounds", () => {
       updateSession(follower, idle, DT);
     }
     expect(played(host)).toContain(barkUrl);
-    expect(follower.outbox).toEqual([]);
+    // It sends the host only what its own player steers with.
+    expect(follower.outbox.map(({ content }) => content)).not.toContain(
+      "core/actions",
+    );
     expect(played(follower)).toEqual([]);
   });
 
@@ -399,15 +402,7 @@ describe("sounds", () => {
   test("an attack on a remote player comes off the host's record of its health", () => {
     const game = world();
     standAt(game, 100, 100);
-    applyRemoteState(game, {
-      id: "them",
-      name: "THEM",
-      x: 300,
-      y: 400,
-      aim: 0,
-      epoch: 0,
-      content: {},
-    });
+    reportedAt(game, "them", { x: 300, y: 400 });
     chaserAt(game, 100, 400);
     const them = () => game.players.get("them")?.health;
     expect(runUntil(game, 3, () => them() !== 100)).toBe(true);
@@ -423,22 +418,40 @@ describe("hearing", () => {
   const blind = { ...config, sightRange: 0 };
   const { footsteps } = testSimConfig;
 
-  /** A remote player at (x, y) reporting it moves in `mode`. */
+  /**
+   * A remote player at (x, y), steering right in `mode` into another that stands just right of
+   * it, so the host runs it moving in that gait where it stands; its next step makes a footstep.
+   */
   function moverAt(
     game: Session,
     x: number,
     y: number,
     mode: "walk" | "sprint" | "crouch",
   ): void {
-    applyRemoteState(game, {
-      id: "them",
-      name: "THEM",
-      x,
-      y,
-      aim: 0,
-      epoch: 0,
-      content: { "core/movement": { mode, moving: true } },
-    });
+    const diameter = testSimConfig.player.radius * 2;
+    reportedAt(game, "post", { x: x + diameter, y });
+    const them = reportedAt(game, "them", { x, y });
+    receiveEvent(
+      game,
+      {
+        from: "them",
+        to: null,
+        content: "core/steering",
+        event: "steer",
+        payload: {
+          step: 0,
+          move: { x: 1, y: 0 },
+          sprint: mode === "sprint",
+          held: null,
+          ...(mode === "crouch" && { crouch: true }),
+        },
+      },
+      game.localId,
+    );
+    // The host runs the player a few steps behind the first it hears.
+    run(game, 0.2);
+    expect(them.x).toBeCloseTo(x, 0);
+    them.stride = 0;
   }
 
   const distanceTo = (zombie: WorldEntity, x: number, y: number): number =>
@@ -502,6 +515,7 @@ describe("hearing", () => {
     expect(stateOf(zombie)).not.toMatchObject({ noiseTarget: null });
 
     game.players.delete("them");
+    game.players.delete("post");
     run(game, 5);
     expect(stateOf(zombie)).toMatchObject({
       mode: "wander",

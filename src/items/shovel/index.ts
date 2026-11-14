@@ -79,8 +79,8 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     startingSlot: 0,
     use: {
       cooldown: config.cooldown,
-      apply(game, swinger, { x, y, aim }) {
-        const at = { x, y };
+      apply(game, swinger, { aim }) {
+        const at = { x: swinger.x, y: swinger.y };
         const area = circleAhead(at, aim, config.reach, config.radius);
         const struck = [
           ...entitiesIn(game, area),

@@ -11,7 +11,6 @@ import {
   itemIn,
   registerEntityType,
   removeEntity,
-  restartMoveChecks,
   spawnEntity,
   spawnWorldItem,
   takeItem,
@@ -25,7 +24,7 @@ import type {
   WorldEntity,
 } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
-import { idle } from "./crew.js";
+import { idle, teleport } from "./crew.js";
 import {
   createHub,
   createManualClock,
@@ -42,7 +41,6 @@ import {
 
 const DT = 1 / 60;
 const { shovel, scrap } = testItemsConfig;
-const { settleSeconds } = testSimConfig.net.moves;
 const FULL = 1000;
 
 /**
@@ -109,7 +107,7 @@ type Heard = Record<string, number>;
 
 /**
  * The host `a`, the guest `b` that acts and the guest `c` that watches, joined to one room on a
- * JSON hub, each send arriving 60 to 180ms later, placed, and stepped past the settle time.
+ * JSON hub, each send arriving 60 to 180ms later, and placed.
  */
 async function room() {
   const hub = createHub();
@@ -183,27 +181,21 @@ async function room() {
     for (let i = 0; i < Math.round(seconds / DT); i++) step();
   }
 
-  // Players arrive at random before they are placed, and copies easing from there can shove the
-  // others aside, so every client's copy of every player is put in place too, twice; the dummy
-  // and the cruiser too. The host takes each placement as it comes, then holds the players to
-  // their moves once the settle time has passed.
+  // Players arrive at random before they are placed, and can shove the others aside as they go,
+  // so each is put in place twice, as the host would; every client's dummy and cruiser too. Each
+  // guest's own client takes its place from the host's snapshots.
+  const games = () =>
+    [...clients.values()].map(({ room: each }) => sessionOf(each));
   for (let round = 0; round < 2; round++) {
-    for (const { room: each } of clients.values()) {
-      const game = sessionOf(each);
-      for (const [id, at] of Object.entries(SPOTS)) {
-        const player = game.players.get(id);
-        const spot = { ...at, prevX: at.x, prevY: at.y, tx: at.x, ty: at.y };
-        if (player !== undefined) Object.assign(player, spot);
-      }
+    for (const [id, at] of Object.entries(SPOTS)) teleport(games(), id, at);
+    for (const game of games())
       for (const [kind, at] of [
         ["dummy", TARGET],
         ["cruiser", CRUISER],
       ] as const)
         for (const entity of ofKind(game, kind))
           Object.assign(entity, { ...at, tx: at.x, ty: at.y });
-    }
-    restartMoveChecks(client("a").game());
-    run(settleSeconds + 0.25);
+    run(1);
   }
   for (const { heard } of clients.values())
     for (const key of Object.keys(heard)) Reflect.deleteProperty(heard, key);
@@ -233,7 +225,7 @@ async function room() {
     expect(giveItem(client("a").game(), id, "scrap", slot)).toBe(true);
     run(1);
   };
-  return { client, step, run, dummy, carried, recorded, lying, stock };
+  return { client, step, run, dummy, carried, recorded, lying, stock, games };
 }
 
 /** Swinging the held item, facing right of where `game`'s player stands. */
@@ -277,8 +269,7 @@ test("a guest's swing shows and sounds at once on its own client, and once on ev
 
 test("a swing of a slot the host's record has empty shows on no one else, sounds nowhere else, and hurts nothing", async () => {
   const { client, run, dummy } = await room();
-  const { x, y } = client("b").game().local;
-  forgeAction(client("b").game(), "item/shovel.use", { slot: 1, x, y, aim: 0 });
+  forgeAction(client("b").game(), "item/shovel.use", { slot: 1, aim: 0 });
   run(1);
   expect(dummy("a").health).toBe(FULL);
   for (const id of ["a", "c"]) {
@@ -348,9 +339,8 @@ test("a guest's drop shows at once and clinks on its own client, then lands once
 
 test("a drop from a slot the host's record has empty lays nothing and sounds nowhere", async () => {
   const { client, run, recorded, lying } = await room();
-  const { x, y } = client("b").game().local;
   for (const slot of [1, 2, 3])
-    forgeAction(client("b").game(), "core/world-items.drop", { slot, x, y });
+    forgeAction(client("b").game(), "core/world-items.drop", { slot });
   run(1);
   for (const id of ["a", "b", "c"]) {
     expect([id, lying(id, "scrap")]).toEqual([id, 0]);
@@ -359,30 +349,64 @@ test("a drop from a slot the host's record has empty lays nothing and sounds now
   expect(recorded("b")).toEqual(["shovel", null, null, null]);
 });
 
-test("a guest's sale by the cruiser shows the scrap gone at once and rings on its own client; the credit rises on every client, which each ring once", async () => {
+test("a guest holding scrap by the cruiser sells it on the host: the scrap leaves its items and the credit rises on every client", async () => {
   const { client, step, run, carried, recorded, stock } = await room();
   stock("b", 1);
+  expect(carried("b")).toEqual(["shovel", "scrap", null, null]);
   step({ b: { ...idle, select: 1 } });
-  expect(carried("b")).toEqual(["shovel", null, null, null]);
-  expect(client("b").heard).toEqual({ "cashout.mp3": 1 });
+  // Nothing is predicted: the scrap goes once the host's record says so.
+  expect(carried("b")).toEqual(["shovel", "scrap", null, null]);
   run(1);
   expect(recorded("b")).toEqual(["shovel", null, null, null]);
-  for (const id of ["a", "b", "c"]) {
+  expect(carried("b")).toEqual(["shovel", null, null, null]);
+  for (const id of ["a", "b", "c"])
     expect([id, credit.get(client(id).game())]).toEqual([id, scrap.value]);
+  for (const id of ["a", "c"])
     expect([id, client(id).heard]).toEqual([id, { "cashout.mp3": 1 }]);
-  }
 });
 
-test("a sale of scrap the guest does not hold is refused: no credit, no sound, and its items stay as the host keeps them", async () => {
-  const { client, run, recorded, stock } = await room();
+test("the seller's own client rings once for its sale", async () => {
+  const { client, step, run, stock } = await room();
   stock("b", 1);
-  const { x, y } = client("b").game().local;
-  for (const slot of [0, 2, 3])
-    forgeAction(client("b").game(), "item/scrap.sell", { slot, x, y });
+  step({ b: { ...idle, select: 1 } });
+  run(1);
+  expect(client("b").heard).toEqual({ "cashout.mp3": 1 });
+});
+
+test("scrap not held, or held away from the cruiser, does not sell", async () => {
+  const { client, step, run, recorded, stock, games } = await room();
+  stock("b", 1);
+  stock("c", 1);
+  // `b` holds its shovel by the cruiser; `c` holds its scrap far from it.
+  teleport(games(), "c", { x: 750, y: 500 });
+  run(1);
+  step({ c: { ...idle, select: 1 } });
   run(1);
   expect(recorded("b")).toEqual(["shovel", "scrap", null, null]);
+  expect(recorded("c")).toEqual(["shovel", "scrap", null, null]);
   for (const id of ["a", "b", "c"]) {
     expect([id, credit.get(client(id).game())]).toEqual([id, 0]);
     expect([id, client(id).heard]).toEqual([id, {}]);
   }
+});
+
+test("held scrap by the cruiser sells one at a time, once each sell interval", async () => {
+  const { client, step, run, recorded, stock } = await room();
+  stock("b", 1);
+  stock("b", 2);
+  stock("b", 3);
+  step({ b: { ...idle, select: 1 } });
+  run(1);
+  // One sold; the rest are not held.
+  expect(recorded("b")).toEqual(["shovel", null, "scrap", "scrap"]);
+  // The second sells at once; the third, held for less than an interval after it, does not.
+  step({ b: { ...idle, select: 2 } });
+  run(0.1);
+  step({ b: { ...idle, select: 3 } });
+  run(0.1);
+  step({ b: { ...idle, select: 0 } });
+  run(1);
+  expect(scrap.sellInterval).toBeGreaterThan(0.2);
+  expect(recorded("b")).toEqual(["shovel", null, null, "scrap"]);
+  expect(credit.get(client("a").game())).toBe(scrap.value * 2);
 });

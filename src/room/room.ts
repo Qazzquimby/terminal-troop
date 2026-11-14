@@ -5,18 +5,21 @@ import type { Transport } from "../net/index.js";
 import {
   applyEntityChanges,
   applyEntitySnapshot,
-  applyRemoteState,
+  applyPlayerEntries,
   applyWorldEntries,
   createSession,
   entityDelta,
   entitySnapshot,
-  playerState,
+  followNewHost,
+  haltSteering,
+  hearPlayer,
+  playerEntries,
+  playerReport,
   receiveEvent,
   registerContent,
   removePlayer,
-  restartMoveChecks,
   roomSeed,
-  takeOverForcedMoves,
+  takeOverPlayers,
   takeWorldEntries,
 } from "../sim/index.js";
 import type {
@@ -48,11 +51,16 @@ import { applyProximity, syncVoicePeers } from "./voice-peers.js";
 /** How the room shares state with its other players. */
 export interface RoomConfig {
   /**
-   * Network ticks per second. A tick sends, as one broadcast, the local player's state if it
-   * changed since it was last sent, and while hosting the world state that changed and the
-   * entities.
+   * Network ticks per second. A tick sends, as one broadcast, what the local player reports of
+   * itself if that changed since it was last sent, and while hosting the world state that
+   * changed, the entities and the players.
    */
   readonly sendHz: number;
+  /**
+   * Least milliseconds between two of the local player's STATEs that go out for its turning
+   * alone; a turn also goes along with anything else a frame sends.
+   */
+  readonly facingMs: number;
   /**
    * Milliseconds between full entity snapshots, and between full sends of the world state, while
    * hosting. Between them a snapshot carries only the entities that changed and the ids of those
@@ -158,6 +166,21 @@ export interface Room {
   hostId(): string | undefined;
 }
 
+/** Radians the local player turns before its STATE goes for that alone. */
+const FACING_TURN = 0.05;
+
+/** How far apart two facings are, in radians, the short way round. */
+const turnBetween = (a: number, b: number): number =>
+  Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+
+/**
+ * When the local player's STATE goes:
+ * - now: whatever changed
+ * - tick: if anything but its facing changed, or it turned far enough since the last
+ * - with: as other messages go out in the same broadcast, if it changed at all
+ */
+type StateSend = "now" | "tick" | "with";
+
 /** A joined room's live parts, shared by its message handlers, its pulse and the frame. */
 interface Link {
   readonly code: string;
@@ -174,10 +197,12 @@ interface Link {
   peers: ReadonlySet<string>;
   /** When the next tick is due. */
   nextTick: number;
-  /** The local player's state as last sent, as JSON; null before the first. */
+  /** The local player's STATE as last sent, less its facing, as JSON; null before the first. */
   lastState: string | null;
-  /** The forced-move epoch the local player's state last went out with. */
-  sentEpoch: number;
+  /** The facing the local player's STATE last went out with. */
+  lastAim: number;
+  /** When the local player's STATE last went out. */
+  lastStateAt: number;
   /** The next frame sends state whether or not it ticks, or the state changed. */
   forceState: boolean;
   /** A frame ran since the last pulse. */
@@ -198,6 +223,8 @@ interface Link {
   worldFullDue: boolean;
   /** Each entity as this client last sent it while hosting, by id; empty while not hosting. */
   sent: Map<string, EntitySnapshot>;
+  /** Each player's entry as this client last sent it while hosting, as JSON, by id. */
+  sentPlayers: Map<string, string>;
   /**
    * Who spawned the starting entities of the world this client holds: this client, or the one its
    * hosts' snapshots name. Null before it has any.
@@ -235,29 +262,42 @@ export function createRoom(deps: RoomDeps): Room {
     deps.onChange();
   }
 
-  /**
-   * Sends the local player's state when forced or when it has taken a forced move since last sent,
-   * which every client holds its position back for, or on a tick when it changed since last sent.
-   */
-  function sendState(room: Link, forced: boolean, ticking = false): void {
-    const { epoch } = room.session.local;
-    const force = forced || epoch !== room.sentEpoch;
-    if (!force && !ticking) return;
-    const wire = messages[NetEvent.STATE].encode(playerState(room.session));
-    const json = JSON.stringify(wire);
-    if (!force && json === room.lastState) return;
+  /** Sends what the local player reports of itself, when `how` says it goes. */
+  function sendState(room: Link, how: StateSend): void {
+    const report = playerReport(room.session);
+    const wire = messages[NetEvent.STATE].encode(report);
+    const { aim, ...rest } = wire;
+    const json = JSON.stringify(rest);
+    const now = clock.now();
+    const turned = turnBetween(aim, room.lastAim);
+    const due =
+      how === "now" ||
+      room.lastState !== json ||
+      (how === "with"
+        ? turned > 0
+        : turned > FACING_TURN && now - room.lastStateAt >= config.facingMs);
+    if (!due) return;
     room.lastState = json;
-    room.sentEpoch = epoch;
+    room.lastAim = aim;
+    room.lastStateAt = now;
     room.forceState = false;
-    room.session.reportNow = false;
     void transport.send(NetEvent.STATE, wire);
+  }
+
+  /** Routes the content events this client sent; returns whether any went over the transport. */
+  function routeOutbox(room: Link): boolean {
+    let away = false;
+    for (const outgoing of room.session.outbox.splice(0))
+      if (route(room, outgoing)) away = true;
+    return away;
   }
 
   /**
    * Hands `outgoing` to each client its route reaches: this one's next step without a round
    * trip, the others over the transport. One for the host is dropped while no host is known.
+   * Returns whether it went over the transport.
    */
-  function route(room: Link, outgoing: OutgoingEvent): void {
+  function route(room: Link, outgoing: OutgoingEvent): boolean {
     const host = room.host?.id;
     const { route: reach, ...address } = outgoing;
     const message = { ...address, from: localId };
@@ -271,11 +311,13 @@ export function createRoom(deps: RoomDeps): Room {
         : outgoing.to !== localId);
     if (here) receiveEvent(room.session, message, host);
     if (away) void send(NetEvent.CONTENT, message);
+    return away;
   }
 
   /**
-   * Sends the entities: in full when forced, as this client's first while hosting, or every
-   * `fullSnapshotMs`; otherwise only what changed since the last send, as the others hold it.
+   * Sends the entities and the players: in full when forced, as this client's first while
+   * hosting, or every `fullSnapshotMs`; otherwise only what changed since the last send, as the
+   * others hold it.
    */
   function sendEntities(room: Link, now: number, force = false): void {
     const entities = entitySnapshot(room.session).map(asSent);
@@ -288,6 +330,16 @@ export function createRoom(deps: RoomDeps): Room {
       : entityDelta(room.sent, entities);
     room.sent = new Map(entities.map((entity) => [entity.id, entity]));
     if (full) room.lastFullSent = now;
+    const players = playerEntries(room.session).map((entry) => ({
+      entry,
+      json: JSON.stringify(entry),
+    }));
+    const changedPlayers = players.filter(
+      ({ entry, json }) => full || room.sentPlayers.get(entry.id) !== json,
+    );
+    room.sentPlayers = new Map(
+      players.map(({ entry, json }) => [entry.id, json]),
+    );
     void send(NetEvent.ENTITIES, {
       host: localId,
       origin: room.origin ?? localId,
@@ -296,6 +348,7 @@ export function createRoom(deps: RoomDeps): Room {
       entities: added,
       changed,
       removed,
+      players: changedPlayers.map(({ entry }) => entry),
     });
   }
 
@@ -320,10 +373,10 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   /**
-   * Holds `view` as the host view. Only the host runs the entities, and a host whose world has
-   * no starting entities yet spawns them. A client that takes over sends its world state in full
-   * with its next tick, checks every player's moves afresh, and counts forced moves on from the
-   * highest it has heard of.
+   * Holds `view` as the host view. Only the host runs the entities and the players, and a host
+   * whose world has no starting entities yet spawns them. A client that takes over sends its
+   * world state in full with its next tick, and runs every player on from its last snapshot of
+   * it; one that follows a new host steers afresh with it.
    */
   function holdView(room: Link, view: HostView | undefined): void {
     if (
@@ -332,13 +385,17 @@ export function createRoom(deps: RoomDeps): Room {
       !sameElection(view, room.host)
     )
       room.worldFullDue = true;
+    const hostChanged = view?.id !== room.host?.id;
     room.host = view;
     const hosting = view?.id === localId;
     const takingOver = hosting && !room.session.hosting;
-    if (room.session.hosting !== hosting) restartMoveChecks(room.session);
     room.session.hosting = hosting;
-    if (takingOver) takeOverForcedMoves(room.session);
-    if (!hosting) room.sent.clear();
+    if (takingOver) takeOverPlayers(room.session);
+    else if (!hosting && hostChanged) followNewHost(room.session);
+    if (!hosting) {
+      room.sent.clear();
+      room.sentPlayers.clear();
+    }
     if (hosting && room.origin === null) {
       for (const content of deps.content) content.populate(room.session);
       room.origin = localId;
@@ -347,27 +404,28 @@ export function createRoom(deps: RoomDeps): Room {
 
   /**
    * Sends what a tick carries, and schedules the next: a heartbeat when one is due, the local
-   * player's state if it changed since last sent, must go out now, or goes with a heartbeat, and
-   * the entities while hosting.
+   * player's STATE if it must go out now, goes with a heartbeat, or is due, and the world, the
+   * entities and the players while hosting.
    */
   function tick(room: Link, now: number): void {
     const interval = 1000 / config.sendHz;
     // Ticks keep to their schedule, so frames that fall just short of one do not slow them.
     room.nextTick = Math.max(room.nextTick, now - interval / 2) + interval;
+    const hosting = room.host?.id === localId;
     if (room.beatDue) beatNow(room);
-    else sendState(room, room.forceState || room.session.reportNow, true);
-    if (room.host?.id === localId) {
+    else sendState(room, room.forceState ? "now" : hosting ? "with" : "tick");
+    if (hosting) {
       sendWorld(room, now);
       sendEntities(room, now);
     }
   }
 
-  /** A heartbeat, with the local player's state while the page is shown. */
+  /** A heartbeat, with the local player's STATE while the page is shown. */
   function beatNow(room: Link): void {
     room.beatDue = false;
     batch(() => {
       sendHeartbeat(room);
-      if (!hidden) sendState(room, true);
+      if (!hidden) sendState(room, "now");
     });
   }
 
@@ -400,14 +458,9 @@ export function createRoom(deps: RoomDeps): Room {
       );
   }
 
-  /**
-   * Drops the players `changes` made gone, checks the moves of those back from away afresh, then
-   * points voice at who is left.
-   */
+  /** Drops the players `changes` made gone, then points voice at who is left. */
   function settle(room: Link, changes: readonly PresenceChange[]): void {
     for (const change of changes) {
-      if (change.from === "away" && change.to === "present")
-        restartMoveChecks(room.session, change.id);
       if (change.to !== "gone") continue;
       removePlayer(room.session, change.id);
       room.views.delete(change.id);
@@ -449,7 +502,7 @@ export function createRoom(deps: RoomDeps): Room {
         );
         if (room.roster.get(message.id) === undefined) return;
         if (change !== null) settle(room, [change]);
-        if (applyRemoteState(room.session, message) === "added") {
+        if (hearPlayer(room.session, message) === "added") {
           syncVoice(room);
           deps.onChange();
         }
@@ -486,6 +539,15 @@ export function createRoom(deps: RoomDeps): Room {
             changed: message.changed,
             removed: message.removed,
           });
+        const added = applyPlayerEntries(
+          room.session,
+          message.players,
+          (id) => room.roster.get(id) !== undefined,
+        );
+        if (added.length > 0) {
+          syncVoice(room);
+          deps.onChange();
+        }
       }),
       [NetEvent.WORLD]: on(NetEvent.WORLD, (message) => {
         const { host } = room;
@@ -507,12 +569,11 @@ export function createRoom(deps: RoomDeps): Room {
         if (message.id === localId) heardOwnId(room);
         else {
           hear(room, message.id, { kind: "hello" });
-          restartMoveChecks(room.session, message.id);
           // A host that says HELLO again has lost the world it ran, so the others take it over.
           if (room.host?.id === message.id) handOver(room, message.id);
         }
         if (room.clashed) return;
-        sendState(room, true);
+        sendState(room, "now");
         // The newcomer learns the host view at once, and a hidden page undoes the visible STATE.
         sendHeartbeat(room);
         if (room.host?.id === localId) {
@@ -638,7 +699,8 @@ export function createRoom(deps: RoomDeps): Room {
       peers: new Set(),
       nextTick: clock.now() + 1000 / config.sendHz,
       lastState: null,
-      sentEpoch: 0,
+      lastAim: 0,
+      lastStateAt: -Infinity,
       forceState: false,
       framed: false,
       beatDue: false,
@@ -649,6 +711,7 @@ export function createRoom(deps: RoomDeps): Room {
       lastWorldFull: -Infinity,
       worldFullDue: false,
       sent: new Map(),
+      sentPlayers: new Map(),
       origin: null,
     };
     await transport.join(roomKey(code, deps.world), handlers(room));
@@ -684,7 +747,7 @@ export function createRoom(deps: RoomDeps): Room {
     room.joinedAt = clock.now();
     batch(() => {
       void send(NetEvent.HELLO, { id });
-      sendState(room, true);
+      sendState(room, "now");
     });
     return room;
   }
@@ -755,10 +818,11 @@ export function createRoom(deps: RoomDeps): Room {
       const room = link;
       room.framed = true;
       batch(() => {
-        if (now >= room.nextTick) tick(room, now);
-        else sendState(room, room.forceState || room.session.reportNow);
-        for (const outgoing of room.session.outbox.splice(0))
-          route(room, outgoing);
+        const ticking = now >= room.nextTick;
+        if (ticking) tick(room, now);
+        else if (room.forceState) sendState(room, "now");
+        // A turn goes along with whatever else this frame sends, at no extra broadcast.
+        if (routeOutbox(room)) sendState(room, "with");
       });
       if (room.voiceRoom !== null)
         applyProximity(room.session, room.peers, room.voiceRoom, deps.falloff);
@@ -768,8 +832,16 @@ export function createRoom(deps: RoomDeps): Room {
       const shown = hidden && !next;
       hidden = next;
       if (link === null) return;
-      sendHeartbeat(link);
-      if (shown) link.forceState = true;
+      const room = link;
+      batch(() => {
+        sendHeartbeat(room);
+        // A hidden page steps no more, so its player stops where it is, on the host too.
+        if (next) {
+          haltSteering(room.session);
+          routeOutbox(room);
+        }
+      });
+      if (shown) room.forceState = true;
     },
 
     presenceOf: (id) => link?.roster.get(id),

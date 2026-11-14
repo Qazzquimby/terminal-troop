@@ -1,18 +1,11 @@
 import { z } from "zod";
-import { canStandAt } from "./arrival.js";
-import { nearestFreePoint, solidBodiesBut } from "./collision.js";
+import { solidBodiesBut } from "./collision.js";
 import { contentEvent, registerEvents } from "./content-event.js";
 import type { ContentEvent } from "./content-event.js";
 import type { WorldEntity } from "./entities.js";
 import { removeEntity, spawnEntity } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
-import {
-  expectedEpoch,
-  ForcedMove,
-  forcedMoves,
-  takeForcedMove,
-} from "./forced-move.js";
 import { hurtPlayer } from "./health.js";
 import {
   giveItem,
@@ -26,7 +19,6 @@ import type { Inventory } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
-import { allowMove, couldStand, rebaseMoves } from "./move-checks.js";
 import { emitNoise } from "./noise.js";
 import type { Player } from "./player.js";
 import { dashEnd, startDash } from "./player.js";
@@ -35,40 +27,33 @@ import type { Session } from "./session.js";
 import { declaredSound } from "./sound.js";
 import type { Sound } from "./sound.js";
 import { spendStamina } from "./stamina.js";
-import { hostSpends } from "./stamina-checks.js";
+import { actorTime, alter, queueAction } from "./steering.js";
 import type { WorldData } from "./world-data.js";
-
-/** Where an actor says it stood as it acted, and how far past the host's checks it may be. */
-interface Stood {
-  readonly at: Point;
-  /** Pixels on top of what the host's checks on the actor's moves allow; none when left out. */
-  readonly leeway?: number;
-}
 
 /**
  * What a player can do, as plain sim code. Times in sim seconds.
  *
- * The actor's client applies it at once, as a prediction, and sends its input to the host. The
- * host holds the actor to the stamina, position and cooldown the action declares and to its own
- * `check`, and applies it if all pass. Either way the host confirms it, and what the actor's
- * client predicted gives way to the host's state: what the host did, or nothing if it refused.
+ * The actor's client applies it at once, as a prediction, and sends its input to the host,
+ * stamped with the step it acted in. The host applies it in that step of its own run of the
+ * actor, so where the actor stood is where the host has it, if the actor has the stamina, is off
+ * cooldown and passes `check`. Either way the host confirms it, and what the actor's client
+ * predicted gives way to the host's state: what the host did, or nothing if it refused. The host
+ * acting itself applies it at once, for real.
  */
 export interface ActionSpec<I> {
-  /** What the actor's client sends: checked, encoded for the wire and decoded back. */
+  /** What the actor means to do, as its client sends it: checked, encoded and decoded back. */
   readonly input: z.ZodType<I>;
   /** Least time between two of one actor's, or what a session's config makes it; none when left out. */
   readonly cooldown?: number | ((game: Session) => number);
   /** Stamina each costs the actor; an actor with less does not act. None when left out. */
   readonly stamina?: number;
-  /** Where the actor says it stood, which the host holds to its checks on the actor's moves. */
-  stood?(actor: Player, input: I): Stood;
   /** Whether the host takes the input, past the declared checks; true when left out. */
   check?(game: Session, actor: Player, input: I): boolean;
   /**
    * What the action does, run on the actor's client as it acts and on the host once it accepts:
-   * reads the world, and changes it through `hurt`, `push`, `dash` and `effect`, the actor's items
-   * through `give` and `take`, and what only the host changes through `spawn`, `removeFromWorld`
-   * and `changeWorld`.
+   * reads the world, where the actor stands included, and changes it through `hurt`, `push`,
+   * `dash` and `effect`, the actor's items through `give` and `take`, and what only the host
+   * changes through `spawn`, `removeFromWorld` and `changeWorld`.
    */
   apply(game: Session, actor: Player, input: I): void;
 }
@@ -180,19 +165,21 @@ function arrived({ x, y, sound, flash, use, noise }: SentEffect): Effect {
 }
 
 /**
- * The effects of an action the host applied, sent to every client, the host's own included: each
- * plays them but the actor's, which played them as it acted, and each makes their noise.
+ * Effects the host made, sent to every client, the host's own included: each plays them and makes
+ * their noise, but the actor's own client plays an action's effects only as it acts.
  */
 const effected = contentEvent({
   schema: z.object({
     by: z.string().min(1).max(64),
     effects: z.array(SentEffect).max(32),
+    /** Set for an action's effects, which the actor's own client played as it acted. */
+    acted: z.literal(true).optional(),
   }),
   to: "all",
   from: "host",
-  receive(game, { by, effects }) {
+  receive(game, { by, effects, acted }) {
     for (const made of effects.map(arrived)) {
-      if (by !== game.localId) play(game, by, made);
+      if (acted !== true || by !== game.localId) play(game, by, made);
       if (made.noise !== undefined)
         emitNoise(game, { at: made.at, radius: made.noise, source: by });
     }
@@ -201,84 +188,6 @@ const effected = contentEvent({
 
 /** The events every action shares, by key. */
 export const actionEvents = { effects: effected };
-
-/** A move the host forces on one player, for every client to take. */
-const forced = contentEvent({
-  schema: ForcedMove.extend({ target: z.string() }),
-  to: "all",
-  from: "host",
-  receive(game, { target, ...move }) {
-    takeForcedMove(game, target, move);
-  },
-});
-
-/** The events forced moves travel as, by key. */
-export const forcedMoveEvents = { forced };
-
-/**
- * As the host, moves `player` to `to` under a new epoch, as a slide over `slide.seconds` or at
- * once, on every client: the local player here at once, and every other client's copy of the
- * player as the move reaches it. The player's own client reports the new epoch once it takes
- * the move, and until it does every client holds its reported position back, so its copies stay
- * where the host put it. Does nothing on a client not hosting, or for a player not in the session.
- */
-function forcePlayer(
-  game: Session,
-  player: Player,
-  to: Point,
-  slide?: ForcedMove["slide"],
-): void {
-  if (!game.hosting || game.players.get(player.id) !== player) return;
-  const epoch = Math.max(expectedEpoch(game, player.id), player.heardEpoch) + 1;
-  const move: ForcedMove = {
-    epoch,
-    to: { x: to.x, y: to.y },
-    ...(slide !== undefined && { slide }),
-  };
-  takeForcedMove(game, player.id, move);
-  if (player !== game.local) rebaseMoves(game, player.id, move.to);
-  forcedMoves.set(game, { ...forcedMoves.get(game), [player.id]: move });
-  forced.send(game, { target: player.id, ...move });
-}
-
-/**
- * As the host, moves `player` to `at` at once, or to the nearest point a player can stand when
- * `at` is blocked. An `at` that is not a finite point is ignored.
- */
-export function correctPlayer(game: Session, player: Player, at: Point): void {
-  if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
-  const { radius } = game.config.player;
-  const to = canStandAt(game.world, at, radius)
-    ? at
-    : nearestFreePoint(game.world.map, radius, at);
-  forcePlayer(game, player, to);
-}
-
-/**
- * As the host, knocks `player` `distance` pixels straight away from `from`, as far as walls and
- * other bodies let it go from where the host sees it, sliding there over the configured knockback
- * time on every client. A push from where the player stands has no way to go, and is dropped.
- */
-function knockPlayer(
-  game: Session,
-  player: Player,
-  from: Point,
-  distance: number,
-): void {
-  const dx = player.x - from.x;
-  const dy = player.y - from.y;
-  if (distance <= 0 || (dx === 0 && dy === 0)) return;
-  const to = dashEnd(
-    player,
-    Math.atan2(dy, dx),
-    distance,
-    game.world.map,
-    solidBodiesBut(game, player),
-  );
-  forcePlayer(game, player, to, {
-    seconds: game.config.player.knockbackSeconds,
-  });
-}
 
 /**
  * Runs `apply` as `run` on `game`, and returns what it left: the effects for the host to send,
@@ -299,23 +208,33 @@ function within(
   return ran;
 }
 
+/** Seconds two clocks counting the same steps may drift apart by in their sums. */
+const DRIFT = 1e-6;
+
 /**
- * Whether the host takes an action by player `by`, timed under `key`, as off cooldown. A taken
- * action starts `cooldown` seconds of it.
+ * Whether the host takes an action by `actor`, timed under `key`, as off cooldown on the
+ * actor's own clock. A taken action starts `cooldown` seconds of it.
  */
 function hostReady(
   game: Session,
-  by: string,
+  actor: Player,
   key: string,
   cooldown: number,
 ): boolean {
-  const { seconds } = game.config.net.useSlack;
+  const now = actorTime(game, actor);
   const timers = game.readyAt.get(key) ?? new Map<string, number>();
-  const readyAt = timers.get(by) ?? -Infinity;
-  if (game.time < readyAt - seconds) return false;
-  timers.set(by, game.time + cooldown);
+  const readyAt = timers.get(actor.id) ?? -Infinity;
+  if (now < readyAt - DRIFT) return false;
+  timers.set(actor.id, now + cooldown);
   game.readyAt.set(key, timers);
   return true;
+}
+
+/** Takes `amount` stamina from `actor`, as part of the step it acts in. */
+function spend(game: Session, actor: Player, amount: number): void {
+  alter(game, actor, (player) => {
+    player.stamina = spendStamina(player.stamina, amount) ?? player.stamina;
+  });
 }
 
 /**
@@ -335,45 +254,68 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
   const cooldownIn = (game: Session): number | undefined =>
     typeof spec.cooldown === "function" ? spec.cooldown(game) : spec.cooldown;
 
-  /** Whether the host takes `input` from `actor`; one it takes starts its cooldown. */
+  /**
+   * Whether the host takes `input` from `actor`, a remote player; one it takes costs its stamina
+   * and starts its cooldown.
+   */
   const accepts = (game: Session, actor: Player, input: I): boolean => {
     const { stamina } = spec;
     const cooldown = cooldownIn(game);
-    if (stamina !== undefined && !hostSpends(game, actor.id, stamina))
-      return false;
-    const stood = spec.stood?.(actor, input);
-    if (
-      stood !== undefined &&
-      !couldStand(game, actor.id, stood.at, stood.leeway ?? 0)
-    )
-      return false;
+    if (stamina !== undefined && actor.stamina.value < stamina) return false;
     if (spec.check !== undefined && !spec.check(game, actor, input))
       return false;
-    return (
-      cooldown === undefined || hostReady(game, actor.id, timer(game), cooldown)
-    );
+    if (
+      cooldown !== undefined &&
+      !hostReady(game, actor, timer(game), cooldown)
+    )
+      return false;
+    if (stamina !== undefined) spend(game, actor, stamina);
+    return true;
+  };
+
+  /**
+   * As the host, applies `input` by `actor` for real, and sends its effects to every client; the
+   * host's own player plays them here at once.
+   */
+  const applyAsHost = (
+    game: Session,
+    actor: Player,
+    input: I,
+    action: number,
+  ): void => {
+    const { effects } = within(game, { mode: "host", action }, () => {
+      spec.apply(game, actor, input);
+    });
+    if (actor === game.local)
+      for (const made of effects) play(game, actor.id, made);
+    if (effects.length > 0)
+      effected.send(game, {
+        by: actor.id,
+        effects: effects.map(sent),
+        acted: true,
+      });
   };
 
   const request = contentEvent({
     schema: z.object({
       action: z.number().int().positive(),
+      /** The step of the actor's own the action was made in. */
+      step: z.number().int().nonnegative(),
       input: spec.input,
       /** Set when the actor's client predicted a change to its items. */
       items: z.literal(true).optional(),
     }),
     to: "host",
-    receive(game, { action, input, items }, by) {
-      confirmAction(game, by, action);
-      // The actor's items go out again with the confirmation, so its client settles on them even
-      // if it missed an earlier change to them.
-      if (items === true) resendItems(game, by);
-      const actor = game.players.get(by);
-      if (actor === undefined || !accepts(game, actor, input)) return;
-      const { effects } = within(game, { mode: "host", action }, () => {
-        spec.apply(game, actor, input);
+    receive(game, { action, step, input, items }, by) {
+      queueAction(game, by, step, () => {
+        confirmAction(game, by, action);
+        // The actor's items go out again with the confirmation, so its client settles on them
+        // even if it missed an earlier change to them.
+        if (items === true) resendItems(game, by);
+        const actor = game.players.get(by);
+        if (actor === undefined || !accepts(game, actor, input)) return;
+        applyAsHost(game, actor, input, action);
       });
-      if (effects.length > 0)
-        effected.send(game, { by, effects: effects.map(sent) });
     },
   });
 
@@ -382,18 +324,24 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
     perform(game, input) {
       const { local } = game;
       const key = timer(game);
+      const { stamina } = spec;
       if (game.time < (game.localReadyAt.get(key) ?? -Infinity)) return false;
-      if (spec.stamina !== undefined) {
-        const left = spendStamina(local.stamina, spec.stamina);
-        if (left === null) return false;
-        local.stamina = left;
-      }
+      if (stamina !== undefined && local.stamina.value < stamina) return false;
+      if (
+        game.hosting &&
+        spec.check !== undefined &&
+        !spec.check(game, local, input)
+      )
+        return false;
       const cooldown = cooldownIn(game);
       if (cooldown !== undefined)
         game.localReadyAt.set(key, game.time + cooldown);
-      // The actor's state goes with the request, so the host checks it against a fresh report.
-      game.reportNow = true;
+      if (stamina !== undefined) spend(game, local, stamina);
       const number = nextAction(game);
+      if (game.hosting) {
+        applyAsHost(game, local, input, number);
+        return true;
+      }
       const { items } = within(
         game,
         { mode: "predict", action: number },
@@ -403,9 +351,11 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
       );
       request.send(game, {
         action: number,
+        step: game.step,
         input,
         ...(items && { items: true as const }),
       });
+      game.pilot.steered = true;
       return true;
     },
   };
@@ -432,13 +382,12 @@ export function registerActions(
  * What an action may change on this client now:
  * - world: anything, as the host does
  * - predicted: world entities, each held as predicted, as the actor's client does
- * - none: nothing, as the host does as it acts itself, before it applies its action for real
+ * - none: nothing, as any other client does outside an action
  */
 function scope(game: Session): "world" | "predicted" | "none" {
   const run = runs.get(game);
-  if (run === undefined || run.mode === "host")
-    return game.hosting ? "world" : "none";
-  return game.hosting ? "none" : "predicted";
+  if (run?.mode === "predict") return "predicted";
+  return game.hosting ? "world" : "none";
 }
 
 /** Whether the action being applied may change `entity` here; holds it if it is predicted. */
@@ -484,9 +433,42 @@ export function hurt(
 }
 
 /**
- * Pushes `body` `distance` pixels straight away from `from`. A player is pushed by the host, as a
- * move it forces on the player, stopping at walls and bodies; a world entity is pushed on the
- * actor's client too, as predicted, and does as `blocked` says when a wall is in its way.
+ * As the host, knocks `player` `distance` pixels straight away from `from`, as far as walls and
+ * other bodies let it go from where it stands, sliding there over the configured knockback time.
+ * A push from where the player stands has no way to go, and is dropped.
+ */
+function knockPlayer(
+  game: Session,
+  player: Player,
+  from: Point,
+  distance: number,
+): void {
+  const dx = player.x - from.x;
+  const dy = player.y - from.y;
+  if (distance <= 0 || (dx === 0 && dy === 0)) return;
+  const to = dashEnd(
+    player,
+    Math.atan2(dy, dx),
+    distance,
+    game.world.map,
+    solidBodiesBut(game, player),
+  );
+  const seconds = game.config.player.knockbackSeconds;
+  const dash = {
+    vx: (to.x - player.x) / seconds,
+    vy: (to.y - player.y) / seconds,
+    seconds,
+    to: { x: to.x, y: to.y },
+  };
+  alter(game, player, (knocked) => {
+    knocked.dash = dash;
+  });
+}
+
+/**
+ * Pushes `body` `distance` pixels straight away from `from`. A player is pushed by the host,
+ * which runs every player, stopping at walls and bodies; a world entity is pushed on the actor's
+ * client too, as predicted, and does as `blocked` says when a wall is in its way.
  */
 export function push(
   game: Session,
@@ -513,23 +495,25 @@ export interface ActorDash {
 }
 
 /**
- * The actor's own dash as it acts: its own client dashes it at once, stopping at walls and short
- * of bodies, and the host lets the actor's reports carry it up to `distance` past its own speed
- * while the dash lasts.
+ * The actor's own dash as it acts, stopping at walls and short of bodies: its own client dashes
+ * it at once, and the host as it applies the action. Returns where the dash stops if nothing
+ * moves meanwhile; one under a knockback goes on with that, and returns its end. Outside an
+ * action, nobody dashes, and it returns where the actor stands.
  */
-export function dash(game: Session, actor: Player, made: ActorDash): void {
-  const run = runs.get(game);
-  if (run?.mode === "predict" && actor === game.local)
-    startDash(
-      actor,
+export function dash(game: Session, actor: Player, made: ActorDash): Point {
+  let end: Point = { x: actor.x, y: actor.y };
+  if (!runs.has(game)) return end;
+  alter(game, actor, (player) => {
+    end = startDash(
+      player,
       made.aim,
       made.distance,
       made.seconds,
       game.world.map,
-      solidBodiesBut(game, actor),
+      solidBodiesBut(game, player),
     );
-  if (run?.mode === "host")
-    allowMove(game, actor.id, made.distance, made.seconds);
+  });
+  return end;
 }
 
 /**

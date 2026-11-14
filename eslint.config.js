@@ -65,18 +65,21 @@ const CONTENT_SOURCE = [
 const NETWORK_PRIMITIVES = [
   "contentEvent",
   "receiveEvent",
-  "correctPlayer",
   "hurtPlayer",
   "giveItem",
   "takeItem",
   "spawnEntity",
   "removeEntity",
-  "applyRemoteState",
+  "alter",
+  "hearPlayer",
+  "applyPlayerEntries",
+  "takeOverPlayers",
+  "followNewHost",
+  "haltSteering",
   "applyEntityChanges",
   "applyEntitySnapshot",
   "applyWorldEntries",
   "takeWorldEntries",
-  "takeOverForcedMoves",
 ];
 
 export default tseslint.config(

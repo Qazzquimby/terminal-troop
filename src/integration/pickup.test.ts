@@ -15,6 +15,7 @@ import {
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
+import { teleport } from "./crew.js";
 import {
   createHub,
   createManualClock,
@@ -60,8 +61,15 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
+/** Every client of the crew under test. */
+let joined: Room[] = [];
+
+/**
+ * Puts `room`'s player at `at`, as the host would: the host runs it on from there, and its own
+ * client takes that from the host's next snapshot, which the next exchange carries.
+ */
 function place(room: Room, at: Point): void {
-  Object.assign(sessionOf(room).local, { ...at, prevX: at.x, prevY: at.y });
+  teleport(joined.map(sessionOf), sessionOf(room).localId, at);
 }
 
 const carried = (room: Room): (string | null)[] =>
@@ -115,24 +123,22 @@ async function crew(...ids: string[]) {
   };
   const host = get(ids[0] ?? "");
   expect(host.hostId()).toBe(ids[0]);
+  joined = ids.map(get);
+  /** One step and frame on every client, `controls` by client id, then a step's time. */
+  const step = (controls: Readonly<Record<string, Controls>> = {}) => {
+    for (const id of ids) {
+      updateSession(sessionOf(get(id)), controls[id] ?? idle, DT);
+      get(id).frame(clock.now());
+    }
+    clock.advance(clock.now() + DT * 1000);
+  };
   /**
-   * Each guest steps with its controls and sends; the host steps, then sends 200ms later; each
-   * guest steps once more to take in what the host sent.
+   * Every client steps once with its controls, then idles for 0.6s: long enough for the host's
+   * run of each guest to reach that step, and for its snapshots to come back.
    */
   const exchange = (controls: Readonly<Record<string, Controls>> = {}) => {
-    const guests = ids.slice(1).map(get);
-    for (const [index, guest] of guests.entries()) {
-      updateSession(
-        sessionOf(guest),
-        controls[ids[index + 1] ?? ""] ?? idle,
-        DT,
-      );
-      guest.frame(clock.now());
-    }
-    updateSession(sessionOf(host), controls[ids[0] ?? ""] ?? idle, DT);
-    clock.advance(clock.now() + 200);
-    host.frame(clock.now());
-    for (const guest of guests) updateSession(sessionOf(guest), idle, DT);
+    step(controls);
+    for (let at = 0; at < 0.6; at += DT) step();
   };
   // Every client stands at its home, and every other client sees it there.
   const goHome = (): void => {
@@ -158,15 +164,6 @@ const SPOT = { x: 300, y: 300 };
 /** What pickups and drops travel to the host as. */
 const PICK_UP = "core/world-items.pickUp";
 const DROP = "core/world-items.drop";
-
-/**
- * Exchanges until the host's settle time after the players joined has passed, so it holds each
- * player to where it could stand rather than taking its reports as they come.
- */
-function settle(exchange: () => void): void {
-  const { settleSeconds } = testSimConfig.net.moves;
-  for (let step = 0; step < settleSeconds / DT + 1; step++) exchange();
-}
 
 /** Where each client starts, far from SPOT and each other, so no body pushes another off a spot. */
 const HOMES: readonly Point[] = [
@@ -248,7 +245,7 @@ test("a guest reaching for nothing it touches picks up nothing", async () => {
   expect(sessionOf(host).entities.has(lying.id)).toBe(true);
 });
 
-test("a guest cannot take what is not a lying item, nor one out of its reach, nor from where it is not", async () => {
+test("a guest cannot take what is not a lying item, nor one out of reach of where the host has it", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   const guest = sessionOf(b);
@@ -259,15 +256,13 @@ test("a guest cannot take what is not a lying item, nor one out of its reach, no
     (entity) => entity.id !== lying.id,
   );
   if (cruiser === undefined) throw new Error("no cruiser");
-  settle(exchange);
   /** Sends the host a pickup as a tampered client could. */
-  const forge = (id: string, at: Point): void => {
-    forgeAction(guest, PICK_UP, { id, ...at });
+  const forge = (id: string): void => {
+    forgeAction(guest, PICK_UP, { id });
     exchange();
   };
-  forge(cruiser.id, { x: cruiser.x, y: cruiser.y });
-  forge(lying.id, guest.local);
-  forge(lying.id, SPOT);
+  forge(cruiser.id);
+  forge(lying.id);
   expect(sessionOf(host).entities.has(cruiser.id)).toBe(true);
   expect(sessionOf(host).entities.has(lying.id)).toBe(true);
   expect(carried(b)).toEqual([null, null, null, null]);
@@ -299,7 +294,7 @@ test("the host refuses a pickup into an inventory its record has full, whatever 
   for (const slot of [0, 1, 2, 3]) holdBolt(host, b, slot);
   place(b, SPOT);
   exchange();
-  forgeAction(guest, PICK_UP, { id: lying.id, ...SPOT });
+  forgeAction(guest, PICK_UP, { id: lying.id });
   exchange();
   exchange();
   expect(sessionOf(host).entities.has(lying.id)).toBe(true);
@@ -390,21 +385,20 @@ test("with an empty hand and nothing in reach, E does nothing", async () => {
   expect(sessionOf(b).outbox).toEqual([]);
 });
 
-test("the host lays nothing for a drop from where the player is not, and the player keeps the item", async () => {
+test("a drop is laid where the host has the player, whatever its own client shows", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   const guest = sessionOf(b);
   holdBolt(host, b);
   place(b, SPOT);
   exchange();
-  settle(exchange);
-  const far = { x: SPOT.x + 200, y: SPOT.y };
-  forgeAction(guest, DROP, { slot: 1, ...far });
+  // The guest's client has its player elsewhere; the host's run of it does not.
+  Object.assign(guest.local, { x: SPOT.x + 200, prevX: SPOT.x + 200 });
+  forgeAction(guest, DROP, { slot: 1 });
   exchange();
-  exchange();
-  expect(boltsAt(host, far)).toBe(0);
-  expect(boltsAt(b, far)).toBe(0);
-  expect(recorded(host, b)).toEqual([null, "bolt", null, null]);
+  expect(boltsAt(host, SPOT)).toBe(1);
+  expect(boltsAt(b, SPOT)).toBe(1);
+  expect(recorded(host, b)).toEqual([null, null, null, null]);
 });
 
 test("the host lays nothing for a forged drop of an item the player does not have", async () => {
@@ -414,7 +408,7 @@ test("the host lays nothing for a forged drop of an item the player does not hav
   place(b, SPOT);
   exchange();
   for (const slot of [0, 1, 2, 3]) {
-    forgeAction(guest, DROP, { slot, ...SPOT });
+    forgeAction(guest, DROP, { slot });
     exchange();
   }
   exchange();

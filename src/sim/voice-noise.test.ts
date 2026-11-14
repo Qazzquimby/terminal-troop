@@ -2,7 +2,8 @@ import { describe, expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import type { Noise } from "./noise.js";
 import type { Controls } from "./player.js";
-import { applyRemoteState, createSession, updateSession } from "./session.js";
+import { reportedAt } from "../integration/heard.js";
+import { createSession, updateSession } from "./session.js";
 import type { Session } from "./session.js";
 import { speak, voiceNoise, voiceRadius } from "./voice-noise.js";
 
@@ -116,15 +117,7 @@ describe("the local player's speech", () => {
 
 test("a remote player's reported speech makes its noise on this client", () => {
   const game = session();
-  applyRemoteState(game, {
-    id: "them",
-    name: "THEM",
-    x: 300,
-    y: 300,
-    aim: 0,
-    epoch: 0,
-    content: { "core/voice": loud },
-  });
+  reportedAt(game, "them", { x: 300, y: 300 }, 0, { "core/voice": loud });
   const made = noisesOver(game, 0, 1);
   expect(made).toHaveLength(Math.ceil(1 / config.interval));
   expect(made.every((noise) => noise.source === "them")).toBe(true);

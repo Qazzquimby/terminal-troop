@@ -13,6 +13,7 @@ import {
   createManualClock,
   testRoomConfig,
 } from "./room-helpers.js";
+import { teleport } from "./crew.js";
 import {
   testEntitiesConfig,
   testItemsConfig,
@@ -150,24 +151,56 @@ async function lineUp(target: Point) {
     clock.advance(clock.now() + 200);
     room.frame(clock.now());
   };
-  /** Steps both clients and lets each send. */
+  /**
+   * Runs the host until its run of the guest reaches the guest's latest step, which applies what
+   * the guest did up to it.
+   */
+  const catchUp = (): void => {
+    const guest = sessionOf(b);
+    const feeds = sessionOf(a).feeds;
+    for (let count = 0; count < 600; count++) {
+      if ((feeds.get("b")?.label ?? -Infinity) >= guest.step) return;
+      step(a);
+    }
+    throw new Error("the host never caught up with the guest");
+  };
+  /** Steps both clients and lets each send, the host as far as the guest's step. */
   const exchange = (): void => {
     step(b);
     frame(b);
-    step(a);
+    catchUp();
     frame(a);
   };
-  /** Puts the guest at GUEST and the chaser at `at` on the host, and lets the guest hear it. */
-  const reset = (at: Point): void => {
-    Object.assign(sessionOf(b).local, { ...GUEST, prevX: GUEST.x });
+  /** Runs both clients side by side for `seconds`, each sending as it goes. */
+  const settle = (seconds: number): void => {
+    for (let count = 0; count < Math.round(seconds / DT); count++)
+      for (const room of [b, a]) {
+        step(room);
+        clock.advance(clock.now() + 1000 * DT);
+        room.frame(clock.now());
+      }
+  };
+  /** Puts the chaser at `at` on both clients. */
+  const putChaser = (at: Point): void => {
     Object.assign(chaserOf(a), { ...at, tx: at.x, ty: at.y });
-    exchange();
-    exchange();
-    Object.assign(chaserOf(b), { ...at, prevX: at.x, prevY: at.y });
+    Object.assign(chaserOf(b), {
+      ...at,
+      prevX: at.x,
+      prevY: at.y,
+      tx: at.x,
+      ty: at.y,
+    });
+  };
+  /** Puts the guest at GUEST where the host runs it, lets the guest hear so, and the chaser at `at`. */
+  const reset = (at: Point): void => {
+    teleport([sessionOf(a), sessionOf(b)], "b", GUEST);
+    settle(1);
+    putChaser(at);
   };
   reset(target);
+  expect(sessionOf(b).local).toMatchObject(GUEST);
   expect(chaserOf(b)).toMatchObject({ ...target, tx: target.x });
-  return { hub, a, b, step, frame, exchange, reset };
+  return { hub, a, b, step, frame, catchUp, exchange, putChaser };
 }
 
 /** The guest's chaser x over `steps` idle steps of the guest. */
@@ -224,7 +257,7 @@ test("snapshots from before the host's hit do not pull the predicted chaser back
 });
 
 test("the snapshot that shows the hit takes over smoothly, and agrees on damage", async () => {
-  const { hub, a, b, step, frame } = await lineUp(KICKED);
+  const { hub, a, b, step, frame, catchUp } = await lineUp(KICKED);
   hub.hold();
   step(b, kickRight(sessionOf(b)));
   frame(b);
@@ -232,7 +265,7 @@ test("the snapshot that shows the hit takes over smoothly, and agrees on damage"
   // The host's chaser stands a little off where the guest drew it.
   Object.assign(chaserOf(a), { x: KICKED.x + 6 });
   hub.release("a");
-  step(a);
+  catchUp();
   const onHost = chaserOf(a);
   expect(onHost.health).toBe(predicted.health);
   expect(Math.abs(onHost.x - predicted.x)).toBeGreaterThan(3);
@@ -247,28 +280,31 @@ test("the snapshot that shows the hit takes over smoothly, and agrees on damage"
 });
 
 test("a kick the host turns down eases the chaser back to where the host has it", async () => {
-  const { a, b, step, frame, exchange, reset } = await lineUp(KICKED);
+  const { a, b, step, frame, exchange, putChaser } = await lineUp(KICKED);
   const guest = sessionOf(b);
   step(b, kickRight(guest));
-  frame(b);
-  step(a);
-  frame(a);
+  exchange();
   expect(chaserOf(a).health).toBe(MAX_HEALTH - kick.damage);
-  // The guest kicks again within the host's cooldown, its own count cleared.
-  reset(KICKED);
+  // The guest kicks again within the host's cooldown, from the end of its lunge, its own count
+  // cleared.
+  for (let count = 0; count < Math.round(kick.lunge.seconds / DT) + 2; count++)
+    step(b);
+  frame(b);
+  const again = { x: guest.local.x + PLAYER_LENGTH + kick.reach, y: GUEST.y };
+  putChaser(again);
   guest.localReadyAt.clear();
   step(b, kickRight(guest));
   const predicted = { ...chaserOf(b) };
-  expect(predicted.x - KICKED.x).toBeGreaterThan(KNOCK - 5);
+  expect(predicted.x - again.x).toBeGreaterThan(KNOCK - 5);
   expect(predicted.health).toBe(MAX_HEALTH - 2 * kick.damage);
   exchange();
   expect(chaserOf(a)).toMatchObject({
-    x: KICKED.x,
+    x: again.x,
     health: MAX_HEALTH - kick.damage,
   });
   const eased = track(b, step, 90);
   expect(largestStep(predicted.x, eased.x)).toBeLessThan(KNOCK * 0.25);
-  expect(eased.x.at(-1)).toBeCloseTo(KICKED.x, 0);
+  expect(eased.x.at(-1)).toBeCloseTo(again.x, 0);
   expect(eased.health.at(-1)).toBe(MAX_HEALTH - kick.damage);
 });
 
@@ -288,7 +324,7 @@ test("with no word from the host, the guest lets go once the hold runs out", asy
 });
 
 test("a guest's shovel swing is predicted, held and confirmed alike", async () => {
-  const { hub, a, b, step, frame } = await lineUp(SWUNG);
+  const { hub, a, b, step, frame, catchUp } = await lineUp(SWUNG);
   hub.hold();
   step(b, swingRight(sessionOf(b)));
   frame(b);
@@ -303,7 +339,7 @@ test("a guest's shovel swing is predicted, held and confirmed alike", async () =
   expect(track(b, step, 10).x.every((x) => x === predicted.x)).toBe(true);
 
   hub.release("a");
-  step(a);
+  catchUp();
   const onHost = chaserOf(a);
   expect(onHost.health).toBe(predicted.health);
   frame(a);

@@ -8,11 +8,10 @@ import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import {
-  applyRemoteState,
   giveItem,
   heldItemOf,
+  heldSlot,
   mulberry32,
-  playerState,
   receiveEvent,
   registerContent,
   registerEntityType,
@@ -22,6 +21,8 @@ import {
 import { createSession } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
+import { teleport } from "./crew.js";
+import { heardAt } from "./heard.js";
 import {
   createHub,
   createManualClock,
@@ -132,7 +133,7 @@ test("with six slots, keys 7 to 9 select nothing: the player holds no item", () 
     updateSession(game, { ...idle, select: slot }, DT);
     expect(game.local.held).toBeNull();
     expect(heldItemOf(game, game.local)).toBeNull();
-    expect(playerState(game).content["core/items"]).toBeNull();
+    expect(heldSlot.get(game.local)).toBeNull();
   }
   updateSession(game, { ...idle, select: 5 }, DT);
   expect(game.local.held).toBe(5);
@@ -151,40 +152,42 @@ test("the inventory has the configured slots, the shovel in the first", () => {
   ]);
 });
 
-test("the local player holds its selected slot's item, and reports the slot", () => {
+test("the local player holds its selected slot's item, and its step holds the slot for the host to send", () => {
   const game = session();
   expect(heldItemOf(game, game.local)?.emoji).toBe("🪏");
-  expect(playerState(game).content).toMatchObject({ "core/items": 0 });
+  updateSession(game, idle, DT);
+  expect(heldSlot.get(game.local)).toBe(0);
   updateSession(game, { ...idle, select: 1 }, DT);
   expect(heldItemOf(game, game.local)).toBeNull();
-  expect(playerState(game).content).toMatchObject({ "core/items": 1 });
+  expect(heldSlot.get(game.local)).toBe(1);
 });
 
-test("a remote player holds what the host's record has in the slot it reports, and nothing for an empty or no slot", () => {
+test("a remote player holds what the host's record has in the slot the host says it holds, and nothing for an empty or no slot", () => {
   const game = session();
   giveItem(game, "them", "scrap", 2);
-  const report = (held: number | null) => {
-    applyRemoteState(game, {
-      id: "them",
-      name: "THEM",
-      x: 450,
-      y: 300,
-      aim: 0,
-      epoch: 0,
-      content: { "core/items": held },
-    });
-    const remote = game.players.get("them");
-    return remote === undefined ? undefined : heldItemOf(game, remote);
-  };
+  const report = (held: number | null) =>
+    heldItemOf(
+      game,
+      heardAt(
+        game,
+        "them",
+        { x: 450, y: 300 },
+        {
+          content: { "core/items": held },
+        },
+      ),
+    );
   expect(report(0)?.emoji).toBe("🪏");
   expect(report(2)?.id).toBe("scrap");
   expect(report(1)).toBeNull();
   expect(report(null)).toBeNull();
 });
 
-test("the use control swings the held shovel at the step's sim time and sends it to the host", () => {
+test("a guest's use control swings the held shovel at the step's sim time and sends it to the host, stamped with the step", () => {
   const game = session();
+  game.hosting = false;
   wait(game, 0.5);
+  game.outbox.length = 0;
   updateSession(game, swing, DT);
   expect(game.local.use).toMatchObject({
     item: "shovel",
@@ -198,12 +201,8 @@ test("the use control swings the held shovel at the step's sim time and sends it
       to: null,
       payload: {
         action: 1,
-        input: {
-          slot: 0,
-          x: game.local.x,
-          y: game.local.y,
-          aim: game.local.aim,
-        },
+        step: game.step,
+        input: { slot: 0, aim: game.local.aim },
       },
     },
   ]);
@@ -270,7 +269,7 @@ test("a swing that hits sends its noise to everyone, which the host then makes a
   const game = session();
   standAt(game, { x: 450, y: 300 });
   spawnEntity(game, DUMMY, 500, 300, {});
-  swingRight(game);
+  updateSession(game, { ...swing, aim: { x: 550, y: 300 } }, DT);
   const center = { x: 450 + shovel.reach, y: 300 };
   expect(game.outbox).toEqual([
     expect.objectContaining({ content: "core/actions", route: "all" }),
@@ -389,21 +388,31 @@ async function pair() {
   for (const room of [a, b]) mute(sessionOf(room));
   clock.advance(1000);
   expect(a.hostId()).toBe("a");
-  /** Runs one step on each client and lets every message through, 200ms later. */
+  /**
+   * Runs both clients a third of a second, step for step, each sending as it ticks: long enough
+   * for the host's run of the guest, which trails the guest's own, to take in what it sent.
+   */
+  const hostCatchesUp = (): void => {
+    for (let step = 0; step < 20; step++)
+      for (const room of [a, b]) {
+        updateSession(sessionOf(room), idle, DT);
+        clock.advance(clock.now() + 1000 * (DT / 2));
+        room.frame(clock.now());
+      }
+  };
+  /** Runs one step of the guest on `controls` and sends it, then lets both run on. */
   const exchange = (controls: Controls = idle): void => {
     updateSession(sessionOf(b), controls, DT);
     b.frame(clock.now());
-    updateSession(sessionOf(a), idle, DT);
-    clock.advance(clock.now() + 200);
-    a.frame(clock.now());
-    updateSession(sessionOf(b), idle, DT);
+    hostCatchesUp();
   };
-  standAt(sessionOf(a), { x: 450, y: 150 });
-  standAt(sessionOf(b), GUEST);
+  const games = [sessionOf(a), sessionOf(b)];
+  teleport(games, "a", { x: 450, y: 150 });
+  teleport(games, "b", GUEST);
   Object.assign(chaserOf(a), { ...TARGET, tx: TARGET.x, ty: TARGET.y });
-  exchange();
-  exchange();
-  return { a, b, clock, exchange };
+  for (let round = 0; round < 4; round++) exchange();
+  expect(sessionOf(b).local).toMatchObject(GUEST);
+  return { a, b, clock, exchange, hostCatchesUp };
 }
 
 const swingRightOf = (game: Session): Controls => ({
@@ -418,13 +427,12 @@ test("the host applies a guest's swing of the item it holds", async () => {
 });
 
 test("a guest that takes out the shovel and swings between ticks is heard holding it", async () => {
-  const { a, b, clock, exchange } = await pair();
+  const { a, b, clock, exchange, hostCatchesUp } = await pair();
   exchange({ ...idle, select: 1 });
-  b.frame(clock.now());
   const guest = sessionOf(b);
   updateSession(guest, { ...swingRightOf(guest), select: 0 }, DT);
   b.frame(clock.now());
-  updateSession(sessionOf(a), idle, DT);
+  hostCatchesUp();
   expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth - shovel.damage);
 });
 
@@ -432,8 +440,7 @@ test("the host ignores a guest's use of an item its record does not have in the 
   const { a, b, exchange } = await pair();
   exchange({ ...idle, select: 1 });
   const guest = sessionOf(b);
-  const { x, y } = guest.local;
-  forgeAction(guest, "item/shovel.use", { slot: 1, x, y, aim: 0 });
+  forgeAction(guest, "item/shovel.use", { slot: 1, aim: 0 });
   exchange();
   const host = sessionOf(a);
   expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth);
