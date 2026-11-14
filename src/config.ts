@@ -155,20 +155,25 @@ export const config = {
   greeting: { replayMs: 10_000 },
   entities: {
     zombie: {
+      // Groups of one to five, three on average, so a third as many groups as there were zombies
+      // when they came one at a time; at least one.
       spawn: {
-        count: { density: 1.2, min: 2 },
+        count: { density: 0.4, min: 1 },
         seed: 1,
         clearance: CELL * 10,
       },
-      // One more every 12 seconds as a world begins, the gap falling evenly to one a second over its
-      // first five minutes; never within 14 cells of a player, nor past 120 alive.
+      // A group every 36 seconds as a world begins, the gap falling evenly to one every 3 seconds
+      // over its first five minutes, so as many arrive on average as when they came one at a time;
+      // never within 14 cells of a player, nor past 120 alive. A group stands within 2 cells of its
+      // first.
       spawning: {
-        firstGap: 12,
-        lastGap: 1,
+        firstGap: 36,
+        lastGap: 3,
         rampSeconds: 300,
         maxAlive: 120,
         tries: 24,
         unseenDistance: 700,
+        group: { min: 1, max: 5, spread: CELL * 2 },
       },
       radius: 15,
       maxHealth: 40,

@@ -2,9 +2,10 @@ import { describe, expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { mulberry32 } from "./map.js";
 import { z } from "zod";
-import { registerEntityType, spawnEntity } from "./entities.js";
+import { INERT_TAG, registerEntityType, spawnEntity } from "./entities.js";
 import {
   emitNoise,
+  hasKindTag,
   kindTags,
   makeNoise,
   noisesHeardBy,
@@ -147,6 +148,22 @@ describe("tags", () => {
     expect(kindTags(game, bell.id)).toEqual(["bell"]);
     expect(kindTags(game, "me")).toEqual([PLAYER_TAG]);
     expect(kindTags(game, "nobody")).toEqual([]);
+  });
+
+  test("an entity's kind tags carry what its kind declares after its name, and filter on them", () => {
+    const game = session();
+    registerEntityType(game, "mine", {
+      radius: 10,
+      maxHealth: 1,
+      tags: [INERT_TAG],
+      data: z.object({}),
+      draw: () => undefined,
+    });
+    const mine = spawnEntity(game, "mine", 50, 50, {});
+    expect(kindTags(game, mine.id)).toEqual(["mine", INERT_TAG]);
+    expect(hasKindTag(game, mine.id, [INERT_TAG])).toBe(true);
+    expect(hasKindTag(game, "me", [INERT_TAG])).toBe(false);
+    expect(hasKindTag(game, "me", [PLAYER_TAG])).toBe(true);
   });
 
   test("a listener hears each noise with its tags, and not those carrying a tag it ignores", () => {

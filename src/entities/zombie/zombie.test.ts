@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 import alertUrl from "./sfx/alert.mp3";
 import attackUrl from "./sfx/attack.mp3";
 import barkUrl from "./sfx/bark.mp3";
@@ -12,9 +13,11 @@ import {
   applyEntitySnapshot,
   createSession,
   entitySnapshot,
+  INERT_TAG,
   isAreaFree,
   receiveEvent,
   registerContent,
+  registerEntityType,
   spawnEntity,
   takeWorldEntries,
   updateSession,
@@ -559,5 +562,49 @@ describe("hearing", () => {
       mode: "chase",
       target: { x: 450, y: 450 },
     });
+  });
+});
+
+describe("prey", () => {
+  /** The world with a living kind, "deer", and one tagged inert, "mine", besides zombies. */
+  function wild(): Session {
+    const game = world();
+    const body = { radius: 10, data: z.object({}), draw: () => undefined };
+    registerEntityType(game, "deer", { ...body, maxHealth: 100 });
+    registerEntityType(game, "mine", {
+      ...body,
+      maxHealth: 100,
+      tags: [INERT_TAG],
+    });
+    // Far past the zombie's sight, so only what is placed near it draws it.
+    standAt(game, 750, 50);
+    return game;
+  }
+
+  test("chases and strikes any living thing it sees, not just players", () => {
+    const game = wild();
+    const deer = spawnEntity(game, "deer", 400, 400, {});
+    const zombie = zombieAt(game, 200, 400);
+    run(game, DT);
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "chase",
+      target: { x: 400, y: 400 },
+    });
+
+    expect(runUntil(game, 3, () => deer.health < deer.maxHealth)).toBe(true);
+    expect(deer.health).toBe(deer.maxHealth - config.attackDamage);
+    expect(played(game)).toContain(attackUrl);
+  });
+
+  test("passes over other zombies and things tagged inert", () => {
+    const game = wild();
+    const mine = spawnEntity(game, "mine", 300, 400, {});
+    const other = zombieAt(game, 350, 400, 2);
+    Object.assign(other, { data: { ...stateOf(other), barkAt: 1e6 } });
+    const zombie = zombieAt(game, 200, 400);
+    run(game, 1);
+    expect(stateOf(zombie).mode).toBe("wander");
+    expect(mine.health).toBe(mine.maxHealth);
+    expect(other.health).toBe(other.maxHealth);
   });
 });

@@ -68,16 +68,26 @@ export function emitNoise(game: Session, noise: Noise): void {
 }
 
 /**
- * The tags saying what kind of thing `id` is: `PLAYER_TAG` for a player, its kind's name for a
- * world entity, none for anything else.
+ * The tags saying what kind of thing `id` is: `PLAYER_TAG` for a player; for a world entity, its
+ * kind's name, then the tags its kind declares; none for anything else.
  */
 export function kindTags(game: Session, id: string): string[] {
   if (game.players.has(id)) return [PLAYER_TAG];
   const entity = game.entities.get(id);
   if (entity === undefined) return [];
+  const declared = game.entityTypes.get(entity.kind)?.tags ?? [];
   for (const [name, kind] of game.kindIds)
-    if (kind === entity.kind) return [name];
-  return [];
+    if (kind === entity.kind) return [name, ...declared];
+  return [...declared];
+}
+
+/** Whether the player or world entity `id` carries any of `tags` among its `kindTags`. */
+export function hasKindTag(
+  game: Session,
+  id: string,
+  tags: readonly string[],
+): boolean {
+  return kindTags(game, id).some((tag) => tags.includes(tag));
 }
 
 /** A noise `by` makes, as `emitNoise` takes it. */

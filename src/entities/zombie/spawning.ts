@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isAreaFree, worldData } from "../../sim/index.js";
+import { isAreaFree, isSweepFree, worldData } from "../../sim/index.js";
 import type { Point, Session } from "../../sim/index.js";
 
 /** How zombies keep arriving once a world has begun. Times are in sim seconds. */
@@ -16,6 +16,18 @@ export interface SpawningConfig {
   readonly tries: number;
   /** Least distance, in pixels, a spawn keeps from every player, so none sees it appear. */
   readonly unseenDistance: number;
+  /** How many arrive together in each spawn, and in each group a new world starts with. */
+  readonly group: GroupConfig;
+}
+
+/** A group of zombies arriving together. */
+interface GroupConfig {
+  /** Fewest in a group; each group's size is drawn evenly between the two. */
+  readonly min: number;
+  /** Most in a group. */
+  readonly max: number;
+  /** Furthest, in pixels, the rest of a group stands from its first. */
+  readonly spread: number;
 }
 
 /** The kind of entity spawns favour being far from. */
@@ -86,10 +98,95 @@ function gapAt(age: number, config: SpawningConfig): number {
   return config.firstGap + (config.lastGap - config.firstGap) * ramp;
 }
 
+/** A group's size, drawn evenly from its least to its most. */
+function groupSize(group: GroupConfig): number {
+  const min = Math.max(1, Math.round(group.min));
+  const max = Math.max(min, Math.round(group.max));
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
 /**
- * Spawns the next of the world's growing tide of `kind` once it is due, out of every player's
- * sight and likelier far from the cruiser; a spawn with nowhere to go, or due while the world is
- * full, is skipped. Runs on the host.
+ * Up to `count` free points within the group's spread of `leader`, each in plain reach of it,
+ * clear of the leader and one another, and at least `unseen` from every player; a member with
+ * nowhere to stand after the tries is left out.
+ */
+function memberPoints(
+  game: Session,
+  leader: Point,
+  count: number,
+  radius: number,
+  unseen: number,
+  config: SpawningConfig,
+): Point[] {
+  const { map } = game.world;
+  const taken: Point[] = [leader];
+  const fits = (at: Point) =>
+    isAreaFree(map, at.x, at.y, radius) &&
+    nearestPlayerDistance(game, at) >= unseen &&
+    taken.every(
+      (other) => Math.hypot(other.x - at.x, other.y - at.y) >= radius * 2,
+    ) &&
+    isSweepFree(map, radius, leader, at);
+  for (let member = 0; member < count; member++) {
+    for (let attempt = 0; attempt < config.tries; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = config.group.spread * Math.sqrt(Math.random());
+      const at = {
+        x: leader.x + Math.cos(angle) * distance,
+        y: leader.y + Math.sin(angle) * distance,
+      };
+      if (!fits(at)) continue;
+      taken.push(at);
+      break;
+    }
+  }
+  return taken.slice(1);
+}
+
+/** Spawns a group led from `leader`, never past the most alive at once. */
+function spawnGroup(
+  game: Session,
+  kind: string,
+  leader: Point,
+  size: number,
+  radius: number,
+  config: SpawningConfig,
+  spawn: (at: Point) => void,
+): void {
+  const room = Math.min(size, config.maxAlive - countOf(game, kind));
+  if (room <= 0) return;
+  spawn(leader);
+  const unseen = config.unseenDistance;
+  for (const at of memberPoints(game, leader, room - 1, radius, unseen, config))
+    spawn(at);
+}
+
+/**
+ * Fills out the groups a new world starts with: each `kind` its scatter placed is joined by the
+ * rest of a group drawn round it.
+ */
+function gatherStartingGroups(
+  game: Session,
+  kind: string,
+  radius: number,
+  config: SpawningConfig,
+  spawn: (at: Point) => void,
+): void {
+  const id = game.kindIds.get(kind);
+  const leaders = [...game.entities.values()].filter((e) => e.kind === id);
+  for (const leader of leaders) {
+    const room = config.maxAlive - countOf(game, kind);
+    const count = Math.min(groupSize(config.group) - 1, room);
+    for (const at of memberPoints(game, leader, count, radius, 0, config))
+      spawn(at);
+  }
+}
+
+/**
+ * Spawns the next group of the world's growing tide of `kind` once it is due, out of every
+ * player's sight and likelier far from the cruiser; a spawn with nowhere to go, or due while the
+ * world is full, is skipped, and a group that would overfill it comes short. As spawning begins,
+ * the zombies a new world starts with are gathered into groups too. Runs on the host.
  */
 export function stepSpawning(
   game: Session,
@@ -102,6 +199,7 @@ export function stepSpawning(
   const held = spawning.get(game);
   if (held === null) {
     spawning.set(game, { startedAt: now, nextAt: now + config.firstGap });
+    gatherStartingGroups(game, kind, radius, config, spawn);
     return;
   }
   if (now < held.nextAt) return;
@@ -111,5 +209,7 @@ export function stepSpawning(
   });
   if (countOf(game, kind) >= config.maxAlive) return;
   const at = unseenPoint(game, radius, config);
-  if (at !== null) spawn(at);
+  if (at === null) return;
+  const size = groupSize(config.group);
+  spawnGroup(game, kind, at, size, radius, config, spawn);
 }

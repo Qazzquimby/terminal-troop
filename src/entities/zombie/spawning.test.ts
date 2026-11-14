@@ -154,6 +154,7 @@ test("in a world of 100 by 80 cells, a spawn every 12 seconds at first still fin
     maxAlive: 120,
     tries: 24,
     unseenDistance: 700,
+    group: { min: 1, max: 1, spread: 100 },
   };
   const game = world(spawning, {
     ...testSimConfig,
@@ -165,4 +166,86 @@ test("in a world of 100 by 80 cells, a spawn every 12 seconds at first still fin
   expect(spawned[0]?.time).toBeCloseTo(spawning.firstGap, 1);
   for (const { distance } of spawned)
     expect(distance).toBeGreaterThanOrEqual(spawning.unseenDistance);
+});
+
+const GROUP_OF_FIVE: SpawningConfig = {
+  ...SPAWNING,
+  maxAlive: 1000,
+  group: { min: 5, max: 5, spread: 100 },
+};
+
+/** Where each zombie in the world stands. */
+function zombiePoints(game: Session): { x: number; y: number }[] {
+  const kind = game.kindIds.get("zombie");
+  return [...game.entities.values()]
+    .filter((entity) => entity.kind === kind)
+    .map(({ x, y }) => ({ x, y }));
+}
+
+test("a spawn brings a whole group at once, standing together, apart and unseen", () => {
+  const game = world(GROUP_OF_FIVE);
+  const spawned = play(game, SPAWNING.firstGap + 0.1);
+  expect(spawned).toHaveLength(5);
+  expect(new Set(spawned.map(({ time }) => time)).size).toBe(1);
+  for (const { distance } of spawned)
+    expect(distance).toBeGreaterThanOrEqual(SPAWNING.unseenDistance);
+  const points = zombiePoints(game);
+  const [first] = points;
+  for (const [index, point] of points.entries()) {
+    expect(
+      Math.hypot(point.x - (first?.x ?? 0), point.y - (first?.y ?? 0)),
+    ).toBeLessThanOrEqual(GROUP_OF_FIVE.group.spread + 10);
+    for (const other of points.slice(index + 1))
+      expect(
+        Math.hypot(point.x - other.x, point.y - other.y),
+      ).toBeGreaterThanOrEqual(testEntitiesConfig.zombie.radius * 2 - 10);
+  }
+});
+
+test("groups come in sizes between the least and the most", () => {
+  const game = world({
+    ...SPAWNING,
+    maxAlive: 1000,
+    group: { min: 1, max: 5, spread: 100 },
+  });
+  const sizes = new Map<number, number>();
+  for (const { time } of play(game, SPAWNING.rampSeconds + 40))
+    sizes.set(time, (sizes.get(time) ?? 0) + 1);
+  const counts = [...sizes.values()];
+  expect(counts.length).toBeGreaterThan(10);
+  for (const count of counts) {
+    expect(count).toBeGreaterThanOrEqual(1);
+    expect(count).toBeLessThanOrEqual(5);
+  }
+  expect(new Set(counts).size).toBeGreaterThan(1);
+});
+
+test("a group that would overfill the world comes short", () => {
+  const game = world({ ...GROUP_OF_FIVE, maxAlive: 3 });
+  expect(play(game, SPAWNING.firstGap + 0.1)).toHaveLength(3);
+});
+
+test("each zombie a new world scatters is gathered into a group as spawning begins", () => {
+  const entities: EntitiesConfig = {
+    ...testEntitiesConfig,
+    zombie: {
+      ...testEntitiesConfig.zombie,
+      sightRange: 0,
+      spawning: { ...GROUP_OF_FIVE, group: { min: 3, max: 3, spread: 100 } },
+    },
+  };
+  const game = createSession(
+    "me",
+    "ME",
+    "SPAWNS",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  registerContent(game, entityContent(entities));
+  for (const content of game.contents) content.populate(game);
+  const leaders = zombies(game);
+  expect(leaders).toBeGreaterThan(0);
+  play(game, DT);
+  expect(zombies(game)).toBe(leaders * 3);
 });

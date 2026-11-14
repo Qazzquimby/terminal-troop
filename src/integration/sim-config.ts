@@ -85,7 +85,7 @@ export const testMapMemoryConfig: MapMemoryConfig = {
  * Three zombies in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
  * seconds. One more arrives every 5 seconds as a world begins, the gap falling to 1 second over
- * 20 seconds, never past 20 alive nor within 1100px of a player, so never in the dev square,
+ * 20 seconds, one at a time, never past 20 alive nor within 1100px of a player, so never in the dev square,
  * whose far corners are nearer than that. A cruiser starts at the rally point, lighting 400px
  * round it.
  */
@@ -99,6 +99,7 @@ export const testEntitiesConfig: EntitiesConfig = {
       maxAlive: 20,
       tries: 24,
       unseenDistance: 1100,
+      group: { min: 1, max: 1, spread: 100 },
     },
     radius: 15,
     maxHealth: 40,
