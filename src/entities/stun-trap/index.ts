@@ -6,6 +6,7 @@ import {
   effect,
   hasKindTag,
   INERT_TAG,
+  ITEM_TAG,
   isStunned,
   removeFromWorld,
   rounded,
@@ -79,7 +80,7 @@ export function placeStunTrap(game: Session, at: Point): void {
 
 /** Whether `body` is a world entity the trap acts on: anything but itself and inert things. */
 const actsOn = (game: Session, trap: WorldEntity, body: WorldEntity) =>
-  body.id !== trap.id && !hasKindTag(game, body.id, [INERT_TAG]);
+  body.id !== trap.id && !hasKindTag(game, body.id, [INERT_TAG, ITEM_TAG]);
 
 /** The first world entity standing on the trap, or null; players set it off by no means. */
 function steppedOn(game: Session, trap: WorldEntity): WorldEntity | null {

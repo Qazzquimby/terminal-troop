@@ -5,6 +5,7 @@ import {
   hasKindTag,
   inRect,
   INERT_TAG,
+  ITEM_TAG,
   isAreaFree,
   livingPlayers,
   rounded,
@@ -103,7 +104,7 @@ function touching(game: Session, self: WorldEntity): { id: string }[] {
       body.id !== self.id &&
       Math.hypot(body.x - self.x, body.y - self.y) <=
         self.radius + body.radius + 1 &&
-      !hasKindTag(game, body.id, [INERT_TAG]),
+      !hasKindTag(game, body.id, [INERT_TAG, ITEM_TAG]),
   );
 }
 

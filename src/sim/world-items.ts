@@ -10,7 +10,12 @@ import {
   usesAt,
 } from "./actions.js";
 import type { WorldEntity } from "./entities.js";
-import { registerEntityType, removeEntity, spawnEntity } from "./entities.js";
+import {
+  ITEM_TAG,
+  registerEntityType,
+  removeEntity,
+  spawnEntity,
+} from "./entities.js";
 import { hasRoom, isReaching, itemIn } from "./inventories.js";
 import { isFull, isOn, ItemId, ItemState, UsesLeft } from "./inventory.js";
 import type { Point } from "./map.js";
@@ -57,6 +62,7 @@ export function registerWorldItems(game: Session): void {
     radius,
     maxHealth: Infinity,
     collides: false,
+    tags: [ITEM_TAG],
     data: WorldItemData,
     draw(ctx, entity, { item, state }, now, view) {
       const glyph = view.itemDefinitions.get(item)?.emoji;

@@ -1,5 +1,5 @@
 import { mean } from "lodash-es";
-import { expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   testEntitiesConfig,
   testSfx,
@@ -45,6 +45,15 @@ const still: Controls = {
 };
 
 const SPAWNING = testEntitiesConfig.zombie.spawning;
+
+// Spawn spots and group members are drawn from Math.random, and a draw that finds no allowed spot
+// (lit, seen, or blocked) delays a spawn; every test here runs on a fixed seed so timings hold.
+beforeEach(() => {
+  vi.spyOn(Math, "random").mockImplementation(mulberry32(1));
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /**
  * A new world with its cruiser and no starting zombies, blind ones so none runs at the player,
