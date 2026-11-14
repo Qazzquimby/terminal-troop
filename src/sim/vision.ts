@@ -159,6 +159,20 @@ function castRay(
   }
 }
 
+/**
+ * How far a ray from `from` along the unit vector `direction` goes before a wall stops it, at
+ * most `maxDist` pixels.
+ */
+export function distanceToWall(
+  map: TileMap,
+  from: Point,
+  direction: Point,
+  maxDist: number,
+): number {
+  return castRay(map, from.x, from.y, direction.x, direction.y, maxDist)
+    .distance;
+}
+
 export function hasLineOfSight(map: TileMap, from: Point, to: Point): boolean {
   const dx = to.x - from.x;
   const dy = to.y - from.y;

@@ -154,7 +154,9 @@ export const testEntitiesConfig: EntitiesConfig = {
 /**
  * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
  * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
- * second. Both weigh nothing, so what a player carries does not slow it, and no loot is laid.
+ * second. A handgun with 6 shots of 50 out to 600px; a shotgun with 2 blasts of six shots of 5,
+ * fanned across 30 degrees out to 400px. All weigh nothing, so what a player carries does not
+ * slow it, and no loot is laid.
  */
 export const testItemsConfig: ItemsConfig = {
   shovel: {
@@ -169,6 +171,31 @@ export const testItemsConfig: ItemsConfig = {
     volume: 1,
     hitNoiseRadius: 300,
     missNoiseRadius: 100,
+    wallNoiseRadius: 200,
+  },
+  handgun: {
+    weight: 0,
+    uses: 6,
+    damage: 50,
+    range: 600,
+    cooldown: 0.5,
+    noiseRadius: 1500,
+    volume: 1,
+    duration: 0.1,
+    spark: 5,
+  },
+  shotgun: {
+    weight: 0,
+    uses: 2,
+    damage: 5,
+    range: 400,
+    pellets: 6,
+    arc: Math.PI / 6,
+    cooldown: 1,
+    noiseRadius: 1800,
+    volume: 1,
+    duration: 0.1,
+    spark: 5,
   },
   scrap: {
     weight: 0,
@@ -209,6 +236,7 @@ export const testFlashConfig: FlashConfig = {
   fill: 0.3,
   width: 2,
   colour: { hit: "#f00", miss: "#888" },
+  tracer: { width: 1, colour: "#ff0" },
 };
 
 const SILENT: Awaited<ReturnType<Sfx["play"]>> = {

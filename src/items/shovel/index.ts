@@ -4,6 +4,7 @@ import {
   effect,
   entitiesIn,
   hurt,
+  isAreaFree,
   playersIn,
   push,
   sound,
@@ -11,6 +12,10 @@ import {
 import type { ItemTraits, ItemUse } from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
+// Its clang on a wall and its breaking, once their assets land; importing a missing file breaks
+// the build. Until then a wall hit makes its noise without a sound, and it breaks silently.
+// import wallUrl from "./sfx/wall.mp3";
+// import breakUrl from "./sfx/break.mp3";
 
 /** How the shovel attacks. Distances in pixels, times in sim seconds. */
 export interface ShovelConfig extends ItemTraits {
@@ -32,6 +37,10 @@ export interface ShovelConfig extends ItemTraits {
   readonly hitNoiseRadius: number;
   /** How far, in pixels, a swing that misses is heard, and so how far its noise carries. */
   readonly missNoiseRadius: number;
+  /**
+   * How far, in pixels, a swing that hits only a wall is heard, and so how far its noise carries.
+   */
+  readonly wallNoiseRadius: number;
 }
 
 /** A hitbox that fades out over `duration` seconds from `use.startedAt`; green when it connected. */
@@ -69,9 +78,15 @@ function drawHitbox(
  * The shovel: a short melee attack in front of the player, held in the first slot from the start.
  * A swing hurts every world entity and other player in front of the swinger and knocks each away
  * from it; every client hears it, where it lands, and sees it land. Its sound makes a noise as
- * far as it carries, further for a swing that hits.
+ * far as it carries, further for a swing that hits. A swing that hits nothing but a wall clangs
+ * off it, and makes a noise of its own. It wears out after its uses.
  */
 export const shovel = defineItem("shovel", (config: ShovelConfig) => {
+  // const wall = sound({
+  //   url: wallUrl,
+  //   volume: config.volume,
+  //   range: config.wallNoiseRadius,
+  // });
   const sounds = {
     hit: sound({
       url: hitUrl,
@@ -88,6 +103,7 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
     name: "Shovel",
     emoji: "🪏",
     traits: config,
+    // breaks: sound({ url: breakUrl, volume: config.volume }),
     startingSlot: 0,
     use: {
       cooldown: config.cooldown,
@@ -103,10 +119,15 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
           push(game, body, at, config.knockback, "stay");
         }
         const hit = struck.length > 0;
+        const { center, radius } = area;
+        const clang =
+          !hit && !isAreaFree(game.world.map, center.x, center.y, radius);
         effect(game, {
-          at: area.center,
-          sound: hit ? sounds.hit : sounds.miss,
+          at: center,
           use: { item: "shovel", hit },
+          // A clang plays its miss's whoosh until the clang's own sound lands: `sound: wall`.
+          sound: hit ? sounds.hit : sounds.miss,
+          ...(clang && { noise: config.wallNoiseRadius }),
         });
       },
     },

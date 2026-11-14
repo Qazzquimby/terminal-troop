@@ -10,6 +10,7 @@ const config: FlashConfig = {
   fill: 0.3,
   width: 2,
   colour: { hit: "red", miss: "grey" },
+  tracer: { width: 1, colour: "yellow" },
 };
 
 function session() {

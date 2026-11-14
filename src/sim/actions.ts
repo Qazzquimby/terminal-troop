@@ -69,10 +69,14 @@ export interface Action<I> {
   perform(game: Session, input: I): boolean;
 }
 
-/** A flash where an effect lands: how wide, and whether it connected. */
+/**
+ * A flash where an effect lands: how wide, and whether it connected; with a tracer streaking to
+ * it from `from`, for a shot.
+ */
 interface Flash {
   readonly radius: number;
   readonly hit: boolean;
+  readonly from?: Point | undefined;
 }
 
 /** An item use an effect shows its actor making, landing where the effect is. */
@@ -154,7 +158,13 @@ const SentEffect = z.object({
   x: z.number(),
   y: z.number(),
   sound: z.string().max(512).optional(),
-  flash: z.object({ radius: z.number().min(0), hit: z.boolean() }).optional(),
+  flash: z
+    .object({
+      radius: z.number().min(0),
+      hit: z.boolean(),
+      from: z.object({ x: z.number(), y: z.number() }).optional(),
+    })
+    .optional(),
   use: z.object({ item: ItemId, hit: z.boolean() }).optional(),
   noise: z.number().min(0).optional(),
   tags: z.array(z.string().min(1).max(32)).max(8).optional(),
