@@ -97,7 +97,7 @@ const Effects = z.looseObject({
   }),
 });
 
-/** Whether a content message shows a kick the host applied: effects with a flash, as a chaser's sounds are not. */
+/** Whether a content message shows a kick the host applied: effects with a flash, as a zombie's sounds are not. */
 export function showsKick(message: unknown): boolean {
   const parsed = Effects.safeParse(message);
   return (

@@ -81,12 +81,12 @@ const items = {
   scrap: { ...scrap, scatter: { ...scrap.scatter, count: 0 } },
 };
 
-/** No chasers: only the cruiser, the dummy and the items. */
+/** No zombies: only the cruiser, the dummy and the items. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+  zombie: {
+    ...testEntitiesConfig.zombie,
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
   },
 };
 

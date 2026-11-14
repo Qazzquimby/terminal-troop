@@ -23,12 +23,12 @@ import {
   testSimConfig,
 } from "./sim-config.js";
 
-/** No chasers, so nothing moves; the cruiser beside the first host, and three scrap about. */
+/** No zombies, so nothing moves; the cruiser beside the first host, and three scrap about. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+  zombie: {
+    ...testEntitiesConfig.zombie,
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
   },
 };
 

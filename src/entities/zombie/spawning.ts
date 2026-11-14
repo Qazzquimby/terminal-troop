@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isAreaFree, worldData } from "../../sim/index.js";
 import type { Point, Session } from "../../sim/index.js";
 
-/** How chasers keep arriving once a world has begun. Times are in sim seconds. */
+/** How zombies keep arriving once a world has begun. Times are in sim seconds. */
 export interface SpawningConfig {
   /** Seconds between spawns as the world begins. */
   readonly firstGap: number;
@@ -10,7 +10,7 @@ export interface SpawningConfig {
   readonly lastGap: number;
   /** How long the gap takes to fall from the first to the last. */
   readonly rampSeconds: number;
-  /** Most chasers alive at once; a spawn due while the world holds this many is skipped. */
+  /** Most zombies alive at once; a spawn due while the world holds this many is skipped. */
   readonly maxAlive: number;
   /** Points tried for a spawn before skipping it. */
   readonly tries: number;

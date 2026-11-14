@@ -18,15 +18,15 @@ import {
 import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
-const CHASERS = 60;
+const ZOMBIES = 60;
 
-/** Blind chasers, as many as a real world holds, wandering and barking. */
+/** Blind zombies, as many as a real world holds, wandering and barking. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: CHASERS },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: ZOMBIES },
   },
 };
 
@@ -54,7 +54,7 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-test("between full snapshots, an idle host sends a few dozen bytes a chaser", async () => {
+test("between full snapshots, an idle host sends a few dozen bytes a zombie", async () => {
   const hub = createHub();
   const clock = createManualClock();
   /** Each entity snapshot the host sent: whether full, its size as JSON, and its entity ids. */
@@ -105,11 +105,11 @@ test("between full snapshots, an idle host sends a few dozen bytes a chaser", as
 
   const [first] = sent;
   expect(first?.full).toBe(true);
-  expect(first?.ids.length).toBe(CHASERS + 1);
+  expect(first?.ids.length).toBe(ZOMBIES + 1);
   expect(Math.max(...(first?.ids.map((id) => id.length) ?? []))).toBe(2);
   const deltas = sent.filter(({ full }) => !full);
   expect(deltas.length).toBeGreaterThan(40);
   let total = 0;
   for (const { bytes } of deltas) total += bytes;
-  expect(total / deltas.length / CHASERS).toBeLessThan(50);
+  expect(total / deltas.length / ZOMBIES).toBeLessThan(50);
 });

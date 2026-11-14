@@ -100,12 +100,12 @@ test("a room handles each message of a batch, dropping one that does not parse a
   expect(room.presenceOf("x")?.kind).toBe("away");
 });
 
-/** No chasers: the host sends its entities every tick all the same. */
+/** No zombies: the host sends its entities every tick all the same. */
 const still = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+  zombie: {
+    ...testEntitiesConfig.zombie,
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
   },
 };
 

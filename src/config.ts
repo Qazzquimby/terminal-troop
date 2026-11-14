@@ -116,7 +116,7 @@ export const config = {
   net: { smoothing: 12, predictionHold: 1 },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
-  // Each step is heard by anything within its radius: a sprint carries well past a chaser's
+  // Each step is heard by anything within its radius: a sprint carries well past a zombie's
   // sight, a walk a few cells, a crouch barely past arm's length.
   footsteps: {
     walk: { interval: 0.5, radius: CELL * 5 },
@@ -154,7 +154,7 @@ export const config = {
   // Peers connect a second or two after joining; past this, a HELLO is news to no one.
   greeting: { replayMs: 10_000 },
   entities: {
-    chaser: {
+    zombie: {
       spawn: {
         count: { density: 1.2, min: 2 },
         seed: 1,
@@ -225,7 +225,7 @@ export const config = {
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
-    // kicks fell a chaser, each sending it 2.5 of its own body lengths away.
+    // kicks fell a zombie, each sending it 2.5 of its own body lengths away.
     kick: {
       reach: 32,
       radius: 18,

@@ -42,12 +42,12 @@ const idle: Controls = {
   drop: false,
 };
 
-/** No chasers, so nothing moves; the cruiser beside the first host. */
+/** No zombies, so nothing moves; the cruiser beside the first host. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+  zombie: {
+    ...testEntitiesConfig.zombie,
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
   },
 };
 

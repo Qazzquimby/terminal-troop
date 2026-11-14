@@ -15,16 +15,16 @@ import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
 
-/** No starting chasers, and blind ones, so only spawning adds them and none runs anyone down. */
+/** No starting zombies, and blind ones, so only spawning adds them and none runs anyone down. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
   },
 };
-const { spawning } = entities.chaser;
+const { spawning } = entities.zombie;
 
 const still: Controls = {
   move: { x: 0, y: 0 },
@@ -44,9 +44,9 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-function chasers(room: Room): number {
+function zombies(room: Room): number {
   const game = sessionOf(room);
-  const kind = game.kindIds.get("chaser");
+  const kind = game.kindIds.get("zombie");
   return [...game.entities.values()].filter((entity) => entity.kind === kind)
     .length;
 }
@@ -96,9 +96,9 @@ test("a new host goes on along the spawning ramp rather than starting it again",
   play(spawning.rampSeconds + 1);
   clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
   a.frame(clock.now());
-  const before = chasers(b);
+  const before = zombies(b);
   expect(before).toBeGreaterThan(0);
-  expect(before).toBe(chasers(a));
+  expect(before).toBe(zombies(a));
 
   await a.leave();
   rooms.splice(0, 1);
@@ -107,7 +107,7 @@ test("a new host goes on along the spawning ramp rather than starting it again",
 
   // Spawning started again would wait out the first gap; at the ramp's end they come each last gap.
   play(spawning.firstGap - spawning.lastGap);
-  expect(chasers(b)).toBeGreaterThanOrEqual(
+  expect(zombies(b)).toBeGreaterThanOrEqual(
     before +
       Math.floor((spawning.firstGap - spawning.lastGap) / spawning.lastGap) -
       1,

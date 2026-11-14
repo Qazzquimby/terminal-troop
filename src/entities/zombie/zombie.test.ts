@@ -20,8 +20,8 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
-import type { ChaserConfig } from "./index.js";
-import { ChaserState, chaser as chaserContent, freshChaser } from "./index.js";
+import type { ZombieConfig } from "./index.js";
+import { ZombieState, zombie as zombieContent, freshZombie } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -35,16 +35,16 @@ const idle = {
   interact: false,
   drop: false,
 };
-const { chaser: config } = testEntitiesConfig;
+const { zombie: config } = testEntitiesConfig;
 
-/** The sounds a session's chasers have played, oldest first. */
+/** The sounds a session's zombies have played, oldest first. */
 function played(game: Session): string[] {
   return vi.mocked(game.sfx.play).mock.calls.map(([url]) => url);
 }
 
 /** The dev square, its pillars at x 200-300, y 50-150 and x 600-700, y 450-550. */
 function world(
-  chaser: ChaserConfig = config,
+  zombie: ZombieConfig = config,
   surroundingsRadius = testSimConfig.vision.surroundingsRadius,
 ): Session {
   const game = createSession("me", "ME", "CHASE", "dev", testSfx(), {
@@ -56,7 +56,7 @@ function world(
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  registerContent(game, [chaserContent.create({ chaser })]);
+  registerContent(game, [zombieContent.create({ zombie })]);
   return game;
 }
 
@@ -64,18 +64,18 @@ function standAt(game: Session, x: number, y: number): void {
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
 }
 
-function chaserAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
+function zombieAt(game: Session, x: number, y: number, seed = 1): WorldEntity {
   return spawnEntity(
     game,
-    "chaser",
+    "zombie",
     x,
     y,
-    freshChaser(seed, game.worldTime, config),
+    freshZombie(seed, game.worldTime, config),
   );
 }
 
-const stateOf = (entity: WorldEntity): ChaserState =>
-  ChaserState.parse(entity.data);
+const stateOf = (entity: WorldEntity): ZombieState =>
+  ZombieState.parse(entity.data);
 
 /**
  * Hands each event `from` sent to `to`, as the room does, and applies them there at once:
@@ -111,10 +111,10 @@ function runUntil(game: Session, seconds: number, done: () => boolean) {
 }
 
 describe("sighting", () => {
-  test("a wandering chaser that sees a player in range chases it", () => {
+  test("a wandering zombie that sees a player in range chases it", () => {
     const game = world();
     standAt(game, 500, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
     run(game, DT);
 
     expect(stateOf(zombie)).toMatchObject({
@@ -125,10 +125,10 @@ describe("sighting", () => {
     expect(zombie.vy).toBeCloseTo(0);
   });
 
-  test("a nearby player behind the chaser is seen", () => {
+  test("a nearby player behind the zombie is seen", () => {
     const game = world(config, 70);
     standAt(game, 250, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
     run(game, DT);
 
     expect(stateOf(zombie)).toMatchObject({
@@ -138,19 +138,19 @@ describe("sighting", () => {
     expect(zombie.vx).toBeLessThan(0);
   });
 
-  test("a player behind the chaser beyond its surroundings is not seen", () => {
+  test("a player behind the zombie beyond its surroundings is not seen", () => {
     const game = world(config, 70);
     standAt(game, 200, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
     run(game, DT);
 
     expect(stateOf(zombie).mode).toBe("wander");
   });
 
-  test("a wall blocks nearby sight behind the chaser", () => {
+  test("a wall blocks nearby sight behind the zombie", () => {
     const game = world(config, 200);
     standAt(game, 175, 100);
-    const zombie = chaserAt(game, 325, 100);
+    const zombie = zombieAt(game, 325, 100);
     run(game, DT);
 
     expect(stateOf(zombie).mode).toBe("wander");
@@ -159,7 +159,7 @@ describe("sighting", () => {
   test("zero sight range also disables nearby sight", () => {
     const game = world({ ...config, sightRange: 0 }, 70);
     standAt(game, 250, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
     run(game, DT);
 
     expect(stateOf(zombie).mode).toBe("wander");
@@ -168,7 +168,7 @@ describe("sighting", () => {
   test("a player out of range is not seen", () => {
     const game = world();
     standAt(game, 650, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
     run(game, 0.5);
     expect(stateOf(zombie).mode).toBe("wander");
   });
@@ -176,7 +176,7 @@ describe("sighting", () => {
   test("a player behind a wall is not seen", () => {
     const game = world();
     standAt(game, 375, 100);
-    const zombie = chaserAt(game, 125, 100);
+    const zombie = zombieAt(game, 125, 100);
     run(game, DT);
     expect(stateOf(zombie).mode).toBe("wander");
   });
@@ -187,11 +187,11 @@ describe("chasing", () => {
     expect(config.chaseSpeed).toBeLessThan(testSimConfig.player.speed);
   });
 
-  test("chasers remain separated from players and one another", () => {
+  test("zombies remain separated from players and one another", () => {
     const game = world();
     standAt(game, 500, 300);
-    const first = chaserAt(game, 300, 300);
-    const second = chaserAt(game, 300, 300);
+    const first = zombieAt(game, 300, 300);
+    const second = zombieAt(game, 300, 300);
 
     for (let step = 0; step < 240; step++) {
       updateSession(game, idle, DT);
@@ -210,7 +210,7 @@ describe("chasing", () => {
   test("plans anew only once the player moves meaningfully from the target", () => {
     const game = world();
     standAt(game, 600, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
     run(game, DT);
 
     standAt(game, 600, 300 + config.repathDistance / 2);
@@ -228,7 +228,7 @@ describe("chasing", () => {
   test("gives up where the player was last seen, then wanders", () => {
     const game = world();
     standAt(game, 300, 400);
-    const zombie = chaserAt(game, 100, 400);
+    const zombie = zombieAt(game, 100, 400);
     run(game, DT);
     expect(stateOf(zombie).mode).toBe("chase");
 
@@ -244,10 +244,10 @@ describe("chasing", () => {
     });
   });
 
-  test("a player sighted again before the chaser gives up keeps the chase", () => {
+  test("a player sighted again before the zombie gives up keeps the chase", () => {
     const game = world();
     standAt(game, 300, 400);
-    const zombie = chaserAt(game, 100, 400);
+    const zombie = zombieAt(game, 100, 400);
     run(game, DT);
     standAt(game, 875, 25);
     run(game, 0.5);
@@ -266,7 +266,7 @@ describe("wandering", () => {
   test("walks slowly from place to place, clear of the walls", () => {
     const game = world(blind);
     standAt(game, 100, 500);
-    const zombie = chaserAt(game, 450, 300);
+    const zombie = zombieAt(game, 450, 300);
     let travelled = 0;
     let fastest = 0;
     for (let step = 0; step < 600; step++) {
@@ -288,7 +288,7 @@ describe("wandering", () => {
     const walk = (seed: number) => {
       const game = world(blind);
       standAt(game, 100, 500);
-      const zombie = chaserAt(game, 450, 300, seed);
+      const zombie = zombieAt(game, 450, 300, seed);
       run(game, 6);
       return { x: zombie.x, y: zombie.y };
     };
@@ -303,7 +303,7 @@ describe("sounds", () => {
   test("barks for the first time within its bark gap", () => {
     const { min, max } = config.barkGap;
     const game = world(blind);
-    chaserAt(game, 450, 300);
+    zombieAt(game, 450, 300);
 
     run(game, min - DT);
     expect(played(game)).toEqual([]);
@@ -315,18 +315,18 @@ describe("sounds", () => {
   test("alerts as it starts a chase", () => {
     const game = world();
     standAt(game, 500, 300);
-    chaserAt(game, 300, 300);
+    zombieAt(game, 300, 300);
     run(game, DT);
     expect(played(game)).toEqual([alertUrl]);
   });
 
-  test("a large chaser can attack without overlapping its target", () => {
+  test("a large zombie can attack without overlapping its target", () => {
     const game = world({
       ...config,
       radius: Math.max(config.radius, testSimConfig.player.radius + 40),
     });
     standAt(game, 500, 300);
-    const zombie = chaserAt(game, 300, 300);
+    const zombie = zombieAt(game, 300, 300);
 
     expect(runUntil(game, 3, () => played(game).includes(attackUrl))).toBe(
       true,
@@ -339,7 +339,7 @@ describe("sounds", () => {
   test("attacks on reaching its target, at most once per cooldown", () => {
     const game = world();
     standAt(game, 300, 400);
-    chaserAt(game, 100, 400);
+    zombieAt(game, 100, 400);
     const attacks = (): number =>
       played(game).filter((url) => url === attackUrl).length;
 
@@ -352,7 +352,7 @@ describe("sounds", () => {
 
   test("a client following the host's snapshots alone sounds nothing", () => {
     const host = world(blind);
-    chaserAt(host, 450, 300);
+    zombieAt(host, 450, 300);
     const follower = world(blind);
     follower.hosting = false;
     for (let step = 0; step < config.barkGap.max / DT; step++) {
@@ -369,10 +369,10 @@ describe("sounds", () => {
     expect(played(follower)).toEqual([]);
   });
 
-  test("a client following the host hears what its chasers do, from where it stands", () => {
+  test("a client following the host hears what its zombies do, from where it stands", () => {
     const host = world();
     standAt(host, 500, 300);
-    chaserAt(host, 300, 300);
+    zombieAt(host, 300, 300);
     const follower = world();
     follower.hosting = false;
     standAt(follower, 100, 500);
@@ -393,7 +393,7 @@ describe("sounds", () => {
   test("each attack strikes the local player in range for its damage", () => {
     const game = world();
     standAt(game, 300, 400);
-    chaserAt(game, 100, 400);
+    zombieAt(game, 100, 400);
     const full = game.local.health;
     expect(runUntil(game, 3, () => game.local.health < full)).toBe(true);
     expect(game.local.health).toBe(full - config.attackDamage);
@@ -404,7 +404,7 @@ describe("sounds", () => {
     const game = world();
     standAt(game, 100, 100);
     reportedAt(game, "them", { x: 300, y: 400 });
-    chaserAt(game, 100, 400);
+    zombieAt(game, 100, 400);
     const them = () => game.players.get("them")?.health;
     expect(runUntil(game, 3, () => them() !== 100)).toBe(true);
     expect(them()).toBe(100 - config.attackDamage);
@@ -458,12 +458,12 @@ describe("hearing", () => {
   const distanceTo = (zombie: WorldEntity, x: number, y: number): number =>
     Math.hypot(zombie.x - x, zombie.y - y);
 
-  test("a wandering chaser turns towards a player sprinting within the sprint radius, placing it roughly", () => {
+  test("a wandering zombie turns towards a player sprinting within the sprint radius, placing it roughly", () => {
     expect(footsteps.sprint.radius).toBeGreaterThan(300);
     const game = world(blind);
     standAt(game, 100, 500);
     moverAt(game, 750, 300, "sprint");
-    const zombie = chaserAt(game, 450, 300);
+    const zombie = zombieAt(game, 450, 300);
     run(game, DT);
 
     const state = stateOf(zombie);
@@ -480,11 +480,11 @@ describe("hearing", () => {
     expect(distanceTo(zombie, 750, 300)).toBeLessThan(300 - 80);
   });
 
-  test("a bark is heard as far as its sound carries, tagged as a chaser's, and other chasers ignore it", () => {
+  test("a bark is heard as far as its sound carries, tagged as a zombie's, and other zombies ignore it", () => {
     const game = world(blind);
     standAt(game, 100, 500);
-    const barker = chaserAt(game, 450, 300, 1);
-    const listener = chaserAt(game, 450 + config.sounds.bark / 2, 300, 2);
+    const barker = zombieAt(game, 450, 300, 1);
+    const listener = zombieAt(game, 450 + config.sounds.bark / 2, 300, 2);
     barker.data = { ...stateOf(barker), barkAt: game.worldTime };
     listener.data = { ...stateOf(listener), barkAt: game.worldTime + 100 };
     const barked = runUntil(game, 0.2, () =>
@@ -496,7 +496,7 @@ describe("hearing", () => {
         at: { x: 450, y: 300 },
         radius: config.sounds.bark,
         source: barker.id,
-        tags: ["chaser"],
+        tags: ["zombie"],
       },
     ]);
     expect(stateOf(listener)).toMatchObject({ noiseTarget: null });
@@ -507,7 +507,7 @@ describe("hearing", () => {
     const game = world(blind);
     standAt(game, 100, 500);
     moverAt(game, 750, 300, "walk");
-    const zombie = chaserAt(game, 450, 300);
+    const zombie = zombieAt(game, 450, 300);
     run(game, 2);
     expect(stateOf(zombie)).toMatchObject({ noiseTarget: null });
   });
@@ -519,7 +519,7 @@ describe("hearing", () => {
       const game = world(blind);
       standAt(game, 100, 500);
       moverAt(game, 570, 300, mode);
-      const zombie = chaserAt(game, 450, 300);
+      const zombie = zombieAt(game, 450, 300);
       return runUntil(game, 1, () => {
         const state = stateOf(zombie);
         return state.mode === "wander" && state.noiseTarget !== null;
@@ -533,7 +533,7 @@ describe("hearing", () => {
     const game = world(blind);
     standAt(game, 100, 500);
     moverAt(game, 600, 300, "sprint");
-    const zombie = chaserAt(game, 450, 300);
+    const zombie = zombieAt(game, 450, 300);
     run(game, DT);
     expect(stateOf(zombie)).not.toMatchObject({ noiseTarget: null });
 
@@ -550,7 +550,7 @@ describe("hearing", () => {
     const game = world();
     standAt(game, 450, 450);
     moverAt(game, 650, 300, "sprint");
-    const zombie = chaserAt(game, 450, 300);
+    const zombie = zombieAt(game, 450, 300);
     Object.assign(zombie, {
       data: { ...stateOf(zombie), facing: Math.PI / 2 },
     });

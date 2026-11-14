@@ -33,12 +33,12 @@ const still: Controls = {
   drop: false,
 };
 
-/** No chasers, so nothing but the bell makes noise. */
+/** No zombies, so nothing but the bell makes noise. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+  zombie: {
+    ...testEntitiesConfig.zombie,
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
   },
 };
 

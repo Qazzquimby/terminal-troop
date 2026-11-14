@@ -1,9 +1,9 @@
 import type { ContentConfig, WorldContent } from "../sim/index.js";
-import { chaser } from "./chaser/index.js";
+import { zombie } from "./zombie/index.js";
 import { cruiser } from "./cruiser/index.js";
 
 /** Every kind of entity in the game; the room numbers kinds by this order. */
-const ENTITIES = [chaser, cruiser] as const;
+const ENTITIES = [zombie, cruiser] as const;
 
 /** Each entry's config, under its name. */
 export type EntitiesConfig = ContentConfig<(typeof ENTITIES)[number]>;

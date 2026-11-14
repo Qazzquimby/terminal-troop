@@ -31,10 +31,10 @@ const still: Controls = {
   drop: false,
 };
 
-const SPAWNING = testEntitiesConfig.chaser.spawning;
+const SPAWNING = testEntitiesConfig.zombie.spawning;
 
 /**
- * A new world with its cruiser and no starting chasers, blind ones so none runs at the player,
+ * A new world with its cruiser and no starting zombies, blind ones so none runs at the player,
  * spawning by `spawning`.
  */
 function world(
@@ -43,10 +43,10 @@ function world(
 ): Session {
   const entities: EntitiesConfig = {
     ...testEntitiesConfig,
-    chaser: {
-      ...testEntitiesConfig.chaser,
+    zombie: {
+      ...testEntitiesConfig.zombie,
       sightRange: 0,
-      spawn: { ...testEntitiesConfig.chaser.spawn, count: 0 },
+      spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
       spawning,
     },
   };
@@ -56,15 +56,15 @@ function world(
   return game;
 }
 
-/** A chaser spawned: when, and how far it was from the nearest player. */
+/** A zombie spawned: when, and how far it was from the nearest player. */
 interface Spawned {
   readonly time: number;
   readonly distance: number;
 }
 
-/** Runs `seconds` standing still, returning each chaser that spawned meanwhile. */
+/** Runs `seconds` standing still, returning each zombie that spawned meanwhile. */
 function play(game: Session, seconds: number): Spawned[] {
-  const kind = game.kindIds.get("chaser");
+  const kind = game.kindIds.get("zombie");
   const known = new Set(game.entities.keys());
   const spawned: Spawned[] = [];
   for (let step = 0; step < Math.round(seconds / DT); step++) {
@@ -85,8 +85,8 @@ function play(game: Session, seconds: number): Spawned[] {
   return spawned;
 }
 
-function chasers(game: Session): number {
-  const kind = game.kindIds.get("chaser");
+function zombies(game: Session): number {
+  const kind = game.kindIds.get("zombie");
   return [...game.entities.values()].filter((entity) => entity.kind === kind)
     .length;
 }
@@ -113,19 +113,19 @@ test("the gap falls from the first to the last over the ramp", () => {
 test("spawning stops at the cap, and goes on once one falls", () => {
   const game = world({ ...SPAWNING, maxAlive: 3 });
   play(game, SPAWNING.rampSeconds + 4 * SPAWNING.lastGap);
-  expect(chasers(game)).toBe(3);
-  const kind = game.kindIds.get("chaser");
+  expect(zombies(game)).toBe(3);
+  const kind = game.kindIds.get("zombie");
   const fallen = [...game.entities.values()].find(
     (entity) => entity.kind === kind,
   );
   if (fallen !== undefined) fallen.health = 0;
   play(game, DT);
-  expect(chasers(game)).toBe(2);
+  expect(zombies(game)).toBe(2);
   expect(play(game, SPAWNING.lastGap + 0.1)).toHaveLength(1);
-  expect(chasers(game)).toBe(3);
+  expect(zombies(game)).toBe(3);
 });
 
-test("no chaser spawns within the unseen distance of any player", () => {
+test("no zombie spawns within the unseen distance of any player", () => {
   const game = world({ ...SPAWNING, maxAlive: 1000 });
   const other = createPlayer(
     "other",
