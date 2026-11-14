@@ -151,7 +151,7 @@ function drawPlayer(
   if (player.use !== null)
     game.items.get(player.use.item)?.draw?.(ctx, player.use, game.time);
   const held = heldItemOf(game, player);
-  if (held !== null) drawHeldItem(ctx, player, held.emoji);
+  if (held !== null) drawHeldItem(ctx, player, player.aim, held.emoji);
   if (away) {
     ctx.font = "10px system-ui";
     ctx.fillStyle = "#aaa";
@@ -281,21 +281,25 @@ export function drawHealthBar(
   ctx.fillRect(x, barY, (width * health) / maxHealth, 3);
 }
 
-/** The held item is a small glyph floating in front of the player, not a world body. */
-function drawHeldItem(
+/**
+ * A held item is a small glyph floating in front of its holder, a player or a monster carrying
+ * it, at `facing` (radians); not a world body.
+ */
+export function drawHeldItem(
   ctx: CanvasRenderingContext2D,
-  player: Player,
+  holder: Point & { readonly radius: number },
+  facing: number,
   emoji: string,
 ): void {
-  const distance = player.radius + 4;
+  const distance = holder.radius + 4;
   ctx.save();
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(
     emoji,
-    player.x + Math.cos(player.aim) * distance,
-    player.y + Math.sin(player.aim) * distance,
+    holder.x + Math.cos(facing) * distance,
+    holder.y + Math.sin(facing) * distance,
   );
   ctx.restore();
 }

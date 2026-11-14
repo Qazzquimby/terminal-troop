@@ -194,9 +194,11 @@ test("the host's entities reach the other client, ids, kinds, spots and state al
   const { a, b } = await hosted();
   expect(a.hostId()).toBe("a");
   // Three zombies, the cruiser, then three scrap lying about, numbered by the content list (the
-  // stun trap, the snail, the lurcher, the blister, the witch and the idol come between) on both
-  // clients.
-  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([1, 1, 1, 2, 9, 9, 9]);
+  // stun trap, the snail, the lurcher, the blister, the witch, the idol, the skulker and the
+  // magpie beetle come between) on both clients.
+  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([
+    1, 1, 1, 2, 11, 11, 11,
+  ]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 
   for (let step = 0; step < 60; step++)

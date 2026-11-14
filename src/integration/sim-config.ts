@@ -137,7 +137,11 @@ const NO_TIDE = {
  * ten minutes, so it stays out of tests that are not about it. No lurcher nor blister appears
  * unless a test spawns one: a lurcher 144px across, felled by three test shovel hits, charging at full suspicion of 1000; a
  * blister that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
- * round, from 100 damage to 30. Nor does a witch or an idol.
+ * round, from 100 damage to 30. Nor does a witch or an idol. No skulker nor magpie beetle appears
+ * unless a test spawns one: a
+ * skulker at 1.2 times the test player's walk, watched 700px down a player's cone, retreating
+ * 600px clear; magpie beetles at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
+ * nest, spooked within 400px, avenging a theft until the thief is 250px from it.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   zombie: {
@@ -279,6 +283,47 @@ export const testEntitiesConfig: EntitiesConfig = {
     attackCooldown: 1,
     step: { interval: 0.3, range: 700 },
     strikeRange: 400,
+  },
+  skulker: {
+    spawn: { count: 0, seed: 15, clearance: 400 },
+    spawning: { ...NO_TIDE, unseenDistance: 700 },
+    radius: 14,
+    maxHealth: 75,
+    speed: 264,
+    damage: 100,
+    attackCooldown: 1,
+    watchRange: 700,
+    retreatDistance: 600,
+    retreatSeconds: 25,
+    enragedSeconds: 10,
+    repathInterval: 0.25,
+    sounds: { retreat: 300, enraged: 800, attack: 400 },
+  },
+  magpie: {
+    spawn: { count: 0, seed: 17, clearance: 400 },
+    spawning: {
+      ...NO_TIDE,
+      unseenDistance: 700,
+      group: { min: 3, max: 5, spread: 100 },
+    },
+    radius: 13,
+    maxHealth: 45,
+    wanderSpeed: 176,
+    chaseSpeed: 242,
+    sightRange: 300,
+    search: { count: 12, range: 600, tries: 48 },
+    nestRadius: 200,
+    dropRadius: 60,
+    spookRange: 400,
+    spookSeconds: 5,
+    guardSeconds: 15,
+    revengeRange: 250,
+    damage: 10,
+    attackRange: 30,
+    attackCooldown: 1,
+    repathInterval: 0.25,
+    chitterGap: { min: 5, max: 10 },
+    sounds: { chitter: 200, alarm: 500, pickUp: 150, attack: 250 },
   },
 };
 

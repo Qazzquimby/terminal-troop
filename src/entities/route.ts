@@ -173,15 +173,25 @@ export function planRoute(
  */
 export function avoidingLight(game: Session): Avoid {
   const lights = emittedLights(game);
-  const { map } = game.world;
+  return avoidingWhere(game.world.map, (at) => isLit(game, at, lights));
+}
+
+/**
+ * Keeps a route off each cell whose middle `test` names, each cell judged once: make one for each
+ * plan.
+ */
+export function avoidingWhere(
+  map: TileMap,
+  test: (middle: Point) => boolean,
+): Avoid {
   const judged = new Map<number, boolean>();
   return (cell) => {
     const key = cell.row * map.cols + cell.col;
     const known = judged.get(key);
     if (known !== undefined) return known;
-    const lit = isLit(game, centreOf(map, cell), lights);
-    judged.set(key, lit);
-    return lit;
+    const avoided = test(centreOf(map, cell));
+    judged.set(key, avoided);
+    return avoided;
   };
 }
 

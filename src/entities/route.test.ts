@@ -8,7 +8,7 @@ import {
   spawnEntity,
 } from "../sim/index.js";
 import type { Point, TileMap } from "../sim/index.js";
-import { avoidingLight, planRoute, steer } from "./route.js";
+import { avoidingLight, avoidingWhere, planRoute, steer } from "./route.js";
 
 const HALF = 15;
 
@@ -94,6 +94,24 @@ describe("planRoute", () => {
         planRoute(map, WIDE, { x: 375, y: 150 }, { x: 375, y: 450 }),
       ).toBeNull();
     });
+  });
+});
+
+describe("avoidingWhere", () => {
+  test("judges each cell by its middle, once a plan however often asked", () => {
+    const map = walled();
+    const asked: Point[] = [];
+    const avoid = avoidingWhere(map, (middle) => {
+      asked.push(middle);
+      return middle.x > 200;
+    });
+    expect(avoid({ col: 4, row: 1 })).toBe(true);
+    expect(avoid({ col: 4, row: 1 })).toBe(true);
+    expect(avoid({ col: 1, row: 1 })).toBe(false);
+    expect(asked).toEqual([
+      { x: 225, y: 75 },
+      { x: 75, y: 75 },
+    ]);
   });
 });
 
