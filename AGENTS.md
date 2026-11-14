@@ -16,3 +16,14 @@ Rules for any agent working in this repo.
 
 - Give a sound effect to anything that realistically deserves one, even if the spec doesn't mention it.
 - Add visual effects where reasonable.
+
+## Writing on GitHub
+
+- Anything an agent posts to GitHub under a person's account (PR descriptions, issues, comments, reviews) starts with a banner naming the model, so readers know a person didn't write it:
+
+  ```markdown
+  > [!NOTE]
+  > Written by Claude Opus 5.5
+  ```
+
+  Use the name of the model actually writing, not this example's.
