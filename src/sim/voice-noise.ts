@@ -1,7 +1,10 @@
 import { z } from "zod";
-import { emitNoise } from "./noise.js";
+import { makeNoise } from "./noise.js";
 import { playerData } from "./player-data.js";
 import type { Session } from "./session.js";
+
+/** The tag speech's noise carries, past its speaker's kind. */
+export const VOICE_TAG = "voice";
 
 /** How far a player's speech carries, from how loud it goes out. */
 export interface VoiceNoiseConfig {
@@ -73,10 +76,6 @@ export function emitVoices(game: Session, dt: number): void {
     player.voiceGap -= dt;
     if (player.voiceGap > 0) continue;
     player.voiceGap = game.config.voiceNoise.interval;
-    emitNoise(game, {
-      at: { x: player.x, y: player.y },
-      radius,
-      source: player.id,
-    });
+    makeNoise(game, player, { at: player, radius, tags: [VOICE_TAG] });
   }
 }

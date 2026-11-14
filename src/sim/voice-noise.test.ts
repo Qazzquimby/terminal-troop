@@ -1,11 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
+import { PLAYER_TAG } from "./noise.js";
 import type { Noise } from "./noise.js";
 import type { Controls } from "./player.js";
 import { reportedAt } from "../integration/heard.js";
 import { createSession, updateSession } from "./session.js";
 import type { Session } from "./session.js";
-import { speak, voiceNoise, voiceRadius } from "./voice-noise.js";
+import { speak, VOICE_TAG, voiceNoise, voiceRadius } from "./voice-noise.js";
 
 const DT = 1 / 60;
 const config = testSimConfig.voiceNoise;
@@ -103,6 +104,7 @@ describe("the local player's speech", () => {
       at: { x: 100, y: 300 },
       radius: loud,
       source: "me",
+      tags: [PLAYER_TAG, VOICE_TAG],
     });
   });
 

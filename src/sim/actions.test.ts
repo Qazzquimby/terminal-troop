@@ -15,6 +15,7 @@ import {
 } from "./index.js";
 import type { Action, WorldContent, WorldEntity } from "./index.js";
 import { changeWorld, give, removeFromWorld, spawn, take } from "./actions.js";
+import { PLAYER_TAG } from "./noise.js";
 import { giveItem, inventories, itemIn } from "./inventories.js";
 import { createPlayer } from "./player.js";
 import { registerItem } from "./use.js";
@@ -132,7 +133,12 @@ test("a host acting itself applies it at once, plays it here, and sends its effe
   expect(play).toHaveBeenCalledTimes(1);
   expect(game.flashes).toEqual([]);
   expect(game.noises).toEqual([
-    { at: { x: post.x, y: post.y }, radius: 200, source: "me" },
+    {
+      at: { x: post.x, y: post.y },
+      radius: 200,
+      source: "me",
+      tags: [PLAYER_TAG],
+    },
   ]);
 });
 
@@ -179,7 +185,37 @@ test("an effect outside an action, on the host, plays on its own client only onc
     ["loud.mp3", at(post), game.local, { volume: 0.5 }],
     ["bonk.mp3", at(post), game.local, {}],
   ]);
-  expect(game.noises).toEqual([{ at: at(post), radius: 250, source: post.id }]);
+  expect(game.noises).toEqual([
+    { at: at(post), radius: 250, source: post.id, tags: ["post"] },
+  ]);
+});
+
+const RANGED = sound({ url: "ranged.mp3", range: 320 });
+const HUSHED = sound({ url: "hushed.mp3", range: 90, noise: false });
+
+test("a sound with a range is heard out to it and makes a noise just as far, tagged by its maker and the effect", () => {
+  const { game, play, post } = session();
+  effect(game, { at: at(post), sound: RANGED, tags: ["clang"] }, post);
+  effect(game, { at: at(post), sound: HUSHED }, post);
+  deliverOwn(game);
+  receive(game);
+  expect(play.mock.calls).toEqual([
+    ["ranged.mp3", at(post), game.local, { range: 320 }],
+    ["hushed.mp3", at(post), game.local, { range: 90 }],
+  ]);
+  expect(game.noises).toEqual([
+    { at: at(post), radius: 320, source: post.id, tags: ["post", "clang"] },
+  ]);
+});
+
+test("an effect's own noise carries in place of its sound's range", () => {
+  const { game, post } = session();
+  effect(game, { at: at(post), sound: RANGED, noise: 40 }, post);
+  deliverOwn(game);
+  receive(game);
+  expect(game.noises).toEqual([
+    expect.objectContaining({ radius: 40, tags: ["post"] }),
+  ]);
 });
 
 test("an effect outside an action, off the host, is dropped", () => {

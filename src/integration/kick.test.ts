@@ -11,6 +11,7 @@ import {
   registerEntityType,
   spawnEntity,
   updateSession,
+  PLAYER_TAG,
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { crew, playerOn, sessionOf } from "./crew.js";
@@ -379,6 +380,7 @@ test("a kick makes one noise from its hitbox on every client, the kicker its sou
     at: { x: TARGET.x, y: TARGET.y },
     radius: kick.noiseRadius,
     source: "b",
+    tags: [PLAYER_TAG],
   };
   const kicks = (id: string) =>
     seen[id]?.noises.filter(({ radius }) => radius === kick.noiseRadius);

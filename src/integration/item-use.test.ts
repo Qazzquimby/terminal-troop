@@ -18,7 +18,7 @@ import {
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
-import { createSession } from "../sim/index.js";
+import { createSession, PLAYER_TAG } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
 import { teleport } from "./crew.js";
@@ -255,12 +255,19 @@ test("a swing knocks what it hits straight away from the swinger, not from the h
   expect(hit.y).toBeCloseTo(310 + (10 / away) * shovel.knockback);
 });
 
-test("a swing that hits nothing shows a miss, and makes no noise", () => {
+test("a swing that hits nothing shows a miss, and makes only the short noise of its sound", () => {
   const game = session();
   standAt(game, { x: 450, y: 300 });
   swingRight(game);
   expect(game.local.use?.hit).toBe(false);
-  deliverOwn(game);
+  expect(game.noises).toEqual([
+    {
+      at: { x: 450 + shovel.reach, y: 300 },
+      radius: shovel.missNoiseRadius,
+      source: "me",
+      tags: [PLAYER_TAG],
+    },
+  ]);
   updateSession(game, idle, DT);
   expect(game.noises).toEqual([]);
 });
@@ -277,7 +284,12 @@ test("a swing that hits sends its noise to everyone, which the host then makes a
   deliverOwn(game);
   updateSession(game, idle, DT);
   expect(game.noises).toEqual([
-    { at: center, radius: shovel.hitNoiseRadius, source: "me" },
+    {
+      at: center,
+      radius: shovel.hitNoiseRadius,
+      source: "me",
+      tags: [PLAYER_TAG],
+    },
   ]);
   const ripples = createRipples(testRippleConfig, mulberry32(1));
   ripples.hear(game, game.time * 1000);

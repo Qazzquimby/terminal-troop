@@ -54,9 +54,19 @@ export const testSimConfig: SimConfig = {
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };
 
-/** Each noise the local player hears ripples for 0.5s. */
+/**
+ * Each noise the local player hears ripples for 0.5s, its ring full grown in 0.1s; one unseen
+ * glows 50px wide, 10px in from the screen's edge.
+ */
 export const testRippleConfig: RippleConfig = {
   duration: 0.5,
+  expand: 0.1,
+  edge: {
+    radius: 50,
+    inset: 10,
+    alpha: { sharp: 1, soft: 0.2 },
+    colour: "#f80",
+  },
   width: { sharp: 2, soft: 10 },
   alpha: { sharp: 1, soft: 0.2 },
   colour: "#fff",
@@ -101,6 +111,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     barkGap: { min: 4, max: 8 },
     attackRange: 32,
     attackCooldown: 1.5,
+    sounds: { bark: 400, alert: 500, attack: 250 },
   },
   cruiser: { lightRadius: 400 },
 };
@@ -120,6 +131,7 @@ export const testItemsConfig: ItemsConfig = {
     duration: 0.1,
     volume: 1,
     hitNoiseRadius: 300,
+    missNoiseRadius: 100,
   },
   scrap: {
     value: 2,

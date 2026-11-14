@@ -147,7 +147,7 @@ test("an effect outside an action the host makes is heard once by every client; 
   exchange(clock, [a, b]);
   expect(noises([a, b])).toEqual([1, 1]);
   expect(guest.noises).toEqual([
-    { at: { x: 50, y: 60 }, radius: 300, source: "z" },
+    { at: { x: 50, y: 60 }, radius: 300, source: "z", tags: [] },
   ]);
   expect(played).toHaveBeenCalledOnce();
 

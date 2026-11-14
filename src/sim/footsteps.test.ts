@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
+import { FOOTSTEP_TAG } from "./footsteps.js";
+import { PLAYER_TAG } from "./noise.js";
 import type { Noise } from "./noise.js";
 import type { Controls } from "./player.js";
 import { heardAt } from "../integration/heard.js";
@@ -100,6 +102,7 @@ describe("a remote player's footsteps", () => {
       at: { x: 700, y: 300 },
       radius: sprint.radius,
       source: "them",
+      tags: [PLAYER_TAG, FOOTSTEP_TAG],
     });
 
     report(game, { "core/movement": { mode: "sprint", moving: false } });

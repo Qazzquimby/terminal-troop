@@ -32,8 +32,8 @@ import type {
 } from "./map-memory.js";
 import { flashDisc } from "./flashes.js";
 import type { Flashes } from "./flashes.js";
-import { rippleRing } from "./ripples.js";
-import type { Ripples } from "./ripples.js";
+import { edgeGlow, rippleRing } from "./ripples.js";
+import type { Ripple, RippleConfig, Ripples } from "./ripples.js";
 
 interface Circle extends Point {
   readonly radius: number;
@@ -360,16 +360,17 @@ export function drawFlashes(
   }
 }
 
+/** Rings for `rings`, in world space. */
 function drawRipples(
   ctx: CanvasRenderingContext2D,
-  ripples: Ripples,
+  config: RippleConfig,
+  rings: readonly Ripple[],
   now: number,
   camera: Camera,
 ): void {
-  const { config } = ripples;
   ctx.save();
   ctx.strokeStyle = config.colour;
-  for (const ripple of ripples.list) {
+  for (const ripple of rings) {
     const ring = rippleRing(ripple, now, config);
     if (ring === null || !inView(ring, camera)) continue;
     ctx.globalAlpha = ring.alpha;
@@ -377,6 +378,57 @@ function drawRipples(
     ctx.beginPath();
     ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
     ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Where `point`, in world space, falls on the screen, in screen pixels. */
+function onScreen(point: Point, camera: Camera): Point {
+  return {
+    x: (point.x - camera.x) / camera.zoom,
+    y: (point.y - camera.y) / camera.zoom,
+  };
+}
+
+/**
+ * Soft glows at the screen's edge for `glows`, in screen space, each the way its noise seemed to
+ * come from as seen from `listener`.
+ */
+function drawEdgeGlows(
+  ctx: CanvasRenderingContext2D,
+  config: RippleConfig,
+  glows: readonly Ripple[],
+  now: number,
+  camera: Camera,
+  listener: Point,
+): void {
+  const from = onScreen(listener, camera);
+  ctx.save();
+  for (const ripple of glows) {
+    const glow = edgeGlow(
+      ripple,
+      now,
+      config,
+      camera.view,
+      from,
+      onScreen(ripple.at, camera),
+    );
+    if (glow === null) continue;
+    const gradient = ctx.createRadialGradient(
+      glow.x,
+      glow.y,
+      0,
+      glow.x,
+      glow.y,
+      glow.radius,
+    );
+    gradient.addColorStop(0, config.edge.colour);
+    gradient.addColorStop(1, "transparent");
+    ctx.globalAlpha = glow.alpha;
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(glow.x, glow.y, glow.radius, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -627,12 +679,23 @@ export function draw(
   }
   ctx.drawImage(scene.canvas, 0, 0);
 
-  // Above the darkness: lit wall faces, what the local player hears, then the player and its HUD.
+  // What the local player hears: a ring for a player's noise or one whose maker it can see, a
+  // glow at the screen's edge for any other.
+  const seenMade = (ripple: Ripple): boolean =>
+    ripple.player ||
+    (inView({ ...ripple.origin, radius: 0 }, camera) &&
+      isVisible(map, sources, lights, ripple.origin));
+  const rings = ripples.list.filter(seenMade);
+  const glows = ripples.list.filter((ripple) => !seenMade(ripple));
+
+  // Above the darkness: lit wall faces, rings, then the player and its HUD, then edge glows.
   applyCamera(ctx, camera, () => {
     drawLitWalls(ctx, walls);
-    drawRipples(ctx, ripples, now, camera);
+    drawRipples(ctx, ripples.config, rings, now, camera);
     drawPlayer(ctx, game, viewer, true);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
     drawStamina(ctx, viewer, game.config.stamina.max);
   });
+  if (glows.length > 0)
+    drawEdgeGlows(ctx, ripples.config, glows, now, camera, viewer);
 }

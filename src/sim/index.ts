@@ -90,9 +90,10 @@ export {
 } from "./world-data.js";
 export { movement } from "./movement.js";
 export { speak } from "./voice-noise.js";
-export { noisesHeardBy } from "./noise.js";
+export { noisesHeardBy, PLAYER_TAG } from "./noise.js";
 export type { Heard } from "./noise.js";
 export { sound } from "./sound.js";
+export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
 export { registerItem } from "./use.js";
 export {

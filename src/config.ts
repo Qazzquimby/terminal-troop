@@ -50,12 +50,21 @@ export const config = {
     followRate: 18,
     snapDistance: CELL * 4,
   },
-  // Noises the local player hears, each drawn as a ring growing out to the noise's radius.
+  // Noises the local player hears, each drawn as a ring snapping out to the noise's radius in
+  // 0.15s, then fading over the rest of 0.9s. One made by something other than a player that it
+  // can't see glows warm and soft at the screen's edge instead, the way it seemed to come from.
   ripples: {
     duration: 0.9,
+    expand: 0.15,
     width: { sharp: 1.5, soft: 7 },
     alpha: { sharp: 0.65, soft: 0.15 },
     colour: "#9fd3ff",
+    edge: {
+      radius: 90,
+      inset: 12,
+      alpha: { sharp: 0.7, soft: 0.2 },
+      colour: "#ffb070",
+    },
   },
   // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
   mapMemory: {
@@ -168,6 +177,9 @@ export const config = {
       barkGap: { min: 6, max: 12 },
       attackRange: 30,
       attackCooldown: 2,
+      // How far each of its sounds is heard, and so how far its noise carries: a bark past its
+      // sight, the cry as it starts a chase further, its bite only nearby.
+      sounds: { bark: CELL * 8, alert: CELL * 10, attack: CELL * 5 },
     },
     cruiser: {
       lightRadius: CELL * 12,
@@ -182,7 +194,9 @@ export const config = {
       cooldown: 1,
       duration: 0.18,
       volume: 0.8,
+      // A swing that hits rings out 14 cells; a miss whooshes 3.
       hitNoiseRadius: CELL * 14,
+      missNoiseRadius: CELL * 3,
     },
     scrap: {
       value: 1,
