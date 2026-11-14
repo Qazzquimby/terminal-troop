@@ -3,6 +3,7 @@ import {
   dangerWeight,
   isAreaFree,
   isSweepFree,
+  livingPlayers,
   worldData,
 } from "../../sim/index.js";
 import type { Point, Session } from "../../sim/index.js";
@@ -63,7 +64,7 @@ export function spawnWeight(game: Session, at: Point): number {
 
 function nearestPlayerDistance(game: Session, at: Point): number {
   let nearest = Infinity;
-  for (const player of game.players.values())
+  for (const player of livingPlayers(game))
     nearest = Math.min(nearest, Math.hypot(player.x - at.x, player.y - at.y));
   return nearest;
 }

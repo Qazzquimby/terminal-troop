@@ -17,6 +17,7 @@ import {
   ambientPolygons,
   emittedLights,
   heldItemOf,
+  isGhost,
   isStunned,
   isVisible,
   lightSources,
@@ -29,6 +30,7 @@ import {
   visionOrigins,
 } from "../sim/index.js";
 import type { Camera } from "./camera.js";
+import type { Eye } from "./spectate.js";
 import type {
   Area,
   MapMemory,
@@ -643,6 +645,121 @@ function layLight(scene: Layer, mask: Layer): void {
 }
 
 /**
+ * Every world entity and living player in view that `shows` lets through, but `but`, each with
+ * its health bar. A ghost is never drawn.
+ */
+function drawBodies(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  isAway: (id: string) => boolean,
+  but: Player | null,
+  shows: (body: Circle) => boolean,
+): void {
+  game.entities.forEach((entity) => {
+    const definition = game.entityTypes.get(entity.kind);
+    if (definition === undefined) return;
+    if (!inView(entity, camera) || !shows(entity)) return;
+    ctx.save();
+    definition.draw(ctx, entity, now, game);
+    ctx.restore();
+    if (isStunned(game, entity.id)) drawStunned(ctx, entity, now);
+    drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+  });
+  game.players.forEach((player) => {
+    if (player === but || isGhost(player) || !inView(player, camera)) return;
+    if (!shows(player)) return;
+    drawPlayer(ctx, game, player, false, isAway(player.id));
+    drawHealthBar(ctx, player, player.y - player.radius - 26);
+  });
+}
+
+/** Every wall in view, drawn whole, as a free camera sees through them. */
+function drawWalls(
+  ctx: CanvasRenderingContext2D,
+  map: TileMap,
+  camera: Camera,
+): void {
+  const { cell, cols, rows, solid } = map;
+  const minCol = Math.max(0, Math.floor(camera.x / cell));
+  const maxCol = Math.min(
+    cols - 1,
+    Math.floor((camera.x + viewWidth(camera)) / cell),
+  );
+  const minRow = Math.max(0, Math.floor(camera.y / cell));
+  const maxRow = Math.min(
+    rows - 1,
+    Math.floor((camera.y + viewHeight(camera)) / cell),
+  );
+  ctx.fillStyle = LIT_WALL.fill;
+  ctx.strokeStyle = LIT_WALL.edge;
+  ctx.lineWidth = 1;
+  for (let row = minRow; row <= maxRow; row++)
+    for (let col = minCol; col <= maxCol; col++) {
+      if (solid[row * cols + col] !== 1) continue;
+      ctx.fillRect(col * cell, row * cell, cell, cell);
+      ctx.strokeRect(col * cell, row * cell, cell, cell);
+    }
+}
+
+/**
+ * A ghost's free camera: everything in view, through walls and darkness alike, with every noise
+ * heard lately as a ring.
+ */
+function drawFree(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  isAway: (id: string) => boolean,
+  flashes: Flashes,
+  ripples: Ripples,
+): void {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, camera.view.width, camera.view.height);
+  applyCamera(ctx, camera, () => {
+    drawTerrain(ctx, game.world, camera);
+    drawWalls(ctx, game.world.map, camera);
+    drawBodies(ctx, game, camera, now, isAway, null, () => true);
+    drawFlashes(ctx, flashes, now);
+    drawRipples(ctx, ripples.config, ripples.list, now, camera);
+  });
+}
+
+/** What a ghost's view says along the top of the screen: what it looks through, and the keys. */
+function eyeText(eye: Eye): string | null {
+  switch (eye.kind) {
+    case "self":
+      return null;
+    case "watch":
+      return `Dead · watching ${eye.player.name} · click to switch · Space: free camera`;
+    case "free":
+      return "Dead · free camera · WASD to move · Space: watch a player";
+  }
+}
+
+/** Draws the ghost's banner along the top of the screen, if it is one. */
+function drawEyeBanner(
+  ctx: CanvasRenderingContext2D,
+  eye: Eye,
+  camera: Camera,
+): void {
+  const text = eyeText(eye);
+  if (text === null) return;
+  const { width } = camera.view;
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.fillRect(0, 0, width, 28);
+  ctx.font = "14px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#c9d4ff";
+  ctx.fillText(text, width / 2, 14);
+  ctx.restore();
+}
+
+/**
  * A render-time copy of the session with every body blended `alpha` of the way from its
  * pre-step position to its current one. Remote players turn along the shortest arc; the local
  * player faces `mouse` (a world point) from where it is drawn. The simulation is left untouched.
@@ -689,9 +806,18 @@ export function draw(
   flashes: Flashes,
   ripples: Ripples,
   memory: MapMemory,
+  eye: Eye = { kind: "self" },
 ): void {
   const game = interpolatedView(simulation, alpha, mouse);
-  const viewer = game.local;
+  if (eye.kind === "free") {
+    drawFree(ctx, game, camera, now, isAway, flashes, ripples);
+    drawEyeBanner(ctx, eye, camera);
+    return;
+  }
+  const viewer =
+    eye.kind === "watch"
+      ? (game.players.get(eye.player.id) ?? game.local)
+      : game.local;
   const sources = visionOrigins(game, viewer);
   const lights = lightSources(game, viewer);
   const { map } = game.world;
@@ -725,28 +851,9 @@ export function draw(
   sceneCtx.clearRect(0, 0, width, height);
   applyCamera(sceneCtx, camera, () => {
     drawTerrain(sceneCtx, game.world, camera);
-
-    game.entities.forEach((entity) => {
-      const definition = game.entityTypes.get(entity.kind);
-      if (definition === undefined) return;
-      if (
-        !inView(entity, camera) ||
-        !isVisible(map, sources, lights, entity, ambient)
-      )
-        return;
-      sceneCtx.save();
-      definition.draw(sceneCtx, entity, now, game);
-      sceneCtx.restore();
-      if (isStunned(game, entity.id)) drawStunned(sceneCtx, entity, now);
-      drawHealthBar(sceneCtx, entity, entity.y - entity.radius - 8);
-    });
-
-    game.players.forEach((player) => {
-      if (player === viewer || !inView(player, camera)) return;
-      if (!isVisible(map, sources, lights, player, ambient)) return;
-      drawPlayer(sceneCtx, game, player, false, isAway(player.id));
-      drawHealthBar(sceneCtx, player, player.y - player.radius - 26);
-    });
+    drawBodies(sceneCtx, game, camera, now, isAway, viewer, (body) =>
+      isVisible(map, sources, lights, body, ambient),
+    );
     drawFlashes(sceneCtx, flashes, now);
   });
   const mask = (maskCache ??= createLayer());
@@ -790,10 +897,11 @@ export function draw(
   applyCamera(ctx, camera, () => {
     drawLitWalls(ctx, walls);
     drawRipples(ctx, ripples.config, rings, now, camera);
-    drawPlayer(ctx, game, viewer, true);
+    drawPlayer(ctx, game, viewer, viewer === game.local);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
     drawStamina(ctx, viewer, game.config.stamina.max);
   });
   if (glows.length > 0)
     drawEdgeGlows(ctx, ripples.config, glows, now, camera, viewer);
+  drawEyeBanner(ctx, eye, camera);
 }

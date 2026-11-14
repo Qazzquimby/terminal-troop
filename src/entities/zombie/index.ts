@@ -5,6 +5,7 @@ import barkUrl from "./sfx/bark.mp3";
 import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
   canSeeFrom,
+  livingPlayers,
   defineEntity,
   directionalVision,
   effect,
@@ -202,7 +203,7 @@ function preyNear(
   reach: (prey: Prey) => number,
 ): Prey[] {
   const near: Prey[] = [];
-  const bodies = [...game.players.values(), ...game.entities.values()];
+  const bodies = [...livingPlayers(game), ...game.entities.values()];
   for (const body of bodies) {
     if (body.id === hunter.id) continue;
     const distance = Math.hypot(body.x - hunter.x, body.y - hunter.y);

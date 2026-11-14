@@ -1,3 +1,4 @@
+import { livingPlayers } from "./ghosts.js";
 import type { Point, TileMap } from "./map.js";
 import { isAreaFree, isSolid } from "./map.js";
 import type { Session } from "./session.js";
@@ -304,13 +305,13 @@ export function distanceToContact(
   return nearest;
 }
 
-/** Every body in the session that others collide with, but `body` itself. */
+/** Every body in the session that others collide with, but `body` itself; never a ghost. */
 export function solidBodiesBut(
   game: Session,
   body: CollisionBody,
 ): CollisionBody[] {
   return [
-    ...game.players.values(),
+    ...livingPlayers(game),
     ...[...game.entities.values()].filter((entity) => entity.collides),
   ].filter((other) => other !== body);
 }

@@ -105,6 +105,8 @@ export {
 export type { Corrections } from "./steering.js";
 
 export { Health, hurtPlayer } from "./health.js";
+export { isGhost, livingPlayers } from "./ghosts.js";
+export { CORPSE_ITEM, itemName, revive } from "./death.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
 export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";

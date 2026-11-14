@@ -92,6 +92,10 @@ const lyingData = (
   ...(state !== undefined && Object.keys(state).length > 0 && { state }),
 });
 
+/** Whether items can lie in `game`'s world: it has any items registered. */
+export const itemsCanLie = (game: Session): boolean =>
+  game.kindIds.has(WORLD_ITEM);
+
 /**
  * Lays the item `item` in the world at `at`, with `left` uses left, or all its uses when left
  * out, keeping `state` of its own, if any.

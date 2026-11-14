@@ -12,3 +12,5 @@ export { createRipples } from "./ripples.js";
 export type { RippleConfig, Ripples } from "./ripples.js";
 export { createFlashes } from "./flashes.js";
 export type { FlashConfig } from "./flashes.js";
+export { createSpectator, eyeOf, stepSpectator } from "./spectate.js";
+export type { Eye, SpectateConfig } from "./spectate.js";

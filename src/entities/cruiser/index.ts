@@ -4,6 +4,7 @@ import {
   effect,
   INERT_TAG,
   inRect,
+  livingPlayers,
   worldData,
 } from "../../sim/index.js";
 import type {
@@ -22,6 +23,8 @@ import {
 } from "./drive.js";
 import type { DrivingConfig } from "./drive.js";
 import { drawCruiser } from "./draw.js";
+import { stepRevival } from "./revive.js";
+import type { ReviveConfig } from "./revive.js";
 
 export { refuel } from "./drive.js";
 // The departure's sounds, once their assets land; importing a missing file breaks the build.
@@ -55,6 +58,7 @@ export interface CruiserConfig extends DrivingConfig {
   readonly radius: number;
   readonly headlights: HeadlightConfig;
   readonly escape: EscapeConfig;
+  readonly revive: ReviveConfig;
 }
 
 const NAME = "cruiser";
@@ -137,7 +141,7 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
     return;
   }
   if (game.worldTime < held.since + config.delay) return;
-  const leaving = [...game.players.values()].filter(
+  const leaving = livingPlayers(game).filter(
     (player) => inRect(exit, player) && !held.escaped.includes(player.id),
   );
   departure.set(game, {
@@ -191,5 +195,6 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   world: { departure },
   step(game) {
     stepDeparture(game, config.escape);
+    stepRevival(game, (at) => nearCruiser(game, at, config.revive.reach));
   },
 }));

@@ -5,6 +5,7 @@ import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
 import type { EntityDefinition, WorldEntity } from "./entities.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
+import { livingPlayers } from "./ghosts.js";
 import { placeItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
@@ -187,7 +188,7 @@ const SPAWN_ATTEMPTS = 64;
 
 function distanceToPlayers(game: Session, point: Point): number {
   let nearest = Infinity;
-  for (const player of game.players.values()) {
+  for (const player of livingPlayers(game)) {
     nearest = Math.min(
       nearest,
       Math.hypot(player.x - point.x, player.y - point.y),

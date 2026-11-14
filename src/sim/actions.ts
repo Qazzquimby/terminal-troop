@@ -6,6 +6,7 @@ import type { WorldEntity } from "./entities.js";
 import { removeEntity, spawnEntity } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
+import { isGhost } from "./ghosts.js";
 import { hurtPlayer } from "./health.js";
 import {
   carriedIn,
@@ -44,8 +45,8 @@ import type { WorldData } from "./world-data.js";
  *
  * The actor's client applies it at once, as a prediction, and sends its input to the host,
  * stamped with the step it acted in. The host applies it in that step of its own run of the
- * actor, so where the actor stood is where the host has it, if the actor has the stamina, is off
- * cooldown and passes `check`. Either way the host confirms it, and what the actor's client
+ * actor, so where the actor stood is where the host has it, if the actor is alive, has the
+ * stamina, is off cooldown and passes `check`. A ghost does not act. Either way the host confirms it, and what the actor's client
  * predicted gives way to the host's state: what the host did, or nothing if it refused. The host
  * acting itself applies it at once, for real.
  */
@@ -71,8 +72,8 @@ export interface ActionSpec<I> {
 export interface Action<I> {
   readonly name: string;
   /**
-   * Acts for the local player, if it is off cooldown and has the stamina: applies the action at
-   * once and sends `input` to the host. Returns whether it acted.
+   * Acts for the local player, if it is alive, off cooldown and has the stamina: applies the
+   * action at once and sends `input` to the host. Returns whether it acted.
    */
   perform(game: Session, input: I): boolean;
 }
@@ -313,6 +314,7 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
   const accepts = (game: Session, actor: Player, input: I): boolean => {
     const { stamina } = spec;
     const cooldown = cooldownIn(game);
+    if (isGhost(actor)) return false;
     if (stamina !== undefined && actor.stamina.value < stamina) return false;
     if (spec.check !== undefined && !spec.check(game, actor, input))
       return false;
@@ -377,6 +379,7 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
       const { local } = game;
       const key = timer(game);
       const { stamina } = spec;
+      if (isGhost(local)) return false;
       if (game.time < (game.localReadyAt.get(key) ?? -Infinity)) return false;
       if (stamina !== undefined && local.stamina.value < stamina) return false;
       if (

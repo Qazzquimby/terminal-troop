@@ -16,6 +16,9 @@ import type { Flash } from "./flashes.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
+import { layBodies } from "./death.js";
+import type { DeathConfig } from "./death.js";
+import { isGhost, livingPlayers } from "./ghosts.js";
 import { followHealth } from "./health.js";
 import type { FootstepConfig } from "./footsteps.js";
 import { followInventories } from "./inventories.js";
@@ -74,6 +77,7 @@ export interface SimConfig extends PlayerRules {
   readonly voiceNoise: VoiceNoiseConfig;
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
+  readonly death: DeathConfig;
 }
 
 export interface Session {
@@ -287,7 +291,7 @@ function separateEntities(game: Session): void {
   const entities = [...game.entities.values()].filter(
     (entity) => entity.collides,
   );
-  const bodies = [...game.players.values(), ...entities];
+  const bodies = [...livingPlayers(game), ...entities];
   separateBodies(bodies, game.world.map, new Set<CollisionBody>(entities));
   entities.forEach((entity) => {
     entity.tx = entity.x;
@@ -308,9 +312,11 @@ export function updateSession(
   movingBodies(game).forEach(storePrevious);
   followWalls(game);
   steerLocal(game, controls, dt);
-  if (controls.use) useHeldItem(game);
-  if (controls.interact) interact(game);
-  if (controls.drop) dropHeld(game);
+  if (!isGhost(game.local)) {
+    if (controls.use) useHeldItem(game);
+    if (controls.interact) interact(game);
+    if (controls.drop) dropHeld(game);
+  }
   for (const content of game.contents) content.act?.(game, controls);
 
   applyEvents(game);
@@ -321,6 +327,7 @@ export function updateSession(
   settlePredictions(game);
   if (game.hosting) {
     updateEntities(game, dt);
+    layBodies(game);
     for (const content of game.contents) content.step?.(game, dt);
     separateEntities(game);
   } else followEntities(game, dt);

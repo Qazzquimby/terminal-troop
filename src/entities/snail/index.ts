@@ -6,6 +6,7 @@ import {
   inRect,
   INERT_TAG,
   isAreaFree,
+  livingPlayers,
   rounded,
   spawn,
   worldData,
@@ -77,9 +78,9 @@ export const SnailState = z.object({
 
 type SnailState = z.output<typeof SnailState>;
 
-/** A player drawn at random, by id, or null when there is none. */
+/** A living player drawn at random, by id, or null when there is none. */
 function pickQuarry(game: Session): string | null {
-  const ids = [...game.players.keys()];
+  const ids = livingPlayers(game).map((player) => player.id);
   return ids[Math.floor(Math.random() * ids.length)] ?? null;
 }
 
@@ -96,7 +97,7 @@ export function freshSnail(quarry: string | null, now: number): SnailState {
 
 /** A body the snail touches: a player or a world entity, anything but itself and inert things. */
 function touching(game: Session, self: WorldEntity): { id: string }[] {
-  const bodies = [...game.players.values(), ...game.entities.values()];
+  const bodies = [...livingPlayers(game), ...game.entities.values()];
   return bodies.filter(
     (body) =>
       body.id !== self.id &&
@@ -116,7 +117,10 @@ function routeTo(game: Session, self: WorldEntity, to: Point): Point[] {
   );
 }
 
-/** Keeps after its quarry, picking another while it is gone, and replans its route when due. */
+/**
+ * Keeps after its quarry, picking another while it is gone or dead, and replans its route when
+ * due.
+ */
 function hunt(
   state: SnailState,
   self: WorldEntity,
@@ -125,7 +129,8 @@ function hunt(
 ): SnailState {
   const now = game.worldTime;
   const kept =
-    state.quarry !== null && game.players.has(state.quarry)
+    state.quarry !== null &&
+    livingPlayers(game).some(({ id }) => id === state.quarry)
       ? state
       : { ...state, quarry: pickQuarry(game), repathAt: now };
   const quarry =
@@ -215,7 +220,7 @@ function unseenPoint(game: Session, config: SnailConfig): Point | null {
     const at = { x: Math.random() * world.W, y: Math.random() * world.H };
     if (!isAreaFree(world.map, at.x, at.y, config.radius)) continue;
     if (inRect(world.layout.start, at)) continue;
-    const seen = [...game.players.values()].some(
+    const seen = livingPlayers(game).some(
       (player) =>
         Math.hypot(player.x - at.x, player.y - at.y) <
         config.spawning.unseenDistance,

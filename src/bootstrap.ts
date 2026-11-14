@@ -1,13 +1,16 @@
 import {
   createSimClock,
   drawnLocal,
+  isGhost,
+  itemName,
   onAir,
+  renderPosition,
   remotePlayers,
   speak,
   updateSession,
 } from "./sim/index.js";
 import { NetEvent, carries, createCountingTransport } from "./net/index.js";
-import type { Session } from "./sim/index.js";
+import type { Point, Session } from "./sim/index.js";
 import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
@@ -35,7 +38,11 @@ import {
   screenToWorld,
   snapCamera,
   updateCamera,
+  createSpectator,
+  eyeOf,
+  stepSpectator,
 } from "./render/index.js";
+import type { Eye } from "./render/index.js";
 import { createSfx } from "./audio/index.js";
 import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
@@ -159,6 +166,8 @@ const identity = createPlayerIdentity(
 );
 const defaultName = identity.current().slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
+/** What the local player watches while it is a ghost. */
+const spectator = createSpectator();
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
 const flashes = createFlashes(config.flashes);
@@ -364,6 +373,18 @@ function debugInfo(): DebugInfo {
   };
 }
 
+/** Where the camera centres for `eye`, `alpha` of the way into the next step. */
+function eyeTarget(session: Session, eye: Eye, alpha: number): Point {
+  switch (eye.kind) {
+    case "self":
+      return drawnLocal(session, alpha);
+    case "watch":
+      return renderPosition(eye.player, alpha);
+    case "free":
+      return eye.at;
+  }
+}
+
 /** When the last frame ran, on the `performance.now()` clock. */
 let lastFrame = performance.now();
 
@@ -382,7 +403,9 @@ function frame(): void {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
       speak(session, voice.speakingLevel());
-      updateSession(session, input.getControls(until), clock.dt);
+      const controls = input.getControls(until);
+      updateSession(session, controls, clock.dt);
+      stepSpectator(spectator, session, controls, clock.dt, config.spectate);
       // Talking into a walkie talkie sends the mic out whatever the voice settings.
       voice.setKeyed(onAir.get(session.local));
       ripples.hear(session, until);
@@ -391,7 +414,8 @@ function frame(): void {
     frameStats.steps = steps;
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
-    updateCamera(camera, drawnLocal(session, alpha), frameSeconds);
+    const eye = eyeOf(spectator, session);
+    updateCamera(camera, eyeTarget(session, eye, alpha), frameSeconds);
     const drawStart = performance.now();
     draw(
       ctx,
@@ -404,12 +428,15 @@ function frame(): void {
       flashes,
       ripples,
       mapMemory,
+      eye,
     );
     mapMemory.save(now);
-    positions.save(session.local, now);
+    if (!isGhost(session.local)) positions.save(session.local, now);
     frameStats.drawMs = performance.now() - drawStart;
     hud.show({
-      inventory: session.local.inventory,
+      inventory: session.local.inventory.map((item) =>
+        item === null ? null : { ...item, name: itemName(session, item) },
+      ),
       held: session.local.held,
       credit: credit.get(session),
       escaped: hasEscaped(session, session.local),

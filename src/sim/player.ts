@@ -85,6 +85,11 @@ export interface Controls {
   readonly drop: boolean;
   /** Whether the use control is held down this step: for an item worked while it is, such as a walkie talkie. */
   readonly holdingUse: boolean;
+  /**
+   * Whether a ghost switches between watching a living player and its free camera this step;
+   * never when left out. Its client's view alone, never sent.
+   */
+  readonly toggleView?: boolean;
 }
 
 /**

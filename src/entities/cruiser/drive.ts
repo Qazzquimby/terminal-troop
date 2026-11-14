@@ -1,6 +1,7 @@
 import { minBy } from "lodash-es";
 import { z } from "zod";
 import {
+  livingPlayers,
   changeEntity,
   destroyWalls,
   driverOf,
@@ -151,7 +152,7 @@ function struck(
   driver: Player,
 ): (Player | WorldEntity)[] {
   const bodies = [
-    ...game.players.values(),
+    ...livingPlayers(game),
     ...[...game.entities.values()].filter(
       (other) =>
         other.collides &&

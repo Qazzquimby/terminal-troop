@@ -5,6 +5,7 @@ import type {
   FlashConfig,
   MapMemoryConfig,
   RippleConfig,
+  SpectateConfig,
 } from "./render/index.js";
 import type { PositionMemoryConfig } from "./position-memory/index.js";
 import type { RoomConfig } from "./room/index.js";
@@ -23,6 +24,7 @@ interface AppConfig extends SimConfig {
   /** For transports whose peers connect some time after joining. */
   readonly greeting: GreetingConfig;
   readonly camera: CameraConfig;
+  readonly spectate: SpectateConfig;
   readonly ripples: RippleConfig;
   readonly flashes: FlashConfig;
   readonly mapMemory: MapMemoryConfig;
@@ -90,6 +92,8 @@ export const config = {
     followRate: 18,
     snapDistance: CELL * 4,
   },
+  // A ghost's free camera glides at 8 cells a second, nearly twice a sprint.
+  spectate: { speed: CELL * 8 },
   // Noises the local player hears, each drawn as a ring snapping out to the noise's radius in
   // 0.15s, then fading over the rest of 0.9s. One made by something other than a player that it
   // can't see glows warm and soft at the screen's edge instead, the way it seemed to come from.
@@ -150,6 +154,9 @@ export const config = {
   },
   // A player new to a world starts within 2 cells of its rally point, where the cruiser waits.
   arrival: { spread: CELL * 2 },
+  // A player who falls drops what it carried within a cell of where it fell. Revived, it comes
+  // back on half its health, near whatever revived it.
+  death: { scatter: CELL, reviveHealth: 50 },
   vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
   light: { range: CELL * 6 },
   // A guest holds a hit it predicted for up to a second before the host confirms it.
@@ -276,6 +283,8 @@ export const config = {
       headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 38 },
       // Everyone in the exit escapes once the cruiser has waited there 20s.
       escape: { delay: 20, volume: 0.8 },
+      // A corpse carried within a cell of the cruiser's body brings its player back beside it.
+      revive: { reach: CELL, volume: 0.8 },
     },
     // Arms 3s after it is put down, then beeps, heard 2 cells off. Whatever steps on it sets it
     // off: a bang heard 12 cells off, and a flash that stuns for 5s every entity with a clear line
@@ -393,6 +402,8 @@ export const config = {
     // 8 minutes of battery switched on, a use a second, so the toolbar counts it down in seconds.
     // Its switch clicks 2 cells out; the click of keying it barely past arm's length, making no
     // noise. A walkie playing speech is heard 80% as far as the speech itself carries.
+    // A fallen player's body: 50lb, as the ticket says, slowing its carrier by a tenth.
+    corpse: { weight: 50, volume: 0.8 },
     walkie: {
       weight: 2,
       uses: 480,

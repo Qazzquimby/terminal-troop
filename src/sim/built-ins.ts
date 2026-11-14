@@ -14,7 +14,9 @@ import { heldSlot, inventories } from "./inventories.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
 import { voiceNoise } from "./voice-noise.js";
-import { onAir } from "./voice-routes.js";
+import { addVoiceChannel, onAir } from "./voice-routes.js";
+import type { VoiceChannel } from "./voice-routes.js";
+import { bodies, ghostVoices } from "./death.js";
 import { drop, pickUp } from "./world-items.js";
 import { vehicleActions } from "./vehicle.js";
 import { destroyedWalls } from "./walls.js";
@@ -28,6 +30,7 @@ interface BuiltIn {
   readonly world?: WorldDataSet;
   readonly events?: ContentEvents;
   readonly actions?: readonly Action<never>[];
+  readonly voice?: VoiceChannel;
 }
 
 /**
@@ -47,6 +50,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/health": { world: { players: playerHealth } },
   /** The statuses each world entity is under, such as stunned, and when each ends. */
   "core/statuses": { world: { entities: entityStatuses } },
+  /** Every fallen player's body, lying as a corpse; and how ghosts hear each other. */
+  "core/death": { world: { bodies }, voice: ghostVoices },
   /** What each player steers with, sent to the host as it changes. */
   "core/steering": { events: steeringEvents },
   /** Items lying in the world, picked up and dropped. */
@@ -67,7 +72,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
 /** Registers the engine's own state, events and actions with a new session. */
 export function registerBuiltIns(game: Session): void {
   for (const [name, built] of Object.entries(BUILT_INS)) {
-    const { player, world, events, actions } = built;
+    const { player, world, events, actions, voice } = built;
+    if (voice !== undefined) addVoiceChannel(game, voice);
     if (player !== undefined) registerPlayerData(game, name, player);
     if (world !== undefined) registerWorldData(game, name, world);
     if (events !== undefined) registerEvents(game, name, events);

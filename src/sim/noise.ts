@@ -1,3 +1,4 @@
+import { isGhostId } from "./ghosts.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
 
@@ -62,8 +63,9 @@ export interface Heard {
   readonly tags: readonly string[];
 }
 
-/** Makes `noise` for the rest of this step. */
+/** Makes `noise` for the rest of this step; a ghost makes none. */
 export function emitNoise(game: Session, noise: Noise): void {
+  if (isGhostId(game, noise.source)) return;
   game.noises.push(noise);
 }
 
