@@ -2,7 +2,7 @@ import type { Point, Rng, Room, World } from "./map.js";
 import { AREA, isSolid } from "./map.js";
 import type { Session } from "./session.js";
 import { canSeeFrom, emittedLights, wallKey } from "./vision.js";
-import type { VisibilityPolygon, WallFace } from "./vision.js";
+import type { LightSource, VisibilityPolygon, WallFace } from "./vision.js";
 
 /** Which rooms a new world gives light fixtures, and which it gives power to light them. */
 export interface RoomLightConfig {
@@ -74,12 +74,16 @@ export function ambientLightAt(world: World, at: Point): AmbientLight | null {
  * Whether `at` is lit: by its place's own light, sunlight or a powered fixture, or by a light
  * something gives off there, such as a flashlight or the cruiser's headlights. A player's own
  * sight lights nothing. Monsters ask it: they appear only where it is dark, and may later avoid or
- * seek it.
+ * seek it. `lights` are the lights given off now, for a caller asking of many points at once.
  */
-export function isLit(game: Session, at: Point): boolean {
+export function isLit(
+  game: Session,
+  at: Point,
+  lights: readonly LightSource[] = emittedLights(game),
+): boolean {
   const { world } = game;
   if (ambientLightAt(world, at) !== null) return true;
-  return emittedLights(game).some((light) => canSeeFrom(world.map, light, at));
+  return lights.some((light) => canSeeFrom(world.map, light, at));
 }
 
 /** A box of the world, in pixels. */

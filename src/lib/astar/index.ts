@@ -81,18 +81,30 @@ function createHeap() {
 /**
  * The cheapest 8-directional path from `from` to `to`, both ends included, where a straight
  * step costs 1 and a diagonal one √2. A diagonal step needs both cells beside it free, so no
- * path cuts a blocked corner. Null when either end is blocked or off the grid, or no path
- * joins them.
+ * path cuts a blocked corner. A cell `avoid` names counts as blocked too, the two ends aside, so
+ * a caller can keep a path off more than walls, such as lit ground. Null when either end is
+ * blocked or off the grid, or no path joins them.
  */
-export function findPath(grid: Grid, from: Cell, to: Cell): Cell[] | null {
+export function findPath(
+  grid: Grid,
+  from: Cell,
+  to: Cell,
+  avoid?: (cell: Cell) => boolean,
+): Cell[] | null {
   const { cols, rows, solid } = grid;
-  const free = (col: number, row: number): boolean =>
+  const passable = (col: number, row: number): boolean =>
     col >= 0 &&
     row >= 0 &&
     col < cols &&
     row < rows &&
     solid[row * cols + col] !== 1;
-  if (!free(from.col, from.row) || !free(to.col, to.row)) return null;
+  if (!passable(from.col, from.row) || !passable(to.col, to.row)) return null;
+  const isEnd = (col: number, row: number): boolean =>
+    (col === from.col && row === from.row) ||
+    (col === to.col && row === to.row);
+  const free = (col: number, row: number): boolean =>
+    passable(col, row) &&
+    (avoid === undefined || isEnd(col, row) || !avoid({ col, row }));
 
   const start = from.row * cols + from.col;
   const goal = to.row * cols + to.col;

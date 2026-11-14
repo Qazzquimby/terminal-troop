@@ -1,7 +1,7 @@
 import { findPath } from "../lib/astar/index.js";
 import type { Cell, Grid } from "../lib/astar/index.js";
-import { isAreaFree, isSweepFree } from "../sim/index.js";
-import type { Point, TileMap } from "../sim/index.js";
+import { emittedLights, isAreaFree, isLit, isSweepFree } from "../sim/index.js";
+import type { Point, Session, TileMap } from "../sim/index.js";
 
 /** Longest route a monster keeps; a longer one is not taken. */
 export const MAX_WAYPOINTS = 32;
@@ -18,22 +18,59 @@ function centreOf(map: TileMap, cell: Cell): Point {
 }
 
 /**
+ * A cell a route keeps off, past the walls: lit ground, say, or ground some player sees. A route
+ * may still start or end on one.
+ */
+export type Avoid = (cell: Cell) => boolean;
+
+/** Points looked at per cell of a leg's length when checking it crosses no avoided cell. */
+const LEG_SAMPLES_PER_CELL = 4;
+
+/**
+ * Whether the straight leg from `a` to `b` passes through a cell `avoid` names, the cells it
+ * starts and ends in aside.
+ */
+function crosses(map: TileMap, avoid: Avoid, a: Point, b: Point): boolean {
+  const start = cellOf(map, a);
+  const end = cellOf(map, b);
+  const steps = Math.ceil(
+    (Math.hypot(b.x - a.x, b.y - a.y) / map.cell) * LEG_SAMPLES_PER_CELL,
+  );
+  for (let step = 1; step < steps; step++) {
+    const share = step / steps;
+    const cell = cellOf(map, {
+      x: a.x + (b.x - a.x) * share,
+      y: a.y + (b.y - a.y) * share,
+    });
+    const isStart = cell.col === start.col && cell.row === start.row;
+    const isEnd = cell.col === end.col && cell.row === end.row;
+    if (!isStart && !isEnd && avoid(cell)) return true;
+  }
+  return false;
+}
+
+/**
  * Keeps only the waypoints a body of half-size `half` cannot skip: from each one kept it
- * heads straight for the furthest one after it that it fits all the way to.
+ * heads straight for the furthest one after it that it fits all the way to, crossing no cell
+ * `avoid` names.
  */
 function straighten(
   map: TileMap,
   half: number,
   from: Point,
   points: readonly Point[],
+  avoid: Avoid | undefined,
 ): Point[] {
+  const clear = (a: Point, b: Point): boolean =>
+    isSweepFree(map, half, a, b) &&
+    (avoid === undefined || !crosses(map, avoid, a, b));
   const kept: Point[] = [];
   let anchor = from;
   for (let i = 0; i < points.length;) {
     let reach = i;
     for (
       let next = points[reach + 1];
-      next !== undefined && isSweepFree(map, half, anchor, next);
+      next !== undefined && clear(anchor, next);
       next = points[reach + 1]
     )
       reach++;
@@ -96,16 +133,18 @@ function nearestOpen(grid: Grid, cell: Cell, rings: number): Cell | null {
 
 /**
  * Waypoints that take a body of half-size `half` from `from` to `to` round the walls, through
- * gaps wide enough for it, `from` left out. They end at `to` where the body fits there,
- * otherwise at the middle of the nearest cell it fits in. A body wider than a cell starts and
- * ends at the nearest cells it fits in, searched out a cell further than it fills. Null when no
- * path joins them, or it needs more than MAX_WAYPOINTS.
+ * gaps wide enough for it, `from` left out, and through no cell `avoid` names but those it starts
+ * and ends in. They end at `to` where the body fits there, otherwise at the middle of the nearest
+ * cell it fits in. A body wider than a cell starts and ends at the nearest cells it fits in,
+ * searched out a cell further than it fills. Null when no path joins them, or it needs more than
+ * MAX_WAYPOINTS.
  */
 export function planRoute(
   map: TileMap,
   half: number,
   from: Point,
   to: Point,
+  avoid?: Avoid,
 ): Point[] | null {
   const reach = reachOf(map, half);
   const grid = inflated(map, reach);
@@ -113,7 +152,7 @@ export function planRoute(
   const start = nearestOpen(grid, cellOf(map, from), rings);
   const goal = nearestOpen(grid, cellOf(map, to), rings);
   if (start === null || goal === null) return null;
-  const cells = findPath(grid, start, goal);
+  const cells = findPath(grid, start, goal, avoid);
   const last = cells?.at(-1);
   if (cells === null || last === undefined) return null;
   const end = isAreaFree(map, to.x, to.y, half)
@@ -124,8 +163,26 @@ export function planRoute(
   const between = cells
     .slice(moved ? 0 : 1, -1)
     .map((cell) => centreOf(map, cell));
-  const route = straighten(map, half, from, [...between, end]);
+  const route = straighten(map, half, from, [...between, end], avoid);
   return route.length > MAX_WAYPOINTS ? null : route;
+}
+
+/**
+ * Keeps a route off ground lit now, as `isLit` has it: by its place's own light or a light given
+ * off there. Each cell is judged by its middle, once a plan, so make one for each plan.
+ */
+export function avoidingLight(game: Session): Avoid {
+  const lights = emittedLights(game);
+  const { map } = game.world;
+  const judged = new Map<number, boolean>();
+  return (cell) => {
+    const key = cell.row * map.cols + cell.col;
+    const known = judged.get(key);
+    if (known !== undefined) return known;
+    const lit = isLit(game, centreOf(map, cell), lights);
+    judged.set(key, lit);
+    return lit;
+  };
 }
 
 /** A body that steers by setting its velocity. */
