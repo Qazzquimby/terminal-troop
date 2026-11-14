@@ -163,3 +163,26 @@ test("a new host runs every player on from where it last heard them", async () =
           gap(sessionOf(room(id)).local, playerOn(room(other), id)),
         ).toBeLessThan(0.5);
 });
+
+test("a guest that turned just before the host left goes on uncorrected with the new host", async () => {
+  const { room, rooms, run } = await jittered();
+  run(500, { b: walk(1, 0), c: walk(1, 0) });
+  // Too late for the old host to have run it: the new host learns of it from the guest.
+  const turned = { b: walk(0, 1), c: walk(0, 1) };
+  run(100, turned);
+  const before = {
+    b: sessionOf(room("b")).corrections.count,
+    c: sessionOf(room("c")).corrections.count,
+  };
+  void room("a").leave();
+  rooms.delete("a");
+  run(1500, turned);
+  run(500);
+  const newHost = room("b").hostId();
+  const guest = newHost === "b" ? "c" : "b";
+  expect(newHost === "b" || newHost === "c").toBe(true);
+  expect(sessionOf(room(guest)).corrections.count).toBe(before[guest]);
+  expect(
+    gap(sessionOf(room(guest)).local, playerOn(room(newHost ?? ""), guest)),
+  ).toBeLessThan(0.01);
+});

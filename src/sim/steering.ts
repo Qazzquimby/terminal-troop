@@ -166,6 +166,11 @@ export interface Pilot {
   /** The next step steers nothing, as the page hides. */
   halted: boolean;
   /**
+   * The step it told the current host, newly hosting, to go on from: the host's word on earlier
+   * steps is passed over. Null when it told none.
+   */
+  resumed: number | null;
+  /**
    * How far from where it is the local player is drawn, easing to nothing: where the host's
    * corrections moved it from, so a correction shows as a quick slide rather than a jump.
    */
@@ -196,6 +201,11 @@ export interface Feed {
   readonly queue: Queued[];
   /** The steps last run, oldest first, to go back over. */
   marks: Mark[];
+  /**
+   * The step the player's own client had reached when it told this host, newly hosting, where it
+   * was: what arrives for that step or earlier only says what it steers with after. Null before.
+   */
+  resumed: number | null;
 }
 
 /** How often, and how far, the host has put the local player elsewhere than it predicted. */
@@ -214,6 +224,7 @@ export function createPilot(): Pilot {
     steered: false,
     placed: false,
     halted: false,
+    resumed: null,
     shown: { x: 0, y: 0 },
   };
 }
@@ -305,8 +316,24 @@ const steered = contentEvent({
   },
 });
 
+/**
+ * Where a player's own client has it, sent to a new host as it takes over: the step it had run to,
+ * where that step left it, and what it steered with. The old host's last word on the player is
+ * older, and the steps in between went to the old host, so the new host goes on from here.
+ */
+const resumed = contentEvent({
+  schema: MotionWire.extend({
+    step: z.number().int().nonnegative(),
+    steer: SteerWire,
+  }),
+  to: "host",
+  receive(game, { step, steer, ...motion }, by) {
+    resume(game, by, step, steer, motion);
+  },
+});
+
 /** The events steering travels as, by key. */
-export const steeringEvents = { steer: steered };
+export const steeringEvents = { steer: steered, resume: resumed };
 
 /** The latest step this client kept of `player`, if it runs the player's steps and keeps them. */
 function latestMark(game: Session, player: Player): Mark | undefined {
@@ -346,6 +373,7 @@ function feedOf(game: Session, id: string): Feed {
     wait: 0,
     queue: [],
     marks: [],
+    resumed: null,
   };
   game.feeds.set(id, feed);
   return feed;
@@ -452,6 +480,51 @@ function rewind(game: Session, player: Player, feed: Feed, from: number): void {
 }
 
 /**
+ * Takes in what arrived for `feed`'s steps up to `step` without running them: the latest steer
+ * sent for them is the one the player goes on with.
+ */
+function takeUpTo(feed: Feed, step: number): void {
+  while (feed.queue[0] !== undefined && feed.queue[0].step <= step) {
+    const item = feed.queue.shift();
+    if (item?.steer !== undefined) feed.steer = item.steer;
+    item?.act?.();
+  }
+}
+
+/**
+ * As the host, puts player `id` where its own client says it was after its step `step`, and runs
+ * it on from there on `steer`.
+ */
+function resume(
+  game: Session,
+  id: string,
+  step: number,
+  steer: Steer,
+  motion: Motion,
+): void {
+  const player = game.players.get(id);
+  if (!game.hosting || player === undefined || player === game.local) return;
+  const feed = feedOf(game, id);
+  place(player, motion);
+  snapPrevious(player);
+  player.held = steer.held;
+  feed.label = step;
+  feed.resumed = step;
+  feed.steer = steer;
+  feed.wait = 0;
+  feed.marks = [
+    {
+      step,
+      dt: 0,
+      input: { steer, crouch: false },
+      arrived: null,
+      changes: [],
+      motion: motionOf(player),
+    },
+  ];
+}
+
+/**
  * As the host, runs one step of every remote player: from what it last sent, going back over the
  * steps a late arrival changes, and catching up with steps sent far ahead. A player that has not
  * steered stands, but goes on with any knockback.
@@ -466,6 +539,7 @@ function stepFeeds(game: Session, dt: number): void {
       movePlayer(game, player, { steer: feed.steer, crouch: false }, dt);
       continue;
     }
+    if (feed.resumed !== null) takeUpTo(feed, feed.resumed);
     const first = feed.queue[0]?.step;
     if (first !== undefined && first <= feed.label)
       rewind(game, player, feed, first);
@@ -621,7 +695,7 @@ function reconcile(game: Session, entry: PlayerEntry): void {
     if (!pilot.steered) place(local, entry);
     return;
   }
-  if (step > game.step) return;
+  if (step > game.step || step < (pilot.resumed ?? step)) return;
   const mark = pilot.marks.find((kept) => kept.step === step);
   const later = pilot.marks.filter((kept) => kept.step > step);
   pilot.marks = later;
@@ -755,13 +829,26 @@ export function takeOverPlayers(game: Session): void {
 }
 
 /**
- * As a client that has stopped hosting, or whose host changed: its own steps start afresh with
- * the new host, which hears its steer with its next step.
+ * As a client that has stopped hosting, or whose host changed: it tells the new host where its
+ * latest step left its player, for the new host to go on from rather than from the old host's
+ * older word on it, and its steps go on with the new host from there.
  */
 export function followNewHost(game: Session): void {
   game.feeds.clear();
-  game.pilot.sent = null;
-  game.pilot.steered = false;
+  const { pilot } = game;
+  pilot.sent = null;
+  pilot.steered = false;
+  pilot.resumed = null;
+  // Its steer goes again with its next step all the same, so a host that missed this catches up.
+  const mark = pilot.marks.at(-1);
+  if (mark !== undefined) {
+    resumed.send(game, {
+      step: mark.step,
+      steer: mark.input.steer,
+      ...mark.motion,
+    });
+    pilot.resumed = mark.step;
+  }
   for (const player of game.players.values()) {
     player.tx = player.x;
     player.ty = player.y;
