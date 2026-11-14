@@ -276,11 +276,16 @@ export function stepDash(
   const { dash } = player;
   if (dash === null) return;
   const speed = Math.hypot(dash.vx, dash.vy);
-  const direction = { x: dash.vx / speed, y: dash.vy / speed };
-  const travel = Math.min(
-    speed * Math.min(dt, dash.seconds),
-    distanceToContact(player, direction, others),
-  );
+  // A knockback blocked where it starts has no speed, and holds the player where it stands.
+  const direction =
+    speed === 0 ? { x: 0, y: 0 } : { x: dash.vx / speed, y: dash.vy / speed };
+  const travel =
+    speed === 0
+      ? 0
+      : Math.min(
+          speed * Math.min(dt, dash.seconds),
+          distanceToContact(player, direction, others),
+        );
   const body = {
     x: player.x,
     y: player.y,
