@@ -20,6 +20,7 @@ const controls = (moving: boolean, sprinting: boolean): Controls => ({
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 });
 const idle = controls(false, false);
 

@@ -325,7 +325,7 @@ test("a guest reaching for an item another player has already taken gets nothing
 test("a guest's drop shows at once and clinks on its own client, then lands once on every client, which each clink once", async () => {
   const { client, step, run, carried, recorded, lying, stock } = await room();
   stock("b", 2);
-  step({ b: { ...reach, select: 2 } });
+  step({ b: { ...idle, drop: true, select: 2 } });
   expect(carried("b")).toEqual(["shovel", null, null, null]);
   expect(client("b").heard).toEqual({ "drop.mp3": 1 });
   expect(lying("b", "scrap")).toBe(0);

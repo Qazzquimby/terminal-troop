@@ -12,7 +12,8 @@ import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
-import type { UiConfig } from "./ui/index.js";
+import type { HudConfig, UiConfig } from "./ui/index.js";
+
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
@@ -33,6 +34,7 @@ interface AppConfig extends SimConfig {
   readonly voiceConnections: VoiceConnectionConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
+  readonly hud: HudConfig;
 }
 
 const CELL = 50;
@@ -93,6 +95,9 @@ export const config = {
     inventorySlots: 6,
     nameMax: 8,
     knockbackSeconds: 0.15,
+    // Every pound carried slows a player evenly, to 20% slower at 100lb and no slower past it:
+    // a shovel and a scrap (30lb) cost 6%.
+    load: { full: 100, slowdown: 0.2 },
   },
   stamina: {
     max: STAMINA_MAX,
@@ -185,8 +190,12 @@ export const config = {
       lightRadius: CELL * 12,
     },
   },
+  // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
+  // share of the loot a new world lays, with its rarity.
   items: {
     shovel: {
+      weight: 15,
+      loot: { weight: 30, rarity: "common" },
       radius: 20,
       reach: 45,
       damage: 15,
@@ -199,11 +208,19 @@ export const config = {
       missNoiseRadius: CELL * 3,
     },
     scrap: {
+      weight: 15,
       value: 1,
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
       volume: 0.8,
       scatter: { count: 75, seed: 2, clearance: CELL * 3 },
+    },
+    // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
+    // most dangerous spot there is an even chance of a second, an uncommon item is twice as
+    // likely, a rare one four times.
+    loot: {
+      scatter: { count: 20, seed: 4, clearance: CELL * 3 },
+      danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
     },
   },
   moves: {
@@ -231,4 +248,6 @@ export const config = {
   },
   audio: { full: 0, silent: 1000, pan: 500 },
   ui: { debugRefreshMs: 250 },
+  // An item with up to 10 uses shows each as a segment of its bar.
+  hud: { segmentsUpTo: 10 },
 } as const satisfies AppConfig;

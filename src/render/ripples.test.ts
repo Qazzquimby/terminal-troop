@@ -28,6 +28,7 @@ const idle: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 const walking: Controls = { ...idle, move: { x: 1, y: 0 } };
 

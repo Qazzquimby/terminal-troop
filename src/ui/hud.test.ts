@@ -1,17 +1,48 @@
 import { expect, test } from "vitest";
 import type { Inventory } from "../sim/index.js";
-import { createHud, creditText, slotViews } from "./hud.js";
+import { createHud, creditText, slotViews, weightText } from "./hud.js";
 
-const shovel = { id: "shovel", name: "Shovel", emoji: "🪏" };
+const CONFIG = { segmentsUpTo: 10 };
+const shovel = { id: "shovel", name: "Shovel", emoji: "🪏", weight: 15 };
+const blank = { glyph: "", name: "", weight: "", uses: null };
 
 test("every slot shows its key number, the held one marked, an empty one blank", () => {
   const inventory: Inventory = [shovel, null, null];
-  expect(slotViews(inventory, 2)).toEqual([
-    { number: "1", glyph: "🪏", name: "Shovel", selected: false },
-    { number: "2", glyph: "", name: "", selected: false },
-    { number: "3", glyph: "", name: "", selected: true },
+  expect(slotViews(inventory, 2, CONFIG)).toEqual([
+    {
+      number: "1",
+      glyph: "🪏",
+      name: "Shovel",
+      weight: "15 lb",
+      uses: null,
+      selected: false,
+    },
+    { number: "2", ...blank, selected: false },
+    { number: "3", ...blank, selected: true },
   ]);
-  expect(slotViews(inventory, null).some((slot) => slot.selected)).toBe(false);
+  expect(slotViews(inventory, null, CONFIG).some((slot) => slot.selected)).toBe(
+    false,
+  );
+});
+
+test("an item of few uses shows a bar of a segment per use, and what is left of them", () => {
+  const torch = { id: "torch", name: "Torch", emoji: "🔦", uses: 5, left: 2 };
+  const [view] = slotViews([torch], null, CONFIG);
+  expect(view?.uses).toEqual({ text: "2/5", fill: 0.4, segments: 5 });
+});
+
+test("an item of many uses shows one bar; one that has spent none shows them all", () => {
+  const drill = { id: "drill", name: "Drill", emoji: "🛠", uses: 30 };
+  const [fresh] = slotViews([drill], null, CONFIG);
+  expect(fresh?.uses).toEqual({ text: "30/30", fill: 1, segments: null });
+  const [worn] = slotViews([{ ...drill, left: 15 }], null, CONFIG);
+  expect(worn?.uses).toEqual({ text: "15/30", fill: 0.5, segments: null });
+});
+
+test("weight reads as whole pounds", () => {
+  expect(weightText(0)).toBe("0 lb");
+  expect(weightText(30)).toBe("30 lb");
+  expect(weightText(12.6)).toBe("13 lb");
 });
 
 test("credit reads as a count of dollars after the number", () => {
@@ -27,8 +58,10 @@ test("outside a room the bar is hidden, and nothing is drawn into it", () => {
     },
   };
   const credit = { textContent: "" };
-  const hud = createHud({ bar, slots, credit });
+  const weight = { textContent: "" };
+  const hud = createHud({ bar, slots, credit, weight }, CONFIG);
   hud.show(null);
   expect(bar.hidden).toBe(true);
   expect(credit.textContent).toBe("");
+  expect(weight.textContent).toBe("");
 });

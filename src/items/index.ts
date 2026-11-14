@@ -1,16 +1,25 @@
-import type { ContentConfig, WorldContent } from "../sim/index.js";
+import { lootContent } from "../sim/index.js";
+import type { ContentConfig, LootConfig, WorldContent } from "../sim/index.js";
 import { scrap } from "./scrap/index.js";
 import { shovel } from "./shovel/index.js";
 
 export { credit } from "./scrap/index.js";
 
-/** Every item in the game. */
+/**
+ * Every item in the game. A new item is one entry here and its slice of config, which holds its
+ * weight, uses and loot weight with the rest of its tuning.
+ */
 const ITEMS = [shovel, scrap] as const;
 
-/** Each item's config, under its name. */
-export type ItemsConfig = ContentConfig<(typeof ITEMS)[number]>;
+/** Each item's config, under its name, and how a new world lays loot. */
+export type ItemsConfig = ContentConfig<(typeof ITEMS)[number]> & {
+  readonly loot: LootConfig;
+};
 
-/** The world's items. */
+/** The world's items, and the loot a new world lays of them. */
 export function itemContent(config: ItemsConfig): WorldContent[] {
-  return ITEMS.map((entry) => entry.create(config));
+  return [
+    ...ITEMS.map((entry) => entry.create(config)),
+    lootContent(config.loot),
+  ];
 }

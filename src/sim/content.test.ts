@@ -227,7 +227,7 @@ describe("defineItem", () => {
     // As a guest, which acts before the host checks its slot.
     game.hosting = false;
     const use = { slot: 0, aim: 0 };
-    expect(game.items.get("flask")?.use.perform(game, use)).toBe(true);
+    expect(game.items.get("flask")?.use?.perform(game, use)).toBe(true);
     expect(game.localReadyAt.get("item/flask.use")).toBe(game.time + 2);
     expect(game.entities.size).toBe(0);
     expect(stocked(game)).toEqual([null, null, null, null]);

@@ -75,11 +75,15 @@ const roomInput = element("#room", HTMLInputElement);
 const createBtn = element("#create", HTMLButtonElement);
 const joinBtn = element("#join", HTMLButtonElement);
 const copyBtn = element("#copy", HTMLButtonElement);
-const hud = createHud({
-  bar: element("#hud", HTMLDivElement),
-  slots: element("#hud-slots", HTMLOListElement),
-  credit: element("#hud-credit", HTMLSpanElement),
-});
+const hud = createHud(
+  {
+    bar: element("#hud", HTMLDivElement),
+    slots: element("#hud-slots", HTMLOListElement),
+    credit: element("#hud-credit", HTMLSpanElement),
+    weight: element("#hud-weight", HTMLSpanElement),
+  },
+  config.hud,
+);
 const debugEl = element("#debug", HTMLPreElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);

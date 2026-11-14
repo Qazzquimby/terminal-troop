@@ -38,6 +38,23 @@ interface PlayerConfig {
   readonly nameMax: number;
   /** How long, in seconds, a knocked-back player slides to where the blow sends it. */
   readonly knockbackSeconds: number;
+  /** How what a player carries slows it. */
+  readonly load: LoadConfig;
+}
+
+/** How what a player carries slows it: evenly with each pound, up to a limit. */
+interface LoadConfig {
+  /** Pounds at which a player is slowest; more slows it no further. */
+  readonly full: number;
+  /** How much slower a player carrying `full` pounds is, as a fraction of its top speed, 0..1. */
+  readonly slowdown: number;
+}
+
+/** A player's top speed carrying `pounds`, as a multiple of its top speed carrying nothing. */
+export function loadFactor(pounds: number, load: LoadConfig): number {
+  if (load.full <= 0) return 1;
+  const share = Math.min(1, Math.max(0, pounds / load.full));
+  return 1 - load.slowdown * share;
 }
 
 /** The tuning a player's creation and step read. */
@@ -58,8 +75,13 @@ export interface Controls {
   readonly use: boolean;
   /** Whether the secondary action was pressed this step. */
   readonly secondary: boolean;
-  /** Whether to pick up the nearest item the player touches this step. */
+  /**
+   * Whether to pick up the nearest item the player touches this step, or failing that work the
+   * held item's control.
+   */
   readonly interact: boolean;
+  /** Whether to drop the held item this step. */
+  readonly drop: boolean;
 }
 
 /**
@@ -183,8 +205,8 @@ function speedFactor(mode: MovementMode, config: PlayerConfig): number {
 }
 
 /**
- * Walks `player` one step of `dt` as `gait` steers it, its stamina and top speed following its
- * gait, stopping at walls.
+ * Walks `player` one step of `dt` as `gait` steers it, carrying `pounds`, its stamina and top
+ * speed following its gait and its top speed what it carries, stopping at walls.
  */
 export function updatePlayer(
   player: Player,
@@ -192,6 +214,7 @@ export function updatePlayer(
   dt: number,
   map: TileMap,
   rules: PlayerRules,
+  pounds = 0,
 ): void {
   const { player: config } = rules;
   const moving = gait.move.x !== 0 || gait.move.y !== 0;
@@ -204,7 +227,9 @@ export function updatePlayer(
   );
   movement.set(player, { mode, moving });
 
-  const speed = config.speed * speedFactor(mode, config);
+  const speed =
+    config.speed * speedFactor(mode, config) * loadFactor(pounds, config.load);
+
   const targetX = gait.move.x * speed;
   const targetY = gait.move.y * speed;
   const dx = targetX - player.vx;

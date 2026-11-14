@@ -15,8 +15,10 @@ import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
 import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
-import { itemUse, registerItem } from "./use.js";
-import type { ItemUse, UseSpec } from "./use.js";
+import { itemControl, itemUse, registerItem } from "./use.js";
+import type { ControlSpec, ItemUse, UseSpec } from "./use.js";
+import type { ItemLoot } from "./loot.js";
+
 import { registerWorldItems, spawnWorldItem } from "./world-items.js";
 
 /**
@@ -213,6 +215,22 @@ function scatterCount(game: Session, count: SpawnCount): number {
   return Math.max(count.min, Math.round(area * count.density));
 }
 
+/**
+ * Calls `place` at each spot `scatter` picks for bodies of `radius`, with the generator the spots
+ * are drawn from, seeded by the room and the scatter's own seed.
+ */
+export function scatterEach(
+  game: Session,
+  scatter: Scatter,
+  radius: number,
+  place: (at: Point, rng: Rng) => void,
+): void {
+  const rng = mulberry32(game.seed ^ scatter.seed);
+  const count = scatterCount(game, scatter.count);
+  for (let i = 0; i < count; i++)
+    place(scatterPoint(game, rng, radius, scatter.clearance), rng);
+}
+
 function spawnByRule<S>(
   game: Session,
   rule: SpawnRule<S>,
@@ -230,12 +248,9 @@ function spawnByRule<S>(
       rule.data,
     );
   } else {
-    const rng = mulberry32(game.seed ^ rule.seed);
-    const count = scatterCount(game, rule.count);
-    for (let i = 0; i < count; i++) {
-      const at = scatterPoint(game, rng, radius, rule.clearance);
+    scatterEach(game, rule, radius, (at, rng) => {
       spawn(at, rule.data(rng, game));
-    }
+    });
   }
 }
 
@@ -274,8 +289,31 @@ export function defineEntity<N extends string, C, S>(
   };
 }
 
+/**
+ * What every item has, kept in its config: how heavy it is, how many uses it has, and how likely
+ * the world is to lay it as loot. An item's config extends this, so it is all in one place.
+ */
+export interface ItemTraits {
+  /** How heavy it is to carry, in pounds. */
+  readonly weight: number;
+  /** How many uses a new one has; unlimited when left out. */
+  readonly uses?: number;
+  /** How likely the world is to lay it as loot; never when left out. */
+  readonly loot?: ItemLoot;
+}
+
 /** What every item spec has, usable or not. */
-interface ItemBase extends Omit<ItemDefinition, "id"> {
+interface ItemBase extends Omit<
+  ItemDefinition,
+  "id" | "weight" | "uses" | "loot"
+> {
+  /**
+   * Its weight, uses and loot odds: its config, or the part of it that holds them. Weightless,
+   * with unlimited uses and never laid as loot when left out.
+   */
+  readonly traits?: ItemTraits;
+  /** What working its control does, on interact when there is nothing to pick up, if anything. */
+  readonly control?: ControlSpec;
   /** The slot each player starts with it in, if any; no two items may share one. */
   readonly startingSlot?: number;
   /** Where a new world lays it on the ground, one item each, if anywhere. */
@@ -322,23 +360,37 @@ export function defineItem<N extends string, C>(
     name,
     create(config) {
       const spec = define(config[name]);
+      const traits: Partial<ItemTraits> = spec.traits ?? {};
       const item: ItemDefinition & { readonly id: N } = {
         id: name,
         name: spec.name,
         emoji: spec.emoji,
-        ...(spec.drop === undefined ? {} : { drop: spec.drop }),
+        ...(traits.weight !== undefined && { weight: traits.weight }),
+        ...(spec.drop !== undefined && { drop: spec.drop }),
+        ...(spec.breaks !== undefined && { breaks: spec.breaks }),
+        ...(traits.uses !== undefined && { uses: traits.uses }),
+        ...(traits.loot !== undefined && { loot: traits.loot }),
       };
       const { scatter } = spec;
-      const behaviour =
+      const use =
         spec.use === undefined
           ? undefined
           : { use: itemUse(name, spec.use), draw: spec.draw.bind(spec) };
+      const control =
+        spec.control === undefined
+          ? undefined
+          : { control: itemControl(name, spec.control) };
+      const behaviour =
+        use === undefined && control === undefined
+          ? undefined
+          : { ...use, ...control };
       return {
         name: `item/${name}`,
         player: spec.player,
         world: spec.world,
         actions: [
-          ...(behaviour === undefined ? [] : [behaviour.use]),
+          ...(use === undefined ? [] : [use.use]),
+          ...(control === undefined ? [] : [control.control]),
           ...(spec.actions ?? []),
         ],
         register(game) {

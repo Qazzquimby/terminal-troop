@@ -8,14 +8,15 @@ import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
 import { hurtPlayer } from "./health.js";
 import {
+  carriedIn,
   giveItem,
-  itemIn,
   predictInventory,
   resendItems,
+  setUsesLeft,
   takeItem,
 } from "./inventories.js";
-import { addItem, ItemId, removeItem } from "./inventory.js";
-import type { Inventory } from "./inventory.js";
+import { addItem, carried, ItemId, removeItem, usesLeft } from "./inventory.js";
+import type { CarriedItem, Inventory } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
@@ -597,24 +598,47 @@ function predictItems(
  * The item in `actor`'s `slot` as the action being applied sees it: as the actor's own client
  * predicts its items while it acts, as the host keeps them otherwise. Null for none.
  */
-function itemAt(game: Session, actor: Player, slot: number): string | null {
+function itemAt(
+  game: Session,
+  actor: Player,
+  slot: number,
+): CarriedItem | null {
   if (predicting(game) !== null && actor === game.local)
-    return actor.inventory[slot]?.id ?? null;
-  return itemIn(game, actor.id, slot);
+    return actor.inventory[slot] ?? null;
+  return carriedIn(game, actor.id, slot);
 }
 
 /**
- * Puts `item` in `actor`'s first empty slot: on the actor's own client at once, as predicted, and
- * in the host's record once the host applies the action. Returns whether it went in.
+ * The uses left on the item in `actor`'s `slot`, as the action being applied sees it; null for
+ * none, or an item whose uses are unlimited.
  */
-export function give(game: Session, actor: Player, item: string): boolean {
+export function usesAt(
+  game: Session,
+  actor: Player,
+  slot: number,
+): number | null {
+  const held = itemAt(game, actor, slot);
+  return held === null ? null : usesLeft(held);
+}
+
+/**
+ * Puts `item` in `actor`'s first empty slot, with `left` uses left, or all its uses when left
+ * out: on the actor's own client at once, as predicted, and in the host's record once the host
+ * applies the action. Returns whether it went in.
+ */
+export function give(
+  game: Session,
+  actor: Player,
+  item: string,
+  left?: number,
+): boolean {
   const run = predicting(game);
-  if (run === null) return giveItem(game, actor.id, item);
+  if (run === null) return giveItem(game, actor.id, item, undefined, left);
   const definition = game.itemDefinitions.get(item);
   if (definition === undefined || actor !== game.local) return false;
   let fit = false;
   predictItems(game, run, (inventory) => {
-    fit = addItem(inventory, definition);
+    fit = addItem(inventory, carried(definition, left));
   });
   return fit;
 }
@@ -630,12 +654,39 @@ export function take(
   slot: number,
   item?: string,
 ): string | null {
-  const held = itemAt(game, actor, slot);
+  const held = itemAt(game, actor, slot)?.id ?? null;
   if (held === null || (item !== undefined && held !== item)) return null;
   const run = predicting(game);
   if (run === null) return takeItem(game, actor.id, slot, held) ? held : null;
   predictItems(game, run, (inventory) => removeItem(inventory, slot));
   return held;
+}
+
+/**
+ * Spends `amount` of the uses left on the item in `actor`'s `slot`: on the actor's own client at
+ * once, as predicted, and in the host's record once the host applies the action. An item that
+ * spends its last use is gone, with its breaking sound. Does nothing to an empty slot or an item
+ * whose uses are unlimited. Returns the uses left; null when it spent none.
+ */
+export function spendUses(
+  game: Session,
+  actor: Player,
+  slot: number,
+  amount = 1,
+): number | null {
+  const held = itemAt(game, actor, slot);
+  const before = held === null ? null : usesLeft(held);
+  if (held === null || before === null) return null;
+  const left = Math.max(0, before - amount);
+  const run = predicting(game);
+  if (run !== null)
+    predictItems(game, run, (inventory) => {
+      inventory[slot] = left === 0 ? null : carried(held, left);
+    });
+  else if (!setUsesLeft(game, actor.id, slot, held.id, left)) return null;
+  if (left === 0 && held.breaks !== undefined)
+    effect(game, { at: { x: actor.x, y: actor.y }, sound: held.breaks }, actor);
+  return left;
 }
 
 /**

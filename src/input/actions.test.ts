@@ -105,6 +105,7 @@ test("blur releases held actions and drops pending presses", () => {
     use: false,
     secondary: false,
     interact: false,
+    drop: false,
   });
 });
 

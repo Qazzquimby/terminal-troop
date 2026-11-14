@@ -45,7 +45,7 @@ import type { Corrections, Feed, Pilot, PlayerEntry } from "./steering.js";
 import type { ItemBehaviour } from "./use.js";
 import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
-import { interact } from "./world-items.js";
+import { dropHeld, interact } from "./world-items.js";
 import type { WorldItemConfig } from "./world-items.js";
 
 /** How clients follow the host. */
@@ -298,6 +298,7 @@ export function updateSession(
   steerLocal(game, controls, dt);
   if (controls.use) useHeldItem(game);
   if (controls.interact) interact(game);
+  if (controls.drop) dropHeld(game);
   for (const content of game.contents) content.act?.(game, controls);
 
   applyEvents(game);

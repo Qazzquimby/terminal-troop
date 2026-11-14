@@ -37,6 +37,7 @@ const idle: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 
 /** One blind chaser, so it stays where it is put. */

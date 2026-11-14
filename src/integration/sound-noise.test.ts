@@ -30,6 +30,7 @@ const still: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 
 /** No chasers, so nothing but the bell makes noise. */

@@ -9,12 +9,12 @@ import {
   take,
   worldData,
 } from "../../sim/index.js";
-import type { Point, Scatter, Session } from "../../sim/index.js";
+import type { ItemTraits, Point, Scatter, Session } from "../../sim/index.js";
 import cashoutUrl from "./sfx/cashout.mp3";
 import dropUrl from "./sfx/drop.mp3";
 
 /** Scrap: picked up off the ground and sold at the cruiser for the team's credit. */
-export interface ScrapConfig {
+export interface ScrapConfig extends ItemTraits {
   /** Credit one scrap sells for. */
   readonly value: number;
   /** How near the cruiser's body a player stands to sell, in pixels. */
@@ -66,6 +66,7 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
     name: "Scrap",
     emoji: "🔩",
     drop: sound({ url: dropUrl, volume: config.volume }),
+    traits: config,
     scatter: config.scatter,
     world: { credit },
     step(game) {
