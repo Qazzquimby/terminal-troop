@@ -94,8 +94,7 @@ export type { Corrections } from "./steering.js";
 
 export { Health, hurtPlayer } from "./health.js";
 export { circleAhead, entitiesIn, playersIn } from "./reach.js";
-export { fan, shoot, traceShot } from "./shot.js";
-export type { Shot, ShotEnd, ShotLook } from "./shot.js";
+export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";

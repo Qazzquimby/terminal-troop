@@ -34,21 +34,20 @@ interface GunLook {
   readonly breaksUrl?: string;
 }
 
-/** A muzzle flash at `use.center` that shrinks and fades over `duration` seconds. */
+/** A muzzle flash at `use.center` as of `time`, shrinking and fading over the gun's duration. */
 function drawMuzzle(
   ctx: CanvasRenderingContext2D,
-  use: ItemUse,
-  radius: number,
-  duration: number,
+  { center, startedAt }: ItemUse,
   time: number,
+  { spark, duration }: GunConfig,
 ): void {
-  const progress = (time - use.startedAt) / duration;
+  const progress = (time - startedAt) / duration;
   if (progress < 0 || progress > 1) return;
   ctx.save();
   ctx.globalAlpha = 1 - progress;
   ctx.fillStyle = "#ffe08a";
   ctx.beginPath();
-  ctx.arc(use.center.x, use.center.y, radius * (1 - progress / 2), 0, 7);
+  ctx.arc(center.x, center.y, spark * (1 - progress / 2), 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -100,7 +99,7 @@ export function defineGun<N extends string>(
         },
       },
       draw(ctx, use, time) {
-        drawMuzzle(ctx, use, config.spark, config.duration, time);
+        drawMuzzle(ctx, use, time, config);
       },
     };
   });

@@ -37,21 +37,21 @@ async function room() {
   };
   /** What each client saw and heard over `ms`: the tracers drawn, and the noises made. */
   const watch = (ms: number, controls: Record<string, Controls> = {}) => {
-    const seen = {
-      tracers: new Map<string, number>(),
-      noises: [] as unknown[],
-    };
+    const tracers = new Map<string, number>();
+    const noises: unknown[] = [];
     for (let at = 0; at < ms; at += 1000 / 60) {
       made.step(controls);
       controls = {};
       for (const [id, each] of made.rooms) {
         const game = sessionOf(each);
-        const tracers = game.flashes.filter((flash) => flash.from).length;
-        seen.tracers.set(id, (seen.tracers.get(id) ?? 0) + tracers);
-        if (id === "a") seen.noises.push(...game.noises);
+        const drawn = game.flashes.filter(
+          (flash) => flash.from !== undefined,
+        ).length;
+        tracers.set(id, (tracers.get(id) ?? 0) + drawn);
+        if (id === "a") noises.push(...game.noises);
       }
     }
-    return seen;
+    return { tracers, noises };
   };
   return { ...made, host, guest, arm, watch };
 }
