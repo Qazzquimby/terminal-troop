@@ -389,6 +389,79 @@ export const config = {
       blast: { radius: CELL * 3, centre: 100, edge: 30 },
       sounds: { fuse: CELL * 6, blast: CELL * 40 },
     },
+    // One sleeps somewhere in a new world, at least 20 cells from the players; another arrives
+    // every 120s at first, every 90s after ten minutes, never more than 2, in the dark and never
+    // within 14 cells of a player. Five shovel hits fell her. She sees 8 cells all round her,
+    // wakes to a player she sees within 5 cells if they are still there after her 1s growl, and
+    // rages 10s; she runs at a player's sprint. Enraged, she hits as hard as the shovel does
+    // thrice, once a second, and wanders 8 cells at a time. She sleeps again 10 to 20 cells off,
+    // at least 12 from every player. Her bark carries 8 cells every 3 to 6s while dormant; enraged,
+    // every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16.
+    witch: {
+      spawn: { count: 1, seed: 15, clearance: CELL * 20 },
+      spawning: {
+        firstGap: 120,
+        lastGap: 90,
+        rampSeconds: 600,
+        maxAlive: 2,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: { min: 1, max: 1, spread: 0 },
+      },
+      radius: 15,
+      maxHealth: SHOVEL_DAMAGE * 5,
+      sightRange: CELL * 8,
+      wakeRange: CELL * 5,
+      warnSeconds: 1,
+      rageSeconds: 10,
+      wanderRange: CELL * 8,
+      repathDistance: CELL / 2,
+      attackDamage: SHOVEL_DAMAGE * 3,
+      attackCooldown: 1,
+      barkGap: {
+        dormant: { min: 3, max: 6 },
+        enraged: { min: 1.5, max: 3 },
+      },
+      retreat: {
+        distance: { min: CELL * 10, max: CELL * 20 },
+        clearance: CELL * 12,
+        tries: 16,
+      },
+      sounds: {
+        bark: CELL * 8,
+        growl: CELL * 6,
+        enrage: CELL * 16,
+        rageBark: CELL * 12,
+        attack: CELL * 6,
+      },
+    },
+    // None in a new world; one arrives 3 minutes in, and, should it ever be gone, a try every 3
+    // minutes after, never more than one, in the dark and never within 14 cells of a player. It
+    // sees 16 cells all round it and walks a round 30 cells long, give or take 5, planning it
+    // anew every 2s while no leg can be found. A hunt lasts 10s of moving, its route to its
+    // quarry planned every quarter second. Its touch deals 90, once a second. Its tread carries 14
+    // cells, between a walk and a sprint, every 0.3s, a sprint's pace; its blow 8.
+    idol: {
+      spawn: { count: 0, seed: 17, clearance: CELL * 20 },
+      spawning: {
+        firstGap: 180,
+        lastGap: 180,
+        rampSeconds: 1,
+        maxAlive: 1,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: { min: 1, max: 1, spread: 0 },
+      },
+      radius: 16,
+      sightRange: CELL * 16,
+      patrol: { distance: CELL * 30, spread: CELL * 5, tries: 16, retry: 2 },
+      huntSeconds: 10,
+      repathInterval: 0.25,
+      damage: 90,
+      attackCooldown: 1,
+      step: { interval: 0.3, range: CELL * 14 },
+      strikeRange: CELL * 8,
+    },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.

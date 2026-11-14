@@ -1,7 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { isSweepFree } from "../sim/index.js";
+import { z } from "zod";
+import { testSfx, testSimConfig } from "../integration/sim-config.js";
+import {
+  createSession,
+  isSweepFree,
+  registerEntityType,
+  spawnEntity,
+} from "../sim/index.js";
 import type { Point, TileMap } from "../sim/index.js";
-import { planRoute, steer } from "./route.js";
+import { avoidingLight, planRoute, steer } from "./route.js";
 
 const HALF = 15;
 
@@ -121,4 +128,66 @@ describe("steer", () => {
     expect(steer(body, [], 60, 1 / 60)).toEqual([]);
     expect(body).toMatchObject({ vx: 0, vy: 0 });
   });
+});
+
+describe("planRoute avoiding cells", () => {
+  /** 8x6 open cells of 50px. */
+  const open = (): TileMap => ({
+    cell: 50,
+    cols: 8,
+    rows: 6,
+    solid: new Uint8Array(48),
+  });
+  /** Column 4, but for its bottom row. */
+  const strip = ({ col, row }: { col: number; row: number }) =>
+    col === 4 && row < 5;
+
+  test("goes round the avoided cells, no leg crossing one", () => {
+    const map = open();
+    const from = { x: 75, y: 75 };
+    const route = planRoute(map, HALF, from, { x: 375, y: 75 }, strip) ?? [];
+    expect(route.at(-1)).toEqual({ x: 375, y: 75 });
+    const legs = route.map((to, i) => [route[i - 1] ?? from, to] as const);
+    for (const [a, b] of legs)
+      for (let share = 0; share <= 1; share += 0.02) {
+        const col = Math.floor((a.x + (b.x - a.x) * share) / 50);
+        const row = Math.floor((a.y + (b.y - a.y) * share) / 50);
+        expect(strip({ col, row })).toBe(false);
+      }
+  });
+
+  test("is null when the avoided cells cut the way off, and may start on one", () => {
+    const map = open();
+    const column = ({ col }: { col: number }) => col === 4;
+    expect(
+      planRoute(map, HALF, { x: 75, y: 75 }, { x: 375, y: 75 }, column),
+    ).toBeNull();
+    expect(
+      planRoute(map, HALF, { x: 225, y: 75 }, { x: 325, y: 75 }, column),
+    ).toEqual([{ x: 325, y: 75 }]);
+  });
+});
+
+test("avoidingLight names the cells a light reaches, and no others", () => {
+  const game = createSession(
+    "me",
+    "ME",
+    "ROUTE",
+    "dev",
+    testSfx(),
+    testSimConfig,
+  );
+  registerEntityType(game, "lamp", {
+    radius: 5,
+    maxHealth: 1,
+    collides: false,
+    data: z.object({}),
+    light: () => ({ range: 120 }),
+    draw: () => undefined,
+  });
+  spawnEntity(game, "lamp", 425, 325, {});
+  const avoid = avoidingLight(game);
+  expect(avoid({ col: 8, row: 6 })).toBe(true);
+  expect(avoid({ col: 10, row: 6 })).toBe(true);
+  expect(avoid({ col: 1, row: 1 })).toBe(false);
 });

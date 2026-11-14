@@ -137,7 +137,7 @@ const NO_TIDE = {
  * ten minutes, so it stays out of tests that are not about it. No lurcher nor blister appears
  * unless a test spawns one: a lurcher 144px across, felled by three test shovel hits, charging at full suspicion of 1000; a
  * blister that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
- * round, from 100 damage to 30.
+ * round, from 100 damage to 30. Nor does a witch or an idol.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   zombie: {
@@ -245,6 +245,40 @@ export const testEntitiesConfig: EntitiesConfig = {
     fuse: 1,
     blast: { radius: 150, centre: 100, edge: 30 },
     sounds: { fuse: 300, blast: 2000 },
+  },
+  witch: {
+    spawn: { count: 0, seed: 15, clearance: 400 },
+    spawning: { ...NO_TIDE, unseenDistance: 1100 },
+    radius: 15,
+    maxHealth: 75,
+    sightRange: 400,
+    wakeRange: 250,
+    warnSeconds: 1,
+    rageSeconds: 10,
+    wanderRange: 200,
+    repathDistance: 25,
+    attackDamage: 45,
+    attackCooldown: 1,
+    barkGap: { dormant: { min: 3, max: 6 }, enraged: { min: 1.5, max: 3 } },
+    retreat: {
+      distance: { min: 200, max: 400 },
+      clearance: 300,
+      tries: 16,
+    },
+    sounds: { bark: 400, growl: 300, enrage: 800, rageBark: 600, attack: 300 },
+  },
+  idol: {
+    spawn: { count: 0, seed: 17, clearance: 400 },
+    spawning: { ...NO_TIDE, unseenDistance: 1100 },
+    radius: 16,
+    sightRange: 800,
+    patrol: { distance: 300, spread: 50, tries: 16, retry: 2 },
+    huntSeconds: 10,
+    repathInterval: 0.25,
+    damage: 90,
+    attackCooldown: 1,
+    step: { interval: 0.3, range: 700 },
+    strikeRange: 400,
   },
 };
 
