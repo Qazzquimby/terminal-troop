@@ -1,11 +1,25 @@
 import { inRect, isLit } from "../sim/index.js";
 import type { Point, Session } from "../sim/index.js";
 
+/** What a monster kind lets its spawns do, past the rules every kind keeps. */
+export interface SpawnRules {
+  /**
+   * Whether it may appear in light, by sunlight, a powered room's fixture, or a light something
+   * gives off such as a flashlight; false when left out, so it appears only in the dark.
+   */
+  readonly inLight?: boolean;
+}
+
 /**
- * Whether a monster of any kind may appear at `at`: never in the world's start, where the players
- * gather, nor anywhere lit, by sunlight, a powered room's fixture, or a light something gives off
- * such as a flashlight. Every monster kind's spawning goes through it.
+ * Whether a monster of a kind keeping `rules` may appear at `at`: never in the world's start,
+ * where the players gather, and nowhere lit unless its rules allow light. Every monster kind's
+ * spawning goes through it.
  */
-export function spawnAllowed(game: Session, at: Point): boolean {
-  return !inRect(game.world.layout.start, at) && !isLit(game, at);
+export function spawnAllowed(
+  game: Session,
+  at: Point,
+  rules: SpawnRules = {},
+): boolean {
+  if (inRect(game.world.layout.start, at)) return false;
+  return rules.inLight === true || !isLit(game, at);
 }

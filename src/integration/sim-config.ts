@@ -116,6 +116,16 @@ export const testMapMemoryConfig: MapMemoryConfig = {
   wall: { fill: "#333", edge: "#444", alpha: 0.5 },
 };
 
+/** A tide that never brings anything: none may be alive at once. */
+const NO_TIDE = {
+  firstGap: 5,
+  lastGap: 5,
+  rampSeconds: 20,
+  maxAlive: 0,
+  tries: 24,
+  group: { min: 1, max: 1, spread: 0 },
+} as const;
+
 /**
  * Three zombies in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
@@ -124,7 +134,10 @@ export const testMapMemoryConfig: MapMemoryConfig = {
  * whose far corners are nearer than that. A cruiser starts at the rally point, its two headlights
  * 45 degree cones reaching 400px. A stun trap arms in 3s and stuns for 5s within 250px. The
  * snail creeps at a fifth of a player's pace and kills what it touches; none arrives in the first
- * ten minutes, so it stays out of tests that are not about it.
+ * ten minutes, so it stays out of tests that are not about it. No lurcher nor blister appears
+ * unless a test spawns one: a lurcher 144px across, felled by three test shovel hits, charging at full suspicion of 1000; a
+ * blister that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
+ * round, from 100 damage to 30.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   zombie: {
@@ -198,6 +211,40 @@ export const testEntitiesConfig: EntitiesConfig = {
     damage: 500,
     attackCooldown: 1,
     repathInterval: 1,
+  },
+  lurcher: {
+    spawn: { count: 0, seed: 11, clearance: 400 },
+    spawning: { ...NO_TIDE, unseenDistance: 1100 },
+    radius: 72,
+    maxHealth: 75,
+    contactDamage: 100,
+    contactCooldown: 1,
+    wanderSpeed: 60,
+    stalkSpeed: 80,
+    chargeSpeed: 260,
+    wanderRange: 300,
+    wanderPause: { min: 0.5, max: 1 },
+    repathDistance: 50,
+    suspicion: { max: 1000, decay: 100 },
+    overrun: 400,
+    sounds: { roar: 1000, snarl: 200, bite: 300 },
+  },
+  blister: {
+    spawn: { count: 0, seed: 13, clearance: 400 },
+    spawning: { ...NO_TIDE, unseenDistance: 700 },
+    radius: 16,
+    maxHealth: 45,
+    wanderSpeed: 80,
+    chaseSpeed: 120,
+    senseRange: 600,
+    wanderRange: 200,
+    wanderPause: { min: 0.5, max: 1 },
+    repathDistance: 25,
+    detour: { factor: 2, slack: 100 },
+    fuseRange: 100,
+    fuse: 1,
+    blast: { radius: 150, centre: 100, edge: 30 },
+    sounds: { fuse: 300, blast: 2000 },
   },
 };
 

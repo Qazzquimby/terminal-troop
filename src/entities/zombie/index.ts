@@ -5,19 +5,12 @@ import barkUrl from "./sfx/bark.mp3";
 import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
   canSeeFrom,
-  livingPlayers,
   defineEntity,
   directionalVision,
   effect,
-  hasKindTag,
   INERT_TAG,
-  ITEM_TAG,
-  isAreaFree,
-  mulberry32Next,
-  noisesHeardBy,
   rounded,
   sound,
-  spawn,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -31,9 +24,23 @@ import type {
   TileMap,
   WorldEntity,
 } from "../../sim/index.js";
-import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
-import { spawnWeight, spawning, stepSpawning } from "./spawning.js";
-import type { SpawningConfig } from "./spawning.js";
+import {
+  between,
+  clearestNoise,
+  strikeEach,
+  walk,
+  preyNear as preyAround,
+  Route,
+  Seed,
+  Time,
+  Waypoint,
+  wanderLeg,
+  withSeed,
+} from "../hunt.js";
+import type { Prey } from "../hunt.js";
+import { planRoute } from "../route.js";
+import { arrivals } from "../spawning.js";
+import type { SpawningConfig } from "../spawning.js";
 
 /**
  * How a zombie moves and hunts, and how many a new world starts with. Distances are in pixels,
@@ -71,21 +78,6 @@ export interface ZombieConfig {
     readonly attack: number;
   };
 }
-
-/** A point, sent to a tenth of a pixel. */
-const Waypoint = z.object({ x: rounded(1), y: rounded(1) });
-
-/** A moment on the world's clock, in sim seconds, sent to a hundredth. */
-const Time = rounded(2);
-
-const Route = z.array(Waypoint).max(MAX_WAYPOINTS);
-
-/** A mulberry32 state. */
-const Seed = z
-  .number()
-  .int()
-  .min(-(2 ** 31))
-  .max(2 ** 31 - 1);
 
 /**
  * What a zombie keeps whichever mode it is in. Snapshots carry only the fields that changed, so
@@ -131,9 +123,6 @@ export type ZombieState = z.output<typeof ZombieState>;
 
 type Wander = Extract<ZombieState, { mode: "wander" }>;
 
-/** Random points tried for a wander leg before standing a while longer. */
-const LEG_ATTEMPTS = 8;
-
 const COLOURS = {
   wander: "#7d9a52",
   listen: "#d8a13a",
@@ -174,26 +163,6 @@ export function freshZombie(
   };
 }
 
-/** Runs `draw` with a generator seeded by `seed`, and returns its result and the state after it. */
-function withSeed<T>(
-  seed: number,
-  draw: (rng: Rng) => T,
-): { result: T; seed: number } {
-  let state = seed;
-  const result = draw(() => {
-    const next = mulberry32Next(state);
-    state = next.state;
-    return next.value;
-  });
-  return { result, seed: state };
-}
-
-/** A body a zombie may hunt. */
-interface Prey extends Point {
-  readonly id: string;
-  readonly radius: number;
-}
-
 /**
  * Every player and world entity within `reach` of `hunter` that it hunts: anything but zombies
  * and what the world tags as not worth hunting.
@@ -203,16 +172,7 @@ function preyNear(
   hunter: Prey,
   reach: (prey: Prey) => number,
 ): Prey[] {
-  const near: Prey[] = [];
-  const bodies = [...livingPlayers(game), ...game.entities.values()];
-  for (const body of bodies) {
-    if (body.id === hunter.id) continue;
-    const distance = Math.hypot(body.x - hunter.x, body.y - hunter.y);
-    if (distance > reach(body)) continue;
-    if (hasKindTag(game, body.id, [...IGNORES, ITEM_TAG])) continue;
-    near.push(body);
-  }
-  return near;
+  return preyAround(game, hunter, reach, IGNORES);
 }
 
 /** The nearest prey a zombie sees within its cone or surroundings, or null. */
@@ -239,34 +199,11 @@ function sighting(
 }
 
 function pauseLength(rng: Rng, config: ZombieConfig): number {
-  const { min, max } = config.wanderPause;
-  return min + (max - min) * rng();
+  return between(rng, config.wanderPause);
 }
 
 function barkGap(rng: Rng, config: ZombieConfig): number {
-  const { min, max } = config.barkGap;
-  return min + (max - min) * rng();
-}
-
-/** A route to a random free point within the wander range, or null when none of the tries finds one. */
-function wanderLeg(
-  map: TileMap,
-  at: Point,
-  rng: Rng,
-  config: ZombieConfig,
-): Point[] | null {
-  for (let attempt = 0; attempt < LEG_ATTEMPTS; attempt++) {
-    const angle = rng() * Math.PI * 2;
-    const distance = config.wanderRange * Math.sqrt(rng());
-    const to = {
-      x: at.x + Math.cos(angle) * distance,
-      y: at.y + Math.sin(angle) * distance,
-    };
-    if (!isAreaFree(map, to.x, to.y, config.radius)) continue;
-    const route = planRoute(map, config.radius, at, to);
-    if (route !== null && route.length > 0) return route;
-  }
-  return null;
+  return between(rng, config.barkGap);
 }
 
 /**
@@ -278,14 +215,9 @@ function listen(
   at: Point,
   game: Session,
 ): { result: Heard | null; seed: number } {
-  return withSeed(state.seed, (rng) => {
-    let clearest: Heard | null = null;
-    for (const heard of noisesHeardBy(game, { at, rng, ignores: IGNORES })) {
-      if (clearest === null || heard.clarity > clearest.clarity)
-        clearest = heard;
-    }
-    return clearest;
-  });
+  return withSeed(state.seed, (rng) =>
+    clearestNoise(game, { at, rng, ignores: IGNORES }),
+  );
 }
 
 /**
@@ -330,7 +262,9 @@ function wander(
   const standing = { ...state, noiseTarget: null };
   if (standing.standUntil === null) return stand(standing, game, config);
   if (game.worldTime < standing.standUntil) return standing;
-  const leg = withSeed(standing.seed, (rng) => wanderLeg(map, at, rng, config));
+  const leg = withSeed(standing.seed, (rng) =>
+    wanderLeg(map, at, rng, config.radius, config.wanderRange),
+  );
   return {
     ...standing,
     seed: leg.seed,
@@ -497,19 +431,11 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
       cue(entity, state, next, game, sounds);
       const speed =
         next.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
-      const route = steer(entity, next.route, speed, dt);
-      const facing =
-        entity.vx === 0 && entity.vy === 0
-          ? next.facing
-          : Math.atan2(entity.vy, entity.vx);
-      return { ...next, route, facing };
+      return walk(entity, next, speed, dt);
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      return inReach(entity, game, config).map((prey) => ({
-        target: prey.id,
-        amount: config.attackDamage,
-      }));
+      return strikeEach(inReach(entity, game, config), config.attackDamage);
     },
     draw(ctx, entity, state) {
       drawEmoji(ctx, entity, ZOMBIE_GLYPH, entity.radius * 2);
@@ -534,18 +460,12 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
  */
 export const zombie = defineEntity(NAME, (config: ZombieConfig) => ({
   ...definition(config),
-  spawn: {
-    at: "scatter",
-    ...config.spawn,
-    data: (rng: Rng, game: Session) =>
-      freshZombie(Math.floor(rng() * 2 ** 32), game.worldTime, config),
-    weight: spawnWeight,
-  },
-  world: { spawning },
-  step(game: Session) {
-    stepSpawning(game, NAME, config.radius, config.spawning, (at) => {
-      const seed = Math.floor(Math.random() * 2 ** 32);
-      spawn(game, NAME, at, freshZombie(seed, game.worldTime, config));
-    });
-  },
+  ...arrivals({
+    kind: NAME,
+    radius: config.radius,
+    config: config.spawning,
+    scatter: config.spawn,
+    fresh: (seed: number, game: Session) =>
+      freshZombie(Math.floor(seed * 2 ** 32), game.worldTime, config),
+  }),
 }));

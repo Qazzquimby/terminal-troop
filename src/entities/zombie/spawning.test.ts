@@ -26,8 +26,8 @@ import type {
 import type { EntitiesConfig } from "../index.js";
 import { entityContent } from "../index.js";
 import { spawnAllowed } from "../spawn-rules.js";
-import { spawnWeight } from "./spawning.js";
-import type { SpawningConfig } from "./spawning.js";
+import { spawnWeight } from "../spawning.js";
+import type { SpawningConfig } from "../spawning.js";
 
 const DT = 1 / 60;
 
@@ -366,6 +366,18 @@ test("nothing spawns in light: not in the sunlit road, nor a lit room", () => {
   expect(spawnWeight(game, road)).toBe(0);
   const litRoom = cellWhere(game, AREA.room, (at) => isLit(game, at));
   expect(spawnAllowed(game, litRoom)).toBe(false);
+});
+
+test("a kind whose rules allow light may appear in the sunlit road, but still not in the start", () => {
+  const game = world();
+  const rules = { inLight: true };
+  const middle = { x: game.world.W / 2, y: game.world.H / 2 };
+  const road = cellWhere(game, AREA.road, (at) => at.x >= middle.x);
+  expect(spawnAllowed(game, road, rules)).toBe(true);
+  expect(spawnWeight(game, road, rules)).toBe(dangerWeight(game.world, road));
+  const { start } = game.world.layout;
+  const inStart = { x: start.x + start.w / 2, y: start.y + start.h / 2 };
+  expect(spawnAllowed(game, inStart, rules)).toBe(false);
 });
 
 test("a new world's first zombies favour the same spots", () => {
