@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { drawEmoji } from "../../render/index.js";
-import { defineEntity } from "../../sim/index.js";
+import { defineEntity, INERT_TAG } from "../../sim/index.js";
 
 /** A car that starts at the world's rally point, carrying a wide light. */
 export interface CruiserConfig {
@@ -18,6 +18,7 @@ export const cruiser = defineEntity("cruiser", (config: CruiserConfig) => ({
   radius: BODY_RADIUS,
   maxHealth: Infinity,
   collides: false,
+  tags: [INERT_TAG],
   data: z.object({}),
   light: () => ({ range: config.lightRadius }),
   draw(ctx, entity) {

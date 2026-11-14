@@ -26,8 +26,8 @@ const { kick } = testMovesConfig;
 const { shovel } = testItemsConfig;
 const DT = 1 / 60;
 const PLAYER_LENGTH = testSimConfig.player.radius * 2;
-const CHASER_LENGTH = testEntitiesConfig.chaser.radius * 2;
-const MAX_HEALTH = testEntitiesConfig.chaser.maxHealth;
+const ZOMBIE_LENGTH = testEntitiesConfig.zombie.radius * 2;
+const MAX_HEALTH = testEntitiesConfig.zombie.maxHealth;
 const idle: Controls = {
   move: { x: 0, y: 0 },
   aim: { x: 0, y: 0 },
@@ -40,14 +40,14 @@ const idle: Controls = {
   drop: false,
 };
 
-/** One blind chaser, so it stays where it is put. */
+/** One blind zombie, so it stays where it is put. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
     wanderSpeed: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 1 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 1 },
   },
 };
 
@@ -88,18 +88,18 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-function chaserOf(room: Room): WorldEntity {
+function zombieOf(room: Room): WorldEntity {
   const game = sessionOf(room);
-  const kind = game.kindIds.get("chaser");
-  const chaser = [...game.entities.values()].find(
+  const kind = game.kindIds.get("zombie");
+  const zombie = [...game.entities.values()].find(
     (entity) => entity.kind === kind,
   );
-  if (chaser === undefined) throw new Error("no chaser");
-  return chaser;
+  if (zombie === undefined) throw new Error("no zombie");
+  return zombie;
 }
 
 /**
- * Host `a` and guest `b` on one hub, the guest standing at GUEST and the chaser at `target` on
+ * Host `a` and guest `b` on one hub, the guest standing at GUEST and the zombie at `target` on
  * both clients, the guest's copy settled there.
  */
 async function lineUp(target: Point) {
@@ -181,10 +181,10 @@ async function lineUp(target: Point) {
         room.frame(clock.now());
       }
   };
-  /** Puts the chaser at `at` on both clients. */
-  const putChaser = (at: Point): void => {
-    Object.assign(chaserOf(a), { ...at, tx: at.x, ty: at.y });
-    Object.assign(chaserOf(b), {
+  /** Puts the zombie at `at` on both clients. */
+  const putZombie = (at: Point): void => {
+    Object.assign(zombieOf(a), { ...at, tx: at.x, ty: at.y });
+    Object.assign(zombieOf(b), {
       ...at,
       prevX: at.x,
       prevY: at.y,
@@ -192,19 +192,19 @@ async function lineUp(target: Point) {
       ty: at.y,
     });
   };
-  /** Puts the guest at GUEST where the host runs it, lets the guest hear so, and the chaser at `at`. */
+  /** Puts the guest at GUEST where the host runs it, lets the guest hear so, and the zombie at `at`. */
   const reset = (at: Point): void => {
     teleport([sessionOf(a), sessionOf(b)], "b", GUEST);
     settle(1);
-    putChaser(at);
+    putZombie(at);
   };
   reset(target);
   expect(sessionOf(b).local).toMatchObject(GUEST);
-  expect(chaserOf(b)).toMatchObject({ ...target, tx: target.x });
-  return { hub, a, b, step, frame, catchUp, exchange, putChaser };
+  expect(zombieOf(b)).toMatchObject({ ...target, tx: target.x });
+  return { hub, a, b, step, frame, catchUp, exchange, putZombie };
 }
 
-/** The guest's chaser x over `steps` idle steps of the guest. */
+/** The guest's zombie x over `steps` idle steps of the guest. */
 function track(
   b: Room,
   step: (room: Room) => void,
@@ -214,8 +214,8 @@ function track(
   const health: number[] = [];
   for (let count = 0; count < steps; count++) {
     step(b);
-    x.push(chaserOf(b).x);
-    health.push(chaserOf(b).health);
+    x.push(zombieOf(b).x);
+    health.push(zombieOf(b).health);
   }
   return { x, health };
 }
@@ -224,34 +224,34 @@ function track(
 const largestStep = (from: number, xs: readonly number[]): number =>
   Math.max(...xs.map((x, index) => Math.abs(x - (xs[index - 1] ?? from))));
 
-/** How far a kick knocks the chaser. */
-const KNOCK = CHASER_LENGTH * kick.knockback;
+/** How far a kick knocks the zombie. */
+const KNOCK = ZOMBIE_LENGTH * kick.knockback;
 
-test("a guest's kick knocks the chaser back on its own client at once, and its lunge carries on", async () => {
+test("a guest's kick knocks the zombie back on its own client at once, and its lunge carries on", async () => {
   const { b, step } = await lineUp(KICKED);
   const guest = sessionOf(b);
   step(b, kickRight(guest));
-  const chaser = chaserOf(b);
-  expect(chaser.x - KICKED.x).toBeGreaterThan(KNOCK - 5);
-  expect(chaser.x - KICKED.x).toBeLessThanOrEqual(KNOCK);
-  expect(chaser.health).toBe(MAX_HEALTH - kick.damage);
+  const zombie = zombieOf(b);
+  expect(zombie.x - KICKED.x).toBeGreaterThan(KNOCK - 5);
+  expect(zombie.x - KICKED.x).toBeLessThanOrEqual(KNOCK);
+  expect(zombie.health).toBe(MAX_HEALTH - kick.damage);
   for (let count = 0; count < Math.round(kick.lunge.seconds / DT); count++)
     step(b);
   expect(guest.local.x - GUEST.x).toBeCloseTo(PLAYER_LENGTH);
 });
 
-test("snapshots from before the host's hit do not pull the predicted chaser back", async () => {
+test("snapshots from before the host's hit do not pull the predicted zombie back", async () => {
   const { hub, a, b, step, frame } = await lineUp(KICKED);
   hub.hold();
   step(b, kickRight(sessionOf(b)));
   frame(b);
-  const predicted = { ...chaserOf(b) };
-  // The host moves the chaser and sends it, before the kick reaches it.
-  Object.assign(chaserOf(a), { x: KICKED.x - 3 });
+  const predicted = { ...zombieOf(b) };
+  // The host moves the zombie and sends it, before the kick reaches it.
+  Object.assign(zombieOf(a), { x: KICKED.x - 3 });
   step(a);
   frame(a);
   hub.release("b");
-  expect(chaserOf(b).tx).toBeCloseTo(KICKED.x - 3, 0);
+  expect(zombieOf(b).tx).toBeCloseTo(KICKED.x - 3, 0);
   const held = track(b, step, 20);
   expect(held.x.every((x) => x === predicted.x)).toBe(true);
   expect(held.health.every((h) => h === predicted.health)).toBe(true);
@@ -262,12 +262,12 @@ test("the snapshot that shows the hit takes over smoothly, and agrees on damage"
   hub.hold();
   step(b, kickRight(sessionOf(b)));
   frame(b);
-  const predicted = { ...chaserOf(b) };
-  // The host's chaser stands a little off where the guest drew it.
-  Object.assign(chaserOf(a), { x: KICKED.x + 6 });
+  const predicted = { ...zombieOf(b) };
+  // The host's zombie stands a little off where the guest drew it.
+  Object.assign(zombieOf(a), { x: KICKED.x + 6 });
   hub.release("a");
   catchUp();
-  const onHost = chaserOf(a);
+  const onHost = zombieOf(a);
   expect(onHost.health).toBe(predicted.health);
   expect(Math.abs(onHost.x - predicted.x)).toBeGreaterThan(3);
   frame(a);
@@ -280,26 +280,26 @@ test("the snapshot that shows the hit takes over smoothly, and agrees on damage"
   expect(sessionOf(b).predictions.size).toBe(0);
 });
 
-test("a kick the host turns down eases the chaser back to where the host has it", async () => {
-  const { a, b, step, frame, exchange, putChaser } = await lineUp(KICKED);
+test("a kick the host turns down eases the zombie back to where the host has it", async () => {
+  const { a, b, step, frame, exchange, putZombie } = await lineUp(KICKED);
   const guest = sessionOf(b);
   step(b, kickRight(guest));
   exchange();
-  expect(chaserOf(a).health).toBe(MAX_HEALTH - kick.damage);
+  expect(zombieOf(a).health).toBe(MAX_HEALTH - kick.damage);
   // The guest kicks again within the host's cooldown, from the end of its lunge, its own count
   // cleared.
   for (let count = 0; count < Math.round(kick.lunge.seconds / DT) + 2; count++)
     step(b);
   frame(b);
   const again = { x: guest.local.x + PLAYER_LENGTH + kick.reach, y: GUEST.y };
-  putChaser(again);
+  putZombie(again);
   guest.localReadyAt.clear();
   step(b, kickRight(guest));
-  const predicted = { ...chaserOf(b) };
+  const predicted = { ...zombieOf(b) };
   expect(predicted.x - again.x).toBeGreaterThan(KNOCK - 5);
   expect(predicted.health).toBe(MAX_HEALTH - 2 * kick.damage);
   exchange();
-  expect(chaserOf(a)).toMatchObject({
+  expect(zombieOf(a)).toMatchObject({
     x: again.x,
     health: MAX_HEALTH - kick.damage,
   });
@@ -314,7 +314,7 @@ test("with no word from the host, the guest lets go once the hold runs out", asy
   hub.hold();
   step(b, kickRight(sessionOf(b)));
   frame(b);
-  const predicted = chaserOf(b).x;
+  const predicted = zombieOf(b).x;
   const holdSteps = Math.round(testSimConfig.net.predictionHold / DT);
   const held = track(b, step, holdSteps - 2);
   expect(held.x.every((x) => x === predicted)).toBe(true);
@@ -329,11 +329,11 @@ test("a guest's shovel swing is predicted, held and confirmed alike", async () =
   hub.hold();
   step(b, swingRight(sessionOf(b)));
   frame(b);
-  const predicted = { ...chaserOf(b) };
+  const predicted = { ...zombieOf(b) };
   expect(predicted.x).toBeCloseTo(SWUNG.x + shovel.knockback);
   expect(predicted.health).toBe(MAX_HEALTH - shovel.damage);
 
-  Object.assign(chaserOf(a), { x: SWUNG.x - 2 });
+  Object.assign(zombieOf(a), { x: SWUNG.x - 2 });
   step(a);
   frame(a);
   hub.release("b");
@@ -341,7 +341,7 @@ test("a guest's shovel swing is predicted, held and confirmed alike", async () =
 
   hub.release("a");
   catchUp();
-  const onHost = chaserOf(a);
+  const onHost = zombieOf(a);
   expect(onHost.health).toBe(predicted.health);
   frame(a);
   hub.release("b");

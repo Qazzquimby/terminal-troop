@@ -3,7 +3,7 @@ import { moveWithCollision } from "./collision.js";
 import type { Entity } from "./entity.js";
 import { changedData } from "./entity-delta.js";
 import type { EntityChange, EntityDelta } from "./entity-delta.js";
-import { isDead } from "./entity.js";
+import { applyDamage, isDead } from "./entity.js";
 import { hurtPlayer } from "./health.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
@@ -22,7 +22,13 @@ export interface WorldEntity extends Entity, Interpolated, Tracked {
   data: unknown;
 }
 
-/** Damage an entity deals to the player `target`. */
+/**
+ * A kind tag for bodies that hunters pass over: things neither alive nor worth attacking, such as
+ * the cruiser, or later a land mine. Hunters see, chase and strike only bodies without it.
+ */
+export const INERT_TAG = "inert";
+
+/** Damage an entity deals to `target`, a player or another world entity. */
 export interface Strike {
   readonly target: string;
   readonly amount: number;
@@ -33,6 +39,11 @@ export interface EntityDefinition<S> {
   readonly radius: number;
   readonly maxHealth: number;
   readonly collides?: boolean;
+  /**
+   * What else the kind is, past its name, for others to filter on, such as `INERT_TAG`. The
+   * noise it makes carries them after its name, as `kindTags` gives them.
+   */
+  readonly tags?: readonly string[];
   /** Parses the kind's state; an entity whose data fails it is neither spawned nor kept. */
   readonly data: z.ZodType<S>;
   readonly light?: (entity: WorldEntity, data: S) => LightEmission | null;
@@ -63,6 +74,7 @@ export interface EntityType {
   readonly radius: number;
   readonly maxHealth: number;
   readonly collides: boolean;
+  readonly tags: readonly string[];
   readonly data: z.ZodType;
   light(entity: WorldEntity): LightEmission | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
@@ -91,6 +103,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     radius: definition.radius,
     maxHealth: definition.maxHealth,
     collides: definition.collides ?? true,
+    tags: definition.tags ?? [],
     data: schema,
     light(entity) {
       const parsed = schema.safeParse(entity.data);
@@ -207,6 +220,8 @@ export function updateEntities(game: Session, dt: number): void {
     type?.strikes(entity, game).forEach(({ target, amount }) => {
       const player = game.players.get(target);
       if (player !== undefined) hurtPlayer(game, player, amount);
+      const struck = game.entities.get(target);
+      if (struck !== undefined) applyDamage(struck, amount);
     });
 
     if (entity.collides) {

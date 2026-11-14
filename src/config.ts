@@ -116,7 +116,7 @@ export const config = {
   net: { smoothing: 12, predictionHold: 1 },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
-  // Each step is heard by anything within its radius: a sprint carries well past a chaser's
+  // Each step is heard by anything within its radius: a sprint carries well past a zombie's
   // sight, a walk a few cells, a crouch barely past arm's length.
   footsteps: {
     walk: { interval: 0.5, radius: CELL * 5 },
@@ -154,21 +154,26 @@ export const config = {
   // Peers connect a second or two after joining; past this, a HELLO is news to no one.
   greeting: { replayMs: 10_000 },
   entities: {
-    chaser: {
+    zombie: {
+      // Groups of one to five, three on average, so a third as many groups as there were zombies
+      // when they came one at a time; at least one.
       spawn: {
-        count: { density: 1.2, min: 2 },
+        count: { density: 0.4, min: 1 },
         seed: 1,
         clearance: CELL * 10,
       },
-      // One more every 12 seconds as a world begins, the gap falling evenly to one a second over its
-      // first five minutes; never within 14 cells of a player, nor past 120 alive.
+      // A group every 36 seconds as a world begins, the gap falling evenly to one every 3 seconds
+      // over its first five minutes, so as many arrive on average as when they came one at a time;
+      // never within 14 cells of a player, nor past 120 alive. A group stands within 2 cells of its
+      // first.
       spawning: {
-        firstGap: 12,
-        lastGap: 1,
+        firstGap: 36,
+        lastGap: 3,
         rampSeconds: 300,
         maxAlive: 120,
         tries: 24,
         unseenDistance: 700,
+        group: { min: 1, max: 5, spread: CELL * 2 },
       },
       radius: 15,
       maxHealth: 40,
@@ -225,7 +230,7 @@ export const config = {
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
-    // kicks fell a chaser, each sending it 2.5 of its own body lengths away.
+    // kicks fell a zombie, each sending it 2.5 of its own body lengths away.
     kick: {
       reach: 32,
       radius: 18,

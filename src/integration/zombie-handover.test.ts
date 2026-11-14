@@ -17,13 +17,13 @@ import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
 
-/** Blind chasers, so they only wander and bark, whoever runs them. */
+/** Blind zombies, so they only wander and bark, whoever runs them. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 4 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 4 },
   },
 };
 
@@ -45,15 +45,15 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-/** What these tests read of a chaser's state as it travels. */
-const Chaser = z.object({ barkAt: z.number() });
+/** What these tests read of a zombie's state as it travels. */
+const Zombie = z.object({ barkAt: z.number() });
 
-/** Each chaser `room` holds, by id: where it is headed and its state as it travels. */
-function chasers(room: Room) {
+/** Each zombie `room` holds, by id: where it is headed and its state as it travels. */
+function zombies(room: Room) {
   const { entities } = sessionOf(room);
   return new Map(
     entitySnapshot(sessionOf(room))
-      .filter(({ data }) => Chaser.safeParse(data).success)
+      .filter(({ data }) => Zombie.safeParse(data).success)
       .map(({ id, data }) => {
         const entity = entities.get(id);
         return [
@@ -65,9 +65,9 @@ function chasers(room: Room) {
 }
 
 const barkAts = (room: Room): number[] =>
-  [...chasers(room).values()].map(({ data }) => Chaser.parse(data).barkAt);
+  [...zombies(room).values()].map(({ data }) => Zombie.parse(data).barkAt);
 
-test("a new host runs each chaser on from the last snapshot, under the same id, its timers kept", async () => {
+test("a new host runs each zombie on from the last snapshot, under the same id, its timers kept", async () => {
   const hub = createHub();
   const clock = createManualClock();
   const client = (id: string): Room =>
@@ -114,10 +114,10 @@ test("a new host runs each chaser on from the last snapshot, under the same id, 
 
   clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
   a.frame(clock.now());
-  const last = chasers(a);
+  const last = zombies(a);
   expect(last.size).toBe(4);
   expect([...last.keys()]).toEqual(["1", "2", "3", "4"]);
-  expect(chasers(b)).toEqual(last);
+  expect(zombies(b)).toEqual(last);
   expect(sessionOf(b).worldTime).toBeCloseTo(sessionOf(a).worldTime, 2);
   const barked = barkAts(b);
 
@@ -125,18 +125,18 @@ test("a new host runs each chaser on from the last snapshot, under the same id, 
   rooms.splice(0, 1);
   clock.advance(clock.now() + 3000);
   expect(b.hostId()).toBe("b");
-  expect(chasers(b)).toEqual(last);
+  expect(zombies(b)).toEqual(last);
   for (const { data } of last.values())
-    expect(Chaser.parse(data).barkAt).toBeGreaterThan(sessionOf(b).worldTime);
+    expect(Zombie.parse(data).barkAt).toBeGreaterThan(sessionOf(b).worldTime);
 
   const heard = vi.spyOn(sessionOf(c).sfx, "play");
-  play(entities.chaser.barkGap.max + 1);
-  expect([...chasers(b).keys()]).toEqual([...last.keys()]);
-  expect(chasers(b)).not.toEqual(last);
+  play(entities.zombie.barkGap.max + 1);
+  expect([...zombies(b).keys()]).toEqual([...last.keys()]);
+  expect(zombies(b)).not.toEqual(last);
   for (const [index, at] of barkAts(b).entries())
     expect(at).toBeGreaterThan(barked[index] ?? Infinity);
   expect(heard.mock.calls.length).toBeGreaterThanOrEqual(last.size);
   clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
   b.frame(clock.now());
-  expect(chasers(c)).toEqual(chasers(b));
+  expect(zombies(c)).toEqual(zombies(b));
 });

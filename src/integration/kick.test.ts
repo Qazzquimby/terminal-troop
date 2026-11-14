@@ -42,14 +42,14 @@ const idle: Controls = {
 const DUMMY = "dummy";
 const DUMMY_LENGTH = 30;
 
-/** One blind chaser, so it stays where it is put. */
+/** One blind zombie, so it stays where it is put. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
     wanderSpeed: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 1 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 1 },
   },
 };
 
@@ -224,26 +224,26 @@ test("a kick that knocks something into a wall stops it there, still hurt", () =
   expect(hit.x).toBeLessThanOrEqual(wall - 15);
 });
 
-test("enough kicks fell a chaser", () => {
+test("enough kicks fell a zombie", () => {
   const game = session();
   for (const content of entityContent(entities)) {
     content.register(game);
     content.populate(game);
   }
-  const [chaser] = game.entities.values();
-  if (chaser === undefined) throw new Error("no chaser");
-  const needed = Math.ceil(testEntitiesConfig.chaser.maxHealth / kick.damage);
+  const [zombie] = game.entities.values();
+  if (zombie === undefined) throw new Error("no zombie");
+  const needed = Math.ceil(testEntitiesConfig.zombie.maxHealth / kick.damage);
   for (let count = 1; count <= needed; count++) {
     standAt(game, { x: 200, y: 300 });
-    Object.assign(chaser, hitboxRightOf(game.local));
+    Object.assign(zombie, hitboxRightOf(game.local));
     game.local.stamina = { value: kick.stamina, exhausted: false, rested: 0 };
     kickOnce(game);
-    expect(chaser.health).toBe(
-      Math.max(0, testEntitiesConfig.chaser.maxHealth - count * kick.damage),
+    expect(zombie.health).toBe(
+      Math.max(0, testEntitiesConfig.zombie.maxHealth - count * kick.damage),
     );
     wait(game, kick.cooldown);
   }
-  expect(game.entities.has(chaser.id)).toBe(false);
+  expect(game.entities.has(zombie.id)).toBe(false);
 });
 
 test("a kick waits out its cooldown on the kicker's client", () => {
@@ -259,13 +259,13 @@ test("a kick waits out its cooldown on the kicker's client", () => {
 
 // Over a room: the host `a` and the guest `b` on a hub that sends every payload through JSON.
 
-function chaserOf(room: Room): WorldEntity {
-  const [chaser] = sessionOf(room).entities.values();
-  if (chaser === undefined) throw new Error("no chaser");
-  return chaser;
+function zombieOf(room: Room): WorldEntity {
+  const [zombie] = sessionOf(room).entities.values();
+  if (zombie === undefined) throw new Error("no zombie");
+  return zombie;
 }
 
-/** Two clear spots side by side in the dev square, the guest's left of the chaser. */
+/** Two clear spots side by side in the dev square, the guest's left of the zombie. */
 const HOST = { x: 450, y: 150 };
 const GUEST = { x: 150, y: 300 };
 const TARGET = hitboxRightOf(GUEST);
@@ -276,7 +276,7 @@ interface Seen {
   readonly noises: Session["noises"][number][];
 }
 
-/** `a` hosting and `b` its guest, each at its spot, the chaser in the guest's kick's hitbox. */
+/** `a` hosting and `b` its guest, each at its spot, the zombie in the guest's kick's hitbox. */
 async function lineUp() {
   const room = await crew(
     {
@@ -303,17 +303,17 @@ async function lineUp() {
     for (let count = 0; count < Math.round(seconds / DT); count++)
       step(controls);
   };
-  /** Puts the chaser at `at` on the host, which the guest hears. */
-  const putChaser = (at: Point): void => {
-    Object.assign(chaserOf(room.room("a")), { ...at, tx: at.x, ty: at.y });
+  /** Puts the zombie at `at` on the host, which the guest hears. */
+  const putZombie = (at: Point): void => {
+    Object.assign(zombieOf(room.room("a")), { ...at, tx: at.x, ty: at.y });
   };
-  putChaser(TARGET);
+  putZombie(TARGET);
   run(0.5);
   for (const id of ["a", "b"]) {
     seen[id]?.flashes.splice(0);
     seen[id]?.noises.splice(0);
   }
-  expect(chaserOf(room.room("b")).tx).toBeCloseTo(TARGET.x, 0);
+  expect(zombieOf(room.room("b")).tx).toBeCloseTo(TARGET.x, 0);
   expect(
     isAreaFree(sessionOf(room.room("a")).world.map, TARGET.x, TARGET.y, 15),
   ).toBe(true);
@@ -324,7 +324,7 @@ async function lineUp() {
     seen,
     step,
     run,
-    putChaser,
+    putZombie,
   };
 }
 
@@ -332,28 +332,28 @@ test("a guest's kick hurts and knocks back on the host, and both clients see it"
   const { a, b, seen, step, run } = await lineUp();
   step(kickRight(sessionOf(b)));
   run(0.5);
-  const onHost = chaserOf(a);
-  expect(onHost.health).toBe(entities.chaser.maxHealth - kick.damage);
+  const onHost = zombieOf(a);
+  expect(onHost.health).toBe(entities.zombie.maxHealth - kick.damage);
   expect(onHost.x - TARGET.x).toBeGreaterThan(
     DUMMY_LENGTH * kick.knockback - 5,
   );
-  expect(chaserOf(b)).toMatchObject({ health: onHost.health, tx: onHost.x });
+  expect(zombieOf(b)).toMatchObject({ health: onHost.health, tx: onHost.x });
   const flash = { at: TARGET, radius: kick.radius, hit: true };
   expect(seen.a?.flashes).toEqual([expect.objectContaining(flash)]);
   expect(seen.b?.flashes).toEqual([expect.objectContaining(flash)]);
 });
 
 test("the host turns down a kick still on cooldown on the guest's own clock, however the guest's client counts", async () => {
-  const { a, b, step, run, putChaser } = await lineUp();
+  const { a, b, step, run, putZombie } = await lineUp();
   const guest = sessionOf(b);
   step(kickRight(guest));
   run(0.3);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
-  putChaser(hitboxRightOf(playerOn(a, "b")));
+  expect(zombieOf(a).health).toBe(entities.zombie.maxHealth - kick.damage);
+  putZombie(hitboxRightOf(playerOn(a, "b")));
   guest.localReadyAt.clear();
   step(kickRight(guest));
   run(0.5);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
+  expect(zombieOf(a).health).toBe(entities.zombie.maxHealth - kick.damage);
 });
 
 test("a guest without the stamina sends no kick", async () => {
@@ -370,7 +370,7 @@ test("a guest without the stamina sends no kick", async () => {
   );
   step();
   run(0.5);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth);
+  expect(zombieOf(a).health).toBe(entities.zombie.maxHealth);
 });
 
 test("a kick makes one noise from its hitbox on every client, the kicker its source", async () => {
@@ -404,12 +404,12 @@ function forgeKick(room: Room, aim: number): void {
 test("the host lunges a kicker from where it runs it, whatever the kicker's client shows", async () => {
   const { a, b, seen, step, run } = await lineUp();
   const guest = sessionOf(b);
-  // The guest's own client has it far from the chaser; the host has it by it.
+  // The guest's own client has it far from the zombie; the host has it by it.
   Object.assign(guest.local, { y: GUEST.y + 200 });
   forgeKick(b, 0);
   step();
   run(0.5);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
+  expect(zombieOf(a).health).toBe(entities.zombie.maxHealth - kick.damage);
   expect(seen.a?.flashes[0]?.at.x).toBeCloseTo(TARGET.x, 0);
   expect(seen.a?.flashes[0]?.at.y).toBeCloseTo(TARGET.y, 0);
   // And the host puts the guest back where it runs it.
@@ -440,5 +440,5 @@ test("a guest that turns and kicks in one step lands the kick where it aimed", a
   run(0.3, { ...idle, aim: { x: GUEST.x, y: GUEST.y - 1000 } });
   step(kickRight(guest));
   run(0.5);
-  expect(chaserOf(a).health).toBe(entities.chaser.maxHealth - kick.damage);
+  expect(zombieOf(a).health).toBe(entities.zombie.maxHealth - kick.damage);
 });

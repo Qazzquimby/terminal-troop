@@ -18,17 +18,17 @@ import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
 
-/** One blind chaser, so only what it hears moves it off its wander. */
+/** One blind zombie, so only what it hears moves it off its wander. */
 const entities = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 1 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 1 },
   },
 };
 
-/** Where a chaser investigates, as its snapshot carries it. */
+/** Where a zombie investigates, as its snapshot carries it. */
 const Investigating = z.object({
   noiseTarget: z.object({ x: z.number(), y: z.number() }).nullable(),
 });
@@ -71,14 +71,14 @@ function together(
   }
 }
 
-function chaserOf(room: Room): WorldEntity {
-  const [chaser] = sessionOf(room).entities.values();
-  if (chaser === undefined) throw new Error("no chaser");
-  return chaser;
+function zombieOf(room: Room): WorldEntity {
+  const [zombie] = sessionOf(room).entities.values();
+  if (zombie === undefined) throw new Error("no zombie");
+  return zombie;
 }
 
 const noiseTarget = (room: Room): Point | null =>
-  Investigating.parse(chaserOf(room).data).noiseTarget;
+  Investigating.parse(zombieOf(room).data).noiseTarget;
 
 /** A spot `distance` from `from` where a player fits. */
 function freeSpotNear(game: Session, from: Point, distance: number): Point {
@@ -92,7 +92,7 @@ function freeSpotNear(game: Session, from: Point, distance: number): Point {
   throw new Error("no free spot");
 }
 
-test("a chaser drawn by a remote player's sprinting keeps investigating when the host changes", async () => {
+test("a zombie drawn by a remote player's sprinting keeps investigating when the host changes", async () => {
   const hub = createHub();
   const clock = createManualClock();
   const client = (id: string): Room =>
@@ -124,7 +124,7 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   expect(a.hostId()).toBe("a");
 
   // The host puts b there, and b's own client takes it from the host's snapshots.
-  const spot = freeSpotNear(sessionOf(b), chaserOf(a), 250);
+  const spot = freeSpotNear(sessionOf(b), zombieOf(a), 250);
   teleport([sessionOf(a), sessionOf(b)], "b", spot);
   together(
     clock,
@@ -153,7 +153,7 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   );
 
   const heard = noiseTarget(a);
-  if (heard === null) throw new Error("the chaser heard nothing");
+  if (heard === null) throw new Error("the zombie heard nothing");
   expect(Math.hypot(heard.x - spot.x, heard.y - spot.y)).toBeLessThan(
     250 * testSimConfig.noise.blur + 10,
   );
@@ -162,10 +162,10 @@ test("a chaser drawn by a remote player's sprinting keeps investigating when the
   await a.leave();
   clock.advance(3000);
   expect(b.hostId()).toBe("b");
-  const before = Math.hypot(chaserOf(b).x - heard.x, chaserOf(b).y - heard.y);
+  const before = Math.hypot(zombieOf(b).x - heard.x, zombieOf(b).y - heard.y);
   steps(b, still, 1);
   expect(noiseTarget(b)).toEqual({ x: tenth(heard.x), y: tenth(heard.y) });
   expect(
-    Math.hypot(chaserOf(b).x - heard.x, chaserOf(b).y - heard.y),
+    Math.hypot(zombieOf(b).x - heard.x, zombieOf(b).y - heard.y),
   ).toBeLessThan(before);
 });

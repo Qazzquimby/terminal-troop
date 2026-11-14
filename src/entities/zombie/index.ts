@@ -8,6 +8,8 @@ import {
   defineEntity,
   directionalVision,
   effect,
+  hasKindTag,
+  INERT_TAG,
   isAreaFree,
   mulberry32Next,
   noisesHeardBy,
@@ -32,31 +34,31 @@ import { spawning, stepSpawning } from "./spawning.js";
 import type { SpawningConfig } from "./spawning.js";
 
 /**
- * How a chaser moves and hunts, and how many a new world starts with. Distances are in pixels,
+ * How a zombie moves and hunts, and how many a new world starts with. Distances are in pixels,
  * speeds in pixels per second.
  */
-export interface ChaserConfig {
+export interface ZombieConfig {
   readonly spawn: Scatter;
   /** How more keep arriving once the world has begun. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
   /** Health when at full. */
   readonly maxHealth: number;
-  /** Damage dealt to each player within attack range. */
+  /** Damage dealt to each player or other prey within attack range. */
   readonly attackDamage: number;
   readonly wanderSpeed: number;
   readonly chaseSpeed: number;
-  /** How far a chaser sees a player it has a clear line to within its sight cone. */
+  /** How far a zombie sees prey it has a clear line to within its sight cone. */
   readonly sightRange: number;
   /** Furthest a wander leg heads from where it starts, as the crow flies. */
   readonly wanderRange: number;
-  /** Seconds a chaser stands after a wander leg or a lost chase, drawn between the two. */
+  /** Seconds a zombie stands after a wander leg or a lost chase, drawn between the two. */
   readonly wanderPause: { readonly min: number; readonly max: number };
-  /** How far a sighted player must be from where the chase is headed before it plans anew. */
+  /** How far sighted prey must be from where the chase is headed before it plans anew. */
   readonly repathDistance: number;
   /** Seconds between barks, drawn between the two after each one. */
   readonly barkGap: { readonly min: number; readonly max: number };
-  /** How close to its target a chasing chaser must be to attack. */
+  /** How close to its target a chasing zombie must be to attack. */
   readonly attackRange: number;
   /** Seconds between attacks. */
   readonly attackCooldown: number;
@@ -84,7 +86,7 @@ const Seed = z
   .max(2 ** 31 - 1);
 
 /**
- * What a chaser keeps whichever mode it is in. Snapshots carry only the fields that changed, so
+ * What a zombie keeps whichever mode it is in. Snapshots carry only the fields that changed, so
  * its timers are deadlines on the world's clock, which change only when set. Each field says who
  * reads it: everyone, to draw it, or only the host, which sends it so that whoever hosts next goes
  * on from it. Its sounds reach every client as effects, not through its state.
@@ -107,13 +109,13 @@ const Shared = {
 };
 
 /**
- * Everyone reads the mode, to colour the chaser.
+ * Everyone reads the mode, to colour the zombie.
  * - wander: walks `route`, then stands until `standUntil`, set once it stops (host), then picks
  *   a new leg; a heard noise turns its route towards `noiseTarget` (everyone), where the noise
  *   seemed to come from
- * - chase: heads along `route` for `target`, where a player was last seen
+ * - chase: heads along `route` for `target`, where prey was last seen
  */
-export const ChaserState = z.discriminatedUnion("mode", [
+export const ZombieState = z.discriminatedUnion("mode", [
   z.object({
     ...Shared,
     mode: z.literal("wander"),
@@ -123,9 +125,9 @@ export const ChaserState = z.discriminatedUnion("mode", [
   z.object({ ...Shared, mode: z.literal("chase") }),
 ]);
 
-export type ChaserState = z.output<typeof ChaserState>;
+export type ZombieState = z.output<typeof ZombieState>;
 
-type Wander = Extract<ChaserState, { mode: "wander" }>;
+type Wander = Extract<ZombieState, { mode: "wander" }>;
 
 /** Random points tried for a wander leg before standing a while longer. */
 const LEG_ATTEMPTS = 8;
@@ -136,17 +138,23 @@ const COLOURS = {
   chase: "#d8473a",
 } as const;
 
-const CHASER_GLYPH = "🧟";
+const ZOMBIE_GLYPH = "🧟";
 
 /** The kind's name. */
-const NAME = "chaser";
+const NAME = "zombie";
 
-/** A fresh chaser's state at world time `now`, its random draws seeded by `seed`. */
-export function freshChaser(
+/**
+ * The kind tags a zombie pays no mind: other zombies, whether it hears them or sees them, and
+ * what is not worth hunting.
+ */
+const IGNORES = [NAME, INERT_TAG];
+
+/** A fresh zombie's state at world time `now`, its random draws seeded by `seed`. */
+export function freshZombie(
   seed: number,
   now: number,
-  config: ChaserConfig,
-): ChaserState {
+  config: ZombieConfig,
+): ZombieState {
   const { result, seed: next } = withSeed(seed | 0, (rng) =>
     barkGap(rng, config),
   );
@@ -178,35 +186,62 @@ function withSeed<T>(
   return { result, seed: state };
 }
 
-/** The nearest player a chaser at `at` sees within its cone or surroundings, or null. */
+/** A body a zombie may hunt. */
+interface Prey extends Point {
+  readonly id: string;
+  readonly radius: number;
+}
+
+/**
+ * Every player and world entity within `reach` of `hunter` that it hunts: anything but zombies
+ * and what the world tags as not worth hunting.
+ */
+function preyNear(
+  game: Session,
+  hunter: Prey,
+  reach: (prey: Prey) => number,
+): Prey[] {
+  const near: Prey[] = [];
+  const bodies = [...game.players.values(), ...game.entities.values()];
+  for (const body of bodies) {
+    if (body.id === hunter.id) continue;
+    const distance = Math.hypot(body.x - hunter.x, body.y - hunter.y);
+    if (distance > reach(body)) continue;
+    if (hasKindTag(game, body.id, IGNORES)) continue;
+    near.push(body);
+  }
+  return near;
+}
+
+/** The nearest prey a zombie sees within its cone or surroundings, or null. */
 function sighting(
   game: Session,
-  at: Point,
+  self: Prey,
   range: number,
   facing: number,
 ): Point | null {
-  const sources = directionalVision(at, facing, game.config.vision, range);
+  const sources = directionalVision(self, facing, game.config.vision, range);
   let nearest: Point | null = null;
   let nearestDistance = Infinity;
-  for (const player of game.players.values()) {
-    const distance = Math.hypot(player.x - at.x, player.y - at.y);
+  for (const prey of preyNear(game, self, () => range)) {
+    const distance = Math.hypot(prey.x - self.x, prey.y - self.y);
     if (
       distance < nearestDistance &&
-      sources.some((source) => canSeeFrom(game.world.map, source, player))
+      sources.some((source) => canSeeFrom(game.world.map, source, prey))
     ) {
-      nearest = { x: player.x, y: player.y };
+      nearest = { x: prey.x, y: prey.y };
       nearestDistance = distance;
     }
   }
   return nearest;
 }
 
-function pauseLength(rng: Rng, config: ChaserConfig): number {
+function pauseLength(rng: Rng, config: ZombieConfig): number {
   const { min, max } = config.wanderPause;
   return min + (max - min) * rng();
 }
 
-function barkGap(rng: Rng, config: ChaserConfig): number {
+function barkGap(rng: Rng, config: ZombieConfig): number {
   const { min, max } = config.barkGap;
   return min + (max - min) * rng();
 }
@@ -216,7 +251,7 @@ function wanderLeg(
   map: TileMap,
   at: Point,
   rng: Rng,
-  config: ChaserConfig,
+  config: ZombieConfig,
 ): Point[] | null {
   for (let attempt = 0; attempt < LEG_ATTEMPTS; attempt++) {
     const angle = rng() * Math.PI * 2;
@@ -233,8 +268,8 @@ function wanderLeg(
 }
 
 /**
- * The clearest noise a chaser at `at` hears this step, or null, and its seed after listening. It
- * ignores other chasers' noise, its own included.
+ * The clearest noise a zombie at `at` hears this step, or null, and its seed after listening. It
+ * ignores other zombies' noise, its own included.
  */
 function listen(
   state: Wander,
@@ -243,7 +278,7 @@ function listen(
 ): { result: Heard | null; seed: number } {
   return withSeed(state.seed, (rng) => {
     let clearest: Heard | null = null;
-    for (const heard of noisesHeardBy(game, { at, rng, ignores: [NAME] })) {
+    for (const heard of noisesHeardBy(game, { at, rng, ignores: IGNORES })) {
       if (clearest === null || heard.clarity > clearest.clarity)
         clearest = heard;
     }
@@ -260,7 +295,7 @@ function investigate(
   at: Point,
   heard: Point,
   map: TileMap,
-  config: ChaserConfig,
+  config: ZombieConfig,
 ): Wander {
   const { noiseTarget } = state;
   if (
@@ -283,7 +318,7 @@ function wander(
   state: Wander,
   at: Point,
   game: Session,
-  config: ChaserConfig,
+  config: ZombieConfig,
 ): Wander {
   const { map } = game.world;
   const { result: heard, seed } = listen(state, at, game);
@@ -303,27 +338,27 @@ function wander(
 }
 
 /** Stands from now for a pause drawn from its seed. */
-function stand(state: Wander, game: Session, config: ChaserConfig): Wander {
+function stand(state: Wander, game: Session, config: ZombieConfig): Wander {
   const { result, seed } = withSeed(state.seed, (rng) =>
     pauseLength(rng, config),
   );
   return { ...state, seed, standUntil: game.worldTime + result };
 }
 
-/** What a chaser carries over from `state` on changing mode. */
-function kept(state: ChaserState) {
+/** What a zombie carries over from `state` on changing mode. */
+function kept(state: ZombieState) {
   const { seed, barkAt, attackAt, attacking, facing } = state;
   return { seed, barkAt, attackAt, attacking, facing };
 }
 
 /** Heads for `seen`, planning anew unless the chase already heads close enough to it. */
 function pursue(
-  state: ChaserState,
+  state: ZombieState,
   at: Point,
   seen: Point,
   map: TileMap,
-  config: ChaserConfig,
-): ChaserState {
+  config: ZombieConfig,
+): ZombieState {
   const { target } = state;
   if (
     target !== null &&
@@ -341,9 +376,9 @@ function pursue(
 
 /** Back to wandering, standing a while first. */
 function giveUp(
-  state: ChaserState,
+  state: ZombieState,
   game: Session,
-  config: ChaserConfig,
+  config: ZombieConfig,
 ): Wander {
   return stand(
     {
@@ -360,45 +395,40 @@ function giveUp(
 }
 
 /**
- * The state a chaser at `at` moves to: a sighted player starts or steers a chase, a chase
- * that reaches where its player was last seen gives up, and otherwise it wanders, drawn by
- * what it hears.
+ * The state zombie `self` moves to: sighted prey starts or steers a chase, a chase that reaches
+ * where its prey was last seen gives up, and otherwise it wanders, drawn by what it hears.
  */
 function think(
-  state: ChaserState,
-  at: Point,
+  state: ZombieState,
+  self: Prey,
   game: Session,
-  config: ChaserConfig,
-): ChaserState {
+  config: ZombieConfig,
+): ZombieState {
   const { map } = game.world;
-  const seen = sighting(game, at, config.sightRange, state.facing);
-  if (seen !== null) return pursue(state, at, seen, map, config);
-  if (state.mode === "wander") return wander(state, at, game, config);
+  const seen = sighting(game, self, config.sightRange, state.facing);
+  if (seen !== null) return pursue(state, self, seen, map, config);
+  if (state.mode === "wander") return wander(state, self, game, config);
   return state.route.length > 0 ? state : giveUp(state, game, config);
 }
 
-/** How close a player must be to a chaser of `radius` to be hit by its attack. */
-function attackRange(
-  radius: number,
-  game: Session,
-  config: ChaserConfig,
-): number {
-  return Math.max(config.attackRange, radius + game.config.player.radius + 1);
+/** The prey close enough to zombie `self` to be hit by its attack. */
+function inReach(self: Prey, game: Session, config: ZombieConfig): Prey[] {
+  return preyNear(game, self, (prey) =>
+    Math.max(config.attackRange, self.radius + prey.radius + 1),
+  );
 }
 
-/** Attacks once the cooldown is over and the chaser is close to where it is headed. */
+/** Attacks once the cooldown is over, while chasing, when any prey is in reach. */
 function attack(
-  state: ChaserState,
-  at: Point & { readonly radius: number },
+  state: ZombieState,
+  self: Prey,
   game: Session,
-  config: ChaserConfig,
-): ChaserState {
-  const { target } = state;
+  config: ZombieConfig,
+): ZombieState {
   const attacking =
     game.worldTime >= state.attackAt &&
-    target !== null &&
-    Math.hypot(target.x - at.x, target.y - at.y) <=
-      attackRange(at.radius, game, config);
+    state.target !== null &&
+    inReach(self, game, config).length > 0;
   if (!attacking) return { ...state, attacking };
   return {
     ...state,
@@ -409,10 +439,10 @@ function attack(
 
 /** Barks once its time comes, drawing when to bark next. */
 function bark(
-  state: ChaserState,
+  state: ZombieState,
   game: Session,
-  config: ChaserConfig,
-): ChaserState {
+  config: ZombieConfig,
+): ZombieState {
   if (game.worldTime < state.barkAt) return state;
   const { result, seed } = withSeed(state.seed, (rng) => barkGap(rng, config));
   return {
@@ -428,8 +458,8 @@ function bark(
  */
 function cue(
   entity: WorldEntity,
-  previous: ChaserState,
-  next: ChaserState,
+  previous: ZombieState,
+  next: ZombieState,
   game: Session,
   sounds: Sounds,
 ): void {
@@ -442,14 +472,14 @@ function cue(
     if (sound !== false) effect(game, { at: entity, sound }, entity);
 }
 
-/** A chaser's sounds, each heard, and making noise, out to its range. */
+/** A zombie's sounds, each heard, and making noise, out to its range. */
 interface Sounds {
   readonly bark: Sound;
   readonly alert: Sound;
   readonly attack: Sound;
 }
 
-function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
+function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
   const sounds: Sounds = {
     bark: sound({ url: barkUrl, range: config.sounds.bark }),
     alert: sound({ url: alertUrl, range: config.sounds.alert }),
@@ -458,7 +488,7 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
-    data: ChaserState,
+    data: ZombieState,
     update(entity, state, dt, game) {
       const thought = think(state, entity, game, config);
       const next = bark(attack(thought, entity, game, config), game, config);
@@ -474,16 +504,13 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      const range = attackRange(entity.radius, game, config);
-      return [...game.players.values()]
-        .filter(
-          (player) =>
-            Math.hypot(player.x - entity.x, player.y - entity.y) <= range,
-        )
-        .map((player) => ({ target: player.id, amount: config.attackDamage }));
+      return inReach(entity, game, config).map((prey) => ({
+        target: prey.id,
+        amount: config.attackDamage,
+      }));
     },
     draw(ctx, entity, state) {
-      drawEmoji(ctx, entity, CHASER_GLYPH, entity.radius * 2);
+      drawEmoji(ctx, entity, ZOMBIE_GLYPH, entity.radius * 2);
       ctx.strokeStyle =
         state.mode === "wander" && state.noiseTarget !== null
           ? COLOURS.listen
@@ -498,23 +525,24 @@ function definition(config: ChaserConfig): EntityDefinition<ChaserState> {
 }
 
 /**
- * A chaser: wanders slowly, drawn towards what it hears, and runs down any player it sees to
- * where it last saw them. A new world scatters them away from the players, each drawing its own
- * seed, and more keep arriving out of sight, ever faster as the world ages.
+ * A zombie: wanders slowly, drawn towards what it hears but deaf to other zombies, and runs down
+ * anything living it sees, zombies and inert things aside, to where it last saw it. A new world
+ * scatters groups of them away from the players, each drawing its own seed, and more groups keep
+ * arriving out of sight, ever faster as the world ages.
  */
-export const chaser = defineEntity(NAME, (config: ChaserConfig) => ({
+export const zombie = defineEntity(NAME, (config: ZombieConfig) => ({
   ...definition(config),
   spawn: {
     at: "scatter",
     ...config.spawn,
     data: (rng: Rng, game: Session) =>
-      freshChaser(Math.floor(rng() * 2 ** 32), game.worldTime, config),
+      freshZombie(Math.floor(rng() * 2 ** 32), game.worldTime, config),
   },
   world: { spawning },
   step(game: Session) {
     stepSpawning(game, NAME, config.radius, config.spawning, (at) => {
       const seed = Math.floor(Math.random() * 2 ** 32);
-      spawn(game, NAME, at, freshChaser(seed, game.worldTime, config));
+      spawn(game, NAME, at, freshZombie(seed, game.worldTime, config));
     });
   },
 }));

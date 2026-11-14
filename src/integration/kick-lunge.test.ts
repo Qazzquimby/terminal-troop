@@ -46,13 +46,13 @@ const moves = {
 };
 const { kick } = moves;
 
-/** `count` blind chasers wandering the dev square, in the way of lunges where each client sees them. */
-const blindChasers = (count: number) => ({
+/** `count` blind zombies wandering the dev square, in the way of lunges where each client sees them. */
+const blindZombies = (count: number) => ({
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count, clearance: 100 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count, clearance: 100 },
   },
 });
 
@@ -104,12 +104,12 @@ function sessionOf(room: Room): Session {
 type Driver = (game: Session, time: number) => Controls;
 
 /**
- * A host and a guest joined to one room on a JSON hub with `chasers` blind chasers, each send
+ * A host and a guest joined to one room on a JSON hub with `zombies` blind zombies, each send
  * arriving 60 to 180ms later, each player at its spot. The guest's frames,
  * which send what it has to send, come every one to three steps, as a browser's do when they
  * fall behind the sim.
  */
-async function room(chasers = 4) {
+async function room(zombies = 4) {
   const hub = createHub();
   const clock = createManualClock();
   const clients = new Map<
@@ -135,7 +135,7 @@ async function room(chasers = 4) {
       clock,
       config: testRoomConfig,
       sim: testSimConfig,
-      content: [...entityContent(blindChasers(chasers)), ...moveContent(moves)],
+      content: [...entityContent(blindZombies(zombies)), ...moveContent(moves)],
       falloff: { full: 100, silent: 600, pan: 300 },
       onChange: () => undefined,
       onPeerFailed: () => undefined,
@@ -189,12 +189,12 @@ async function room(chasers = 4) {
   teleport(games, "a", HOST);
   teleport(games, "b", GUEST);
   run(1);
-  const chaser = (id: string): WorldEntity => {
+  const zombie = (id: string): WorldEntity => {
     const [found] = client(id).game().entities.values();
-    if (found === undefined) throw new Error("no chaser");
+    if (found === undefined) throw new Error("no zombie");
     return found;
   };
-  return { client, chaser, run, step };
+  return { client, zombie, run, step };
 }
 
 /** Aims at `angle` radians from where `game`'s player stands. */
@@ -259,11 +259,11 @@ const facingRight =
   (game) => ({ ...idle, secondary: kicks, aim: aiming(game, 0) });
 
 /**
- * A guest that kicks a chaser right in front of it: whether the host took the kick, whether the
+ * A guest that kicks a zombie right in front of it: whether the host took the kick, whether the
  * guest predicted a hit, and whether it still holds one.
  */
 async function kickAhead() {
-  const { client, chaser, run, step } = await room(1);
+  const { client, zombie, run, step } = await room(1);
   const guest = client("b").game();
   run(0.5, facingRight(false));
   const target = hitboxOf({
@@ -271,7 +271,7 @@ async function kickAhead() {
     y: guest.local.y,
   });
   for (const id of ["a", "b"])
-    Object.assign(chaser(id), {
+    Object.assign(zombie(id), {
       ...target,
       prevX: target.x,
       prevY: target.y,
@@ -297,14 +297,14 @@ test("a kick from where the guest stands lands, and the host's word ends its pre
   });
 });
 
-test("a guest's kick knocks the chaser back on the step it kicks, and the guest lunges its full length", async () => {
-  const { client, chaser, run, step } = await room(1);
+test("a guest's kick knocks the zombie back on the step it kicks, and the guest lunges its full length", async () => {
+  const { client, zombie, run, step } = await room(1);
   const guest = client("b").game();
   run(0.5, facingRight(false));
   const start = { x: guest.local.x, y: guest.local.y };
   const target = hitboxOf({ x: start.x + PLAYER_LENGTH, y: start.y });
   for (const id of ["a", "b"])
-    Object.assign(chaser(id), {
+    Object.assign(zombie(id), {
       ...target,
       prevX: target.x,
       prevY: target.y,
@@ -313,9 +313,9 @@ test("a guest's kick knocks the chaser back on the step it kicks, and the guest 
     });
   const shown = client("a").net.counts.shown;
   step(facingRight(true));
-  const chaserLength = testEntitiesConfig.chaser.radius * 2;
-  expect(chaser("b").x - target.x).toBeGreaterThan(
-    chaserLength * kick.knockback - 5,
+  const zombieLength = testEntitiesConfig.zombie.radius * 2;
+  expect(zombie("b").x - target.x).toBeGreaterThan(
+    zombieLength * kick.knockback - 5,
   );
   run(kick.lunge.seconds + 0.5, facingRight(false));
   expect(guest.local.x - start.x).toBeCloseTo(PLAYER_LENGTH, 0);

@@ -82,15 +82,15 @@ export const testMapMemoryConfig: MapMemoryConfig = {
 };
 
 /**
- * Three chasers in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
+ * Three zombies in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
  * seconds. One more arrives every 5 seconds as a world begins, the gap falling to 1 second over
- * 20 seconds, never past 20 alive nor within 1100px of a player, so never in the dev square,
+ * 20 seconds, one at a time, never past 20 alive nor within 1100px of a player, so never in the dev square,
  * whose far corners are nearer than that. A cruiser starts at the rally point, lighting 400px
  * round it.
  */
 export const testEntitiesConfig: EntitiesConfig = {
-  chaser: {
+  zombie: {
     spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
     spawning: {
       firstGap: 5,
@@ -99,6 +99,7 @@ export const testEntitiesConfig: EntitiesConfig = {
       maxAlive: 20,
       tries: 24,
       unseenDistance: 1100,
+      group: { min: 1, max: 1, spread: 100 },
     },
     radius: 15,
     maxHealth: 40,
@@ -118,7 +119,7 @@ export const testEntitiesConfig: EntitiesConfig = {
 };
 
 /**
- * Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most
+ * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
  * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
  * second. Both weigh nothing, so what a player carries does not slow it, and no loot is laid.
  */
@@ -152,7 +153,7 @@ export const testItemsConfig: ItemsConfig = {
 
 /**
  * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
- * test chaser falls to its fourth, sending what it hits two of its own body lengths away. It costs
+ * test zombie falls to its fourth, sending what it hits two of its own body lengths away. It costs
  * a third of the test stamina bar, at most twice a second.
  */
 export const testMovesConfig: MovesConfig = {

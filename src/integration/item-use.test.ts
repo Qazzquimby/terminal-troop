@@ -345,31 +345,31 @@ function sessionOf(room: Room): Session {
   return state.session;
 }
 
-function chaserOf(room: Room): WorldEntity {
-  const kind = sessionOf(room).kindIds.get("chaser");
+function zombieOf(room: Room): WorldEntity {
+  const kind = sessionOf(room).kindIds.get("zombie");
   const found = [...sessionOf(room).entities.values()].find(
     (entity) => entity.kind === kind,
   );
-  if (found === undefined) throw new Error("no chaser");
+  if (found === undefined) throw new Error("no zombie");
   return found;
 }
 
-/** One blind chaser that stands still. */
-const stillChaser = {
+/** One blind zombie that stands still. */
+const stillZombie = {
   ...testEntitiesConfig,
-  chaser: {
-    ...testEntitiesConfig.chaser,
+  zombie: {
+    ...testEntitiesConfig.zombie,
     sightRange: 0,
     wanderSpeed: 0,
-    spawn: { ...testEntitiesConfig.chaser.spawn, count: 1 },
+    spawn: { ...testEntitiesConfig.zombie.spawn, count: 1 },
   },
 };
 
-/** Where the guest stands, and the chaser in its swing to the right. */
+/** Where the guest stands, and the zombie in its swing to the right. */
 const GUEST = { x: 150, y: 300 };
 const TARGET = { x: GUEST.x + shovel.reach, y: GUEST.y };
 
-/** Two clients joined to one room on the same hub, `a` hosting, the chaser in the guest's swing. */
+/** Two clients joined to one room on the same hub, `a` hosting, the zombie in the guest's swing. */
 async function pair() {
   const hub = createHub();
   const clock = createManualClock();
@@ -389,7 +389,7 @@ async function pair() {
       clock,
       config: testRoomConfig,
       sim: testSimConfig,
-      content: [...entityContent(stillChaser), ...itemContent(testItemsConfig)],
+      content: [...entityContent(stillZombie), ...itemContent(testItemsConfig)],
       falloff: { full: 100, silent: 600, pan: 300 },
       onChange: () => undefined,
       onPeerFailed: () => undefined,
@@ -422,7 +422,7 @@ async function pair() {
   const games = [sessionOf(a), sessionOf(b)];
   teleport(games, "a", { x: 450, y: 150 });
   teleport(games, "b", GUEST);
-  Object.assign(chaserOf(a), { ...TARGET, tx: TARGET.x, ty: TARGET.y });
+  Object.assign(zombieOf(a), { ...TARGET, tx: TARGET.x, ty: TARGET.y });
   for (let round = 0; round < 4; round++) exchange();
   expect(sessionOf(b).local).toMatchObject(GUEST);
   return { a, b, clock, exchange, hostCatchesUp };
@@ -436,7 +436,7 @@ const swingRightOf = (game: Session): Controls => ({
 test("the host applies a guest's swing of the item it holds", async () => {
   const { a, b, exchange } = await pair();
   exchange(swingRightOf(sessionOf(b)));
-  expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth - shovel.damage);
+  expect(zombieOf(a).health).toBe(stillZombie.zombie.maxHealth - shovel.damage);
 });
 
 test("a guest that takes out the shovel and swings between ticks is heard holding it", async () => {
@@ -446,7 +446,7 @@ test("a guest that takes out the shovel and swings between ticks is heard holdin
   updateSession(guest, { ...swingRightOf(guest), select: 0 }, DT);
   b.frame(clock.now());
   hostCatchesUp();
-  expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth - shovel.damage);
+  expect(zombieOf(a).health).toBe(stillZombie.zombie.maxHealth - shovel.damage);
 });
 
 test("the host ignores a guest's use of an item its record does not have in the slot named", async () => {
@@ -456,7 +456,7 @@ test("the host ignores a guest's use of an item its record does not have in the 
   forgeAction(guest, "item/shovel.use", { slot: 1, aim: 0 });
   exchange();
   const host = sessionOf(a);
-  expect(chaserOf(a).health).toBe(stillChaser.chaser.maxHealth);
+  expect(zombieOf(a).health).toBe(stillZombie.zombie.maxHealth);
   expect(host.players.get("b")?.use).toBeNull();
   expect(host.noises).toEqual([]);
 });
