@@ -63,6 +63,7 @@ test("a full send carries every entry, one never set at version 0; a delta only 
     "core/health.players": [0, {}],
     "core/predictions.handled": [0, {}],
     "core/walls.destroyed": [0, []],
+    "core/statuses.entities": [0, {}],
     "entity/well.water": [0, 3],
     "entity/well.keeper": [0, "nobody"],
   });

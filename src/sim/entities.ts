@@ -10,6 +10,7 @@ import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
+import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
 import type { VehicleSpec } from "./driving.js";
 
@@ -214,25 +215,39 @@ export function spawnEntity(
   return placeEntity(game, id, kind, type, x, y, type.maxHealth, parsed);
 }
 
+/** Runs `entity`'s kind for a step: its update, then the damage it deals. */
+function runKind(game: Session, entity: WorldEntity, dt: number): void {
+  const type = game.entityTypes.get(entity.kind);
+  type?.update(entity, dt, game);
+  if (!game.entities.has(entity.id)) return;
+  type?.strikes(entity, game).forEach(({ target, amount }) => {
+    const player = game.players.get(target);
+    if (player !== undefined) hurtPlayer(game, player, amount);
+    const struck = game.entities.get(target);
+    if (struck !== undefined) applyDamage(struck, amount);
+  });
+}
+
 /**
  * Runs each entity's kind, then moves it. An entity's target follows it, so a client that
- * stops hosting eases on from where the entity is.
+ * stops hosting eases on from where the entity is. A stunned entity's kind is not run, so it
+ * stands still, sees nothing and strikes nothing, whatever its kind, and goes on from the state
+ * it had once the stun ends.
  */
 export function updateEntities(game: Session, dt: number): void {
   cullDeadEntities(game);
+  pruneStatuses(game);
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
 
-    const type = game.entityTypes.get(entity.kind);
-    type?.update(entity, dt, game);
-    if (!game.entities.has(entity.id)) return;
-    type?.strikes(entity, game).forEach(({ target, amount }) => {
-      const player = game.players.get(target);
-      if (player !== undefined) hurtPlayer(game, player, amount);
-      const struck = game.entities.get(target);
-      if (struck !== undefined) applyDamage(struck, amount);
-    });
+    if (isStunned(game, entity.id)) {
+      entity.vx = 0;
+      entity.vy = 0;
+    } else {
+      runKind(game, entity, dt);
+      if (!game.entities.has(entity.id)) return;
+    }
 
     if (entity.collides) {
       moveWithCollision(

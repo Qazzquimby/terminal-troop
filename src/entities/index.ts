@@ -1,6 +1,8 @@
 import type { ContentConfig, WorldContent } from "../sim/index.js";
 import { zombie } from "./zombie/index.js";
 import { cruiser } from "./cruiser/index.js";
+import { snail } from "./snail/index.js";
+import { stunTrap } from "./stun-trap/index.js";
 
 export {
   departingIn,
@@ -8,9 +10,10 @@ export {
   nearCruiser,
   refuel,
 } from "./cruiser/index.js";
+export { placeStunTrap } from "./stun-trap/index.js";
 
 /** Every kind of entity in the game; the room numbers kinds by this order. */
-const ENTITIES = [zombie, cruiser] as const;
+const ENTITIES = [zombie, cruiser, stunTrap, snail] as const;
 
 /** Each entry's config, under its name. */
 export type EntitiesConfig = ContentConfig<(typeof ENTITIES)[number]>;
