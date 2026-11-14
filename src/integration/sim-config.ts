@@ -8,7 +8,33 @@ import type {
   MapMemoryConfig,
   RippleConfig,
 } from "../render/index.js";
-import type { SimConfig } from "../sim/index.js";
+import type { GenerationConfig, SimConfig } from "../sim/index.js";
+
+/**
+ * A road 8 to 16 cells wide, bending every 12 columns by up to 6 rows, kept 10 rows off the top and
+ * bottom; 2 to 5 cells of yard; rooms 3x3 to 8x8. The start is the first 5 columns, the exit the
+ * last 5.
+ */
+export const testGeneration: GenerationConfig = {
+  road: { width: { min: 8, max: 16 }, step: 12, meander: 6, margin: 10 },
+  yard: {
+    depth: { min: 2, max: 5 },
+    clutter: { near: 0.1, far: 0.9 },
+    tries: 0.6,
+  },
+  rooms: {
+    size: { min: 3, max: 8 },
+    minCells: 6,
+    solidChance: 0.3,
+    hallwayChance: 0.2,
+    hallway: { width: 2, length: 14 },
+    door: { min: 1, max: 3 },
+    loops: 0.35,
+  },
+  danger: { road: 3, right: 3 },
+  start: 5,
+  exit: 5,
+};
 
 /**
  * Tuning for tests that build a whole session. A full stamina bar lasts 3s of sprinting and
@@ -19,7 +45,14 @@ import type { SimConfig } from "../sim/index.js";
  * 100px, up to 500px from 0.8, in steps of 50px, rippling every 0.4s.
  */
 export const testSimConfig: SimConfig = {
-  world: { cell: 50, cols: 80, rows: 60, seed: 7, wallBounce: 0 },
+  world: {
+    cell: 50,
+    cols: 80,
+    rows: 60,
+    seed: 7,
+    wallBounce: 0,
+    generation: testGeneration,
+  },
   view: { width: 900, height: 600 },
   player: {
     radius: 14,
@@ -115,7 +148,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     attackCooldown: 1.5,
     sounds: { bark: 400, alert: 500, attack: 250 },
   },
-  cruiser: { lightRadius: 400 },
+  cruiser: { lightRadius: 400, escape: { delay: 20, volume: 1 } },
 };
 
 /**

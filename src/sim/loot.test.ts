@@ -6,6 +6,7 @@ import { lootContent, pickLoot } from "./loot.js";
 import type { LootConfig } from "./loot.js";
 import { createSession } from "./session.js";
 import type { Session } from "./session.js";
+import type { WorldConfig } from "./map.js";
 
 const DANGER: LootConfig["danger"] = {
   extra: 1,
@@ -65,9 +66,14 @@ const pick = (id: string, weight: number) =>
     traits: { weight: 1, loot: { weight, rarity: "common" as const } },
   })).create({ [id]: undefined });
 
-function populated(count: number, danger?: number): Session {
+function populated(
+  count: number,
+  danger?: number,
+  world: WorldConfig = testSimConfig.world,
+): Session {
   const game = createSession("me", "ME", "LOOT", "standard", testSfx(), {
     ...testSimConfig,
+    world,
   });
   const loot = lootContent({
     scatter: { count, seed: 1, clearance: 0 },
@@ -83,11 +89,23 @@ const laid = (game: Session): string[] =>
   [...game.entities.values()].map((entity) => JSON.stringify(entity.data));
 
 test("a new world lays an item at each spot of the loot's scatter", () => {
-  const game = populated(12);
+  const game = populated(12, 0);
   expect(laid(game)).toEqual(Array(12).fill(JSON.stringify({ item: "lamp" })));
 });
 
 test("where it is dangerous, a spot may lay a second item; a safe one never does", () => {
   expect(laid(populated(12, 0))).toHaveLength(12);
   expect(laid(populated(12, 1))).toHaveLength(24);
+});
+
+test("a new world's danger is its layout's: none where nothing is dangerous, some where it is", () => {
+  const safe = {
+    ...testSimConfig.world,
+    generation: {
+      ...testSimConfig.world.generation,
+      danger: { road: 0, right: 0 },
+    },
+  };
+  expect(laid(populated(40, undefined, safe))).toHaveLength(40);
+  expect(laid(populated(40)).length).toBeGreaterThan(45);
 });

@@ -41,6 +41,9 @@ function session(localId = "me"): Session {
     testSfx(),
     testSimConfig,
   );
+  // The player arrives at random by the rally point, in the square's left columns; this one
+  // stands well clear of the entities the tests place there.
+  Object.assign(game.local, { x: 600, y: 450 });
   registerEntityType(game, KIND, {
     radius: 10,
     maxHealth: 10,

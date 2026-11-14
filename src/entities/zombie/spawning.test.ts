@@ -1,4 +1,5 @@
-import { expect, test } from "vitest";
+import { mean } from "lodash-es";
+import { expect, test, vi } from "vitest";
 import {
   testEntitiesConfig,
   testSfx,
@@ -7,14 +8,22 @@ import {
 import {
   createPlayer,
   createSession,
+  dangerWeight,
   mulberry32,
   randomFreePosition,
   registerContent,
+  remoteness,
   updateSession,
 } from "../../sim/index.js";
-import type { Controls, Session, SimConfig } from "../../sim/index.js";
+import type {
+  Controls,
+  DangerConfig,
+  Session,
+  SimConfig,
+} from "../../sim/index.js";
 import type { EntitiesConfig } from "../index.js";
 import { entityContent } from "../index.js";
+import { spawnAllowed, spawnWeight } from "./spawning.js";
 import type { SpawningConfig } from "./spawning.js";
 
 const DT = 1 / 60;
@@ -248,4 +257,92 @@ test("each zombie a new world scatters is gathered into a group as spawning begi
   expect(leaders).toBeGreaterThan(0);
   play(game, DT);
   expect(zombies(game)).toBe(leaders * 3);
+});
+
+/** The test tuning, its world as dangerous as `danger` makes it; the layout is the same. */
+function dangerous(danger: DangerConfig): SimConfig {
+  return {
+    ...testSimConfig,
+    world: {
+      ...testSimConfig.world,
+      generation: { ...testSimConfig.world.generation, danger },
+    },
+  };
+}
+
+/** How remote each zombie that spawned over `seconds` is, with no cap. */
+function spawnSpots(danger: DangerConfig, seconds: number) {
+  const game = world({ ...SPAWNING, maxAlive: 1000 }, dangerous(danger));
+  const kind = game.kindIds.get("zombie");
+  play(game, seconds);
+  return [...game.entities.values()]
+    .filter((entity) => entity.kind === kind)
+    .map(({ x, y }) => remoteness(game.world, { x, y }));
+}
+
+test("spawns favour dangerous spots: far from the road, and towards the exit's side", () => {
+  // Spawns draw from Math.random; seeded here so the comparison is the same every run.
+  const seeded = (danger: DangerConfig) => {
+    vi.spyOn(Math, "random").mockImplementation(mulberry32(11));
+    const spots = spawnSpots(danger, SPAWNING.rampSeconds + 30);
+    vi.restoreAllMocks();
+    return {
+      count: spots.length,
+      road: mean(spots.map(({ road }) => road)),
+      across: mean(spots.map(({ across }) => across)),
+    };
+  };
+  const even = seeded({ road: 0, right: 0 });
+  const far = seeded({ road: 20, right: 0 });
+  const right = seeded({ road: 0, right: 20 });
+
+  expect(far.count).toBeGreaterThan(20);
+  expect(far.road).toBeGreaterThan(even.road + 0.05);
+  expect(right.across).toBeGreaterThan(even.across + 0.05);
+});
+
+test("a spawn's weight is the world's danger weight there, and nothing in the start", () => {
+  const game = world();
+  const { start } = game.world.layout;
+  const inStart = { x: start.x + start.w / 2, y: start.y + start.h / 2 };
+  expect(spawnAllowed(game, inStart)).toBe(false);
+  expect(spawnWeight(game, inStart)).toBe(0);
+  const middle = { x: game.world.W / 2, y: inStart.y };
+  const { road } = remoteness(game.world, middle);
+  const { danger } = testSimConfig.world.generation;
+  expect(spawnWeight(game, middle)).toBeCloseTo(
+    (1 + danger.road * road) * (1 + danger.right * 0.5),
+  );
+  expect(spawnWeight(game, middle)).toBe(dangerWeight(game.world, middle));
+});
+
+test("a new world's first zombies favour the same spots", () => {
+  const first = (danger: DangerConfig) => {
+    const entities: EntitiesConfig = {
+      ...testEntitiesConfig,
+      zombie: {
+        ...testEntitiesConfig.zombie,
+        spawn: { ...testEntitiesConfig.zombie.spawn, count: 200 },
+      },
+    };
+    const game = createSession(
+      "me",
+      "ME",
+      "FIRST",
+      "standard",
+      testSfx(),
+      dangerous(danger),
+      { rng: mulberry32(4) },
+    );
+    registerContent(game, entityContent(entities));
+    for (const content of game.contents) content.populate(game);
+    const kind = game.kindIds.get("zombie");
+    return [...game.entities.values()]
+      .filter((entity) => entity.kind === kind)
+      .map(({ x, y }) => remoteness(game.world, { x, y }).across);
+  };
+  // Weighed 1 + 20a, an even spread across averages 0.5, a favoured one about two thirds.
+  expect(mean(first({ road: 0, right: 20 }))).toBeGreaterThan(
+    mean(first({ road: 0, right: 0 })) + 0.08,
+  );
 });

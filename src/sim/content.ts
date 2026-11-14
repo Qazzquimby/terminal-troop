@@ -149,7 +149,9 @@ export interface Scatter {
 /**
  * Where a new world puts a kind's starting entities:
  * - scatter: at random free spots seeded by the room; `data` draws from the same generator, and
- *   may read the session it spawns into
+ *   may read the session it spawns into. With `weight`, a spot is drawn among those clear of the
+ *   players in proportion to its weight there; a spot weighing 0 is never taken while another is
+ *   found
  * - rally: one at the world's rally point, where new players arrive, or at the nearest free spot
  * - a function: spawns them itself
  */
@@ -157,6 +159,7 @@ export type SpawnRule<S> =
   | (Scatter & {
       readonly at: "scatter";
       readonly data: (rng: Rng, game: Session) => S;
+      readonly weight?: SpotWeight;
     })
   | { readonly at: "rally"; readonly data: S }
   | ((spawn: (at: Point, data: S) => WorldEntity, game: Session) => void);
@@ -171,6 +174,9 @@ export interface EntitySpec<S> extends EntityDefinition<S> {
   /** Runs on the host, each step, once the entities have moved. */
   step?(game: Session, dt: number): void;
 }
+
+/** How strongly a scatter favours the spot `at`: 0 or more. */
+type SpotWeight = (game: Session, at: Point) => number;
 
 /** Random spots tried for each scattered entity before taking the one furthest from the players. */
 const SPAWN_ATTEMPTS = 64;
@@ -209,6 +215,32 @@ function scatterPoint(
   return best;
 }
 
+/** Spots drawn for each entity of a weighted scatter, among which it picks by weight. */
+const WEIGHED_SPOTS = 24;
+
+/**
+ * A spot drawn among `WEIGHED_SPOTS` free spots clear of the players, each in proportion to its
+ * weight; as an unweighted scatter draws one when none is clear of them or has weight.
+ */
+function weighedPoint(
+  game: Session,
+  rng: Rng,
+  radius: number,
+  clearance: number,
+  weight: SpotWeight,
+): Point {
+  let chosen: Point | null = null;
+  let total = 0;
+  for (let attempt = 0; attempt < WEIGHED_SPOTS; attempt++) {
+    const point = randomFreePosition(game.world, radius, rng);
+    if (distanceToPlayers(game, point) < clearance) continue;
+    const share = Math.max(0, weight(game, point));
+    total += share;
+    if (share > 0 && rng() * total < share) chosen = point;
+  }
+  return chosen ?? scatterPoint(game, rng, radius, clearance);
+}
+
 function scatterCount(game: Session, count: SpawnCount): number {
   if (typeof count === "number") return count;
   const area = (game.world.W * game.world.H) / 1_000_000;
@@ -217,18 +249,24 @@ function scatterCount(game: Session, count: SpawnCount): number {
 
 /**
  * Calls `place` at each spot `scatter` picks for bodies of `radius`, with the generator the spots
- * are drawn from, seeded by the room and the scatter's own seed.
+ * are drawn from, seeded by the room and the scatter's own seed; by `weight` among those clear of
+ * the players, if it has one.
  */
 export function scatterEach(
   game: Session,
-  scatter: Scatter,
+  scatter: Scatter & { readonly weight?: SpotWeight | undefined },
   radius: number,
   place: (at: Point, rng: Rng) => void,
 ): void {
   const rng = mulberry32(game.seed ^ scatter.seed);
   const count = scatterCount(game, scatter.count);
   for (let i = 0; i < count; i++)
-    place(scatterPoint(game, rng, radius, scatter.clearance), rng);
+    place(
+      scatter.weight === undefined
+        ? scatterPoint(game, rng, radius, scatter.clearance)
+        : weighedPoint(game, rng, radius, scatter.clearance, scatter.weight),
+      rng,
+    );
 }
 
 function spawnByRule<S>(

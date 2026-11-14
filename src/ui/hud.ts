@@ -13,6 +13,10 @@ export interface HudState {
   readonly held: HeldSlot;
   /** The team's credit. */
   readonly credit: number;
+  /** Whether the local player has escaped. */
+  readonly escaped: boolean;
+  /** Seconds until the cruiser leaves the exit, while it waits there; null otherwise. */
+  readonly departingIn: number | null;
 }
 
 /** An item's uses as its slot shows them: a bar of what is left, and "left/max". */
@@ -76,12 +80,26 @@ export function creditText(credit: number): string {
   return `${String(credit)}$`;
 }
 
+/**
+ * What the departure shows: that the local player escaped, else a countdown to the cruiser leaving
+ * the exit, in whole seconds rounded up, else nothing.
+ */
+export function departureText(
+  escaped: boolean,
+  departingIn: number | null,
+): string {
+  if (escaped) return "Escaped";
+  if (departingIn === null) return "";
+  return `Leaving in ${String(Math.ceil(departingIn))}s`;
+}
+
 interface HudElements {
   readonly bar: Pick<HTMLElement, "hidden">;
   readonly slots: Pick<HTMLOListElement, "replaceChildren">;
   readonly credit: Pick<HTMLElement, "textContent">;
   /** What everything carried weighs together. */
   readonly weight: Pick<HTMLElement, "textContent">;
+  readonly departure: Pick<HTMLElement, "textContent">;
 }
 
 function span(className: string, text: string): HTMLSpanElement {
@@ -132,13 +150,15 @@ function slotElement(view: SlotView): HTMLLIElement {
 
 /**
  * The bottom toolbar: every inventory slot, the held one highlighted, with each item's weight and
- * uses left; what everything carried weighs together, and the team's credit beside them. Shown
- * while in a room; hidden by showing null.
+ * uses left; what everything carried weighs together, the team's credit beside them, and the
+ * departure's countdown, or that the local player escaped. Shown while in a room; hidden by
+ * showing null.
  */
 export function createHud(elements: HudElements, config: HudConfig) {
   let shownSlots = "";
   let shownCredit = "";
   let shownWeight = "";
+  let shownDeparture = "";
   return {
     show(state: HudState | null): void {
       elements.bar.hidden = state === null;
@@ -158,6 +178,11 @@ export function createHud(elements: HudElements, config: HudConfig) {
       if (weight !== shownWeight) {
         shownWeight = weight;
         elements.weight.textContent = weight;
+      }
+      const departure = departureText(state.escaped, state.departingIn);
+      if (departure !== shownDeparture) {
+        shownDeparture = departure;
+        elements.departure.textContent = departure;
       }
     },
   };

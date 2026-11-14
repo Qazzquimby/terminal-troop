@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { isAreaFree, isSweepFree, worldData } from "../../sim/index.js";
+import {
+  dangerWeight,
+  inRect,
+  isAreaFree,
+  isSweepFree,
+  worldData,
+} from "../../sim/index.js";
 import type { Point, Session } from "../../sim/index.js";
 
 /** How zombies keep arriving once a world has begun. Times are in sim seconds. */
@@ -30,9 +36,6 @@ interface GroupConfig {
   readonly spread: number;
 }
 
-/** The kind of entity spawns favour being far from. */
-const CRUISER = "cruiser";
-
 /**
  * When, on the world's clock, spawning began and the next spawn is due; null until a host first
  * steps the world. Kept in the world so a new host goes on along the same ramp.
@@ -49,12 +52,21 @@ function countOf(game: Session, kind: string): number {
   return count;
 }
 
-/** Where the cruiser stands, or null when the world has none. */
-function cruiserAt(game: Session): Point | null {
-  const id = game.kindIds.get(CRUISER);
-  for (const entity of game.entities.values())
-    if (entity.kind === id) return { x: entity.x, y: entity.y };
-  return null;
+/**
+ * Whether a zombie may appear at `at` at all: never in the world's start, where the players
+ * gather. The hook for every other rule of where monsters may not appear, such as in light.
+ */
+export function spawnAllowed(game: Session, at: Point): boolean {
+  return !inRect(game.world.layout.start, at);
+}
+
+/**
+ * How strongly zombies favour appearing at `at`, a new world's first included: by its danger,
+ * more the farther it is from the road and the nearer the exit's side of the world; 0 where they
+ * may not appear.
+ */
+export function spawnWeight(game: Session, at: Point): number {
+  return spawnAllowed(game, at) ? dangerWeight(game.world, at) : 0;
 }
 
 function nearestPlayerDistance(game: Session, at: Point): number {
@@ -65,16 +77,15 @@ function nearestPlayerDistance(game: Session, at: Point): number {
 }
 
 /**
- * A free point no player stands near enough to watch a spawn at, drawn so that a point twice as
- * far from the cruiser is twice as likely, or null when none of the tries finds one. Only the
- * host spawns, and snapshots carry what it spawned, so the draws need no shared seed.
+ * A free point no player stands near enough to watch a spawn at, drawn among the tries by its
+ * spawn weight, or null when none of the tries finds one. Only the host spawns, and snapshots
+ * carry what it spawned, so the draws need no shared seed.
  */
 function unseenPoint(
   game: Session,
   radius: number,
   config: SpawningConfig,
 ): Point | null {
-  const cruiser = cruiserAt(game);
   let chosen: Point | null = null;
   let totalWeight = 0;
   for (let attempt = 0; attempt < config.tries; attempt++) {
@@ -84,8 +95,8 @@ function unseenPoint(
     };
     if (!isAreaFree(game.world.map, at.x, at.y, radius)) continue;
     if (nearestPlayerDistance(game, at) < config.unseenDistance) continue;
-    const weight =
-      cruiser === null ? 1 : Math.hypot(cruiser.x - at.x, cruiser.y - at.y) + 1;
+    const weight = spawnWeight(game, at);
+    if (weight <= 0) continue;
     totalWeight += weight;
     if (Math.random() * totalWeight < weight) chosen = at;
   }
@@ -184,7 +195,7 @@ function gatherStartingGroups(
 
 /**
  * Spawns the next group of the world's growing tide of `kind` once it is due, out of every
- * player's sight and likelier far from the cruiser; a spawn with nowhere to go, or due while the
+ * player's sight and likelier far from the road and towards the exit; a spawn with nowhere to go, or due while the
  * world is full, is skipped, and a group that would overfill it comes short. As spawning begins,
  * the zombies a new world starts with are gathered into groups too. Runs on the host.
  */

@@ -25,7 +25,9 @@ import { createInventory } from "./inventory.js";
 import { storePrevious } from "./interpolation.js";
 import type { Moving } from "./interpolation.js";
 import type { Point, Rng, ViewConfig, World, WorldKind } from "./map.js";
-import { buildDevWorld, buildWorld, mulberry32 } from "./map.js";
+import { buildWorld } from "./generation.js";
+import { buildDevWorld, danger, mulberry32 } from "./map.js";
+import { setDanger } from "./loot.js";
 import type { Controls, Player, PlayerRules } from "./player.js";
 import { createPlayer } from "./player.js";
 import type { Noise, NoiseConfig } from "./noise.js";
@@ -182,7 +184,12 @@ function buildRoomWorld(
   kind: WorldKind,
   config: SimConfig,
 ): World {
-  if (kind === "dev") return buildDevWorld(config.world.cell, config.view);
+  if (kind === "dev")
+    return buildDevWorld(
+      config.world.cell,
+      config.view,
+      config.world.generation.danger,
+    );
   return buildWorld(config.world, mulberry32(seed));
 }
 
@@ -255,6 +262,8 @@ export function createSession(
     lastAction: 0,
   };
   registerBuiltIns(game);
+  // Loot is richer where monsters spawn more: the world's danger, from how it was laid out.
+  setDanger(game, (at) => danger(world, at));
   return game;
 }
 

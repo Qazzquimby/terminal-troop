@@ -10,6 +10,7 @@ import type {
   World,
 } from "../sim/index.js";
 import {
+  AREA,
   aimAt,
   emittedLights,
   heldItemOf,
@@ -68,6 +69,13 @@ function inView(body: Circle, camera: Camera): boolean {
   );
 }
 
+/** The ground's colours: the road a little lighter than the rest, the exit marked out in green. */
+const TERRAIN = {
+  road: "#1f1f22",
+  exit: "rgba(90, 220, 140, 0.12)",
+  exitEdge: "rgba(90, 220, 140, 0.55)",
+};
+
 function drawTerrain(
   ctx: CanvasRenderingContext2D,
   world: World,
@@ -87,6 +95,16 @@ function drawTerrain(
 
   ctx.fillStyle = "#181818";
   ctx.fillRect(0, 0, world.W, world.H);
+  ctx.fillStyle = TERRAIN.road;
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      if (world.layout.area[row * map.cols + col] === AREA.road)
+        ctx.fillRect(col * map.cell, row * map.cell, map.cell, map.cell);
+    }
+  }
+  const { exit } = world.layout;
+  ctx.fillStyle = TERRAIN.exit;
+  ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
   ctx.lineWidth = 1;
   ctx.strokeStyle = "#252525";
 
@@ -95,6 +113,13 @@ function drawTerrain(
       ctx.strokeRect(col * map.cell, row * map.cell, map.cell, map.cell);
     }
   }
+
+  ctx.save();
+  ctx.setLineDash([12, 8]);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = TERRAIN.exitEdge;
+  ctx.strokeRect(exit.x, exit.y, exit.w, exit.h);
+  ctx.restore();
 
   ctx.strokeStyle = "#69727b";
   ctx.strokeRect(0, 0, world.W, world.H);
