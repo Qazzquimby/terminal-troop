@@ -7,6 +7,7 @@ import { scrap } from "./scrap/index.js";
 import { shotgun } from "./shotgun/index.js";
 import { radio } from "./radio/index.js";
 import { shovel } from "./shovel/index.js";
+import { stunTrap } from "./stun-trap/index.js";
 import { walkie } from "./walkie/index.js";
 
 export { credit } from "./scrap/index.js";
@@ -24,6 +25,7 @@ const ITEMS = [
   walkie,
   radio,
   fuel,
+  stunTrap,
 ] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */

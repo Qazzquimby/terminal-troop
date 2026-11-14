@@ -277,6 +277,35 @@ export const config = {
       // Everyone in the exit escapes once the cruiser has waited there 20s.
       escape: { delay: 20, volume: 0.8 },
     },
+    // Arms 3s after it is put down, then beeps, heard 2 cells off. Whatever steps on it sets it
+    // off: a bang heard 12 cells off, and a flash that stuns for 5s every entity with a clear line
+    // to it within 5 cells, lighting 8 cells round it for half a second.
+    stunTrap: {
+      radius: 10,
+      armSeconds: 3,
+      stunRange: CELL * 5,
+      stunSeconds: 5,
+      light: { range: CELL * 8, seconds: 0.5 },
+      sounds: { beep: CELL * 2, flash: CELL * 12 },
+      volume: 0.8,
+    },
+    // At most one alive, the first 4 minutes into a world, never within 14 cells of a player, then
+    // a try every 5 minutes, should it ever be gone. It creeps at a fifth of a player's walk, kills
+    // whatever it touches, at most once a second, and replans its way every 2 seconds.
+    snail: {
+      spawning: {
+        firstDelay: 240,
+        gap: 300,
+        maxAlive: 1,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      radius: 12,
+      speedShare: 0.2,
+      damage: 500,
+      attackCooldown: 1,
+      repathInterval: 2,
+    },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.
@@ -386,6 +415,15 @@ export const config = {
       switchRange: CELL * 2,
       range: CELL * 25,
       noiseInterval: 1,
+    },
+    // One use: put down where its holder stands. As likely as a handgun, and light.
+    stunTrap: {
+      weight: 4,
+      uses: 1,
+      loot: { weight: 6, rarity: "uncommon" },
+      cooldown: 0.5,
+      volume: 0.6,
+      placeNoiseRadius: CELL,
     },
     // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
     // most dangerous spot there is an even chance of a second, an uncommon item is twice as

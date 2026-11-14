@@ -17,6 +17,7 @@ import {
   ambientPolygons,
   emittedLights,
   heldItemOf,
+  isStunned,
   isVisible,
   lightSources,
   litWalls,
@@ -188,6 +189,31 @@ export function drawEmoji(
   ctx.textBaseline = "middle";
   ctx.fillText(glyph, at.x, at.y);
   ctx.restore();
+}
+
+/** Seconds a stunned entity's stars take to circle its head once. */
+const STUN_SPIN = 1.2;
+
+/** Stars circling above a stunned entity's head, whatever its kind. */
+function drawStunned(
+  ctx: CanvasRenderingContext2D,
+  entity: Entity,
+  now: number,
+): void {
+  const turn = ((now % STUN_SPIN) / STUN_SPIN) * Math.PI * 2;
+  const above = entity.y - entity.radius - 6;
+  for (const offset of [0, Math.PI]) {
+    const angle = turn + offset;
+    drawEmoji(
+      ctx,
+      {
+        x: entity.x + Math.cos(angle) * entity.radius * 0.8,
+        y: above + Math.sin(angle) * 3,
+      },
+      "⭐",
+      9,
+    );
+  }
 }
 
 /** How large a crouching player's body is drawn, as a fraction of its radius. */
@@ -711,6 +737,7 @@ export function draw(
       sceneCtx.save();
       definition.draw(sceneCtx, entity, now, game);
       sceneCtx.restore();
+      if (isStunned(game, entity.id)) drawStunned(sceneCtx, entity, now);
       drawHealthBar(sceneCtx, entity, entity.y - entity.radius - 8);
     });
 

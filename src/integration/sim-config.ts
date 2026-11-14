@@ -121,7 +121,9 @@ export const testMapMemoryConfig: MapMemoryConfig = {
  * seconds. One more arrives every 5 seconds as a world begins, the gap falling to 1 second over
  * 20 seconds, one at a time, never past 20 alive nor within 1100px of a player, so never in the dev square,
  * whose far corners are nearer than that. A cruiser starts at the rally point, its two headlights
- * 45 degree cones reaching 400px.
+ * 45 degree cones reaching 400px. A stun trap arms in 3s and stuns for 5s within 250px. The
+ * snail creeps at a fifth of a player's pace and kills what it touches; none arrives in the first
+ * ten minutes, so it stays out of tests that are not about it.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   zombie: {
@@ -171,6 +173,29 @@ export const testEntitiesConfig: EntitiesConfig = {
     ram: { speed: 100, damage: 20, cooldown: 0.5, noiseRadius: 500 },
     headlights: { range: 400, angle: Math.PI / 4, spread: 7 },
     escape: { delay: 20, volume: 1 },
+  },
+  stunTrap: {
+    radius: 10,
+    armSeconds: 3,
+    stunRange: 250,
+    stunSeconds: 5,
+    light: { range: 400, seconds: 0.5 },
+    sounds: { beep: 100, flash: 600 },
+    volume: 1,
+  },
+  snail: {
+    spawning: {
+      firstDelay: 600,
+      gap: 600,
+      maxAlive: 1,
+      tries: 24,
+      unseenDistance: 1100,
+    },
+    radius: 12,
+    speedShare: 0.2,
+    damage: 500,
+    attackCooldown: 1,
+    repathInterval: 1,
   },
 };
 
@@ -265,6 +290,13 @@ export const testItemsConfig: ItemsConfig = {
     switchRange: 100,
     range: 1000,
     noiseInterval: 1,
+  },
+  stunTrap: {
+    weight: 0,
+    uses: 1,
+    cooldown: 0.5,
+    volume: 1,
+    placeNoiseRadius: 50,
   },
   loot: {
     scatter: { count: 0, seed: 6, clearance: 200 },

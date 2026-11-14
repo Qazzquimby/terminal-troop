@@ -193,9 +193,9 @@ test("the host's players go out with its ticks, not between them", async () => {
 test("the host's entities reach the other client, ids, kinds, spots and state alike", async () => {
   const { a, b } = await hosted();
   expect(a.hostId()).toBe("a");
-  // Three zombies, the cruiser, then three scrap lying about, numbered by the content list on
-  // both clients.
-  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([1, 1, 1, 2, 3, 3, 3]);
+  // Three zombies, the cruiser, then three scrap lying about, numbered by the content list (the
+  // stun trap and the snail come between) on both clients.
+  expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([1, 1, 1, 2, 5, 5, 5]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 
   for (let step = 0; step < 60; step++)
