@@ -4,6 +4,7 @@ import {
   lastFreePointAlong,
   moveWithCollision,
 } from "./collision.js";
+import type { Ride } from "./driving.js";
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget, lerpAngle } from "./interpolation.js";
@@ -141,6 +142,8 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   crouched: boolean;
   /** The dash under way, if any: its own lunge, or a knockback. */
   dash: Dash | null;
+  /** The vehicle it drives, if any: it is where the vehicle is, and its steps drive it. */
+  ride: Ride | null;
 }
 
 /** A player at rest at `at`. */
@@ -175,6 +178,7 @@ export function createPlayer(
     voiceGap: 0,
     crouched: false,
     dash: null,
+    ride: null,
     health: rules.player.maxHealth,
     maxHealth: rules.player.maxHealth,
   };

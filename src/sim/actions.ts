@@ -760,6 +760,19 @@ export function spawn(
   if (scope(game) === "world") spawnEntity(game, kind, at.x, at.y, data);
 }
 
+/**
+ * Changes the state of world entity `entity` by `change`, which only the host does; its snapshots
+ * carry the change to every client. `change` takes the state as it is held, unparsed: a kind's
+ * own content parses it.
+ */
+export function changeEntity(
+  game: Session,
+  entity: WorldEntity,
+  change: (data: unknown) => unknown,
+): void {
+  if (scope(game) === "world") entity.data = change(entity.data);
+}
+
 /** Changes the world state `data` by `change`, which only the host does. */
 export function changeWorld<S>(
   game: Session,

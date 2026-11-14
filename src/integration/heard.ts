@@ -23,6 +23,7 @@ export function entryOf(
     },
     crouched: false,
     dash: null,
+    ride: null,
     steer: { move: { x: 0, y: 0 }, sprint: false, held: null },
     content: {},
     ...fields,

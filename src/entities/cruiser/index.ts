@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { drawEmoji } from "../../render/index.js";
 import {
   defineEntity,
   effect,
@@ -7,7 +6,24 @@ import {
   inRect,
   worldData,
 } from "../../sim/index.js";
-import type { LightEmission, Player, Point, Session } from "../../sim/index.js";
+import type {
+  LightEmission,
+  Player,
+  Point,
+  Session,
+  WorldEntity,
+} from "../../sim/index.js";
+import {
+  cruiserNear,
+  CruiserState,
+  FRESH,
+  stepCruiser,
+  vehicle,
+} from "./drive.js";
+import type { DrivingConfig } from "./drive.js";
+import { drawCruiser } from "./draw.js";
+
+export { refuel } from "./drive.js";
 // The departure's sounds, once their assets land; importing a missing file breaks the build.
 // import departUrl from "./sfx/depart.mp3";
 // import escapeUrl from "./sfx/escape.mp3";
@@ -30,38 +46,39 @@ interface HeadlightConfig {
   readonly spread: number;
 }
 
-/** A car that starts at the world's rally point, its headlights always on. */
-export interface CruiserConfig {
+/**
+ * A car that starts at the world's rally point, its headlights always on, unfuelled; fuelled, a
+ * player can drive it.
+ */
+export interface CruiserConfig extends DrivingConfig {
+  /** Half its size, in pixels: its body is a square this far from its centre each way. */
+  readonly radius: number;
   readonly headlights: HeadlightConfig;
   readonly escape: EscapeConfig;
 }
 
 const NAME = "cruiser";
 
-/** The cruiser's body; its emoji is drawn to that size. */
-const BODY_RADIUS = 10;
-
 /**
- * Which way the cruiser faces, in radians: along the road, towards the exit. It does not turn
- * until it can be driven.
+ * Its headlights, front left and front right at the front of its body of `radius`, both shining
+ * the way it points, `heading`.
  */
-const FACING = 0;
-
-/** Its headlights, front left and front right, both shining the way it faces. */
-function headlights(config: HeadlightConfig): LightEmission[] {
-  const ahead = { x: Math.cos(FACING), y: Math.sin(FACING) };
+function headlights(
+  config: HeadlightConfig,
+  radius: number,
+  heading: number,
+): LightEmission[] {
+  const ahead = { x: Math.cos(heading), y: Math.sin(heading) };
   const side = { x: -ahead.y, y: ahead.x };
   return [-1, 1].map((hand) => ({
     from: {
-      x: ahead.x * BODY_RADIUS + side.x * config.spread * hand,
-      y: ahead.y * BODY_RADIUS + side.y * config.spread * hand,
+      x: ahead.x * radius + side.x * config.spread * hand,
+      y: ahead.y * radius + side.y * config.spread * hand,
     },
     range: config.range,
-    shape: { kind: "cone", direction: FACING, angle: config.angle },
+    shape: { kind: "cone", direction: heading, angle: config.angle },
   }));
 }
-
-const CRUISER_GLYPH = "🚗";
 
 /** How wide an escaping player's flash is, in its own radii. */
 const ESCAPE_FLASH = 3;
@@ -139,21 +156,38 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
     );
 }
 
+/** The cruiser nearest `at`, within `reach` of touching its body; null for none. */
+export const nearCruiser = (
+  game: Session,
+  at: Point & { readonly radius: number },
+  reach: number,
+): WorldEntity | null => cruiserNear(game, NAME, at, reach);
+
 /**
- * A car that starts where new players arrive, its two headlights always shining ahead. Once it reaches the
+ * A car that starts where new players arrive, its two headlights always shining ahead. It starts without
+ * fuel; once fuelled its engine runs, and a player beside it can take the wheel and drive it,
+ * burning fuel as it moves, ramming what it drives into and knocking down the walls it crashes
+ * into, until it breaks down. Others do not ride along, and walk through it. Once it reaches the
  * world's exit, it takes everyone there out after a delay.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
-  radius: BODY_RADIUS,
+  radius: config.radius,
   maxHealth: Infinity,
   collides: false,
   tags: [INERT_TAG],
-  data: z.object({}),
-  light: () => headlights(config.headlights),
-  draw(ctx, entity) {
-    drawEmoji(ctx, entity, CRUISER_GLYPH, BODY_RADIUS * 2);
+  data: CruiserState,
+  light: (_entity, state) =>
+    headlights(config.headlights, config.radius, state.heading),
+  vehicle: vehicle(config),
+  update: (entity, state, dt, game) =>
+    stepCruiser(game, entity, state, dt, config),
+  draw(ctx, entity, state, _now, game) {
+    drawCruiser(ctx, entity, state, game, {
+      fullTank: config.gauge,
+      breakdown: config.crash.breakdown,
+    });
   },
-  spawn: { at: "rally", data: {} },
+  spawn: { at: "rally", data: FRESH },
   world: { departure },
   step(game) {
     stepDeparture(game, config.escape);

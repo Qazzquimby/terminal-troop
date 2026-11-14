@@ -15,6 +15,8 @@ import type { WorldDataSet } from "./world-data.js";
 import { voiceNoise } from "./voice-noise.js";
 import { onAir } from "./voice-routes.js";
 import { drop, pickUp } from "./world-items.js";
+import { vehicleActions } from "./vehicle.js";
+import { destroyedWalls } from "./walls.js";
 
 /**
  * State the engine itself keeps on every player or once for the world, and events and actions it
@@ -46,6 +48,10 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/steering": { events: steeringEvents },
   /** Items lying in the world, picked up and dropped. */
   "core/world-items": { actions: [pickUp, drop] },
+  /** Getting in and out of vehicles. */
+  "core/vehicles": { actions: vehicleActions },
+  /** The walls knocked down since the world was laid, which every client clears from its map. */
+  "core/walls": { world: { destroyed: destroyedWalls } },
   /** The latest action the host has handled from each player, which ends what that player's client predicted. */
   "core/predictions": { world: { handled: handledActions } },
   /**

@@ -11,6 +11,7 @@ import { isAreaFree } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import type { LightEmission } from "./vision.js";
+import type { VehicleSpec } from "./driving.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
@@ -51,6 +52,8 @@ export interface EntityDefinition<S> {
     entity: WorldEntity,
     data: S,
   ) => LightEmission | readonly LightEmission[] | null;
+  /** What makes it a vehicle a player can drive, if it is one. */
+  readonly vehicle?: VehicleSpec;
   /** Steers the entity before it moves, and returns its next state. Runs only while hosting. */
   readonly update?: (
     entity: WorldEntity,
@@ -80,6 +83,7 @@ export interface EntityType {
   readonly collides: boolean;
   readonly tags: readonly string[];
   readonly data: z.ZodType;
+  readonly vehicle: VehicleSpec | null;
   light(entity: WorldEntity): readonly LightEmission[];
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
@@ -109,6 +113,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     collides: definition.collides ?? true,
     tags: definition.tags ?? [],
     data: schema,
+    vehicle: definition.vehicle ?? null,
     light(entity) {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return [];

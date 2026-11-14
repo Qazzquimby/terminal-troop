@@ -1,6 +1,7 @@
 import { lootContent } from "../sim/index.js";
 import type { ContentConfig, LootConfig, WorldContent } from "../sim/index.js";
 import { flashlight } from "./flashlight/index.js";
+import { fuel } from "./fuel/index.js";
 import { handgun } from "./handgun/index.js";
 import { scrap } from "./scrap/index.js";
 import { shotgun } from "./shotgun/index.js";
@@ -22,6 +23,7 @@ const ITEMS = [
   flashlight,
   walkie,
   radio,
+  fuel,
 ] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */

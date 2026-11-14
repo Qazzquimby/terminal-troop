@@ -16,6 +16,7 @@ import { isFull, isOn, ItemId, ItemState, UsesLeft } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { controlHeldItem } from "./use.js";
+import { useVehicle } from "./vehicle.js";
 
 /** How items lie in the world. Distances in pixels, times in sim seconds. */
 export interface WorldItemConfig {
@@ -204,16 +205,22 @@ function nearestTouching(game: Session): WorldEntity | null {
 }
 
 /**
- * The local player's interaction: picks up the nearest lying item it touches, if it has room;
- * otherwise works the item it holds, if that item has a control.
+ * The local player's interaction: at the wheel, gets out. On foot, picks up the nearest lying
+ * item it touches, if it has room; failing that gets in a vehicle beside it, if it may; otherwise
+ * works the item it holds, if that item has a control.
  */
 export function interact(game: Session): void {
   const { local } = game;
+  if (local.ride !== null) {
+    useVehicle(game);
+    return;
+  }
   const nearest = isFull(local.inventory) ? null : nearestTouching(game);
   if (nearest !== null) {
     pickUp.perform(game, { id: nearest.id });
     return;
   }
+  if (useVehicle(game)) return;
   controlHeldItem(game);
 }
 

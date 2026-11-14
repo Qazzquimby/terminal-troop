@@ -231,9 +231,49 @@ export const config = {
       // sight, the cry as it starts a chase further, its bite only nearby.
       sounds: { bark: CELL * 8, alert: CELL * 10, attack: CELL * 5 },
     },
+    // Four cells across. It drives like a heavy car: up to 6 cells a second, 2s to get there,
+    // turning a full circle in about 5s once past 3 cells a second, slower below. A can of fuel
+    // drives it 15s, about 90 cells at speed; the gauge shows two cans. A player within half a
+    // cell of its body can get in.
     cruiser: {
-      // Two headlights 14px apart at its front, each a 40 degree cone reaching 12 cells.
-      headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 7 },
+      radius: CELL * 2,
+      handling: {
+        speed: CELL * 6,
+        reverse: CELL * 2,
+        acceleration: CELL * 3,
+        braking: CELL * 9,
+        drag: CELL * 2,
+        turnRate: 1.2,
+        grip: CELL * 3,
+      },
+      reach: CELL / 2,
+      burn: 1,
+      gauge: 30,
+      // Its engine idles 3 cells off once a second, so a fuelled car is barely heard; driven, it
+      // is heard 14 cells off twice a second, past a walk, short of a sprint.
+      engine: {
+        idle: { interval: 1, radius: CELL * 3 },
+        drive: { interval: 0.5, radius: CELL * 14 },
+      },
+      // Losing half its top speed against a wall knocks the wall down and stops it dead, for 50
+      // damage; the fifth crash breaks it down. Heard 20 cells off.
+      crash: {
+        speed: CELL * 3,
+        damage: 50,
+        breakdown: 250,
+        noiseRadius: CELL * 20,
+      },
+      // From 2 cells a second it hurts what it hits as hard as a zombie has health, and shoves
+      // it aside, once a half second each.
+      ram: {
+        speed: CELL * 2,
+        damage: 40,
+        cooldown: 0.5,
+        noiseRadius: CELL * 10,
+      },
+      // Two headlights at its front, one each side 38px from its middle, by the lamps drawn on
+      // it, each a 40 degree cone reaching 12 cells.
+      headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 38 },
       // Everyone in the exit escapes once the cruiser has waited there 20s.
       escape: { delay: 20, volume: 0.8 },
     },
@@ -289,6 +329,16 @@ export const config = {
       volume: 1,
       duration: 0.12,
       spark: 7,
+    },
+    // A heavy can, 30lb, worth 15s of driving, poured in within a cell of the cruiser. Laid
+    // half as often as a shovel: about three in a world of 20 items, enough to cross it.
+    fuel: {
+      weight: 30,
+      loot: { weight: 15, rarity: "common" },
+      seconds: 15,
+      reach: CELL,
+      cooldown: 0.5,
+      volume: 0.8,
     },
     scrap: {
       weight: 15,
