@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import type { World } from "./map.js";
+import { testGeneration } from "../integration/sim-config.js";
 import { movement } from "./movement.js";
 import type { Controls, Player, PlayerRules } from "./player.js";
 import type { CollisionBody } from "./collision.js";
@@ -37,10 +38,20 @@ const rules: PlayerRules = {
     regenDelay: 0.6,
     recover: STAMINA_MAX * 0.3,
   },
-  world: { cell: 50, cols: 100, rows: 100, seed: 1, wallBounce: 0 },
+  world: {
+    cell: 50,
+    cols: 100,
+    rows: 100,
+    seed: 1,
+    wallBounce: 0,
+    generation: testGeneration,
+  },
 };
 
-function openWorld(): World {
+/** A world of open floor; only its map matters to a player moving. */
+type OpenWorld = Pick<World, "W" | "H" | "map">;
+
+function openWorld(): OpenWorld {
   const map = { cell: 50, cols: 100, rows: 100, solid: new Uint8Array(10000) };
   return { W: 5000, H: 5000, map };
 }
@@ -48,7 +59,7 @@ function openWorld(): World {
 /** Steps `player` `steps` times, moving right unless `held` says otherwise. */
 function hold(
   player: Player,
-  world: World,
+  world: OpenWorld,
   held: Partial<Controls>,
   steps: number,
 ) {
@@ -69,7 +80,7 @@ function hold(
   }
 }
 
-function run(player: Player, world: World, sprint: boolean, steps: number) {
+function run(player: Player, world: OpenWorld, sprint: boolean, steps: number) {
   hold(player, world, { sprint }, steps);
 }
 
@@ -150,7 +161,7 @@ test("holding sprint while standing still does not drain stamina", () => {
 const STILL = { move: { x: 0, y: 0 } };
 
 /** Presses crouch for one step, standing still. */
-function pressCrouch(player: Player, world: World) {
+function pressCrouch(player: Player, world: OpenWorld) {
   hold(player, world, { ...STILL, crouch: true }, 1);
 }
 
@@ -216,7 +227,7 @@ test("running out of stamina drops sprint to walk speed until recovered", () => 
 /** Steps `player`'s dash `steps` times past `others`. */
 function dash(
   player: Player,
-  world: World,
+  world: OpenWorld,
   steps: number,
   others: CollisionBody[] = [],
 ) {

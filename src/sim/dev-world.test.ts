@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { testSfx, testSimConfig } from "../integration/sim-config.js";
+import {
+  testGeneration,
+  testSfx,
+  testSimConfig,
+} from "../integration/sim-config.js";
 import type { TileMap } from "./map.js";
 import { DEV_PILLARS, buildDevWorld, isSolid } from "./map.js";
 import { createSession } from "./session.js";
@@ -7,10 +11,17 @@ import { createSession } from "./session.js";
 const CELL = 50;
 const VIEW = { width: 900, height: 600 };
 /** The standard world whose layout the fingerprint below pins. */
-const WORLD = { cell: CELL, cols: 160, rows: 120, seed: 1, wallBounce: 0 };
+const WORLD = {
+  cell: CELL,
+  cols: 160,
+  rows: 120,
+  seed: 1,
+  wallBounce: 0,
+  generation: testGeneration,
+};
 const config = { ...testSimConfig, world: WORLD, view: VIEW };
 
-const devWorld = () => buildDevWorld(CELL, VIEW);
+const devWorld = () => buildDevWorld(CELL, VIEW, testGeneration.danger);
 
 function solidCells(map: TileMap): string[] {
   const cells: string[] = [];
@@ -92,5 +103,5 @@ test("sessions build the world their kind names", () => {
   );
   expect(standard.world.W).toBe(160 * CELL);
   expect(standard.world.H).toBe(120 * CELL);
-  expect(fingerprint(standard.world.map)).toBe(968259081);
+  expect(fingerprint(standard.world.map)).toBe(2313285859);
 });

@@ -1,6 +1,12 @@
 import { expect, test } from "vitest";
 import type { Inventory } from "../sim/index.js";
-import { createHud, creditText, slotViews, weightText } from "./hud.js";
+import {
+  createHud,
+  creditText,
+  departureText,
+  slotViews,
+  weightText,
+} from "./hud.js";
 
 const CONFIG = { segmentsUpTo: 10 };
 const shovel = { id: "shovel", name: "Shovel", emoji: "🪏", weight: 15 };
@@ -50,6 +56,14 @@ test("credit reads as a count of dollars after the number", () => {
   expect(creditText(12)).toBe("12$");
 });
 
+test("the departure counts down in whole seconds, says when the player escaped, and is blank otherwise", () => {
+  expect(departureText(false, null)).toBe("");
+  expect(departureText(false, 20)).toBe("Leaving in 20s");
+  expect(departureText(false, 12.2)).toBe("Leaving in 13s");
+  expect(departureText(true, 5)).toBe("Escaped");
+  expect(departureText(true, null)).toBe("Escaped");
+});
+
 test("outside a room the bar is hidden, and nothing is drawn into it", () => {
   const bar = { hidden: false };
   const slots = {
@@ -59,7 +73,8 @@ test("outside a room the bar is hidden, and nothing is drawn into it", () => {
   };
   const credit = { textContent: "" };
   const weight = { textContent: "" };
-  const hud = createHud({ bar, slots, credit, weight }, CONFIG);
+  const departure = { textContent: "" };
+  const hud = createHud({ bar, slots, credit, weight, departure }, CONFIG);
   hud.show(null);
   expect(bar.hidden).toBe(true);
   expect(credit.textContent).toBe("");

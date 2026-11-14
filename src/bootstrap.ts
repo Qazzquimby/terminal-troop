@@ -52,7 +52,7 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createTrysteroTransport } from "./adapters/trystero-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
-import { entityContent } from "./entities/index.js";
+import { departingIn, entityContent, hasEscaped } from "./entities/index.js";
 import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 
@@ -81,6 +81,7 @@ const hud = createHud(
     slots: element("#hud-slots", HTMLOListElement),
     credit: element("#hud-credit", HTMLSpanElement),
     weight: element("#hud-weight", HTMLSpanElement),
+    departure: element("#hud-departure", HTMLSpanElement),
   },
   config.hud,
 );
@@ -408,6 +409,8 @@ function frame(): void {
       inventory: session.local.inventory,
       held: session.local.held,
       credit: credit.get(session),
+      escaped: hasEscaped(session, session.local),
+      departingIn: departingIn(session, config.entities.cruiser.escape.delay),
     });
   } else {
     hud.show(null);

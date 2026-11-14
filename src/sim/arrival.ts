@@ -1,6 +1,11 @@
 import { isSweepFree, nearestFreePoint } from "./collision.js";
 import type { Point, Rng, World } from "./map.js";
-import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
+import {
+  isAreaFree,
+  mulberry32,
+  randomFreePosition,
+  randomFreePositionIn,
+} from "./map.js";
 
 /** Where players arrive in a world they have not been in. */
 export interface ArrivalConfig {
@@ -15,15 +20,20 @@ const RALLY_SEED = 0x5a11e;
 const ARRIVAL_ATTEMPTS = 32;
 
 /**
- * The world's rally point: a free spot, seeded by the room, so every client in the room finds
- * the same one without hearing from the others. Room for a body of `clearance` half-size.
+ * The world's rally point: a free spot in its start, seeded by the room, so every client in the
+ * room finds the same one without hearing from the others. Room for a body of `clearance`
+ * half-size; anywhere free in the world if the start has none.
  */
 export function rallyPoint(
   world: World,
   seed: number,
   clearance: number,
 ): Point {
-  return randomFreePosition(world, clearance, mulberry32(seed ^ RALLY_SEED));
+  const rng = mulberry32(seed ^ RALLY_SEED);
+  return (
+    randomFreePositionIn(world, world.layout.start, clearance, rng) ??
+    randomFreePosition(world, clearance, rng)
+  );
 }
 
 /**

@@ -366,3 +366,11 @@ canvas {
   display: block;
   margin-left: auto;
 }
+.hud-departure {
+  padding-bottom: 6px;
+  font-size: 14px;
+  color: #7ee2a8;
+}
+.hud-departure:empty {
+  display: none;
+}

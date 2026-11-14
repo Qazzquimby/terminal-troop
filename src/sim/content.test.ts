@@ -108,6 +108,29 @@ describe("scatter", () => {
     expect(rock(scatter(3), session("SPAWN", "dev")).entities.size).toBe(3);
   });
 
+  test("with a weight, never takes a spot weighing nothing while it finds another", () => {
+    const game = rock({
+      ...scatter(20),
+      weight: (world, at) => (at.x > world.world.W / 2 ? 1 : 0),
+    });
+    expect(game.entities.size).toBe(20);
+    for (const { x, y } of placed(game)) {
+      expect(x).toBeGreaterThan(game.world.W / 2);
+      expect(isAreaFree(game.world.map, x, y, RADIUS)).toBe(true);
+    }
+  });
+
+  test("with a weight, favours the heavier spots", () => {
+    const right = (game: Session) =>
+      placed(game).filter(({ x }) => x > game.world.W / 2).length;
+    const even = rock(scatter(60));
+    const leaning = rock({
+      ...scatter(60),
+      weight: (world, at) => (at.x > world.world.W / 2 ? 9 : 1),
+    });
+    expect(right(leaning)).toBeGreaterThan(right(even) + 10);
+  });
+
   test("spots and data are seeded by the room", () => {
     const snapshot = (game: Session) =>
       [...game.entities.values()].map(({ x, y, data }) => ({ x, y, data }));

@@ -30,7 +30,7 @@ import type {
   WorldEntity,
 } from "../../sim/index.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
-import { spawning, stepSpawning } from "./spawning.js";
+import { spawnWeight, spawning, stepSpawning } from "./spawning.js";
 import type { SpawningConfig } from "./spawning.js";
 
 /**
@@ -537,6 +537,7 @@ export const zombie = defineEntity(NAME, (config: ZombieConfig) => ({
     ...config.spawn,
     data: (rng: Rng, game: Session) =>
       freshZombie(Math.floor(rng() * 2 ** 32), game.worldTime, config),
+    weight: spawnWeight,
   },
   world: { spawning },
   step(game: Session) {

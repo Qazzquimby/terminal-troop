@@ -56,20 +56,26 @@ export { lootContent, setDanger } from "./loot.js";
 export type { LootConfig } from "./loot.js";
 
 export {
+  AREA,
+  inRect,
   isAreaFree,
   mulberry32,
   mulberry32Next,
   randomFreePosition,
+  dangerWeight,
+  remoteness,
   WORLD_KINDS,
 } from "./map.js";
 export type {
   Point,
   Rng,
   TileMap,
+  DangerConfig,
   ViewConfig,
   World,
   WorldKind,
 } from "./map.js";
+export type { GenerationConfig } from "./generation.js";
 export { showFlash } from "./flashes.js";
 export {
   alter,

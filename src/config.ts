@@ -41,7 +41,40 @@ const CELL = 50;
 const STAMINA_MAX = 100;
 
 export const config = {
-  world: { cell: CELL, cols: 100, rows: 80, seed: 1, wallBounce: 0 },
+  // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
+  // with 3 to 7 cells of yard either side: clutter by a tenth of the tries by the road, nine
+  // tenths at the yard's far edge. Past it, buildings of 3x3 to 9x9 rooms, a fifth of cuts laying a
+  // 2-wide hallway up to 16 long, doors 1 to 3 wide; a third of the spare ways get doors too, so
+  // routes loop. The start is the road's first 6 columns, the exit its last 8.
+  world: {
+    cell: CELL,
+    cols: 140,
+    rows: 80,
+    seed: 1,
+    wallBounce: 0,
+    generation: {
+      road: { width: { min: 8, max: 24 }, step: 16, meander: 8, margin: 18 },
+      yard: {
+        depth: { min: 3, max: 7 },
+        clutter: { near: 0.1, far: 0.9 },
+        tries: 0.6,
+      },
+      rooms: {
+        size: { min: 3, max: 9 },
+        minCells: 6,
+        solidChance: 0.3,
+        hallwayChance: 0.2,
+        hallway: { width: 2, length: 16 },
+        door: { min: 1, max: 3 },
+        loops: 0.35,
+      },
+      // Monsters spawn, and loot is richer, up to 4x by distance from the road and 4x towards the
+      // exit: 16x at the far right corner over the road at the start.
+      danger: { road: 3, right: 3 },
+      start: 6,
+      exit: 8,
+    },
+  },
   view: { width: 900, height: 600 },
   // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
   // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads
@@ -193,6 +226,8 @@ export const config = {
     },
     cruiser: {
       lightRadius: CELL * 12,
+      // Everyone in the exit escapes once the cruiser has waited there 20s.
+      escape: { delay: 20, volume: 0.8 },
     },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
