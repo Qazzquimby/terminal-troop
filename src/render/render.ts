@@ -349,7 +349,10 @@ export function drawLitWalls(
  * Each noise the local player heard lately, as of `now` in ms, as a ring spreading from where it
  * seemed to come from.
  */
-/** Draws each flash as of `time` in ms: a filled disc and its ring, fading out. */
+/**
+ * Draws each flash as of `time` in ms: a filled disc and its ring, fading out, with a shot's
+ * tracer streaking in to it.
+ */
 export function drawFlashes(
   ctx: Pick<
     CanvasRenderingContext2D,
@@ -357,6 +360,8 @@ export function drawFlashes(
     | "restore"
     | "beginPath"
     | "arc"
+    | "moveTo"
+    | "lineTo"
     | "fill"
     | "stroke"
     | "fillStyle"
@@ -372,6 +377,15 @@ export function drawFlashes(
     const disc = flashDisc(flash, time, config);
     if (disc === null) continue;
     ctx.save();
+    if (disc.from !== undefined) {
+      ctx.strokeStyle = config.tracer.colour;
+      ctx.lineWidth = config.tracer.width;
+      ctx.globalAlpha = disc.fade;
+      ctx.beginPath();
+      ctx.moveTo(disc.from.x, disc.from.y);
+      ctx.lineTo(disc.x, disc.y);
+      ctx.stroke();
+    }
     ctx.fillStyle = disc.colour;
     ctx.strokeStyle = disc.colour;
     ctx.lineWidth = config.width;

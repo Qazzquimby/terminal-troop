@@ -12,6 +12,8 @@ export interface FlashConfig {
   readonly width: number;
   /** Its colour for a blow that connected, and for one that did not. */
   readonly colour: { readonly hit: string; readonly miss: string };
+  /** A shot's tracer, streaking in to its flash and fading with it: thickness in pixels, and colour. */
+  readonly tracer: { readonly width: number; readonly colour: string };
 }
 
 /** A blow seen landing, as it is drawn. */
@@ -19,6 +21,8 @@ interface Flash {
   readonly at: Point;
   readonly radius: number;
   readonly hit: boolean;
+  /** Where a shot's tracer streaked in from, if it was a shot. */
+  readonly from?: Point;
   /** When it was seen, in ms on the frame clock. */
   readonly startedAt: number;
 }
@@ -29,6 +33,8 @@ export interface FlashDisc extends Point {
   /** How far it has faded, from 1 at the start to 0 at the end. */
   readonly fade: number;
   readonly colour: string;
+  /** Where its tracer starts, if it has one; the tracer ends at the disc. */
+  readonly from?: Point;
 }
 
 /** The blows the local player has seen land lately, kept for drawing on this client alone. */
@@ -56,10 +62,11 @@ export function createFlashes(config: FlashConfig): Flashes {
     see(game, time) {
       list = [
         ...list.filter((flash) => time - flash.startedAt < durationMs),
-        ...game.flashes.map(({ at, radius, hit }) => ({
+        ...game.flashes.map(({ at, radius, hit, from }) => ({
           at,
           radius,
           hit,
+          ...(from !== undefined && { from }),
           startedAt: time,
         })),
       ];
@@ -84,5 +91,6 @@ export function flashDisc(
     radius: flash.radius * (config.start + (1 - config.start) * progress),
     fade: 1 - progress,
     colour: flash.hit ? config.colour.hit : config.colour.miss,
+    ...(flash.from !== undefined && { from: flash.from }),
   };
 }

@@ -284,6 +284,8 @@ test("a flash is drawn as a filled disc and its ring on the blow, fading as it s
     save: vi.fn(),
     restore: vi.fn(),
     beginPath: vi.fn(),
+    moveTo: (x: number, y: number) => calls.push(["moveTo", x, y]),
+    lineTo: (x: number, y: number) => calls.push(["lineTo", x, y]),
     arc: (x: number, y: number, radius: number, from: number, to: number) =>
       calls.push(["arc", x, y, radius, from, to]),
     fill() {
@@ -313,4 +315,15 @@ test("a flash is drawn as a filled disc and its ring on the blow, fading as it s
     1000 + duration * 1000,
   );
   expect(calls).toEqual([]);
+
+  // A shot's flash streaks its tracer in from where it was fired, fading with it.
+  const shot = { ...flash, hit: false, from: { x: 0, y: 60 } };
+  const half = 1000 + (duration * 1000) / 2;
+  drawFlashes(ctx, { config: testFlashConfig, list: [shot] }, half);
+  expect(calls.slice(0, 3)).toEqual([
+    ["moveTo", 0, 60],
+    ["lineTo", 40, 60],
+    ["stroke", testFlashConfig.tracer.colour, 0.5],
+  ]);
+  expect(calls[4]).toEqual(["fill", colour.miss, fill * 0.5]);
 });

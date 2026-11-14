@@ -1,6 +1,8 @@
 import { lootContent } from "../sim/index.js";
 import type { ContentConfig, LootConfig, WorldContent } from "../sim/index.js";
+import { handgun } from "./handgun/index.js";
 import { scrap } from "./scrap/index.js";
+import { shotgun } from "./shotgun/index.js";
 import { shovel } from "./shovel/index.js";
 
 export { credit } from "./scrap/index.js";
@@ -9,7 +11,7 @@ export { credit } from "./scrap/index.js";
  * Every item in the game. A new item is one entry here and its slice of config, which holds its
  * weight, uses and loot weight with the rest of its tuning.
  */
-const ITEMS = [shovel, scrap] as const;
+const ITEMS = [shovel, scrap, handgun, shotgun] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */
 export type ItemsConfig = ContentConfig<(typeof ITEMS)[number]> & {

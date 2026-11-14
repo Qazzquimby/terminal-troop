@@ -39,6 +39,8 @@ interface AppConfig extends SimConfig {
 
 const CELL = 50;
 const STAMINA_MAX = 100;
+/** What one shovel hit deals; a gun's shot deals two. */
+const SHOVEL_DAMAGE = 15;
 
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
@@ -111,12 +113,14 @@ export const config = {
   // Where the player stands, saved every 2s while it moves, so a reload puts it back there.
   positionMemory: { saveInterval: 2, maxRooms: 50 },
   // A kick's flash: three quarters of its size at first, swelling to full as it fades over 0.3s.
+  // A shot's flash streaks in on a thin pale-yellow tracer that fades with it.
   flashes: {
     duration: 0.3,
     start: 0.75,
     fill: 0.55,
     width: 4,
     colour: { hit: "#ffb04a", miss: "#e6edf3" },
+    tracer: { width: 1.5, colour: "#fff3b0" },
   },
   player: {
     radius: 14,
@@ -233,19 +237,54 @@ export const config = {
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.
   items: {
+    // Wears out after 30 swings, hits and misses alike.
     shovel: {
       weight: 15,
+      uses: 30,
       loot: { weight: 30, rarity: "common" },
       radius: 20,
       reach: 45,
-      damage: 15,
+      damage: SHOVEL_DAMAGE,
       knockback: 20,
       cooldown: 1,
       duration: 0.18,
       volume: 0.8,
-      // A swing that hits rings out 14 cells; a miss whooshes 3.
+      // A swing that hits rings out 14 cells; a miss whooshes 3; one that only clangs off a wall
+      // carries 10, short of a hit.
       hitNoiseRadius: CELL * 14,
       missNoiseRadius: CELL * 3,
+      wallNoiseRadius: CELL * 10,
+    },
+    // Six shots, each as hard as two shovel hits, straight out 12 cells, at most two a second.
+    // The loudest thing a player does: heard 30 cells off, nearly twice a sprint. Rarer than a
+    // shovel by five, and light.
+    handgun: {
+      weight: 3,
+      uses: 6,
+      loot: { weight: 6, rarity: "uncommon" },
+      damage: SHOVEL_DAMAGE * 2,
+      range: CELL * 12,
+      cooldown: 0.5,
+      noiseRadius: CELL * 30,
+      volume: 1,
+      duration: 0.08,
+      spark: 5,
+    },
+    // Two blasts, each six handgun shots fanned across 30 degrees, out 8 cells; louder still.
+    // Rarer than the handgun by half, and heavier.
+    shotgun: {
+      weight: 8,
+      uses: 2,
+      loot: { weight: 3, rarity: "rare" },
+      damage: SHOVEL_DAMAGE * 2,
+      range: CELL * 8,
+      pellets: 6,
+      arc: Math.PI / 6,
+      cooldown: 1,
+      noiseRadius: CELL * 36,
+      volume: 1,
+      duration: 0.12,
+      spark: 7,
     },
     scrap: {
       weight: 15,
