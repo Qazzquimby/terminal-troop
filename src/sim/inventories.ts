@@ -1,15 +1,32 @@
 import { z } from "zod";
-import type { Inventory, ItemDefinition } from "./inventory.js";
-import { heldItem, ItemId } from "./inventory.js";
+import type { CarriedItem, Inventory } from "./inventory.js";
+import {
+  carried,
+  carriedWeight,
+  heldItem,
+  ItemId,
+  UsesLeft,
+} from "./inventory.js";
 import type { Player } from "./player.js";
 import { playerData } from "./player-data.js";
 import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
 
-/** One player's items as the host keeps them: an item id by slot, null for an empty slot. */
-const Slots = z.array(ItemId.nullable()).max(64);
+/** An item in a slot as the host keeps it: its id, or its id and uses left once it has spent some. */
+const Slot = z.union([ItemId, z.object({ id: ItemId, left: UsesLeft })]);
+type Slot = z.infer<typeof Slot>;
+
+/** One player's items as the host keeps them: an item by slot, null for an empty slot. */
+const Slots = z.array(Slot.nullable()).max(64);
 type Slots = z.infer<typeof Slots>;
+
+const idOf = (slot: Slot): string =>
+  typeof slot === "string" ? slot : slot.id;
+const leftIn = (slot: Slot): number | undefined =>
+  typeof slot === "string" ? undefined : slot.left;
+const slotOf = (item: CarriedItem): Slot =>
+  item.left === undefined ? item.id : { id: item.id, left: item.left };
 
 /**
  * Every player's items, by player id. The host owns them: it stocks each player it meets with
@@ -31,16 +48,23 @@ export interface InventoryHold {
   readonly reaching: readonly string[];
 }
 
-const idsOf = (inventory: Inventory): Slots =>
-  inventory.map((item) => item?.id ?? null);
+const slotsFor = (inventory: Inventory): Slots =>
+  inventory.map((item) => (item === null ? null : slotOf(item)));
 
 /** Player `id`'s items as the host keeps them: the room's starting items until it has a record. */
 function slotsOf(game: Session, id: string): Slots {
-  return inventories.get(game)[id] ?? idsOf(game.starting);
+  return inventories.get(game)[id] ?? slotsFor(game.starting);
 }
 
 function setSlots(game: Session, id: string, slots: Slots): void {
   inventories.set(game, { ...inventories.get(game), [id]: slots });
+}
+
+/** The item in `slot`, as this client knows it; null for none, or an item it does not know. */
+function carriedFrom(game: Session, slot: Slot | null): CarriedItem | null {
+  if (slot === null) return null;
+  const definition = game.itemDefinitions.get(idOf(slot));
+  return definition === undefined ? null : carried(definition, leftIn(slot));
 }
 
 /** The id of the item in `slot` of player `id`'s items as the host keeps them; null for none. */
@@ -49,7 +73,20 @@ export function itemIn(
   id: string,
   slot: number | null,
 ): string | null {
-  return slot === null ? null : (slotsOf(game, id)[slot] ?? null);
+  const held = slot === null ? null : (slotsOf(game, id)[slot] ?? null);
+  return held === null ? null : idOf(held);
+}
+
+/**
+ * The item in `slot` of player `id`'s items as the host keeps them, with the uses it has left;
+ * null for none.
+ */
+export function carriedIn(
+  game: Session,
+  id: string,
+  slot: number,
+): CarriedItem | null {
+  return carriedFrom(game, slotsOf(game, id)[slot] ?? null);
 }
 
 /** Whether player `id` has an empty slot, as the host keeps its items. */
@@ -57,20 +94,54 @@ export const hasRoom = (game: Session, id: string): boolean =>
   slotsOf(game, id).includes(null);
 
 /**
- * As the host, puts `item` in player `id`'s `slot`, or its first empty slot when left out.
- * Returns whether it went in: false when the slot is taken or missing, or this client does not host.
+ * What `player` carries weighs, in pounds: the local player's items as predicted, a remote
+ * player's as the host keeps them.
+ */
+export function weightOf(game: Session, player: Player): number {
+  if (player === game.local) return carriedWeight(player.inventory);
+  return carriedWeight(
+    slotsOf(game, player.id).map((slot) => carriedFrom(game, slot)),
+  );
+}
+
+/**
+ * As the host, puts `item` in player `id`'s `slot`, or its first empty slot when left out, with
+ * `left` uses left, or all its uses when left out. Returns whether it went in: false when the slot
+ * is taken or missing, or this client does not host.
  */
 export function giveItem(
   game: Session,
   id: string,
   item: string,
   slot?: number,
+  left?: number,
 ): boolean {
   if (!game.hosting) return false;
   const slots = [...slotsOf(game, id)];
   const index = slot ?? slots.indexOf(null);
   if (slots[index] !== null) return false;
-  slots[index] = item;
+  const definition = game.itemDefinitions.get(item);
+  slots[index] =
+    definition === undefined ? item : slotOf(carried(definition, left));
+  setSlots(game, id, slots);
+  return true;
+}
+
+/**
+ * As the host, leaves the item in player `id`'s `slot`, if it is `item`, with `left` uses left;
+ * at none it is gone. Returns whether it did.
+ */
+export function setUsesLeft(
+  game: Session,
+  id: string,
+  slot: number,
+  item: string,
+  left: number,
+): boolean {
+  const held = carriedIn(game, id, slot);
+  if (!game.hosting || held?.id !== item) return false;
+  const slots = [...slotsOf(game, id)];
+  slots[slot] = left <= 0 ? null : slotOf(carried(held, left));
   setSlots(game, id, slots);
   return true;
 }
@@ -137,7 +208,7 @@ export function followInventories(game: Session): void {
     const missing = [...game.players.keys()].filter(
       (id) => held[id] === undefined,
     );
-    const starting = idsOf(game.starting);
+    const starting = slotsFor(game.starting);
     if (missing.length > 0)
       inventories.set(game, {
         ...held,
@@ -154,9 +225,7 @@ export function followInventories(game: Session): void {
   if (slots === undefined) return;
   const { inventory } = game.local;
   for (const slot of inventory.keys()) {
-    const id = slots[slot] ?? null;
-    inventory[slot] =
-      id === null ? null : (game.itemDefinitions.get(id) ?? null);
+    inventory[slot] = carriedFrom(game, slots[slot] ?? null);
   }
 }
 
@@ -176,11 +245,8 @@ export const heldSlot = playerData({
  * local player's is from its own items as predicted; a remote player's is what the host keeps in
  * the slot it holds.
  */
-export function heldItemOf(
-  game: Session,
-  player: Player,
-): ItemDefinition | null {
+export function heldItemOf(game: Session, player: Player): CarriedItem | null {
   if (player === game.local) return heldItem(player.inventory, player.held);
-  const id = itemIn(game, player.id, heldSlot.get(player));
-  return id === null ? null : (game.itemDefinitions.get(id) ?? null);
+  const slot = heldSlot.get(player);
+  return slot === null ? null : carriedIn(game, player.id, slot);
 }

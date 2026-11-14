@@ -33,6 +33,7 @@ const idle = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 const { chaser: config } = testEntitiesConfig;
 

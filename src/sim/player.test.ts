@@ -3,7 +3,13 @@ import type { World } from "./map.js";
 import { movement } from "./movement.js";
 import type { Controls, Player, PlayerRules } from "./player.js";
 import type { CollisionBody } from "./collision.js";
-import { createPlayer, startDash, stepDash, updatePlayer } from "./player.js";
+import {
+  createPlayer,
+  loadFactor,
+  startDash,
+  stepDash,
+  updatePlayer,
+} from "./player.js";
 
 const STEP = 1 / 60;
 const PLAYER_SPEED = 220;
@@ -22,6 +28,7 @@ const rules: PlayerRules = {
     inventorySlots: 4,
     nameMax: 8,
     knockbackSeconds: 0.15,
+    load: { full: 100, slowdown: 0.2 },
   },
   stamina: {
     max: STAMINA_MAX,
@@ -54,6 +61,7 @@ function hold(
     use: false,
     secondary: false,
     interact: false,
+    drop: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {
@@ -74,6 +82,42 @@ test("walking reaches normal top speed", () => {
   const player = startPlayer();
   run(player, world, false, 60);
   expect(player.vx).toBeCloseTo(PLAYER_SPEED);
+});
+
+test("carrying weight slows the top speed evenly, to 20% slower at 100lb and no slower past it", () => {
+  const topSpeed = (pounds: number, sprint = false): number => {
+    const world = openWorld();
+    const player = startPlayer();
+    const controls: Controls = {
+      move: { x: 1, y: 0 },
+      aim: { x: 0, y: 0 },
+      sprint,
+      crouch: false,
+      select: null,
+      use: false,
+      secondary: false,
+      interact: false,
+      drop: false,
+    };
+    for (let i = 0; i < 60; i++)
+      updatePlayer(player, controls, STEP, world.map, rules, pounds);
+    return player.vx;
+  };
+  expect(topSpeed(0)).toBeCloseTo(PLAYER_SPEED);
+  expect(topSpeed(30)).toBeCloseTo(PLAYER_SPEED * 0.94);
+  expect(topSpeed(100)).toBeCloseTo(PLAYER_SPEED * 0.8);
+  expect(topSpeed(250)).toBeCloseTo(PLAYER_SPEED * 0.8);
+  expect(topSpeed(50, true)).toBeCloseTo(
+    PLAYER_SPEED * SPRINT_MULTIPLIER * 0.9,
+  );
+});
+
+test("load factor is 1 for nothing, falls linearly, and holds at the limit", () => {
+  const load = { full: 100, slowdown: 0.2 };
+  expect(loadFactor(0, load)).toBe(1);
+  expect(loadFactor(15, load)).toBeCloseTo(0.97);
+  expect(loadFactor(100, load)).toBeCloseTo(0.8);
+  expect(loadFactor(1000, load)).toBeCloseTo(0.8);
 });
 
 test("holding sprint reaches the higher top speed", () => {

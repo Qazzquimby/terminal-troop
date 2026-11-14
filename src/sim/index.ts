@@ -31,7 +31,9 @@ export {
   hurt,
   push,
   spawn,
+  spendUses,
   take,
+  usesAt,
 } from "./actions.js";
 export type { Action } from "./actions.js";
 export type { OutgoingEvent } from "./content-event.js";
@@ -40,13 +42,18 @@ export type {
   ContentConfig,
   ContentName,
   EntitySpec,
+  ItemTraits,
   Scatter,
   SpawnRule,
   WorldContent,
 } from "./content.js";
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
-export type { HeldSlot, Inventory } from "./inventory.js";
+export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
+export { carriedWeight, usesLeft } from "./inventory.js";
+export { lootContent, setDanger } from "./loot.js";
+export type { LootConfig } from "./loot.js";
+
 export {
   isAreaFree,
   mulberry32,

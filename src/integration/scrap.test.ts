@@ -39,6 +39,7 @@ const idle: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 
 /** No chasers, so nothing moves; the cruiser beside the first host. */

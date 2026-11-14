@@ -3,7 +3,7 @@ import { z } from "zod";
 import { arrivalPoint } from "./arrival.js";
 import { separateBody, solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
-import { heldSlot } from "./inventories.js";
+import { heldSlot, weightOf } from "./inventories.js";
 import { selectSlot } from "./inventory.js";
 import { lerpAngle, renderPosition, snapPrevious } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
@@ -278,8 +278,9 @@ const sameSteer = (a: Steer, b: Steer): boolean =>
   a.held === b.held;
 
 /**
- * One step of `player`'s movement: it walks as `input` steers it, goes on with any dash, then
- * steps out of every body it overlaps. The same on every client that runs the player.
+ * One step of `player`'s movement: it walks as `input` steers it, slowed by what it carries,
+ * goes on with any dash, then steps out of every body it overlaps. The same on every client
+ * that runs the player.
  */
 function movePlayer(
   game: Session,
@@ -294,6 +295,7 @@ function movePlayer(
     dt,
     map,
     game.config,
+    weightOf(game, player),
   );
   const others = solidBodiesBut(game, player);
   stepDash(player, dt, map, others);

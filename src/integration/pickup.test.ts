@@ -34,8 +34,10 @@ const idle: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 const reach: Controls = { ...idle, interact: true };
+const letGo: Controls = { ...idle, drop: true };
 
 const BOLT_DROP = "bolt-drop.mp3";
 
@@ -270,7 +272,7 @@ test("a guest cannot take what is not a lying item, nor one out of reach of wher
   expect(guest.entities.has(lying.id)).toBe(true);
 });
 
-test("standing on a bolt with a full inventory, E drops the held item instead", async () => {
+test("standing on a bolt with a full inventory, E leaves the held item be; F drops it", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   const lying = layBolt(host, exchange);
@@ -281,6 +283,10 @@ test("standing on a bolt with a full inventory, E drops the held item instead", 
   exchange({ b: reach });
   exchange();
   expect(sessionOf(host).entities.has(lying.id)).toBe(true);
+  expect(recorded(host, b)).toEqual(["bolt", "bolt", "bolt", "bolt"]);
+  expect(boltsAt(host, SPOT)).toBe(1);
+  exchange({ b: letGo });
+  exchange();
   expect(carried(b)).toEqual(["bolt", "bolt", null, "bolt"]);
   expect(recorded(host, b)).toEqual(["bolt", "bolt", null, "bolt"]);
   expect(boltsAt(host, SPOT)).toBe(2);
@@ -345,14 +351,14 @@ const clinked = (room: Room): boolean =>
     .mocked(sessionOf(room).sfx.play)
     .mock.calls.some(([url]) => url === BOLT_DROP);
 
-test("with nothing in reach, E drops the held item where the player stands, on every client, with its sound", async () => {
+test("F drops the held item where the player stands, on every client, with its sound", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const b = get("b");
   holdBolt(host, b);
   place(b, SPOT);
   exchange();
   expect(carried(b)).toEqual([null, "bolt", null, null]);
-  exchange({ b: reach });
+  exchange({ b: letGo });
   expect(carried(b)).toEqual([null, null, null, null]);
   expect(recorded(host, b)).toEqual([null, null, null, null]);
   expect(boltsAt(host, SPOT)).toBe(1);
@@ -373,6 +379,27 @@ test("E picks up what is in reach rather than drop the held item", async () => {
   expect(sessionOf(host).entities.has(lying.id)).toBe(false);
   expect(carried(b)).toEqual(["bolt", "bolt", null, null]);
   expect(boltsAt(host, SPOT)).toBe(0);
+});
+
+test("with nothing in reach, E does not drop the held item", async () => {
+  const { get, host, exchange } = await crew("a", "b");
+  const b = get("b");
+  holdBolt(host, b);
+  place(b, SPOT);
+  exchange();
+  updateSession(sessionOf(b), reach, DT);
+  expect(sessionOf(b).outbox).toEqual([]);
+  expect(carried(b)).toEqual([null, "bolt", null, null]);
+});
+
+test("with an empty hand, F does nothing", async () => {
+  const { get, exchange } = await crew("a", "b");
+  const b = get("b");
+  sessionOf(b).local.held = 2;
+  place(b, SPOT);
+  exchange();
+  updateSession(sessionOf(b), letGo, DT);
+  expect(sessionOf(b).outbox).toEqual([]);
 });
 
 test("with an empty hand and nothing in reach, E does nothing", async () => {
@@ -426,12 +453,12 @@ test("a drop shows at once; one the host refuses comes back to its slot", async 
   guest.local.held = 1;
   place(b, SPOT);
   exchange();
-  updateSession(guest, reach, DT);
+  updateSession(guest, letGo, DT);
   expect(carried(b)).toEqual([null, null, "bolt", null]);
   updateSession(guest, { ...idle, select: 2 }, DT);
   // A client off its own drop cooldown early, as one tampered with could be.
   guest.localReadyAt.clear();
-  updateSession(guest, reach, DT);
+  updateSession(guest, letGo, DT);
   expect(carried(b)).toEqual([null, null, null, null]);
   exchange();
   exchange();
@@ -448,7 +475,7 @@ test("a dropped item can be picked up by another player", async () => {
   place(b, SPOT);
   place(c, { x: SPOT.x + 150, y: SPOT.y });
   exchange();
-  exchange({ b: reach });
+  exchange({ b: letGo });
   place(b, { x: SPOT.x - 150, y: SPOT.y });
   place(c, { x: SPOT.x + 10, y: SPOT.y });
   exchange();

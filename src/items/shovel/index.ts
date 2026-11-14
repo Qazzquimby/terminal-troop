@@ -8,12 +8,12 @@ import {
   push,
   sound,
 } from "../../sim/index.js";
-import type { ItemUse } from "../../sim/index.js";
+import type { ItemTraits, ItemUse } from "../../sim/index.js";
 import hitUrl from "./sfx/hit.mp3";
 import missUrl from "./sfx/miss.mp3";
 
 /** How the shovel attacks. Distances in pixels, times in sim seconds. */
-export interface ShovelConfig {
+export interface ShovelConfig extends ItemTraits {
   /** The radius of the hitbox. */
   readonly radius: number;
   /** How far in front of the player the hitbox is centred. */
@@ -87,6 +87,7 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
   return {
     name: "Shovel",
     emoji: "🪏",
+    traits: config,
     startingSlot: 0,
     use: {
       cooldown: config.cooldown,

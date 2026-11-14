@@ -6,13 +6,15 @@ import {
   removeFromWorld,
   spawn,
   take,
+  usesAt,
 } from "./actions.js";
 import type { WorldEntity } from "./entities.js";
 import { registerEntityType, spawnEntity } from "./entities.js";
 import { hasRoom, isReaching, itemIn } from "./inventories.js";
-import { isFull, ItemId } from "./inventory.js";
+import { isFull, ItemId, UsesLeft } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
+import { controlHeldItem } from "./use.js";
 
 /** How items lie in the world. Distances in pixels, times in sim seconds. */
 export interface WorldItemConfig {
@@ -27,8 +29,9 @@ export interface WorldItemConfig {
 /** The kind every item lying in the world is, whatever the item. */
 const WORLD_ITEM = "core/world-item";
 
-/** A lying item's state: which item it is. */
-const WorldItemData = z.object({ item: ItemId });
+/** A lying item's state: which item it is, and the uses it has left once it has spent some. */
+const WorldItemData = z.object({ item: ItemId, left: UsesLeft.optional() });
+type WorldItemData = z.infer<typeof WorldItemData>;
 
 /**
  * Registers the kind items lie in the world as, once a session has any items; each is drawn as
@@ -55,20 +58,30 @@ export function registerWorldItems(game: Session): void {
   });
 }
 
-/** Lays the item `item` in the world at `at`. */
+/** A lying item's state: `item` with `left` uses left, or all its uses when left out. */
+const lyingData = (item: string, left?: number | null): WorldItemData => ({
+  item,
+  ...(left !== undefined && left !== null && { left }),
+});
+
+/**
+ * Lays the item `item` in the world at `at`, with `left` uses left, or all its uses when left
+ * out.
+ */
 export function spawnWorldItem(
   game: Session,
   at: Point,
   item: string,
+  left?: number,
 ): WorldEntity {
-  return spawnEntity(game, WORLD_ITEM, at.x, at.y, { item });
+  return spawnEntity(game, WORLD_ITEM, at.x, at.y, lyingData(item, left));
 }
 
-/** The item `entity` is, if it is an item lying in the world. */
-function lyingItem(game: Session, entity: WorldEntity): string | null {
+/** The item `entity` is, and the uses it has left, if it is an item lying in the world. */
+function lyingItem(game: Session, entity: WorldEntity): WorldItemData | null {
   if (entity.kind !== game.kindIds.get(WORLD_ITEM)) return null;
   const parsed = WorldItemData.safeParse(entity.data);
-  return parsed.success ? parsed.data.item : null;
+  return parsed.success ? parsed.data : null;
 }
 
 /** Whether `player`'s body touches `entity`. */
@@ -93,10 +106,10 @@ export const pickUp = defineAction("pickUp", {
   },
   apply(game, player, { id }) {
     const entity = game.entities.get(id);
-    const item = entity === undefined ? null : lyingItem(game, entity);
-    if (entity === undefined || item === null) return;
+    const lying = entity === undefined ? null : lyingItem(game, entity);
+    if (entity === undefined || lying === null) return;
     removeFromWorld(game, entity);
-    give(game, player, item);
+    give(game, player, lying.item, lying.left);
   },
 });
 
@@ -111,10 +124,11 @@ export const drop = defineAction("drop", {
   cooldown: (game) => game.config.worldItems.dropCooldown,
   check: (game, player, { slot }) => itemIn(game, player.id, slot) !== null,
   apply(game, player, { slot }) {
+    const left = usesAt(game, player, slot);
     const item = take(game, player, slot);
     if (item === null) return;
     const at = { x: player.x, y: player.y };
-    spawn(game, WORLD_ITEM, at, { item });
+    spawn(game, WORLD_ITEM, at, lyingData(item, left));
     const sound = game.itemDefinitions.get(item)?.drop;
     if (sound !== undefined) effect(game, { at, sound });
   },
@@ -138,8 +152,8 @@ function nearestTouching(game: Session): WorldEntity | null {
 }
 
 /**
- * The local player's interaction with lying items: picks up the nearest it touches, if it has
- * room; otherwise drops the item it holds where it stands, if any.
+ * The local player's interaction: picks up the nearest lying item it touches, if it has room;
+ * otherwise works the item it holds, if that item has a control.
  */
 export function interact(game: Session): void {
   const { local } = game;
@@ -148,7 +162,12 @@ export function interact(game: Session): void {
     pickUp.perform(game, { id: nearest.id });
     return;
   }
-  const slot = local.held;
-  if (slot === null || (local.inventory[slot] ?? null) === null) return;
+  controlHeldItem(game);
+}
+
+/** The local player lets go of the item it holds, where it stands, if it holds any. */
+export function dropHeld(game: Session): void {
+  const slot = game.local.held;
+  if (slot === null || (game.local.inventory[slot] ?? null) === null) return;
   drop.perform(game, { slot });
 }

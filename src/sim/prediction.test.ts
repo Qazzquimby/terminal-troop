@@ -25,6 +25,7 @@ const idle: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 
 /** A guest's session holding one still post at (300, 300) with 10 health, as its host sent it. */

@@ -28,6 +28,7 @@ const still: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 
 const SPAWNING = testEntitiesConfig.chaser.spawning;

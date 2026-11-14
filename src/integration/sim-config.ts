@@ -31,6 +31,7 @@ export const testSimConfig: SimConfig = {
     maxHealth: 100,
     nameMax: 8,
     knockbackSeconds: 0.15,
+    load: { full: 100, slowdown: 0.2 },
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
@@ -119,10 +120,12 @@ export const testEntitiesConfig: EntitiesConfig = {
 /**
  * Items: a shovel that hits 40px ahead for 25, so a test chaser falls to its second hit, at most
  * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
- * second.
+ * second. Both weigh nothing, so what a player carries does not slow it, and no loot is laid.
  */
 export const testItemsConfig: ItemsConfig = {
   shovel: {
+    weight: 0,
+    loot: { weight: 30, rarity: "common" },
     radius: 20,
     reach: 40,
     damage: 25,
@@ -134,11 +137,16 @@ export const testItemsConfig: ItemsConfig = {
     missNoiseRadius: 100,
   },
   scrap: {
+    weight: 0,
     value: 2,
     cashoutRadius: 150,
     sellInterval: 0.25,
     volume: 1,
     scatter: { count: 3, seed: 5, clearance: 200 },
+  },
+  loot: {
+    scatter: { count: 0, seed: 6, clearance: 200 },
+    danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
   },
 };
 

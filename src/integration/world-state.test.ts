@@ -25,6 +25,7 @@ const idle: Controls = {
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 };
 
 const lit = worldData({ schema: z.boolean(), initial: false });

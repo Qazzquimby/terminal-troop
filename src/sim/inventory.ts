@@ -1,8 +1,13 @@
+import { omit, sumBy } from "lodash-es";
 import { z } from "zod";
+import type { ItemLoot } from "./loot.js";
 import type { Sound } from "./sound.js";
 
 /** An item's id, as a player reports it. */
 export const ItemId = z.string().min(1).max(32);
+
+/** An item's uses left, as a carried or lying item keeps them. */
+export const UsesLeft = z.number().int().min(0).max(10_000);
 
 export interface ItemDefinition {
   readonly id: string;
@@ -11,10 +16,44 @@ export interface ItemDefinition {
   readonly emoji: string;
   /** What every client near it hears when it is dropped, if anything. */
   readonly drop?: Sound;
+  /** What every client near it hears as its last use is spent and it is gone, if anything. */
+  readonly breaks?: Sound;
+  /** How heavy it is to carry, in pounds; nothing when left out. */
+  readonly weight?: number;
+  /** How many uses a new one has; unlimited when left out. */
+  readonly uses?: number;
+  /** How likely the world is to lay it as loot; never when left out. */
+  readonly loot?: ItemLoot;
+}
+
+/**
+ * An item as a player carries it: its definition, and the uses it has left once it has spent
+ * some. One that has spent none has all its uses.
+ */
+export interface CarriedItem extends ItemDefinition {
+  readonly left?: number;
 }
 
 /** One item per slot; items do not stack. */
-export type Inventory = (ItemDefinition | null)[];
+export type Inventory = (CarriedItem | null)[];
+
+/** The uses `item` has left; null for an item whose uses are unlimited. */
+export function usesLeft(item: CarriedItem): number | null {
+  if (item.uses === undefined) return null;
+  return item.left ?? item.uses;
+}
+
+/** `item` with `left` uses left: as new when `left` is all its uses, or not given. */
+export function carried(item: CarriedItem, left?: number): CarriedItem {
+  const full = left === undefined || left === item.uses;
+  if (item.left === undefined && full) return item;
+  const definition = omit(item, "left");
+  return full ? definition : { ...definition, left };
+}
+
+/** What every item in `inventory` weighs together, in pounds. */
+export const carriedWeight = (inventory: Inventory): number =>
+  sumBy(inventory, (item) => item?.weight ?? 0);
 
 export function createInventory(slotCount: number): Inventory {
   if (!Number.isInteger(slotCount) || slotCount < 1) {
@@ -29,7 +68,7 @@ function requireSlot(inventory: Inventory, slot: number): void {
 }
 
 /** Puts `item` in the first empty slot. Returns whether it fit. */
-export function addItem(inventory: Inventory, item: ItemDefinition): boolean {
+export function addItem(inventory: Inventory, item: CarriedItem): boolean {
   const index = inventory.indexOf(null);
   if (index === -1) return false;
   inventory[index] = item;
@@ -40,7 +79,7 @@ export function addItem(inventory: Inventory, item: ItemDefinition): boolean {
 export function placeItem(
   inventory: Inventory,
   slot: number,
-  item: ItemDefinition,
+  item: CarriedItem,
 ): void {
   requireSlot(inventory, slot);
   if (inventory[slot] !== null)
@@ -52,7 +91,7 @@ export function placeItem(
 export function removeItem(
   inventory: Inventory,
   slot: number,
-): ItemDefinition | null {
+): CarriedItem | null {
   requireSlot(inventory, slot);
   const item = inventory[slot] ?? null;
   inventory[slot] = null;
@@ -81,7 +120,7 @@ export function selectSlot(inventory: Inventory, slot: number): HeldSlot {
 export function heldItem(
   inventory: Inventory,
   selected: HeldSlot,
-): ItemDefinition | null {
+): CarriedItem | null {
   if (selected === null) return null;
   return inventory[selected] ?? null;
 }

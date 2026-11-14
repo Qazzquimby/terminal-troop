@@ -122,6 +122,7 @@ const walking = (index: number, time: number): Controls => ({
   use: false,
   secondary: false,
   interact: false,
+  drop: false,
 });
 
 test("each player sends about one broadcast a tick, however many messages it carries", async () => {

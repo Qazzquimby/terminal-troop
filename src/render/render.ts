@@ -118,7 +118,7 @@ function drawPlayer(
   if (away) ctx.globalAlpha = AWAY_ALPHA;
   drawBody(ctx, player, isSelf);
   if (player.use !== null)
-    game.items.get(player.use.item)?.draw(ctx, player.use, game.time);
+    game.items.get(player.use.item)?.draw?.(ctx, player.use, game.time);
   const held = heldItemOf(game, player);
   if (held !== null) drawHeldItem(ctx, player, held.emoji);
   if (away) {
