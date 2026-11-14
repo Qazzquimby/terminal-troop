@@ -48,6 +48,7 @@ import type { ItemBehaviour } from "./use.js";
 import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 import { dropHeld, interact } from "./world-items.js";
+import { followWalls } from "./walls.js";
 import type { WorldItemConfig } from "./world-items.js";
 import { followItemSounds } from "./item-sounds.js";
 
@@ -305,6 +306,7 @@ export function updateSession(
   game.noises.length = 0;
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
+  followWalls(game);
   steerLocal(game, controls, dt);
   if (controls.use) useHeldItem(game);
   if (controls.interact) interact(game);

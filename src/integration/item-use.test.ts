@@ -317,7 +317,11 @@ test("a swing at the cruiser leaves it whole", () => {
   for (const content of entityContent(testEntitiesConfig))
     content.register(game);
   standAt(game, { x: 450, y: 300 });
-  const cruiser = spawnEntity(game, "cruiser", 500, 300, {});
+  const cruiser = spawnEntity(game, "cruiser", 500, 300, {
+    fuel: 0,
+    damage: 0,
+    heading: 0,
+  });
   swingRight(game);
   expect(game.local.use?.hit).toBe(true);
   expect(cruiser.health).toBe(Infinity);

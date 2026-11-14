@@ -27,6 +27,7 @@ const player = {
   stamina: { value: 33.333333333333336, exhausted: false, rested: 0.6 },
   crouched: false,
   dash: { vx: 100, vy: 0, seconds: 0.1, to: { x: 6400, y: 2070 } },
+  ride: { vehicle: "7", heading: 0.123456789, speed: 287.654321 },
   steer: { move: { x: 0.6, y: -0.8 }, sprint: true, held: 0 },
   content: { "core/movement": { mode: "sprint", moving: true } },
 };

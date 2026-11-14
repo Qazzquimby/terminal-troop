@@ -17,6 +17,10 @@ export type {
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
 export { spawnWorldItem } from "./world-items.js";
+export { driverOf } from "./driving.js";
+export type { Handling, Impact, VehicleSpec } from "./driving.js";
+export { eject } from "./vehicle.js";
+export { destroyWalls } from "./walls.js";
 export {
   defineEntity,
   defineItem,
@@ -25,6 +29,7 @@ export {
 } from "./content.js";
 export { contentEvent, receiveEvent } from "./content-event.js";
 export {
+  changeEntity,
   changeWorld,
   dash,
   defineAction,

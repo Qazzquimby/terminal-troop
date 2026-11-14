@@ -3,6 +3,8 @@ import { z } from "zod";
 import { arrivalPoint } from "./arrival.js";
 import { separateBody, solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
+import { drive, RideWire } from "./driving.js";
+import type { Ride } from "./driving.js";
 import { heldSlot, weightOf } from "./inventories.js";
 import { selectSlot } from "./inventory.js";
 import { lerpAngle, renderPosition, snapPrevious } from "./interpolation.js";
@@ -84,6 +86,7 @@ interface Motion {
   readonly stamina: Stamina;
   readonly crouched: boolean;
   readonly dash: Dash | null;
+  readonly ride: Ride | null;
 }
 
 const Spot = z.object({ x: z.number(), y: z.number() });
@@ -107,6 +110,7 @@ const MotionWire = z.object({
       to: Spot.optional(),
     })
     .nullable(),
+  ride: RideWire.default(null),
 });
 
 /**
@@ -237,6 +241,7 @@ const motionOf = (player: Player): Motion => ({
   stamina: player.stamina,
   crouched: player.crouched,
   dash: player.dash,
+  ride: player.ride,
 });
 
 function place(player: Player, motion: Motion): void {
@@ -247,9 +252,20 @@ function place(player: Player, motion: Motion): void {
   player.stamina = { ...motion.stamina };
   player.crouched = motion.crouched;
   player.dash = motion.dash === null ? null : { ...motion.dash };
+  player.ride = motion.ride === null ? null : { ...motion.ride };
 }
 
 const near = (a: number, b: number): boolean => Math.abs(a - b) <= SAME;
+
+/** Whether two rides are of the same vehicle, pointing and going alike; or both none. */
+function sameRide(a: Ride | null, b: Ride | null): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.vehicle === b.vehicle &&
+    near(a.heading, b.heading) &&
+    near(a.speed, b.speed)
+  );
+}
 
 /** Whether two runs of a step left the player alike. */
 function sameMotion(a: Motion, b: Motion): boolean {
@@ -260,7 +276,8 @@ function sameMotion(a: Motion, b: Motion): boolean {
     !near(a.vy, b.vy) ||
     !near(a.stamina.value, b.stamina.value) ||
     a.stamina.exhausted !== b.stamina.exhausted ||
-    a.crouched !== b.crouched
+    a.crouched !== b.crouched ||
+    !sameRide(a.ride, b.ride)
   )
     return false;
   if (a.dash === null || b.dash === null) return a.dash === b.dash;
@@ -279,15 +296,20 @@ const sameSteer = (a: Steer, b: Steer): boolean =>
 
 /**
  * One step of `player`'s movement: it walks as `input` steers it, slowed by what it carries,
- * goes on with any dash, then steps out of every body it overlaps. The same on every client
- * that runs the player.
+ * goes on with any dash, then steps out of every body it overlaps; or, at the wheel, drives. The
+ * same on every client that runs the player. `live` is false while running a step again.
  */
 function movePlayer(
   game: Session,
   player: Player,
   { steer, crouch }: StepInput,
   dt: number,
+  live = true,
 ): void {
+  if (player.ride !== null) {
+    drive(game, player, steer.move, dt, live, game.config);
+    return;
+  }
   const { map } = game.world;
   updatePlayer(
     player,
@@ -437,7 +459,7 @@ function runStep(
   player.held = feed.steer.held;
   heldSlot.set(player, player.held);
   const input = { steer: feed.steer, crouch };
-  movePlayer(game, player, input, dt);
+  movePlayer(game, player, input, dt, redo === undefined);
   feed.marks.push({
     step,
     dt,
@@ -682,6 +704,7 @@ function followEntry(game: Session, player: Player, entry: PlayerEntry): void {
   player.ty = entry.y;
   player.stamina = { ...entry.stamina };
   player.crouched = entry.crouched;
+  player.ride = entry.ride;
   player.held = entry.steer.held;
   applyContentState(game, player, entry.content, true);
 }
@@ -705,7 +728,7 @@ function reconcile(game: Session, entry: PlayerEntry): void {
   const before = { x: local.x, y: local.y };
   place(local, entry);
   for (const kept of later) {
-    movePlayer(game, local, kept.input, kept.dt);
+    movePlayer(game, local, kept.input, kept.dt, false);
     for (const change of kept.changes) change(local);
     kept.motion = motionOf(local);
   }
