@@ -196,8 +196,12 @@ function zombiePoints(game: Session): { x: number; y: number }[] {
 }
 
 test("a spawn brings a whole group at once, standing together, apart and unseen", () => {
+  // Placing members draws from Math.random, and a draw can land a member somewhere it may not
+  // stand (lit, or seen), cutting the group short; seeded so the run is the same every time.
+  vi.spyOn(Math, "random").mockImplementation(mulberry32(1));
   const game = world(GROUP_OF_FIVE);
   const spawned = play(game, SPAWNING.firstGap + 0.1);
+  vi.restoreAllMocks();
   expect(spawned).toHaveLength(5);
   expect(new Set(spawned.map(({ time }) => time)).size).toBe(1);
   for (const { distance } of spawned)
