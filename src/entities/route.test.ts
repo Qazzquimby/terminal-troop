@@ -48,6 +48,46 @@ describe("planRoute", () => {
       planRoute(walled(), HALF, { x: 75, y: 75 }, { x: 175, y: 75 }),
     ).toBeNull();
   });
+
+  describe("a body wider than a cell", () => {
+    const WIDE = 72;
+
+    /**
+     * 16x12 cells of 50px, a wall across row 6 but for a gap one cell wide at column 7 and one
+     * three cells wide at columns 12 to 14.
+     */
+    function gapped(): TileMap {
+      const map = { cell: 50, cols: 16, rows: 12, solid: new Uint8Array(192) };
+      for (let col = 0; col < 16; col++)
+        if (col !== 7 && (col < 12 || col > 14)) map.solid[6 * 16 + col] = 1;
+      return map;
+    }
+
+    const fits = (map: TileMap, half: number, from: Point, route: Point[]) =>
+      route.every((to, i) => isSweepFree(map, half, route[i - 1] ?? from, to));
+
+    test("goes the long way round, through a gap wide enough for it", () => {
+      const map = gapped();
+      const from = { x: 375, y: 150 };
+      const to = { x: 375, y: 450 };
+      const narrow = planRoute(map, HALF, from, to) ?? [];
+      expect(narrow.some(({ x, y }) => y > 300 && x < 400)).toBe(true);
+      expect(narrow.every(({ x }) => x < 500)).toBe(true);
+
+      const wide = planRoute(map, WIDE, from, to) ?? [];
+      expect(wide.at(-1)).toEqual(to);
+      expect(wide.some(({ x }) => x > 600)).toBe(true);
+      expect(fits(map, WIDE, from, wide)).toBe(true);
+    });
+
+    test("is null when no gap is wide enough", () => {
+      const map = gapped();
+      for (let col = 12; col <= 14; col++) map.solid[6 * 16 + col] = 1;
+      expect(
+        planRoute(map, WIDE, { x: 375, y: 150 }, { x: 375, y: 450 }),
+      ).toBeNull();
+    });
+  });
 });
 
 describe("steer", () => {

@@ -3,6 +3,8 @@ import { zombie } from "./zombie/index.js";
 import { cruiser } from "./cruiser/index.js";
 import { snail } from "./snail/index.js";
 import { stunTrap } from "./stun-trap/index.js";
+import { lurcher } from "./lurcher/index.js";
+import { blister } from "./blister/index.js";
 
 export {
   departingIn,
@@ -13,7 +15,7 @@ export {
 export { placeStunTrap } from "./stun-trap/index.js";
 
 /** Every kind of entity in the game; the room numbers kinds by this order. */
-const ENTITIES = [zombie, cruiser, stunTrap, snail] as const;
+const ENTITIES = [zombie, cruiser, stunTrap, snail, lurcher, blister] as const;
 
 /** Each entry's config, under its name. */
 export type EntitiesConfig = ContentConfig<(typeof ENTITIES)[number]>;

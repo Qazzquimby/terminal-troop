@@ -43,6 +43,9 @@ const CELL = 50;
 const STAMINA_MAX = 100;
 /** What one shovel hit deals; a gun's shot deals two. */
 const SHOVEL_DAMAGE = 15;
+/** A player's walking pace, in pixels a second, and how much faster it sprints. */
+const PLAYER_SPEED = 120;
+const SPRINT = 1.8;
 
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
@@ -131,9 +134,9 @@ export const config = {
   },
   player: {
     radius: 14,
-    speed: 120,
+    speed: PLAYER_SPEED,
     acceleration: 1100,
-    sprintMultiplier: 1.8,
+    sprintMultiplier: SPRINT,
     crouchMultiplier: 0.5,
     maxHealth: 100,
     inventorySlots: 6,
@@ -314,6 +317,77 @@ export const config = {
       damage: 500,
       attackCooldown: 1,
       repathInterval: 2,
+    },
+    // A blind hound three cells across, light or no light. One roams a new world; another arrives
+    // every 150s at first, every 60s after ten minutes, never more than 3, never within 30 cells
+    // of a player. Five shovel hits fell it; touching it costs 100 health, once a second.
+    lurcher: {
+      spawn: { count: 1, seed: 11, clearance: CELL * 30 },
+      spawning: {
+        firstGap: 150,
+        lastGap: 60,
+        rampSeconds: 600,
+        maxAlive: 3,
+        tries: 24,
+        unseenDistance: CELL * 30,
+        group: { min: 1, max: 1, spread: 0 },
+      },
+      radius: CELL * 1.5 - 3,
+      maxHealth: SHOVEL_DAMAGE * 5,
+      contactDamage: 100,
+      contactCooldown: 1,
+      wanderSpeed: PLAYER_SPEED * 0.6,
+      stalkSpeed: PLAYER_SPEED * 0.8,
+      chargeSpeed: PLAYER_SPEED * SPRINT * 1.2,
+      wanderRange: CELL * 8,
+      wanderPause: { min: 1, max: 3 },
+      repathDistance: CELL,
+      // Suspicion counts how loud each noise was where it stood, in pixels past it the noise
+      // carried, and ebbs 2 cells' worth a second. It charges at 25 cells' worth: at a gunshot
+      // within 5 cells at once, at a walk 2 cells off in about 6s, at a sprint 5 cells off in
+      // under a second.
+      suspicion: { max: CELL * 25, decay: CELL * 2 },
+      // A charge runs 8 cells past the noise it heard last.
+      overrun: CELL * 8,
+      // Its roar carries 25 cells, its snarl as it turns to a noise 4, its bite 6.
+      sounds: { roar: CELL * 25, snarl: CELL * 4, bite: CELL * 6 },
+    },
+    // A swollen thing that comes alone, out of the dark: four in a new world, another every 60s
+    // at first, every 20s after five minutes, never more than 15 nor within 14 cells of a player.
+    // It feels prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
+    blister: {
+      spawn: {
+        count: { density: 0.15, min: 1 },
+        seed: 13,
+        clearance: CELL * 12,
+      },
+      spawning: {
+        firstGap: 60,
+        lastGap: 20,
+        rampSeconds: 300,
+        maxAlive: 15,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: { min: 1, max: 1, spread: 0 },
+      },
+      radius: 16,
+      maxHealth: SHOVEL_DAMAGE * 3,
+      wanderSpeed: PLAYER_SPEED * 0.8,
+      chaseSpeed: PLAYER_SPEED * 1.1,
+      senseRange: CELL * 12,
+      wanderRange: CELL * 5,
+      wanderPause: { min: 0.5, max: 2 },
+      repathDistance: CELL / 2,
+      // A route more than twice as long as the straight line, plus 2 cells, is too long: it
+      // heads straight at its prey instead, and sets itself off at the wall in the way.
+      detour: { factor: 2, slack: CELL * 2 },
+      // Within 2 cells of a player it lights a 1s fuse, and keeps coming.
+      fuseRange: CELL * 2,
+      fuse: 1,
+      // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
+      // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
+      blast: { radius: CELL * 3, centre: 100, edge: 30 },
+      sounds: { fuse: CELL * 6, blast: CELL * 40 },
     },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its

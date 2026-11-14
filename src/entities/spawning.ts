@@ -4,12 +4,14 @@ import {
   isAreaFree,
   isSweepFree,
   livingPlayers,
+  spawn,
   worldData,
-} from "../../sim/index.js";
-import type { Point, Session } from "../../sim/index.js";
-import { spawnAllowed } from "../spawn-rules.js";
+} from "../sim/index.js";
+import type { Point, Rng, Scatter, Session, WorldData } from "../sim/index.js";
+import { spawnAllowed } from "./spawn-rules.js";
+import type { SpawnRules } from "./spawn-rules.js";
 
-/** How zombies keep arriving once a world has begun. Times are in sim seconds. */
+/** How a monster kind keeps arriving once a world has begun. Times are in sim seconds. */
 export interface SpawningConfig {
   /** Seconds between spawns as the world begins. */
   readonly firstGap: number;
@@ -17,7 +19,7 @@ export interface SpawningConfig {
   readonly lastGap: number;
   /** How long the gap takes to fall from the first to the last. */
   readonly rampSeconds: number;
-  /** Most zombies alive at once; a spawn due while the world holds this many is skipped. */
+  /** Most of the kind alive at once; a spawn due while the world holds this many is skipped. */
   readonly maxAlive: number;
   /** Points tried for a spawn before skipping it. */
   readonly tries: number;
@@ -27,7 +29,7 @@ export interface SpawningConfig {
   readonly group: GroupConfig;
 }
 
-/** A group of zombies arriving together. */
+/** A group of a kind arriving together. */
 interface GroupConfig {
   /** Fewest in a group; each group's size is drawn evenly between the two. */
   readonly min: number;
@@ -37,14 +39,30 @@ interface GroupConfig {
   readonly spread: number;
 }
 
+/** When, on the world's clock, a kind's spawning began and its next spawn is due. */
+type Clock = { readonly startedAt: number; readonly nextAt: number } | null;
+
 /**
- * When, on the world's clock, spawning began and the next spawn is due; null until a host first
- * steps the world. Kept in the world so a new host goes on along the same ramp.
+ * A kind's spawning clock: null until a host first steps the world. Kept in the world so a new
+ * host goes on along the same ramp. Each kind that spawns keeps its own in its `world`.
  */
-export const spawning = worldData({
-  schema: z.object({ startedAt: z.number(), nextAt: z.number() }).nullable(),
-  initial: null,
-});
+function spawningClock(): WorldData<Clock> {
+  return worldData<Clock>({
+    schema: z.object({ startedAt: z.number(), nextAt: z.number() }).nullable(),
+    initial: null,
+  });
+}
+
+/** A kind's tide of arrivals: which kind, how big a body, how it arrives and where it may. */
+interface Tide {
+  readonly kind: string;
+  readonly radius: number;
+  readonly config: SpawningConfig;
+  /** Its spawning clock, from `spawningClock`. */
+  readonly clock: WorldData<Clock>;
+  /** Where it may appear, past where no kind may. */
+  readonly rules?: SpawnRules;
+}
 
 function countOf(game: Session, kind: string): number {
   const id = game.kindIds.get(kind);
@@ -54,12 +72,16 @@ function countOf(game: Session, kind: string): number {
 }
 
 /**
- * How strongly zombies favour appearing at `at`, a new world's first included: by its danger,
- * more the farther it is from the road and the nearer the exit's side of the world; 0 where they
- * may not appear.
+ * How strongly a kind keeping `rules` favours appearing at `at`, a new world's first included: by
+ * its danger, more the farther it is from the road and the nearer the exit's side of the world; 0
+ * where it may not appear.
  */
-export function spawnWeight(game: Session, at: Point): number {
-  return spawnAllowed(game, at) ? dangerWeight(game.world, at) : 0;
+export function spawnWeight(
+  game: Session,
+  at: Point,
+  rules: SpawnRules = {},
+): number {
+  return spawnAllowed(game, at, rules) ? dangerWeight(game.world, at) : 0;
 }
 
 function nearestPlayerDistance(game: Session, at: Point): number {
@@ -74,11 +96,8 @@ function nearestPlayerDistance(game: Session, at: Point): number {
  * spawn weight, or null when none of the tries finds one. Only the host spawns, and snapshots
  * carry what it spawned, so the draws need no shared seed.
  */
-function unseenPoint(
-  game: Session,
-  radius: number,
-  config: SpawningConfig,
-): Point | null {
+function unseenPoint(game: Session, tide: Tide): Point | null {
+  const { radius, config } = tide;
   let chosen: Point | null = null;
   let totalWeight = 0;
   for (let attempt = 0; attempt < config.tries; attempt++) {
@@ -88,7 +107,7 @@ function unseenPoint(
     };
     if (!isAreaFree(game.world.map, at.x, at.y, radius)) continue;
     if (nearestPlayerDistance(game, at) < config.unseenDistance) continue;
-    const weight = spawnWeight(game, at);
+    const weight = spawnWeight(game, at, tide.rules);
     if (weight <= 0) continue;
     totalWeight += weight;
     if (Math.random() * totalWeight < weight) chosen = at;
@@ -118,15 +137,15 @@ function memberPoints(
   game: Session,
   leader: Point,
   count: number,
-  radius: number,
   unseen: number,
-  config: SpawningConfig,
+  tide: Tide,
 ): Point[] {
+  const { radius, config } = tide;
   const { map } = game.world;
   const taken: Point[] = [leader];
   const fits = (at: Point) =>
     isAreaFree(map, at.x, at.y, radius) &&
-    spawnAllowed(game, at) &&
+    spawnAllowed(game, at, tide.rules) &&
     nearestPlayerDistance(game, at) >= unseen &&
     taken.every(
       (other) => Math.hypot(other.x - at.x, other.y - at.y) >= radius * 2,
@@ -151,70 +170,97 @@ function memberPoints(
 /** Spawns a group led from `leader`, never past the most alive at once. */
 function spawnGroup(
   game: Session,
-  kind: string,
+  tide: Tide,
   leader: Point,
   size: number,
-  radius: number,
-  config: SpawningConfig,
   spawn: (at: Point) => void,
 ): void {
-  const room = Math.min(size, config.maxAlive - countOf(game, kind));
+  const { config } = tide;
+  const room = Math.min(size, config.maxAlive - countOf(game, tide.kind));
   if (room <= 0) return;
   spawn(leader);
   const unseen = config.unseenDistance;
-  for (const at of memberPoints(game, leader, room - 1, radius, unseen, config))
+  for (const at of memberPoints(game, leader, room - 1, unseen, tide))
     spawn(at);
 }
 
 /**
- * Fills out the groups a new world starts with: each `kind` its scatter placed is joined by the
- * rest of a group drawn round it.
+ * Fills out the groups a new world starts with: each of the kind its scatter placed is joined by
+ * the rest of a group drawn round it.
  */
 function gatherStartingGroups(
   game: Session,
-  kind: string,
-  radius: number,
-  config: SpawningConfig,
+  tide: Tide,
   spawn: (at: Point) => void,
 ): void {
+  const { kind, config } = tide;
   const id = game.kindIds.get(kind);
   const leaders = [...game.entities.values()].filter((e) => e.kind === id);
   for (const leader of leaders) {
     const room = config.maxAlive - countOf(game, kind);
     const count = Math.min(groupSize(config.group) - 1, room);
-    for (const at of memberPoints(game, leader, count, radius, 0, config))
-      spawn(at);
+    for (const at of memberPoints(game, leader, count, 0, tide)) spawn(at);
   }
 }
 
+/** A kind that keeps arriving: its tide, less the clock, which `arrivals` makes it. */
+interface Arriving<S> extends Omit<Tide, "clock"> {
+  /** Where a new world puts its first. */
+  readonly scatter: Scatter;
+  /** A fresh one's state, seeded by `seed`, a fraction from 0 to 1. */
+  fresh(seed: number, game: Session): S;
+}
+
 /**
- * Spawns the next group of the world's growing tide of `kind` once it is due, out of every
- * player's sight and likelier far from the road and towards the exit; a spawn with nowhere to go, or due while the
- * world is full, is skipped, and a group that would overfill it comes short. As spawning begins,
- * the zombies a new world starts with are gathered into groups too. Runs on the host.
+ * The parts of a kind's spec that make it arrive: a new world's first scattered by its spawn
+ * weight, its spawning clock in the world, and a step that brings more as `stepSpawning` does.
  */
-export function stepSpawning(
+export function arrivals<S>(kind: Arriving<S>) {
+  const clock = spawningClock();
+  const tide: Tide = { ...kind, clock };
+  return {
+    spawn: {
+      at: "scatter" as const,
+      ...kind.scatter,
+      data: (rng: Rng, game: Session) => kind.fresh(rng(), game),
+      weight: (game: Session, at: Point) => spawnWeight(game, at, kind.rules),
+    },
+    world: { spawning: clock },
+    step(game: Session) {
+      stepSpawning(game, tide, (at) => {
+        spawn(game, kind.kind, at, kind.fresh(Math.random(), game));
+      });
+    },
+  };
+}
+
+/**
+ * Spawns the next group of the world's growing `tide` once it is due, out of every player's sight
+ * and likelier far from the road and towards the exit; a spawn with nowhere to go, or due while
+ * the world is full, is skipped, and a group that would overfill it comes short. As spawning
+ * begins, those of the kind a new world starts with are gathered into groups too. Runs on the
+ * host.
+ */
+function stepSpawning(
   game: Session,
-  kind: string,
-  radius: number,
-  config: SpawningConfig,
+  tide: Tide,
   spawn: (at: Point) => void,
 ): void {
+  const { kind, config, clock } = tide;
   const now = game.worldTime;
-  const held = spawning.get(game);
+  const held = clock.get(game);
   if (held === null) {
-    spawning.set(game, { startedAt: now, nextAt: now + config.firstGap });
-    gatherStartingGroups(game, kind, radius, config, spawn);
+    clock.set(game, { startedAt: now, nextAt: now + config.firstGap });
+    gatherStartingGroups(game, tide, spawn);
     return;
   }
   if (now < held.nextAt) return;
-  spawning.set(game, {
+  clock.set(game, {
     startedAt: held.startedAt,
     nextAt: now + gapAt(now - held.startedAt, config),
   });
   if (countOf(game, kind) >= config.maxAlive) return;
-  const at = unseenPoint(game, radius, config);
+  const at = unseenPoint(game, tide);
   if (at === null) return;
-  const size = groupSize(config.group);
-  spawnGroup(game, kind, at, size, radius, config, spawn);
+  spawnGroup(game, tide, at, groupSize(config.group), spawn);
 }
