@@ -15,7 +15,12 @@ describe("per-peer mute", () => {
     const levels = createPeerLevels();
     levels.setMuted("player-a", true);
     levels.setMix("player-a", { volume: 0.5, pan: 0.75 });
-    expect(levels.levels("player-a")).toEqual({ gain: 0, pan: 0.75 });
+    expect(levels.levels("player-a")).toEqual({
+      gain: 0,
+      pan: 0.75,
+      radioGain: 0,
+      radioPan: 0,
+    });
   });
 
   test("unmuting restores the latest mix volume", () => {
@@ -23,7 +28,12 @@ describe("per-peer mute", () => {
     levels.setMuted("player-a", true);
     levels.setMix("player-a", MIX);
     levels.setMuted("player-a", false);
-    expect(levels.levels("player-a")).toEqual({ gain: 0.5, pan: -0.25 });
+    expect(levels.levels("player-a")).toEqual({
+      gain: 0.5,
+      pan: -0.25,
+      radioGain: 0,
+      radioPan: 0,
+    });
   });
 
   test("a mute set before the peer has a mix applies, and outlasts the peer leaving", () => {
@@ -32,12 +42,22 @@ describe("per-peer mute", () => {
     expect(levels.levels("player-a").gain).toBe(0);
     levels.setMix("player-a", MIX);
     levels.forget("player-a");
-    expect(levels.levels("player-a")).toEqual({ gain: 0, pan: 0 });
+    expect(levels.levels("player-a")).toEqual({
+      gain: 0,
+      pan: 0,
+      radioGain: 0,
+      radioPan: 0,
+    });
     expect(levels.mutedPeers()).toEqual(["player-a"]);
   });
 
   test("a peer without a mix is silent and centred", () => {
-    expect(createPeerLevels().levels("player-a")).toEqual({ gain: 0, pan: 0 });
+    expect(createPeerLevels().levels("player-a")).toEqual({
+      gain: 0,
+      pan: 0,
+      radioGain: 0,
+      radioPan: 0,
+    });
   });
 
   test("forgetting every mix silences all peers but keeps the mutes", () => {
@@ -45,7 +65,12 @@ describe("per-peer mute", () => {
     levels.setMix("player-a", MIX);
     levels.setMuted("player-c", true);
     levels.forgetMixes();
-    expect(levels.levels("player-a")).toEqual({ gain: 0, pan: 0 });
+    expect(levels.levels("player-a")).toEqual({
+      gain: 0,
+      pan: 0,
+      radioGain: 0,
+      radioPan: 0,
+    });
     expect(levels.mutedPeers()).toEqual(["player-c"]);
   });
 
@@ -55,5 +80,33 @@ describe("per-peer mute", () => {
     levels.setMix("player-c", MIX);
     expect(levels.levels("player-c").gain).toBe(0.5);
     expect(levels.mutedPeers()).toEqual(["player-a"]);
+  });
+});
+
+describe("a voice through a speaker", () => {
+  test("plays at its own gain and pan beside the air's", () => {
+    const levels = createPeerLevels();
+    levels.setMix("player-a", {
+      volume: 0.2,
+      pan: 1,
+      radio: { volume: 0.8, pan: -0.5 },
+    });
+    expect(levels.levels("player-a")).toEqual({
+      gain: 0.2,
+      pan: 1,
+      radioGain: 0.8,
+      radioPan: -0.5,
+    });
+  });
+
+  test("is silenced by a mute, as the air is", () => {
+    const levels = createPeerLevels();
+    levels.setMuted("player-a", true);
+    levels.setMix("player-a", {
+      volume: 1,
+      pan: 0,
+      radio: { volume: 1, pan: 0 },
+    });
+    expect(levels.levels("player-a").radioGain).toBe(0);
   });
 });

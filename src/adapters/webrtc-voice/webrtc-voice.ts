@@ -48,6 +48,8 @@ interface Connection {
   readonly polite: boolean;
   readonly gain: GainNode;
   readonly panner: StereoPannerNode;
+  /** The peer's voice as a speaker plays it: a walkie talkie's, say. */
+  readonly radio: RadioNodes;
   /** Chrome feeds WebAudio silence from a WebRTC stream unless a media element also plays it. */
   readonly sink: HTMLAudioElement;
   source: MediaStreamAudioSourceNode | null;
@@ -56,6 +58,51 @@ interface Connection {
   /** The connection state last seen, and since when. */
   seen: { state: RTCPeerConnectionState; since: number };
   stats: StatsReading;
+}
+
+/**
+ * A voice through a small speaker: only its middle frequencies pass, then it takes its own gain
+ * and pan. `input` is where the voice goes in.
+ */
+interface RadioNodes {
+  readonly input: AudioNode;
+  readonly gain: GainNode;
+  readonly panner: StereoPannerNode;
+  disconnect(): void;
+}
+
+/** Hz below and above which a speaker's voice is cut. */
+const RADIO_BAND = { low: 400, high: 3000 };
+
+/** A speaker's playback nodes, at `gain` and `pan`, playing into `output`. */
+function radioNodes(
+  context: AudioContext,
+  output: AudioNode,
+  gain: number,
+  pan: number,
+): RadioNodes {
+  const highpass = context.createBiquadFilter();
+  highpass.type = "highpass";
+  highpass.frequency.value = RADIO_BAND.low;
+  const lowpass = context.createBiquadFilter();
+  lowpass.type = "lowpass";
+  lowpass.frequency.value = RADIO_BAND.high;
+  const level = context.createGain();
+  level.gain.value = gain;
+  const panner = context.createStereoPanner();
+  panner.pan.value = pan;
+  highpass.connect(lowpass);
+  lowpass.connect(level);
+  level.connect(panner);
+  panner.connect(output);
+  return {
+    input: highpass,
+    gain: level,
+    panner,
+    disconnect() {
+      for (const node of [highpass, lowpass, level, panner]) node.disconnect();
+    },
+  };
 }
 
 /** The latest statistics of a connection, and when they were asked for. */
@@ -94,8 +141,9 @@ type Signal =
  * Voice over WebRTC: a mesh with one RTCPeerConnection per wanted remote player, set up
  * through SIGNAL messages using the "perfect negotiation" pattern.
  *
- * Playback: remote stream -> source -> per-peer gain -> panner -> voice volume -> `output`.
- * The per-peer gain is the mix volume, or 0 while that player is muted.
+ * Playback: remote stream -> source -> per-peer gain -> panner -> voice volume -> `output`, and
+ * beside it source -> speaker band -> radio gain -> radio panner -> voice volume, for a voice
+ * heard through a walkie talkie. Each gain is its mix volume, or 0 while that player is muted.
  */
 export function createWebRtcVoice(
   audio: VoiceAudio,
@@ -107,6 +155,7 @@ export function createWebRtcVoice(
   /** The peers of the room joined now, by id. */
   let peers = new Map<string, Peer>();
   let talking = false;
+  let keyed = false;
   let testing = false;
   let { mode, muted, volume } = initial;
   let voiceVolume: GainNode | null = null;
@@ -125,7 +174,9 @@ export function createWebRtcVoice(
   }
 
   function transmitting(): boolean {
-    return mic.track() !== null && isTransmitting(mode, talking, muted);
+    return (
+      mic.track() !== null && isTransmitting(mode, talking || keyed, muted)
+    );
   }
 
   /**
@@ -160,10 +211,13 @@ export function createWebRtcVoice(
   function applyLevels(peerId: string): void {
     const connection = peers.get(peerId)?.connection;
     if (connection === undefined || connection === null) return;
-    const { gain, pan } = levels.levels(peerId);
+    const { gain, pan, radioGain, radioPan } = levels.levels(peerId);
     const now = connection.gain.context.currentTime;
-    connection.gain.gain.setTargetAtTime(gain, now, config.levelRampS);
-    connection.panner.pan.setTargetAtTime(pan, now, config.levelRampS);
+    const ramp = config.levelRampS;
+    connection.gain.gain.setTargetAtTime(gain, now, ramp);
+    connection.panner.pan.setTargetAtTime(pan, now, ramp);
+    connection.radio.gain.gain.setTargetAtTime(radioGain, now, ramp);
+    connection.radio.panner.pan.setTargetAtTime(radioPan, now, ramp);
   }
 
   /** Notes a change of the connection's state, which an unexpected close makes without an event. */
@@ -232,6 +286,7 @@ export function createWebRtcVoice(
     connection.source?.disconnect();
     connection.source = audioContext().createMediaStreamSource(stream);
     connection.source.connect(connection.gain);
+    connection.source.connect(connection.radio.input);
   }
 
   function join(
@@ -281,10 +336,17 @@ export function createWebRtcVoice(
       const { signal } = connectionScope;
       const gain = context.createGain();
       const panner = context.createStereoPanner();
-      gain.gain.value = levels.levels(peerId).gain;
-      panner.pan.value = levels.levels(peerId).pan;
+      const initial = levels.levels(peerId);
+      gain.gain.value = initial.gain;
+      panner.pan.value = initial.pan;
       gain.connect(panner);
       panner.connect(volumeGain());
+      const radio = radioNodes(
+        context,
+        volumeGain(),
+        initial.radioGain,
+        initial.radioPan,
+      );
       const sink = new Audio();
       sink.muted = true;
       const pc = new RTCPeerConnection(RTC_CONFIG);
@@ -297,6 +359,7 @@ export function createWebRtcVoice(
         polite: isPolite(localId, peerId),
         gain,
         panner,
+        radio,
         sink,
         source: null,
         makingOffer: false,
@@ -314,6 +377,7 @@ export function createWebRtcVoice(
         connection.source?.disconnect();
         gain.disconnect();
         panner.disconnect();
+        radio.disconnect();
         sink.srcObject = null;
       });
       connectionScope.adopt(pc, (closing) => {
@@ -621,6 +685,12 @@ export function createWebRtcVoice(
 
     setTalking(held) {
       talking = held;
+      applyTransmit();
+    },
+
+    setKeyed(on) {
+      if (on === keyed) return;
+      keyed = on;
       applyTransmit();
     },
 

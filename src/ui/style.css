@@ -180,6 +180,18 @@ canvas {
   background: #223140;
   box-shadow: 0 0 0 1px #73cfff;
 }
+/* An item switched on: a small green light in the slot's corner. */
+.hud-slot.on::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7dff8a;
+  box-shadow: 0 0 4px #7dff8a;
+}
 .hud-slot .slot-number {
   position: absolute;
   top: 2px;

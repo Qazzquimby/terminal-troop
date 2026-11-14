@@ -49,6 +49,7 @@ const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 const swing: Controls = { ...idle, use: true };
 

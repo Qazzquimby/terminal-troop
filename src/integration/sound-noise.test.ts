@@ -31,6 +31,7 @@ const still: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** No zombies, so nothing but the bell makes noise. */

@@ -40,6 +40,7 @@ const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** No zombies, so nothing moves; the cruiser beside the first host. */

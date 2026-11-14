@@ -49,6 +49,7 @@ import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 import { dropHeld, interact } from "./world-items.js";
 import type { WorldItemConfig } from "./world-items.js";
+import { followItemSounds } from "./item-sounds.js";
 
 /** How clients follow the host. */
 interface SyncConfig {
@@ -323,6 +324,7 @@ export function updateSession(
   } else followEntities(game, dt);
 
   followHealth(game);
+  followItemSounds(game);
 }
 
 /** Drops a remote player; false when there is none by that id. */

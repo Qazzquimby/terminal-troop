@@ -19,6 +19,9 @@ import type { Session } from "./session.js";
 import { itemControl, itemUse, registerItem } from "./use.js";
 import type { ControlSpec, ItemUse, UseSpec } from "./use.js";
 import type { ItemLoot } from "./loot.js";
+import type { ItemPlays } from "./item-sounds.js";
+import { addVoiceChannel } from "./voice-routes.js";
+import type { VoiceChannel } from "./voice-routes.js";
 
 import { registerWorldItems, spawnWorldItem } from "./world-items.js";
 
@@ -363,6 +366,10 @@ interface ItemBase extends Omit<
   readonly actions?: readonly Action<never>[];
   /** The state the item keeps once for the world, by the key each part travels under. */
   readonly world?: WorldDataSet;
+  /** What one of it plays where it is, if anything, on every client: a radio's song, say. */
+  readonly plays?: ItemPlays;
+  /** A way it carries voice between players past the air, if any: a walkie talkie, say. */
+  readonly voice?: VoiceChannel;
   /** Runs on the host, each step, once the entities have moved: for the rules the item keeps. */
   step?(game: Session, dt: number): void;
   /**
@@ -431,10 +438,16 @@ export function defineItem<N extends string, C>(
           : { control: itemControl(name, spec.control) };
       const light =
         spec.light === undefined ? undefined : { light: spec.light.bind(spec) };
+      const plays =
+        spec.plays === undefined ? undefined : { plays: spec.plays };
       const behaviour =
-        use === undefined && control === undefined && light === undefined
+        use === undefined &&
+        control === undefined &&
+        light === undefined &&
+        plays === undefined
           ? undefined
-          : { ...use, ...control, ...light };
+          : { ...use, ...control, ...light, ...plays };
+      const { voice } = spec;
       return {
         name: `item/${name}`,
         player: spec.player,
@@ -447,6 +460,7 @@ export function defineItem<N extends string, C>(
         register(game) {
           registerItem(game, item, behaviour);
           registerWorldItems(game);
+          if (voice !== undefined) addVoiceChannel(game, voice);
           if (spec.startingSlot === undefined) return;
           placeItem(game.starting, spec.startingSlot, item);
           placeItem(game.local.inventory, spec.startingSlot, item);

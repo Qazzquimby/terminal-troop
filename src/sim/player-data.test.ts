@@ -74,16 +74,20 @@ test("a STATE carries each registered entry's value, encoded, by the entry's nam
   ]);
   lit.set(game.local, true);
   expect(playerReport(game).content).toEqual({
+    "core/on-air": false,
     "core/voice": 0,
     "entity/bat": "Infinity",
     "item/torch": true,
   });
 });
 
-test("every session reports how far its speech carries, and sends the held slot and how each player moves with the players, with no content listed", () => {
+test("every session reports how far its speech carries and whether it is on the air, and sends the held slot and how each player moves with the players, with no content listed", () => {
   const game = session();
   registerContent(game, []);
-  expect(playerReport(game).content).toEqual({ "core/voice": 0 });
+  expect(playerReport(game).content).toEqual({
+    "core/on-air": false,
+    "core/voice": 0,
+  });
   expect(playerEntries(game).map(({ content }) => content)).toEqual([
     { "core/items": 0, "core/movement": { mode: "walk", moving: false } },
   ]);
@@ -135,6 +139,7 @@ test("an entity and an item of the same name keep their own state", () => {
     })).create({ lamp: undefined }),
   ]);
   expect(playerReport(game).content).toEqual({
+    "core/on-air": false,
     "core/voice": 0,
     "entity/lamp": 1,
     "item/lamp": 2,

@@ -47,6 +47,7 @@ const idle = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 const messages = roomMessages(testSimConfig.player.nameMax);
 const heartbeat = messages[NetEvent.HEARTBEAT];

@@ -8,6 +8,14 @@ export function peerGain(mix: PeerMix, muted: boolean): number {
   return muted ? 0 : mix.volume;
 }
 
+/** The gains and pans to apply to one peer's playback nodes: through the air, and through a speaker. */
+export interface PeerLevels {
+  readonly gain: number;
+  readonly pan: number;
+  readonly radioGain: number;
+  readonly radioPan: number;
+}
+
 /**
  * Per-peer mix and mute, kept apart so the mix can be rewritten every frame without
  * clobbering a mute. Mutes are remembered by peer id for the whole session: they apply
@@ -32,10 +40,17 @@ export function createPeerLevels() {
     forgetMixes(): void {
       mixes.clear();
     },
-    /** Gain and pan to apply to this peer's playback nodes now. */
-    levels(peerId: string): { gain: number; pan: number } {
+    /** Gains and pans to apply to this peer's playback nodes now; a muted peer is silent both ways. */
+    levels(peerId: string): PeerLevels {
       const mix = mixes.get(peerId) ?? DEFAULT_PEER_MIX;
-      return { gain: peerGain(mix, muted.has(peerId)), pan: mix.pan };
+      const mute = muted.has(peerId);
+      const radio = mix.radio ?? { volume: 0, pan: 0 };
+      return {
+        gain: peerGain(mix, mute),
+        pan: mix.pan,
+        radioGain: peerGain(radio, mute),
+        radioPan: radio.pan,
+      };
     },
     mutedPeers: (): string[] => [...muted],
   };

@@ -21,6 +21,7 @@ const controls = (moving: boolean, sprinting: boolean): Controls => ({
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 });
 const idle = controls(false, false);
 

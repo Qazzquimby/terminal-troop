@@ -46,6 +46,7 @@ const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** Faces right of where `game`'s local player stands, kicking. */

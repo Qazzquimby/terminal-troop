@@ -35,6 +35,7 @@ const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 const reach: Controls = { ...idle, interact: true };
 const letGo: Controls = { ...idle, drop: true };

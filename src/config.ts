@@ -311,6 +311,32 @@ export const config = {
       volume: 0.6,
       clickNoiseRadius: CELL,
     },
+    // 8 minutes of battery switched on, a use a second, so the toolbar counts it down in seconds.
+    // Its switch clicks 2 cells out; the click of keying it barely past arm's length, making no
+    // noise. A walkie playing speech is heard 80% as far as the speech itself carries.
+    walkie: {
+      weight: 2,
+      uses: 480,
+      loot: { weight: 12, rarity: "common" },
+      drain: 1,
+      cooldown: 0.3,
+      volume: 0.6,
+      switchRange: CELL * 2,
+      keyRange: CELL * 1.5,
+      speakerNoise: 0.8,
+    },
+    // Never runs down. Its song is heard, and makes a noise, 25 cells round, past a sprint's 16,
+    // every second while it plays; its switch clicks 2 cells out.
+    radio: {
+      weight: 8,
+      loot: { weight: 8, rarity: "uncommon" },
+      cooldown: 0.3,
+      volume: 0.7,
+      switchVolume: 0.6,
+      switchRange: CELL * 2,
+      range: CELL * 25,
+      noiseInterval: 1,
+    },
     // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
     // most dangerous spot there is an even chance of a second, an uncommon item is twice as
     // likely, a rare one four times.
@@ -334,7 +360,14 @@ export const config = {
     },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
-  voice: { full: 100, silent: 600, pan: 300 },
+  // A voice through a walkie talkie's small speaker is full only within a cell of it and gone 8
+  // cells off, where a voice in the air carries 12.
+  voice: {
+    full: 100,
+    silent: 600,
+    pan: 300,
+    radio: { full: CELL, silent: CELL * 8, pan: 300 },
+  },
   voiceConnections: {
     levelRampS: 0.05,
     connectDeadlineMs: 15_000,

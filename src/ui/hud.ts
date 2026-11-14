@@ -1,4 +1,4 @@
-import { carriedWeight, usesLeft } from "../sim/index.js";
+import { carriedWeight, isOn, usesLeft } from "../sim/index.js";
 import type { CarriedItem, HeldSlot, Inventory } from "../sim/index.js";
 
 /** How the toolbar shows items. */
@@ -40,6 +40,8 @@ interface SlotView {
   /** Null for an empty slot, or an item whose uses are unlimited. */
   readonly uses: UsesView | null;
   readonly selected: boolean;
+  /** Whether its item is switched on. */
+  readonly on: boolean;
 }
 
 /** Pounds as the toolbar shows them, e.g. "15 lb". */
@@ -73,6 +75,7 @@ export function slotViews(
         : weightText(item.weight),
     uses: item === null ? null : usesView(item, config),
     selected: index === held,
+    on: isOn(item?.state),
   }));
 }
 
@@ -138,6 +141,7 @@ function slotElement(view: SlotView): HTMLLIElement {
   const slot = document.createElement("li");
   slot.className = "hud-slot";
   slot.classList.toggle("selected", view.selected);
+  slot.classList.toggle("on", view.on);
   slot.append(
     span("slot-number", view.number),
     span("hud-slot-glyph", view.glyph),

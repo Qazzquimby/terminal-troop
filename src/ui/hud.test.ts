@@ -10,7 +10,7 @@ import {
 
 const CONFIG = { segmentsUpTo: 10 };
 const shovel = { id: "shovel", name: "Shovel", emoji: "🪏", weight: 15 };
-const blank = { glyph: "", name: "", weight: "", uses: null };
+const blank = { glyph: "", name: "", weight: "", uses: null, on: false };
 
 test("every slot shows its key number, the held one marked, an empty one blank", () => {
   const inventory: Inventory = [shovel, null, null];
@@ -22,6 +22,7 @@ test("every slot shows its key number, the held one marked, an empty one blank",
       weight: "15 lb",
       uses: null,
       selected: false,
+      on: false,
     },
     { number: "2", ...blank, selected: false },
     { number: "3", ...blank, selected: true },
@@ -62,6 +63,17 @@ test("the departure counts down in whole seconds, says when the player escaped, 
   expect(departureText(false, 12.2)).toBe("Leaving in 13s");
   expect(departureText(true, 5)).toBe("Escaped");
   expect(departureText(true, null)).toBe("Escaped");
+});
+
+test("an item switched on shows as on; one with no state, or off, does not", () => {
+  const walkie = { id: "walkie", name: "Walkie", emoji: "📻" };
+  const inventory: Inventory = [
+    { ...walkie, state: { on: true } },
+    walkie,
+    { ...walkie, state: { on: false } },
+  ];
+  const views = slotViews(inventory, null, CONFIG);
+  expect(views.map((view) => view.on)).toEqual([true, false, false]);
 });
 
 test("outside a room the bar is hidden, and nothing is drawn into it", () => {

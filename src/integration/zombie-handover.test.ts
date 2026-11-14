@@ -37,6 +37,7 @@ const still: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 function sessionOf(room: Room): Session {
