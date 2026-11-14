@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isGhost } from "./ghosts.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
@@ -44,14 +45,19 @@ export function followHealth(game: Session): void {
  * Deals `amount` damage to `player`, as the host: the damage comes off the host's record of the
  * player's health, which every client shows. Returns the health the player has left on the
  * record; the host alone declares a player down, once that reaches 0. On a client not hosting,
- * or for a player not in the session, does nothing and returns the health this client shows.
+ * for a player not in the session, or for a ghost, does nothing and returns the health this
+ * client shows.
  */
 export function hurtPlayer(
   game: Session,
   player: Player,
   amount: number,
 ): number {
-  if (!game.hosting || game.players.get(player.id) !== player)
+  if (
+    !game.hosting ||
+    game.players.get(player.id) !== player ||
+    isGhost(player)
+  )
     return player.health;
   if (amount > 0) {
     const left = Math.max(0, recordedHealth(game, player) - amount);
@@ -59,4 +65,20 @@ export function hurtPlayer(
     player.health = left;
   }
   return player.health;
+}
+
+/**
+ * As the host, sets `player`'s health on the record to `health`, at most its full: a ghost given
+ * health is alive again. Returns whether it did: false on a client not hosting.
+ */
+export function setPlayerHealth(
+  game: Session,
+  player: Player,
+  health: number,
+): boolean {
+  if (!game.hosting) return false;
+  const set = Math.min(Math.max(0, health), player.maxHealth);
+  playerHealth.set(game, { ...playerHealth.get(game), [player.id]: set });
+  player.health = set;
+  return true;
 }

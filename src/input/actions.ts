@@ -16,6 +16,7 @@ export const ACTIONS = {
   secondary: { keys: ["MouseRight"], contexts: ["play"] },
   interact: { keys: ["KeyE"], contexts: ["play"] },
   drop: { keys: ["KeyF"], contexts: ["play"] },
+  toggleView: { keys: ["Space"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
   pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },
@@ -295,5 +296,6 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     interact: frame.pressed.has("interact"),
     drop: frame.pressed.has("drop"),
     holdingUse: frame.held.has("useItem"),
+    toggleView: frame.pressed.has("toggleView"),
   };
 }

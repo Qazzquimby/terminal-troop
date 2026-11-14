@@ -5,6 +5,7 @@ import { separateBody, solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { drive, RideWire } from "./driving.js";
 import type { Ride } from "./driving.js";
+import { isGhost } from "./ghosts.js";
 import { heldSlot, weightOf } from "./inventories.js";
 import { selectSlot } from "./inventory.js";
 import { lerpAngle, renderPosition, snapPrevious } from "./interpolation.js";
@@ -297,7 +298,8 @@ const sameSteer = (a: Steer, b: Steer): boolean =>
 /**
  * One step of `player`'s movement: it walks as `input` steers it, slowed by what it carries,
  * goes on with any dash, then steps out of every body it overlaps; or, at the wheel, drives. The
- * same on every client that runs the player. `live` is false while running a step again.
+ * same on every client that runs the player. `live` is false while running a step again. A
+ * ghost's body is not moved: where it watches from is its own client's.
  */
 function movePlayer(
   game: Session,
@@ -306,6 +308,12 @@ function movePlayer(
   dt: number,
   live = true,
 ): void {
+  if (isGhost(player)) {
+    player.vx = 0;
+    player.vy = 0;
+    player.dash = null;
+    return;
+  }
   if (player.ride !== null) {
     drive(game, player, steer.move, dt, live, game.config);
     return;
@@ -713,7 +721,9 @@ function followEntry(game: Session, player: Player, entry: PlayerEntry): void {
 function reconcile(game: Session, entry: PlayerEntry): void {
   const { local, pilot } = game;
   pilot.placed = true;
-  if (game.hosting) return;
+  // A ghost watches from where its own client puts it; the host's word on it counts again once
+  // it is revived, as the next entry after reviving puts it by the cruiser.
+  if (game.hosting || isGhost(local)) return;
   const { step } = entry;
   if (step === null) {
     // The host has heard no steer from this client yet: until then it owns where the player is.

@@ -1,5 +1,6 @@
 import { effect, hurt } from "./actions.js";
 import type { WorldEntity } from "./entities.js";
+import { livingPlayers } from "./ghosts.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -24,10 +25,10 @@ export interface ShotEnd {
   readonly wall: boolean;
 }
 
-/** The bodies a shot can meet: every player and every solid world entity, but `but`. */
+/** The bodies a shot can meet: every living player and every solid world entity, but `but`. */
 function targets(game: Session, but: string): (Player | WorldEntity)[] {
   return [
-    ...[...game.players.values()].filter((player) => player.id !== but),
+    ...livingPlayers(game).filter((player) => player.id !== but),
     ...[...game.entities.values()].filter(
       (entity) => entity.collides && entity.id !== but,
     ),

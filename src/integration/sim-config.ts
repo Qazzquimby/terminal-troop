@@ -69,6 +69,7 @@ export const testSimConfig: SimConfig = {
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
+  death: { scatter: 40, reviveHealth: 50 },
   vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
   light: { range: 200 },
   net: { smoothing: 12, predictionHold: 0.5 },
@@ -173,6 +174,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     ram: { speed: 100, damage: 20, cooldown: 0.5, noiseRadius: 500 },
     headlights: { range: 400, angle: Math.PI / 4, spread: 7 },
     escape: { delay: 20, volume: 1 },
+    revive: { reach: 50, volume: 1 },
   },
   stunTrap: {
     radius: 10,
@@ -272,6 +274,7 @@ export const testItemsConfig: ItemsConfig = {
     volume: 1,
     clickNoiseRadius: 50,
   },
+  corpse: { weight: 50, volume: 1 },
   walkie: {
     weight: 0,
     uses: 10,
