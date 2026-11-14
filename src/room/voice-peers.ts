@@ -1,8 +1,13 @@
+import { voiceRoutes } from "../sim/index.js";
 import type { Session } from "../sim/index.js";
-import { voiceMix } from "../voice/index.js";
+import { routedMix } from "../voice/index.js";
 import type { PeerMix, VoiceFalloff, VoiceRoom } from "../voice/index.js";
 
-/** The mix for remote player `id` by its position relative to the local player; null without one. */
+/**
+ * The mix for remote player `id` by every way its voice reaches the local player: through the air
+ * from where it stands, and through whatever else carries it, such as walkie talkies. Null
+ * without such a player.
+ */
 function mixFor(
   session: Session,
   id: string,
@@ -10,10 +15,11 @@ function mixFor(
 ): PeerMix | null {
   const player = session.players.get(id);
   if (player === undefined || id === session.localId) return null;
-  return voiceMix(session.local, player, falloff);
+  const routes = voiceRoutes(session, player, session.local);
+  return routedMix(session.local, routes, falloff);
 }
 
-/** Mixes the voice of each of `ids` by its position relative to the local player. */
+/** Mixes the voice of each of `ids` by every way it reaches the local player. */
 export function applyProximity(
   session: Session,
   ids: Iterable<string>,

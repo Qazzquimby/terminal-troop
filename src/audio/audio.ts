@@ -29,6 +29,11 @@ interface PlayOptions {
   range?: number;
 }
 
+interface StreamOptions extends PlayOptions {
+  /** Seconds into the sound it starts from; 0 when left out. */
+  offset?: number;
+}
+
 /** @public */
 export interface SoundHandle {
   stop: (fadeTime?: number) => void;
@@ -50,6 +55,16 @@ export interface Sfx {
     listener: Point | null,
     options?: PlayOptions,
   ) => Promise<SoundHandle | null>;
+  /**
+   * Streams the long sound at `url`, such as a song, from `offset` seconds in, rather than
+   * loading it whole first. Looped, an offset past its end wraps round. `stopAll` stops it too.
+   */
+  stream: (
+    url: string,
+    origin: Point | null,
+    listener: Point | null,
+    options?: StreamOptions,
+  ) => SoundHandle;
   stop: (id: string, fadeTime?: number) => void;
   stopAll: (fadeTime?: number) => void;
   /** Scales every sound; 0..1. */
@@ -103,6 +118,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
   const buffers = new Map<string, Promise<AudioBuffer>>();
   const activeLoops = new Map<string, SoundHandle>();
   const pendingLoops = new Map<string, symbol>();
+  const streams = new Set<SoundHandle>();
 
   function getAudioContext(): AudioContext {
     audioContext ??= new AudioContext();
@@ -157,21 +173,13 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     // Browsers usually require an AudioContext to be resumed after a user interaction.
     await context.resume();
 
-    let mix = spatialMix(origin, listener, fades);
-    let baseVolume = volume;
-
     const source = context.createBufferSource();
-    const gain = context.createGain();
-    const panner = context.createStereoPanner();
+    const out = placed(context, fades, origin, listener, volume);
+    const { gain } = out;
 
     source.buffer = buffer;
     source.loop = loop;
-    gain.gain.value = mix.volume * baseVolume;
-    panner.pan.value = mix.pan;
-
     source.connect(gain);
-    gain.connect(panner);
-    panner.connect(getMaster(context));
     source.start();
 
     let stopped = false;
@@ -179,8 +187,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     source.onended = () => {
       stopped = true;
       source.disconnect();
-      gain.disconnect();
-      panner.disconnect();
+      out.disconnect();
     };
 
     return {
@@ -201,18 +208,48 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
         gain.gain.linearRampToValueAtTime(0, now + fadeTime);
         source.stop(now + fadeTime);
       },
-
       setVolume(value) {
-        if (stopped) return;
+        if (!stopped) out.setVolume(value);
+      },
+      setPosition(newOrigin, newListener) {
+        if (!stopped) out.setPosition(newOrigin, newListener);
+      },
+    };
+  }
+
+  /**
+   * A gain and a panner, into the master, that place a sound at `volume` from `origin` for
+   * `listener`, fading by `fades`; sound goes in at the gain.
+   */
+  function placed(
+    context: AudioContext,
+    fades: SpatialFalloff,
+    origin: Point | null,
+    listener: Point | null,
+    volume: number,
+  ) {
+    let mix = spatialMix(origin, listener, fades);
+    let baseVolume = volume;
+    const gain = context.createGain();
+    const panner = context.createStereoPanner();
+    gain.gain.value = mix.volume * baseVolume;
+    panner.pan.value = mix.pan;
+    gain.connect(panner);
+    panner.connect(getMaster(context));
+    return {
+      gain,
+      setVolume(value: number): void {
         baseVolume = value;
         gain.gain.value = mix.volume * baseVolume;
       },
-
-      setPosition(newOrigin, newListener) {
-        if (stopped) return;
+      setPosition(newOrigin: Point | null, newListener: Point | null): void {
         mix = spatialMix(newOrigin, newListener, fades);
         gain.gain.value = mix.volume * baseVolume;
         panner.pan.value = mix.pan;
+      },
+      disconnect(): void {
+        gain.disconnect();
+        panner.disconnect();
       },
     };
   }
@@ -258,17 +295,78 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     activeLoops.delete(id);
   }
 
+  function stream(
+    url: string,
+    origin: Point | null,
+    listener: Point | null,
+    { volume = 1, loop = false, range, offset = 0 }: StreamOptions = {},
+  ): SoundHandle {
+    const fades = rangedFalloff(falloff, range);
+    const context = getAudioContext();
+    const element = new Audio(url);
+    element.loop = loop;
+    element.preload = "auto";
+    element.addEventListener(
+      "loadedmetadata",
+      () => {
+        const { duration } = element;
+        if (!Number.isFinite(duration) || duration <= 0) return;
+        element.currentTime = loop ? offset % duration : offset;
+      },
+      { once: true },
+    );
+
+    const source = context.createMediaElementSource(element);
+    const out = placed(context, fades, origin, listener, volume);
+    const { gain } = out;
+    source.connect(gain);
+    void context.resume().then(() => element.play().catch(() => undefined));
+
+    let stopped = false;
+    const handle: SoundHandle = {
+      stop(fadeTime = 0.1) {
+        if (stopped) return;
+        stopped = true;
+        streams.delete(handle);
+        const fade = Math.max(fadeTime, 0);
+        const now = context.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0, now + fade);
+        setTimeout(() => {
+          element.pause();
+          element.removeAttribute("src");
+          element.load();
+          source.disconnect();
+          out.disconnect();
+        }, fade * 1000);
+      },
+      setVolume(value) {
+        if (!stopped) out.setVolume(value);
+      },
+      setPosition(newOrigin, newListener) {
+        if (!stopped) out.setPosition(newOrigin, newListener);
+      },
+    };
+    streams.add(handle);
+    return handle;
+  }
+
   function stopAll(fadeTime = 0.1): void {
     pendingLoops.clear();
     activeLoops.forEach((handle) => {
       handle.stop(fadeTime);
     });
     activeLoops.clear();
+    [...streams].forEach((handle) => {
+      handle.stop(fadeTime);
+    });
   }
 
   return {
     play,
     playLoop,
+    stream,
     stop,
     stopAll,
     setMasterVolume,

@@ -82,6 +82,8 @@ export interface Controls {
   readonly interact: boolean;
   /** Whether to drop the held item this step. */
   readonly drop: boolean;
+  /** Whether the use control is held down this step: for an item worked while it is, such as a walkie talkie. */
+  readonly holdingUse: boolean;
 }
 
 /**

@@ -38,6 +38,7 @@ const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** One blind zombie, so it stays where it is put. */

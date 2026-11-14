@@ -29,6 +29,7 @@ const still: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** The dev square with its cruiser and no zombies; its exit is its rightmost three columns. */

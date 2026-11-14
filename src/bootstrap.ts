@@ -1,6 +1,7 @@
 import {
   createSimClock,
   drawnLocal,
+  onAir,
   remotePlayers,
   speak,
   updateSession,
@@ -382,6 +383,8 @@ function frame(): void {
     const { steps, alpha } = clock.advance(now, (until) => {
       speak(session, voice.speakingLevel());
       updateSession(session, input.getControls(until), clock.dt);
+      // Talking into a walkie talkie sends the mic out whatever the voice settings.
+      voice.setKeyed(onAir.get(session.local));
       ripples.hear(session, until);
       flashes.see(session, until);
     });
@@ -414,6 +417,7 @@ function frame(): void {
     });
   } else {
     hud.show(null);
+    voice.setKeyed(false);
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }

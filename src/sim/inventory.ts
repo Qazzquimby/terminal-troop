@@ -9,6 +9,21 @@ export const ItemId = z.string().min(1).max(32);
 /** An item's uses left, as a carried or lying item keeps them. */
 export const UsesLeft = z.number().int().min(0).max(10_000);
 
+/**
+ * What one item keeps of its own, carried or lying, past its uses: whether a walkie talkie is
+ * switched on, say, or which song a radio plays. A few small flat values, which the item's own
+ * content reads and writes. By convention `on: true` is an item switched on, which the toolbar
+ * and the ground show.
+ */
+export const ItemState = z
+  .record(z.string().min(1).max(16), z.union([z.number(), z.boolean()]))
+  .refine((state) => Object.keys(state).length <= 8);
+export type ItemState = z.infer<typeof ItemState>;
+
+/** Whether `state` is that of an item switched on. */
+export const isOn = (state: ItemState | undefined): boolean =>
+  state?.on === true;
+
 export interface ItemDefinition {
   readonly id: string;
   readonly name: string;
@@ -27,11 +42,12 @@ export interface ItemDefinition {
 }
 
 /**
- * An item as a player carries it: its definition, and the uses it has left once it has spent
- * some. One that has spent none has all its uses.
+ * An item as a player carries it: its definition, the uses it has left once it has spent some,
+ * and its own state, if it keeps any. One that has spent none has all its uses.
  */
 export interface CarriedItem extends ItemDefinition {
   readonly left?: number;
+  readonly state?: ItemState;
 }
 
 /** One item per slot; items do not stack. */
@@ -43,12 +59,26 @@ export function usesLeft(item: CarriedItem): number | null {
   return item.left ?? item.uses;
 }
 
-/** `item` with `left` uses left: as new when `left` is all its uses, or not given. */
+/**
+ * `item` with `left` uses left: as new when `left` is all its uses, or not given. Its state stays
+ * as it is.
+ */
 export function carried(item: CarriedItem, left?: number): CarriedItem {
   const full = left === undefined || left === item.uses;
   if (item.left === undefined && full) return item;
   const definition = omit(item, "left");
   return full ? definition : { ...definition, left };
+}
+
+/** `item` keeping `state` of its own; none when `state` is undefined or empty. */
+export function withState(
+  item: CarriedItem,
+  state: ItemState | undefined,
+): CarriedItem {
+  const none = state === undefined || Object.keys(state).length === 0;
+  if (none && item.state === undefined) return item;
+  const rest = omit(item, "state");
+  return none ? rest : { ...rest, state };
 }
 
 /** What every item in `inventory` weighs together, in pounds. */

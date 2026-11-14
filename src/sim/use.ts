@@ -4,6 +4,7 @@ import type { Action } from "./actions.js";
 import { itemIn } from "./inventories.js";
 import { heldItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
+import type { ItemPlays } from "./item-sounds.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -68,6 +69,8 @@ export interface ItemBehaviour {
   readonly control?: Action<ItemControlInput>;
   /** The light it gives off while `holder` holds it, if any, from the holder's centre. */
   light?(game: Session, holder: Player): LightEmission | null;
+  /** What one of it plays where it is now, if anything: a radio's song, say. */
+  readonly plays?: ItemPlays;
 }
 
 /** Whether the host's record has the item `id` in `slot` of `user`'s items. */

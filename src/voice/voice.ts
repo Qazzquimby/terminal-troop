@@ -71,10 +71,15 @@ export interface VoiceDiagnostics {
   readonly peers: readonly PeerDiagnostics[];
 }
 
-/** How loud and where (-1 left .. 1 right) one remote player is heard. */
+/**
+ * How loud and where (-1 left .. 1 right) one remote player is heard through the air, and through
+ * a speaker such as a walkie talkie's, if at all.
+ */
 export interface PeerMix {
   volume: number;
   pan: number;
+  /** How loud and where it plays through a speaker; silent when left out. */
+  radio?: { volume: number; pan: number };
 }
 
 /** Timings and limits a voice implementation holds its connections to. */
@@ -153,6 +158,11 @@ export interface Voice {
   /** Whether push-to-talk is held. Ignored in open-mic mode. */
   setTalking(held: boolean): void;
   /**
+   * Whether the player is keyed on the air, talking into a walkie talkie, say: the mic goes out
+   * while it is, in either mode, unless muted.
+   */
+  setKeyed(keyed: boolean): void;
+  /**
    * Local mute of one remote player's voice, on top of their mix: later setPeerMix calls
    * keep it. Remembered by peer id across rooms, so it outlasts a reconnect.
    */
@@ -205,6 +215,7 @@ export function createNullVoice(initial: VoiceSettings): Voice {
       ({ mode, muted } = settings);
     },
     setTalking: noop,
+    setKeyed: noop,
     setPeerMuted: noop,
     setMicTest: noop,
     retry: noop,

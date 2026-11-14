@@ -38,6 +38,7 @@ const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** Kicks that cost next to no stamina, so only their cooldown holds them back. */

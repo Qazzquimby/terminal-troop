@@ -13,6 +13,7 @@ import { heldSlot, inventories } from "./inventories.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
 import { voiceNoise } from "./voice-noise.js";
+import { onAir } from "./voice-routes.js";
 import { drop, pickUp } from "./world-items.js";
 
 /**
@@ -37,6 +38,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/movement": { player: movement },
   /** How far each player's speech carries, which its voice noise follows. */
   "core/voice": { player: voiceNoise },
+  /** Whether each player is on the air, its voice going past the air through a channel. */
+  "core/on-air": { player: onAir },
   /** Each player's health, which the host alone changes. */
   "core/health": { world: { players: playerHealth } },
   /** What each player steers with, sent to the host as it changes. */

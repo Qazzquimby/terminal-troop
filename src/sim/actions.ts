@@ -12,11 +12,19 @@ import {
   giveItem,
   predictInventory,
   resendItems,
+  setItemState,
   setUsesLeft,
   takeItem,
 } from "./inventories.js";
-import { addItem, carried, ItemId, removeItem, usesLeft } from "./inventory.js";
-import type { CarriedItem, Inventory } from "./inventory.js";
+import {
+  addItem,
+  carried,
+  ItemId,
+  removeItem,
+  usesLeft,
+  withState,
+} from "./inventory.js";
+import type { CarriedItem, Inventory, ItemState } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
@@ -632,23 +640,53 @@ export function usesAt(
 }
 
 /**
+ * The state of its own the item in `actor`'s `slot` keeps, as the action being applied sees it;
+ * undefined for none, or no item.
+ */
+export function stateAt(
+  game: Session,
+  actor: Player,
+  slot: number,
+): ItemState | undefined {
+  return itemAt(game, actor, slot)?.state;
+}
+
+/**
+ * Leaves the item in `actor`'s `slot`, if it is `item`, keeping `state` of its own, which only
+ * the host does: its record of the actor's items carries that to every client. The actor's own
+ * client is not predicted to change it, so content may draw it at random. Returns whether it did.
+ */
+export function setStateAt(
+  game: Session,
+  actor: Player,
+  slot: number,
+  item: string,
+  state: ItemState | undefined,
+): boolean {
+  if (scope(game) !== "world") return false;
+  return setItemState(game, actor.id, slot, item, state);
+}
+
+/**
  * Puts `item` in `actor`'s first empty slot, with `left` uses left, or all its uses when left
- * out: on the actor's own client at once, as predicted, and in the host's record once the host
- * applies the action. Returns whether it went in.
+ * out, keeping `state` of its own, if any: on the actor's own client at once, as predicted, and
+ * in the host's record once the host applies the action. Returns whether it went in.
  */
 export function give(
   game: Session,
   actor: Player,
   item: string,
   left?: number,
+  state?: ItemState,
 ): boolean {
   const run = predicting(game);
-  if (run === null) return giveItem(game, actor.id, item, undefined, left);
+  if (run === null)
+    return giveItem(game, actor.id, item, undefined, left, state);
   const definition = game.itemDefinitions.get(item);
   if (definition === undefined || actor !== game.local) return false;
   let fit = false;
   predictItems(game, run, (inventory) => {
-    fit = addItem(inventory, carried(definition, left));
+    fit = addItem(inventory, withState(carried(definition, left), state));
   });
   return fit;
 }

@@ -119,6 +119,9 @@ class FakeAudioContext {
   createGain = fakeNode;
   createStereoPanner = fakeNode;
   createMediaStreamSource = fakeNode;
+  createBiquadFilter() {
+    return { ...fakeNode(), type: "", frequency: { value: 0 } };
+  }
   createAnalyser() {
     return {
       ...fakeNode(),
@@ -277,6 +280,21 @@ describe("the local mic", () => {
     expect(voice.speakingLevel()).toBeGreaterThan(0);
     voice.configure({ ...OPEN_MIC, muted: true });
     expect(voice.speakingLevel()).toBe(0);
+  });
+
+  test("keyed on the air, the mic goes out in push-to-talk mode, but never while muted", async () => {
+    const { voice } = voiceIn({ ...OPEN_MIC, mode: "pushToTalk" });
+    await settle();
+    expect(voice.status().transmitting).toBe(false);
+    voice.setKeyed(true);
+    expect(voice.status().transmitting).toBe(true);
+    expect(voice.speakingLevel()).toBeGreaterThan(0);
+    voice.setKeyed(false);
+    expect(voice.status().transmitting).toBe(false);
+
+    voice.configure({ ...OPEN_MIC, mode: "pushToTalk", muted: true });
+    voice.setKeyed(true);
+    expect(voice.status().transmitting).toBe(false);
   });
 
   test("a refused mic reports denied until asking again succeeds", async () => {

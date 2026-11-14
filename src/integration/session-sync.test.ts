@@ -90,6 +90,7 @@ const idle = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 test("clients in the same room build the same world", async () => {

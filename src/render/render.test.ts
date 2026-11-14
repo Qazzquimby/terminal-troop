@@ -89,6 +89,7 @@ const walkRight = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 function session(): Session {

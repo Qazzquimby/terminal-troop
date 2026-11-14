@@ -73,6 +73,7 @@ function hold(
     secondary: false,
     interact: false,
     drop: false,
+    holdingUse: false,
     ...held,
   };
   for (let i = 0; i < steps; i++) {
@@ -109,6 +110,7 @@ test("carrying weight slows the top speed evenly, to 20% slower at 100lb and no 
       secondary: false,
       interact: false,
       drop: false,
+      holdingUse: false,
     };
     for (let i = 0; i < 60; i++)
       updatePlayer(player, controls, STEP, world.map, rules, pounds);

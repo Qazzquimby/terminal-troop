@@ -110,6 +110,7 @@ const idle = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 function collisionSession() {

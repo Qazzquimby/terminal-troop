@@ -29,6 +29,7 @@ const idle = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 /** A dev-square session whose one kind counts its updates and drifts right at 60px/s. */

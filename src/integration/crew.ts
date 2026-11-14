@@ -31,6 +31,7 @@ export const idle: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 export function sessionOf(room: Room): Session {

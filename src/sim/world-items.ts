@@ -5,13 +5,14 @@ import {
   give,
   removeFromWorld,
   spawn,
+  stateAt,
   take,
   usesAt,
 } from "./actions.js";
 import type { WorldEntity } from "./entities.js";
-import { registerEntityType, spawnEntity } from "./entities.js";
+import { registerEntityType, removeEntity, spawnEntity } from "./entities.js";
 import { hasRoom, isReaching, itemIn } from "./inventories.js";
-import { isFull, ItemId, UsesLeft } from "./inventory.js";
+import { isFull, isOn, ItemId, ItemState, UsesLeft } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { controlHeldItem } from "./use.js";
@@ -29,13 +30,24 @@ export interface WorldItemConfig {
 /** The kind every item lying in the world is, whatever the item. */
 const WORLD_ITEM = "core/world-item";
 
-/** A lying item's state: which item it is, and the uses it has left once it has spent some. */
-const WorldItemData = z.object({ item: ItemId, left: UsesLeft.optional() });
+/**
+ * A lying item's state: which item it is, the uses it has left once it has spent some, and its
+ * own state once it keeps any.
+ */
+const WorldItemData = z.object({
+  item: ItemId,
+  left: UsesLeft.optional(),
+  state: ItemState.optional(),
+});
 type WorldItemData = z.infer<typeof WorldItemData>;
+
+/** The colour of the light an item switched on shows. */
+const ON_LIGHT = "#7dff8a";
 
 /**
  * Registers the kind items lie in the world as, once a session has any items; each is drawn as
- * its item's glyph. Clients that register the same content number it alike.
+ * its item's glyph, with a small pulsing light while it is switched on. Clients that register the
+ * same content number it alike.
  */
 export function registerWorldItems(game: Session): void {
   if (game.kindIds.has(WORLD_ITEM)) return;
@@ -45,7 +57,7 @@ export function registerWorldItems(game: Session): void {
     maxHealth: Infinity,
     collides: false,
     data: WorldItemData,
-    draw(ctx, entity, { item }, _now, view) {
+    draw(ctx, entity, { item, state }, now, view) {
       const glyph = view.itemDefinitions.get(item)?.emoji;
       if (glyph === undefined) return;
       ctx.save();
@@ -53,35 +65,74 @@ export function registerWorldItems(game: Session): void {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(glyph, entity.x, entity.y);
+      if (isOn(state)) {
+        ctx.globalAlpha = 0.6 + 0.4 * Math.sin((now / 1000) * Math.PI * 2);
+        ctx.fillStyle = ON_LIGHT;
+        ctx.beginPath();
+        ctx.arc(entity.x + radius, entity.y - radius, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     },
   });
 }
 
-/** A lying item's state: `item` with `left` uses left, or all its uses when left out. */
-const lyingData = (item: string, left?: number | null): WorldItemData => ({
+/**
+ * A lying item's state: `item` with `left` uses left, or all its uses when left out, keeping
+ * `state` of its own, if any.
+ */
+const lyingData = (
+  item: string,
+  left?: number | null,
+  state?: ItemState,
+): WorldItemData => ({
   item,
   ...(left !== undefined && left !== null && { left }),
+  ...(state !== undefined && Object.keys(state).length > 0 && { state }),
 });
 
 /**
  * Lays the item `item` in the world at `at`, with `left` uses left, or all its uses when left
- * out.
+ * out, keeping `state` of its own, if any.
  */
 export function spawnWorldItem(
   game: Session,
   at: Point,
   item: string,
   left?: number,
+  state?: ItemState,
 ): WorldEntity {
-  return spawnEntity(game, WORLD_ITEM, at.x, at.y, lyingData(item, left));
+  const data = lyingData(item, left, state);
+  return spawnEntity(game, WORLD_ITEM, at.x, at.y, data);
 }
 
-/** The item `entity` is, and the uses it has left, if it is an item lying in the world. */
-function lyingItem(game: Session, entity: WorldEntity): WorldItemData | null {
+/**
+ * The item `entity` is, the uses it has left and its own state, if it is an item lying in the
+ * world.
+ */
+export function lyingItem(
+  game: Session,
+  entity: WorldEntity,
+): WorldItemData | null {
   if (entity.kind !== game.kindIds.get(WORLD_ITEM)) return null;
   const parsed = WorldItemData.safeParse(entity.data);
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * As the host, leaves the lying item `entity` with `left` uses left, keeping its state; with none
+ * left it is gone. Its snapshots carry that to every client. Returns whether it changed it.
+ */
+export function setLyingUses(
+  game: Session,
+  entity: WorldEntity,
+  left: number,
+): boolean {
+  const lying = lyingItem(game, entity);
+  if (!game.hosting || lying === null) return false;
+  if (left <= 0) removeEntity(game, entity.id);
+  else entity.data = lyingData(lying.item, left, lying.state);
+  return true;
 }
 
 /** Whether `player`'s body touches `entity`. */
@@ -109,7 +160,7 @@ export const pickUp = defineAction("pickUp", {
     const lying = entity === undefined ? null : lyingItem(game, entity);
     if (entity === undefined || lying === null) return;
     removeFromWorld(game, entity);
-    give(game, player, lying.item, lying.left);
+    give(game, player, lying.item, lying.left, lying.state);
   },
 });
 
@@ -125,10 +176,11 @@ export const drop = defineAction("drop", {
   check: (game, player, { slot }) => itemIn(game, player.id, slot) !== null,
   apply(game, player, { slot }) {
     const left = usesAt(game, player, slot);
+    const state = stateAt(game, player, slot);
     const item = take(game, player, slot);
     if (item === null) return;
     const at = { x: player.x, y: player.y };
-    spawn(game, WORLD_ITEM, at, lyingData(item, left));
+    spawn(game, WORLD_ITEM, at, lyingData(item, left, state));
     const sound = game.itemDefinitions.get(item)?.drop;
     if (sound !== undefined) effect(game, { at, sound });
   },

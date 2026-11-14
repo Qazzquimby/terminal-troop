@@ -5,7 +5,9 @@ import {
   carriedWeight,
   heldItem,
   ItemId,
+  ItemState,
   UsesLeft,
+  withState,
 } from "./inventory.js";
 import type { Player } from "./player.js";
 import { playerData } from "./player-data.js";
@@ -13,8 +15,18 @@ import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
 
-/** An item in a slot as the host keeps it: its id, or its id and uses left once it has spent some. */
-const Slot = z.union([ItemId, z.object({ id: ItemId, left: UsesLeft })]);
+/**
+ * An item in a slot as the host keeps it: its id, or its id with the uses it has left once it has
+ * spent some and its own state once it keeps any.
+ */
+const Slot = z.union([
+  ItemId,
+  z.object({
+    id: ItemId,
+    left: UsesLeft.optional(),
+    state: ItemState.optional(),
+  }),
+]);
 type Slot = z.infer<typeof Slot>;
 
 /** One player's items as the host keeps them: an item by slot, null for an empty slot. */
@@ -25,8 +37,16 @@ const idOf = (slot: Slot): string =>
   typeof slot === "string" ? slot : slot.id;
 const leftIn = (slot: Slot): number | undefined =>
   typeof slot === "string" ? undefined : slot.left;
+const stateIn = (slot: Slot): ItemState | undefined =>
+  typeof slot === "string" ? undefined : slot.state;
 const slotOf = (item: CarriedItem): Slot =>
-  item.left === undefined ? item.id : { id: item.id, left: item.left };
+  item.left === undefined && item.state === undefined
+    ? item.id
+    : {
+        id: item.id,
+        ...(item.left !== undefined && { left: item.left }),
+        ...(item.state !== undefined && { state: item.state }),
+      };
 
 /**
  * Every player's items, by player id. The host owns them: it stocks each player it meets with
@@ -64,7 +84,9 @@ function setSlots(game: Session, id: string, slots: Slots): void {
 function carriedFrom(game: Session, slot: Slot | null): CarriedItem | null {
   if (slot === null) return null;
   const definition = game.itemDefinitions.get(idOf(slot));
-  return definition === undefined ? null : carried(definition, leftIn(slot));
+  return definition === undefined
+    ? null
+    : withState(carried(definition, leftIn(slot)), stateIn(slot));
 }
 
 /** The id of the item in `slot` of player `id`'s items as the host keeps them; null for none. */
@@ -89,6 +111,10 @@ export function carriedIn(
   return carriedFrom(game, slotsOf(game, id)[slot] ?? null);
 }
 
+/** Player `id`'s items by slot as the host keeps them, each with its uses left and state. */
+export const itemsOf = (game: Session, id: string): Inventory =>
+  slotsOf(game, id).map((slot) => carriedFrom(game, slot));
+
 /** Whether player `id` has an empty slot, as the host keeps its items. */
 export const hasRoom = (game: Session, id: string): boolean =>
   slotsOf(game, id).includes(null);
@@ -106,8 +132,8 @@ export function weightOf(game: Session, player: Player): number {
 
 /**
  * As the host, puts `item` in player `id`'s `slot`, or its first empty slot when left out, with
- * `left` uses left, or all its uses when left out. Returns whether it went in: false when the slot
- * is taken or missing, or this client does not host.
+ * `left` uses left, or all its uses when left out, keeping `state` of its own, if any. Returns
+ * whether it went in: false when the slot is taken or missing, or this client does not host.
  */
 export function giveItem(
   game: Session,
@@ -115,6 +141,7 @@ export function giveItem(
   item: string,
   slot?: number,
   left?: number,
+  state?: ItemState,
 ): boolean {
   if (!game.hosting) return false;
   const slots = [...slotsOf(game, id)];
@@ -122,26 +149,57 @@ export function giveItem(
   if (slots[index] !== null) return false;
   const definition = game.itemDefinitions.get(item);
   slots[index] =
-    definition === undefined ? item : slotOf(carried(definition, left));
+    definition === undefined
+      ? item
+      : slotOf(withState(carried(definition, left), state));
   setSlots(game, id, slots);
   return true;
 }
 
 /**
+ * As the host, leaves the item in player `id`'s `slot`, if it is `item`, keeping `state` of its
+ * own. Returns whether it did.
+ */
+export const setItemState = (
+  game: Session,
+  id: string,
+  slot: number,
+  item: string,
+  state: ItemState | undefined,
+): boolean =>
+  changeCarried(game, id, slot, item, (held) => withState(held, state));
+
+/**
  * As the host, leaves the item in player `id`'s `slot`, if it is `item`, with `left` uses left;
  * at none it is gone. Returns whether it did.
  */
-export function setUsesLeft(
+export const setUsesLeft = (
   game: Session,
   id: string,
   slot: number,
   item: string,
   left: number,
+): boolean =>
+  changeCarried(game, id, slot, item, (held) =>
+    left <= 0 ? null : carried(held, left),
+  );
+
+/**
+ * As the host, replaces the item in player `id`'s `slot`, if it is `item`, with what `change`
+ * makes of it; null empties the slot. Returns whether it did.
+ */
+function changeCarried(
+  game: Session,
+  id: string,
+  slot: number,
+  item: string,
+  change: (held: CarriedItem) => CarriedItem | null,
 ): boolean {
   const held = carriedIn(game, id, slot);
   if (!game.hosting || held?.id !== item) return false;
   const slots = [...slotsOf(game, id)];
-  slots[slot] = left <= 0 ? null : slotOf(carried(held, left));
+  const changed = change(held);
+  slots[slot] = changed === null ? null : slotOf(changed);
   setSlots(game, id, slots);
   return true;
 }

@@ -32,7 +32,9 @@ export {
   hurt,
   push,
   spawn,
+  setStateAt,
   spendUses,
+  stateAt,
   take,
   usesAt,
 } from "./actions.js";
@@ -51,7 +53,11 @@ export type {
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
-export { carriedWeight, usesLeft } from "./inventory.js";
+export { carriedWeight, isOn, usesLeft } from "./inventory.js";
+export { itemInstances, makerOf, spendInstanceUses } from "./item-instances.js";
+export type { ItemInstance } from "./item-instances.js";
+export { onAir, voiceRoutes } from "./voice-routes.js";
+export type { VoiceChannel, VoiceRoute } from "./voice-routes.js";
 export { lootContent, setDanger } from "./loot.js";
 export type { LootConfig } from "./loot.js";
 
@@ -104,8 +110,8 @@ export {
   worldData,
 } from "./world-data.js";
 export { movement } from "./movement.js";
-export { speak } from "./voice-noise.js";
-export { hasKindTag, noisesHeardBy, PLAYER_TAG } from "./noise.js";
+export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
+export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";
 export type { Heard } from "./noise.js";
 export { sound } from "./sound.js";
 export type { Sound } from "./sound.js";

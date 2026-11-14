@@ -294,5 +294,6 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     secondary: frame.pressed.has("secondary"),
     interact: frame.pressed.has("interact"),
     drop: frame.pressed.has("drop"),
+    holdingUse: frame.held.has("useItem"),
   };
 }

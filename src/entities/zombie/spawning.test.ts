@@ -41,6 +41,7 @@ const still: Controls = {
   secondary: false,
   interact: false,
   drop: false,
+  holdingUse: false,
 };
 
 const SPAWNING = testEntitiesConfig.zombie.spawning;
