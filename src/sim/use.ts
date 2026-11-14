@@ -7,6 +7,7 @@ import type { ItemDefinition } from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
+import type { LightEmission } from "./vision.js";
 
 /** A player's item use, as plain data: what this client sees of it. */
 export interface ItemUse {
@@ -65,6 +66,8 @@ export interface ItemBehaviour {
   draw?(ctx: CanvasRenderingContext2D, use: ItemUse, time: number): void;
   /** The action of working its control, sent under its content entry as `control`, if any. */
   readonly control?: Action<ItemControlInput>;
+  /** The light it gives off while `holder` holds it, if any, from the holder's centre. */
+  light?(game: Session, holder: Player): LightEmission | null;
 }
 
 /** Whether the host's record has the item `id` in `slot` of `user`'s items. */

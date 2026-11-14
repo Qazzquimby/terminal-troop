@@ -11,9 +11,10 @@ import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
 import type { Point, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
+import type { LightEmission } from "./vision.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
-import type { Controls } from "./player.js";
+import type { Controls, Player } from "./player.js";
 import type { Session } from "./session.js";
 import { itemControl, itemUse, registerItem } from "./use.js";
 import type { ControlSpec, ItemUse, UseSpec } from "./use.js";
@@ -364,6 +365,16 @@ interface ItemBase extends Omit<
   readonly world?: WorldDataSet;
   /** Runs on the host, each step, once the entities have moved: for the rules the item keeps. */
   step?(game: Session, dt: number): void;
+  /**
+   * Runs on every client for its own player, each step, once the player has moved: for state the
+   * player keeps of its own, such as switching a flashlight off once it is no longer held.
+   */
+  act?(game: Session, controls: Controls): void;
+  /**
+   * The light it gives off while `holder` holds it, if any, such as a flashlight switched on:
+   * every client draws it, and it lights the world for `isLit`.
+   */
+  light?(game: Session, holder: Player): LightEmission | null;
 }
 
 /** An item a player uses while it holds it, on the use control. */
@@ -418,10 +429,12 @@ export function defineItem<N extends string, C>(
         spec.control === undefined
           ? undefined
           : { control: itemControl(name, spec.control) };
+      const light =
+        spec.light === undefined ? undefined : { light: spec.light.bind(spec) };
       const behaviour =
-        use === undefined && control === undefined
+        use === undefined && control === undefined && light === undefined
           ? undefined
-          : { ...use, ...control };
+          : { ...use, ...control, ...light };
       return {
         name: `item/${name}`,
         player: spec.player,
@@ -451,6 +464,9 @@ export function defineItem<N extends string, C>(
         },
         step(game, dt) {
           spec.step?.(game, dt);
+        },
+        act(game, controls) {
+          spec.act?.(game, controls);
         },
       };
     },

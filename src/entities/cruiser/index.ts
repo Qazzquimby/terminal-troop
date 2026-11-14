@@ -7,7 +7,7 @@ import {
   inRect,
   worldData,
 } from "../../sim/index.js";
-import type { Player, Point, Session } from "../../sim/index.js";
+import type { LightEmission, Player, Point, Session } from "../../sim/index.js";
 // The departure's sounds, once their assets land; importing a missing file breaks the build.
 // import departUrl from "./sfx/depart.mp3";
 // import escapeUrl from "./sfx/escape.mp3";
@@ -20,10 +20,19 @@ interface EscapeConfig {
   readonly volume: number;
 }
 
-/** A car that starts at the world's rally point, carrying a wide light. */
+/** The cruiser's two headlights, one each side of its front, each a cone like a flashlight's. */
+interface HeadlightConfig {
+  /** How far each reaches, in pixels. */
+  readonly range: number;
+  /** Width of each cone, in radians. */
+  readonly angle: number;
+  /** How far each sits to the side of the cruiser's middle, in pixels. */
+  readonly spread: number;
+}
+
+/** A car that starts at the world's rally point, its headlights always on. */
 export interface CruiserConfig {
-  /** How far the cruiser's light reaches, in pixels. */
-  readonly lightRadius: number;
+  readonly headlights: HeadlightConfig;
   readonly escape: EscapeConfig;
 }
 
@@ -31,6 +40,26 @@ const NAME = "cruiser";
 
 /** The cruiser's body; its emoji is drawn to that size. */
 const BODY_RADIUS = 10;
+
+/**
+ * Which way the cruiser faces, in radians: along the road, towards the exit. It does not turn
+ * until it can be driven.
+ */
+const FACING = 0;
+
+/** Its headlights, front left and front right, both shining the way it faces. */
+function headlights(config: HeadlightConfig): LightEmission[] {
+  const ahead = { x: Math.cos(FACING), y: Math.sin(FACING) };
+  const side = { x: -ahead.y, y: ahead.x };
+  return [-1, 1].map((hand) => ({
+    from: {
+      x: ahead.x * BODY_RADIUS + side.x * config.spread * hand,
+      y: ahead.y * BODY_RADIUS + side.y * config.spread * hand,
+    },
+    range: config.range,
+    shape: { kind: "cone", direction: FACING, angle: config.angle },
+  }));
+}
 
 const CRUISER_GLYPH = "🚗";
 
@@ -111,7 +140,7 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
 }
 
 /**
- * A car that starts where new players arrive, lighting a wide circle round it. Once it reaches the
+ * A car that starts where new players arrive, its two headlights always shining ahead. Once it reaches the
  * world's exit, it takes everyone there out after a delay.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
@@ -120,7 +149,7 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   collides: false,
   tags: [INERT_TAG],
   data: z.object({}),
-  light: () => ({ range: config.lightRadius }),
+  light: () => headlights(config.headlights),
   draw(ctx, entity) {
     drawEmoji(ctx, entity, CRUISER_GLYPH, BODY_RADIUS * 2);
   },

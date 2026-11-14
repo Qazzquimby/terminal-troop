@@ -6,9 +6,11 @@ import {
   testSimConfig,
 } from "../../integration/sim-config.js";
 import {
+  AREA,
   createPlayer,
   createSession,
   dangerWeight,
+  isLit,
   mulberry32,
   randomFreePosition,
   registerContent,
@@ -23,7 +25,8 @@ import type {
 } from "../../sim/index.js";
 import type { EntitiesConfig } from "../index.js";
 import { entityContent } from "../index.js";
-import { spawnAllowed, spawnWeight } from "./spawning.js";
+import { spawnAllowed } from "../spawn-rules.js";
+import { spawnWeight } from "./spawning.js";
 import type { SpawningConfig } from "./spawning.js";
 
 const DT = 1 / 60;
@@ -301,9 +304,29 @@ test("spawns favour dangerous spots: far from the road, and towards the exit's s
   const right = seeded({ road: 0, right: 20 });
 
   expect(far.count).toBeGreaterThan(20);
-  expect(far.road).toBeGreaterThan(even.road + 0.05);
+  // Spawns keep out of the sunlit road and yards, so every spot open to them is already some way
+  // from the road, and favouring the farthest moves them less.
+  expect(far.road).toBeGreaterThan(even.road + 0.03);
   expect(right.across).toBeGreaterThan(even.across + 0.05);
 });
+
+/** The middle of the first cell of the kind `area` codes that `keep` keeps. */
+function cellWhere(
+  game: Session,
+  area: number,
+  keep: (at: { x: number; y: number }) => boolean,
+): { x: number; y: number } {
+  const { cell, cols } = game.world.map;
+  const spots = [...game.world.layout.area.entries()]
+    .filter(([, code]) => code === area)
+    .map(([i]) => ({
+      x: ((i % cols) + 0.5) * cell,
+      y: (Math.floor(i / cols) + 0.5) * cell,
+    }));
+  const spot = spots.find(keep);
+  if (spot === undefined) throw new Error("no such cell");
+  return spot;
+}
 
 test("a spawn's weight is the world's danger weight there, and nothing in the start", () => {
   const game = world();
@@ -311,13 +334,24 @@ test("a spawn's weight is the world's danger weight there, and nothing in the st
   const inStart = { x: start.x + start.w / 2, y: start.y + start.h / 2 };
   expect(spawnAllowed(game, inStart)).toBe(false);
   expect(spawnWeight(game, inStart)).toBe(0);
-  const middle = { x: game.world.W / 2, y: inStart.y };
-  const { road } = remoteness(game.world, middle);
+  const dark = cellWhere(game, AREA.room, (at) => !isLit(game, at));
+  const { road, across } = remoteness(game.world, dark);
   const { danger } = testSimConfig.world.generation;
-  expect(spawnWeight(game, middle)).toBeCloseTo(
-    (1 + danger.road * road) * (1 + danger.right * 0.5),
+  expect(spawnWeight(game, dark)).toBeCloseTo(
+    (1 + danger.road * road) * (1 + danger.right * across),
   );
-  expect(spawnWeight(game, middle)).toBe(dangerWeight(game.world, middle));
+  expect(spawnWeight(game, dark)).toBe(dangerWeight(game.world, dark));
+});
+
+test("nothing spawns in light: not in the sunlit road, nor a lit room", () => {
+  const game = world();
+  const middle = { x: game.world.W / 2, y: game.world.H / 2 };
+  const road = cellWhere(game, AREA.road, (at) => at.x >= middle.x);
+  expect(isLit(game, road)).toBe(true);
+  expect(spawnAllowed(game, road)).toBe(false);
+  expect(spawnWeight(game, road)).toBe(0);
+  const litRoom = cellWhere(game, AREA.room, (at) => isLit(game, at));
+  expect(spawnAllowed(game, litRoom)).toBe(false);
 });
 
 test("a new world's first zombies favour the same spots", () => {

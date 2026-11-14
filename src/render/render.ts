@@ -1,4 +1,5 @@
 import type {
+  AmbientLight,
   Entity,
   Interpolated,
   Player,
@@ -12,6 +13,8 @@ import type {
 import {
   AREA,
   aimAt,
+  ambientLightAt,
+  ambientPolygons,
   emittedLights,
   heldItemOf,
   isVisible,
@@ -510,8 +513,16 @@ interface Layer {
 /** How many pixels the edges of sight and light fade out over. */
 const EDGE_FADE = 16;
 
-/** A warm tint laid over the ground an emissive light reaches, faded at its edge. */
+/**
+ * The tints laid over the ground each kind of light reaches, faded at their edges: yellow where a
+ * flashlight or the cruiser's headlights shine, a faint blue for sunlight out of doors, and a
+ * faint warm white in a room lit by its fixture.
+ */
 const LIGHT_TINT = "rgba(255, 217, 138, 0.22)";
+const AMBIENT_TINT: Readonly<Record<AmbientLight, string>> = {
+  sun: "rgba(150, 190, 255, 0.12)",
+  fixture: "rgba(255, 244, 214, 0.1)",
+};
 
 let sceneCache: Layer | null = null;
 let maskCache: Layer | null = null;
@@ -659,10 +670,17 @@ export function draw(
   const lights = lightSources(game, viewer);
   const { map } = game.world;
   const { rays } = game.config.vision;
-  const seen = tracePolygons(map, sources, camera, rays);
-  const lit = tracePolygons(map, lights, camera, rays);
-  const walls = litWalls(seen, lit);
   const area = viewArea(camera);
+  const ambient = (point: Point) => ambientLightAt(game.world, point) !== null;
+  const sunlit = ambientPolygons(game.world, area, "sun");
+  const fixtureLit = ambientPolygons(game.world, area, "fixture");
+  const seen = tracePolygons(map, sources, camera, rays);
+  const lit = [
+    ...tracePolygons(map, lights, camera, rays),
+    ...sunlit,
+    ...fixtureLit,
+  ];
+  const walls = litWalls(seen, lit);
   memory.see({ seen, lit, walls }, area);
 
   const { width, height } = camera.view;
@@ -673,8 +691,9 @@ export function draw(
     drawRemembered(ctx, memory.within(area), memory.config, map.cell);
   });
 
-  // Inside the darkness: only what is both seen and lit, its edges faded, with the ground an
-  // emissive light such as a cruiser's lamp reaches warmed.
+  // Inside the darkness: only what is both seen and lit, its edges faded, with the ground each
+  // light reaches tinted its colour: sunlight blue, a room's fixture warm white, and an emissive
+  // light such as a flashlight or the cruiser's headlights yellow.
   const scene = sized((sceneCache ??= createLayer()), width, height);
   const sceneCtx = scene.ctx;
   sceneCtx.clearRect(0, 0, width, height);
@@ -684,7 +703,10 @@ export function draw(
     game.entities.forEach((entity) => {
       const definition = game.entityTypes.get(entity.kind);
       if (definition === undefined) return;
-      if (!inView(entity, camera) || !isVisible(map, sources, lights, entity))
+      if (
+        !inView(entity, camera) ||
+        !isVisible(map, sources, lights, entity, ambient)
+      )
         return;
       sceneCtx.save();
       definition.draw(sceneCtx, entity, now, game);
@@ -694,7 +716,7 @@ export function draw(
 
     game.players.forEach((player) => {
       if (player === viewer || !inView(player, camera)) return;
-      if (!isVisible(map, sources, lights, player)) return;
+      if (!isVisible(map, sources, lights, player, ambient)) return;
       drawPlayer(sceneCtx, game, player, false, isAway(player.id));
       drawHealthBar(sceneCtx, player, player.y - player.radius - 26);
     });
@@ -704,6 +726,16 @@ export function draw(
   keepWithin(scene, featheredMask(mask, seen, camera, width, height, "#fff"));
   keepWithin(scene, featheredMask(mask, lit, camera, width, height, "#fff"));
 
+  for (const [polygons, colour] of [
+    [sunlit, AMBIENT_TINT.sun],
+    [fixtureLit, AMBIENT_TINT.fixture],
+  ] as const) {
+    if (polygons.length === 0) continue;
+    layLight(
+      scene,
+      featheredMask(mask, polygons, camera, width, height, colour),
+    );
+  }
   const emitted = emittedLights(game);
   if (emitted.length > 0) {
     const tint = featheredMask(
@@ -723,7 +755,7 @@ export function draw(
   const seenMade = (ripple: Ripple): boolean =>
     ripple.player ||
     (inView({ ...ripple.origin, radius: 0 }, camera) &&
-      isVisible(map, sources, lights, ripple.origin));
+      isVisible(map, sources, lights, ripple.origin, ambient));
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));
 

@@ -1,3 +1,4 @@
+import { heldItemOf } from "./inventories.js";
 import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
@@ -34,6 +35,8 @@ export interface VisionSource extends Point {
 export interface LightEmission {
   readonly shape?: VisionShape;
   readonly range: number;
+  /** Where it shines from, relative to the centre of what gives it off; that centre when left out. */
+  readonly from?: Point;
 }
 
 export interface LightSource extends Point, LightEmission {}
@@ -69,6 +72,11 @@ export function canSeeFrom(
  */
 type WallKey = number;
 
+/** The key of the wall cell at `col`, `row`, which may be just outside the map. */
+export function wallKey(map: TileMap, col: number, row: number): WallKey {
+  return (row + 1) * (map.cols + 2) + col + 1;
+}
+
 export function wallCell(
   map: TileMap,
   key: WallKey,
@@ -93,7 +101,7 @@ function hitAt(
   if (!isSolid(map, col, row)) return undefined;
   return {
     distance,
-    wall: { key: (row + 1) * (map.cols + 2) + col + 1, normal },
+    wall: { key: wallKey(map, col, row), normal },
   };
 }
 
@@ -233,13 +241,28 @@ export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   ];
 }
 
-/** The lights entities give off, such as a cruiser's lamp, apart from any viewer's own. */
+/** `emission` given off by something standing at `at`. */
+function placed(at: Point, emission: LightEmission): LightSource {
+  const { from, ...light } = emission;
+  return { ...light, x: at.x + (from?.x ?? 0), y: at.y + (from?.y ?? 0) };
+}
+
+/**
+ * The lights entities and held items give off, such as a cruiser's headlights or a flashlight
+ * switched on, apart from any viewer's own sight.
+ */
 export function emittedLights(game: Session): LightSource[] {
   const lights: LightSource[] = [];
   game.entities.forEach((entity) => {
-    const emission = game.entityTypes.get(entity.kind)?.light(entity);
+    const emissions = game.entityTypes.get(entity.kind)?.light(entity) ?? [];
+    for (const emission of emissions) lights.push(placed(entity, emission));
+  });
+  game.players.forEach((player) => {
+    const item = heldItemOf(game, player);
+    if (item === null) return;
+    const emission = game.items.get(item.id)?.light?.(game, player);
     if (emission === undefined || emission === null) return;
-    lights.push({ ...emission, x: entity.x, y: entity.y });
+    lights.push(placed(player, emission));
   });
   return lights;
 }
@@ -257,15 +280,20 @@ export function lightSources(game: Session, viewer: Viewer): LightSource[] {
   ];
 }
 
+/**
+ * Whether `point` is both seen from some source and lit: by some light that reaches it, or where
+ * `ambient` says the place's own light does, such as sunlight out of doors.
+ */
 export function isVisible(
   map: TileMap,
   sources: readonly VisionSource[],
   lights: readonly LightSource[],
   point: Point,
+  ambient: (point: Point) => boolean = () => false,
 ): boolean {
   return (
     sources.some((source) => canSeeFrom(map, source, point)) &&
-    lights.some((light) => canSeeFrom(map, light, point))
+    (ambient(point) || lights.some((light) => canSeeFrom(map, light, point)))
   );
 }
 
@@ -313,7 +341,7 @@ function cornerRayOffsets(
   return offsets;
 }
 
-interface WallFace {
+export interface WallFace {
   readonly from: Point;
   readonly to: Point;
   readonly normal: Point;

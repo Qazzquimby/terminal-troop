@@ -31,6 +31,7 @@ export const testGeneration: GenerationConfig = {
     door: { min: 1, max: 3 },
     loops: 0.35,
   },
+  lights: { fixture: 0.5, powered: 0.5 },
   danger: { road: 3, right: 3 },
   start: 5,
   exit: 5,
@@ -119,8 +120,8 @@ export const testMapMemoryConfig: MapMemoryConfig = {
  * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
  * seconds. One more arrives every 5 seconds as a world begins, the gap falling to 1 second over
  * 20 seconds, one at a time, never past 20 alive nor within 1100px of a player, so never in the dev square,
- * whose far corners are nearer than that. A cruiser starts at the rally point, lighting 400px
- * round it.
+ * whose far corners are nearer than that. A cruiser starts at the rally point, its two headlights
+ * 45 degree cones reaching 400px.
  */
 export const testEntitiesConfig: EntitiesConfig = {
   zombie: {
@@ -148,15 +149,19 @@ export const testEntitiesConfig: EntitiesConfig = {
     attackCooldown: 1.5,
     sounds: { bark: 400, alert: 500, attack: 250 },
   },
-  cruiser: { lightRadius: 400, escape: { delay: 20, volume: 1 } },
+  cruiser: {
+    headlights: { range: 400, angle: Math.PI / 4, spread: 7 },
+    escape: { delay: 20, volume: 1 },
+  },
 };
 
 /**
  * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
  * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
  * second. A handgun with 6 shots of 50 out to 600px; a shotgun with 2 blasts of six shots of 5,
- * fanned across 30 degrees out to 400px. All weigh nothing, so what a player carries does not
- * slow it, and no loot is laid.
+ * fanned across 30 degrees out to 400px; a flashlight whose 45 degree beam reaches 600px, its
+ * battery 10 seconds. All weigh nothing, so what a player carries does not slow it, and no loot
+ * is laid.
  */
 export const testItemsConfig: ItemsConfig = {
   shovel: {
@@ -204,6 +209,16 @@ export const testItemsConfig: ItemsConfig = {
     sellInterval: 0.25,
     volume: 1,
     scatter: { count: 3, seed: 5, clearance: 200 },
+  },
+  flashlight: {
+    weight: 0,
+    uses: 10,
+    range: 600,
+    angle: Math.PI / 4,
+    drain: 1,
+    cooldown: 0.25,
+    volume: 1,
+    clickNoiseRadius: 50,
   },
   loot: {
     scatter: { count: 0, seed: 6, clearance: 200 },
