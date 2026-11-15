@@ -33,9 +33,6 @@ export interface SnailConfig extends Hunting {
   readonly repathInterval: number;
 }
 
-/** What players call it. */
-const SNAIL_TITLE = "The Unhurried";
-
 const NAME = "snail";
 
 const SNAIL_GLYPH = "🐌";
@@ -159,15 +156,11 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
     },
     draw(ctx, entity) {
       drawEmoji(ctx, entity, SNAIL_GLYPH, entity.radius * 2);
-      ctx.font = "9px system-ui";
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#c9b8e8";
-      ctx.fillText(SNAIL_TITLE, entity.x, entity.y + entity.radius + 10);
     },
   };
 }
 /**
- * The snail, "The Unhurried": rare. When it arrives it picks a body, a player or a monster, and
+ * The snail: rare. When it arrives it picks a body, a player or a monster, and
  * creeps after it at a fraction of a player's pace, round the walls, for as long as it lives, then
  * picks another. Whatever it touches, player or monster, takes damage enough to kill it, and
  * nothing kills it. It makes no sound, pays light no mind, and a stun holds it like anything else.

@@ -42,11 +42,11 @@ const enragedUrl = new URL("./sfx/enraged.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 
 /**
- * The skulker: knows where every body is and which way it faces, creeps up on the nearest out
+ * The stalker: knows where every body is and which way it faces, creeps up on the nearest out
  * of everyone's sight, backs off when looked at, and goes wild when hurt. Distances in pixels,
  * times in sim seconds.
  */
-export interface SkulkerConfig extends Hunting {
+export interface StalkerConfig extends Hunting {
   /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -78,7 +78,7 @@ export interface SkulkerConfig extends Hunting {
   };
 }
 
-const NAME = "skulker";
+const NAME = "stalker";
 
 const GLYPH = "👤";
 
@@ -105,7 +105,7 @@ const COLOURS = {
  * `home` is where it arrived, null until it first steps; `foe` is the body that last hurt it,
  * which it goes for while enraged.
  */
-export const SkulkerState = z.object({
+export const StalkerState = z.object({
   mode: z.enum(["hunt", "retreat", "enraged"]),
   until: Time,
   home: Waypoint.nullable(),
@@ -117,12 +117,12 @@ export const SkulkerState = z.object({
   facing: rounded(2),
 });
 
-export type SkulkerState = z.output<typeof SkulkerState>;
+export type StalkerState = z.output<typeof StalkerState>;
 
-type Mode = SkulkerState["mode"];
+type Mode = StalkerState["mode"];
 
-/** A fresh skulker's state at world time `now`. */
-export function freshSkulker(now: number): SkulkerState {
+/** A fresh stalker's state at world time `now`. */
+export function freshStalker(now: number): StalkerState {
   return {
     mode: "hunt",
     until: now,
@@ -144,7 +144,7 @@ export function freshSkulker(now: number): SkulkerState {
 function watcher(
   game: Session,
   self: WorldEntity,
-  config: SkulkerConfig,
+  config: StalkerConfig,
 ): (at: Point) => boolean {
   const sights = livingBodies(game)
     .filter(
@@ -172,7 +172,7 @@ function retreatRoute(
   game: Session,
   self: WorldEntity,
   home: Point,
-  config: SkulkerConfig,
+  config: StalkerConfig,
 ): Point[] {
   const { map } = game.world;
   const hunted = preyFor(game, self, config.ignores);
@@ -194,8 +194,8 @@ function retreatRoute(
 function plan(
   game: Session,
   self: WorldEntity,
-  state: SkulkerState,
-  config: SkulkerConfig,
+  state: StalkerState,
+  config: StalkerConfig,
 ): Point[] {
   const { map } = game.world;
   switch (state.mode) {
@@ -232,11 +232,11 @@ function plan(
 
 /** `state` in `mode` until `until`, planning anew at once, at world time `now`. */
 function enter(
-  state: SkulkerState,
+  state: StalkerState,
   mode: Mode,
   now: number,
   until: number,
-): SkulkerState {
+): StalkerState {
   return { ...state, mode, until, route: [], repathAt: now };
 }
 
@@ -245,11 +245,11 @@ function enter(
  * hunt that any body's gaze falls on, its own kind's aside, turns to retreat.
  */
 function think(
-  state: SkulkerState,
+  state: StalkerState,
   self: WorldEntity,
   game: Session,
-  config: SkulkerConfig,
-): SkulkerState {
+  config: StalkerConfig,
+): StalkerState {
   const now = game.worldTime;
   const hurt = hurtSinceLastStep(game, self.id);
   if (hurt !== null) {
@@ -270,11 +270,11 @@ function think(
 
 /** `state` with its route replanned, when due. */
 function replan(
-  state: SkulkerState,
+  state: StalkerState,
   self: WorldEntity,
   game: Session,
-  config: SkulkerConfig,
-): SkulkerState {
+  config: StalkerConfig,
+): StalkerState {
   const now = game.worldTime;
   if (now < state.repathAt) return state;
   return {
@@ -296,8 +296,8 @@ interface Sounds {
  */
 function cue(
   self: WorldEntity,
-  previous: SkulkerState,
-  next: SkulkerState,
+  previous: StalkerState,
+  next: StalkerState,
   game: Session,
   sounds: Sounds,
 ): void {
@@ -312,7 +312,7 @@ function cue(
       effect(game, { at: { x: self.x, y: self.y }, sound }, self);
 }
 
-function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
+function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
   const sounds: Sounds = {
     retreat: sound({ url: retreatUrl, range: config.sounds.retreat }),
     enraged: sound({ url: enragedUrl, range: config.sounds.enraged }),
@@ -321,7 +321,7 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
-    data: SkulkerState,
+    data: StalkerState,
     // It needs no eyes to know where bodies are, but it has them: it sees as a player does,
     // down its facing.
     eyes: (_entity, state, game) => {
@@ -379,19 +379,19 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
 }
 
 /**
- * The skulker: alone, arriving in the dark out of every player's sight. It knows
+ * The stalker: alone, arriving in the dark out of every player's sight. It knows
  * where every body is and which way each faces, and creeps up on the nearest along a way no
  * body looks down, faster than a walk. Caught in any body's gaze, it hisses and backs off to
  * where it arrived, keeping well away, for a long while. Hurt, it shrieks and runs at whatever
  * lives nearest, for a short while. Whatever it touches takes a killing blow. Light means nothing
  * to it once it is about; a stun holds it like anything else.
  */
-export const skulker = defineEntity(NAME, (config: SkulkerConfig) => ({
+export const stalker = defineEntity(NAME, (config: StalkerConfig) => ({
   ...definition(config),
   ...arrivals({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    fresh: (_seed: number, game: Session) => freshSkulker(game.worldTime),
+    fresh: (_seed: number, game: Session) => freshStalker(game.worldTime),
   }),
 }));

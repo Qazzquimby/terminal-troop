@@ -3,12 +3,12 @@ import { zombie } from "./zombie/index.js";
 import { cruiser } from "./cruiser/index.js";
 import { snail } from "./snail/index.js";
 import { stunTrap } from "./stun-trap/index.js";
-import { lurcher } from "./lurcher/index.js";
-import { blister } from "./blister/index.js";
-import { witch } from "./witch/index.js";
-import { idol } from "./idol/index.js";
-import { skulker } from "./skulker/index.js";
-import { magpie } from "./magpie/index.js";
+import { blindDog } from "./blind-dog/index.js";
+import { exploder } from "./exploder/index.js";
+import { sleeper } from "./sleeper/index.js";
+import { statue } from "./statue/index.js";
+import { stalker } from "./stalker/index.js";
+import { hoarder } from "./hoarder/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -25,12 +25,12 @@ const ENTITIES = [
   cruiser,
   stunTrap,
   snail,
-  lurcher,
-  blister,
-  witch,
-  idol,
-  skulker,
-  magpie,
+  blindDog,
+  exploder,
+  sleeper,
+  statue,
+  stalker,
+  hoarder,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

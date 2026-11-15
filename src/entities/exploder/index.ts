@@ -44,10 +44,10 @@ const fuseUrl = new URL("./sfx/fuse.mp3", import.meta.url).href;
 const blastUrl = new URL("./sfx/blast.mp3", import.meta.url).href;
 
 /**
- * How a blister roams, hunts and bursts, and how often they come. Distances are in pixels, speeds
+ * How an exploder roams, hunts and bursts, and how often they come. Distances are in pixels, speeds
  * in pixels per second, times in seconds.
  */
-export interface BlisterConfig extends Hunting {
+export interface ExploderConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -70,7 +70,7 @@ export interface BlisterConfig extends Hunting {
   readonly fuseRange: number;
   /**
    * Which hurts light its fuse: those taking at least `minDamage` in one step, 0 for any, and not
-   * dealt by a body of the kind tags in `except`, such as another blister's burst.
+   * dealt by a body of the kind tags in `except`, such as another exploder's burst.
    */
   readonly fuseOnHurt: {
     readonly minDamage: number;
@@ -89,13 +89,13 @@ export interface BlisterConfig extends Hunting {
 }
 
 /**
- * A blister's state. Each field says who reads it: everyone, to draw it, or only the host, which
+ * An exploder's state. Each field says who reads it: everyone, to draw it, or only the host, which
  * sends it so that whoever hosts next goes on from it. Its sounds reach every client as effects.
  * - wander: walks `route`, towards `goal`, the last noise it heard, if any; then stands until
  *   `standUntil` and picks a new leg
  * - chase: walks `route` to `goal`, where its prey is, or with `straight` heads right at it
  */
-export const BlisterState = z.object({
+export const ExploderState = z.object({
   /** Host. */
   mode: z.enum(["wander", "chase"]),
   /** Host. */
@@ -120,16 +120,16 @@ export const BlisterState = z.object({
   health: rounded(1).nullable(),
 });
 
-export type BlisterState = z.output<typeof BlisterState>;
+export type ExploderState = z.output<typeof ExploderState>;
 
 /** The kind's name. */
-const NAME = "blister";
+const NAME = "exploder";
 
 /** It pays no mind to its own kind's noise. */
 const DEAF_TO = [NAME];
 
-/** A fresh blister's state at world time `now`, its random draws seeded by `seed`. */
-export function freshBlister(seed: number, now: number): BlisterState {
+/** A fresh exploder's state at world time `now`, its random draws seeded by `seed`. */
+export function freshExploder(seed: number, now: number): ExploderState {
   return {
     mode: "wander",
     seed: seed | 0,
@@ -147,10 +147,10 @@ export function freshBlister(seed: number, now: number): BlisterState {
 
 /** Stands a while from now, a pause drawn from its seed. */
 function stand(
-  state: BlisterState,
+  state: ExploderState,
   game: Session,
-  config: BlisterConfig,
-): BlisterState {
+  config: ExploderConfig,
+): ExploderState {
   const { result, seed } = withSeed(state.seed, (rng) =>
     between(rng, config.wanderPause),
   );
@@ -176,12 +176,12 @@ const near = (a: Point | null, b: Point, within: number): boolean =>
  * a route that already heads near enough it.
  */
 function hunt(
-  state: BlisterState,
+  state: ExploderState,
   at: Point,
   prey: Point,
   map: TileMap,
-  config: BlisterConfig,
-): BlisterState {
+  config: ExploderConfig,
+): ExploderState {
   const goal = { x: prey.x, y: prey.y };
   if (state.mode === "chase" && state.straight)
     return { ...state, goal, route: [goal] };
@@ -210,11 +210,11 @@ function hunt(
  * its leg, stands a while once it ends, then picks another.
  */
 function wander(
-  state: BlisterState,
+  state: ExploderState,
   at: Point,
   game: Session,
-  config: BlisterConfig,
-): BlisterState {
+  config: ExploderConfig,
+): ExploderState {
   const { map } = game.world;
   const listened = withSeed(state.seed, (rng) =>
     clearestNoise(game, { at, rng, ignores: DEAF_TO }),
@@ -248,11 +248,11 @@ function wander(
  * the nearest anywhere. Null for none.
  */
 function quarry(
-  state: BlisterState,
+  state: ExploderState,
   self: WorldEntity,
   game: Session,
   hurt: boolean,
-  config: BlisterConfig,
+  config: ExploderConfig,
 ): Point | null {
   const attacker = livingBody(game, state.attacker);
   if (attacker !== null) return attacker;
@@ -262,12 +262,12 @@ function quarry(
 
 /** What it does next: hunts a body it feels, keeps on after one it lost, or wanders. */
 function think(
-  state: BlisterState,
+  state: ExploderState,
   self: WorldEntity,
   game: Session,
   hurt: boolean,
-  config: BlisterConfig,
-): BlisterState {
+  config: ExploderConfig,
+): ExploderState {
   const prey = quarry(state, self, game, hurt, config);
   if (prey !== null) return hunt(state, self, prey, game.world.map, config);
   if (state.mode === "chase" && state.route.length > 0) return state;
@@ -305,12 +305,12 @@ function walledOff(
  * hunts is near enough, or a wall stands in its straight way to its prey.
  */
 function ignite(
-  state: BlisterState,
+  state: ExploderState,
   self: WorldEntity,
   game: Session,
   hurt: boolean,
-  config: BlisterConfig,
-): BlisterState {
+  config: ExploderConfig,
+): ExploderState {
   if (state.fuseAt !== null) return state;
   const close =
     nearestPrey(game, self, config.ignores, config.fuseRange) !== null;
@@ -329,10 +329,10 @@ function ignite(
  */
 function lightsFuse(
   by: string | null,
-  state: BlisterState,
+  state: ExploderState,
   self: WorldEntity,
   game: Session,
-  config: BlisterConfig,
+  config: ExploderConfig,
 ): boolean {
   const { minDamage, except } = config.fuseOnHurt;
   if (by !== null && by !== self.id && hasKindTag(game, by, except))
@@ -342,13 +342,13 @@ function lightsFuse(
 }
 
 /** The damage its burst deals to a body `distance` from it, its middle to theirs. */
-export function blastDamage(distance: number, config: BlisterConfig): number {
+export function blastDamage(distance: number, config: ExploderConfig): number {
   const { radius, centre, edge } = config.blast;
   const along = Math.min(1, Math.max(0, distance / radius));
   return centre + (edge - centre) * along;
 }
 
-/** A blister's sounds, each heard, and making noise, out to its range. */
+/** An exploder's sounds, each heard, and making noise, out to its range. */
 interface Sounds {
   readonly fuse: Sound;
   readonly blast: Sound;
@@ -357,15 +357,15 @@ interface Sounds {
 /**
  * Bursts, as the host: sounds and shows the burst on every client, knocks down the walls it
  * reaches, hurts every body it reaches by how near it is, and is gone. It hurts directly rather
- * than by its strikes, so a blister stunned with its fuse lit still bursts on time.
+ * than by its strikes, so an exploder stunned with its fuse lit still bursts on time.
  */
 function burst(
   entity: WorldEntity,
-  state: BlisterState,
+  state: ExploderState,
   game: Session,
-  config: BlisterConfig,
+  config: ExploderConfig,
   sounds: Sounds,
-): BlisterState {
+): ExploderState {
   const { radius } = config.blast;
   entity.vx = 0;
   entity.vy = 0;
@@ -387,7 +387,7 @@ function burst(
 }
 
 /** Whether its fuse has burnt down, and it has yet to burst. */
-const due = (state: BlisterState, game: Session): boolean =>
+const due = (state: ExploderState, game: Session): boolean =>
   !state.burst && state.fuseAt !== null && game.worldTime >= state.fuseAt;
 
 const LOOK = {
@@ -402,12 +402,12 @@ const LOOK = {
 const BLINK = { first: 3, last: 14 } as const;
 
 /** A swollen pale-green sac, mottled; once lit it swells and blinks, ever faster. */
-function drawBlister(
+function drawExploder(
   ctx: CanvasRenderingContext2D,
   entity: WorldEntity,
-  state: BlisterState,
+  state: ExploderState,
   game: Session,
-  config: BlisterConfig,
+  config: ExploderConfig,
 ): void {
   const { x, y } = entity;
   const left =
@@ -445,13 +445,13 @@ function drawBlister(
 }
 
 function definition(
-  config: BlisterConfig,
+  config: ExploderConfig,
   sounds: Sounds,
-): EntityDefinition<BlisterState> {
+): EntityDefinition<ExploderState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
-    data: BlisterState,
+    data: ExploderState,
     update(entity, state, dt, game) {
       if (state.burst) return state;
       const struck = hurtSinceLastStep(game, entity.id);
@@ -477,38 +477,38 @@ function definition(
       return walk(entity, lit, speed, dt);
     },
     draw(ctx, entity, state, _now, game) {
-      drawBlister(ctx, entity, state, game, config);
+      drawExploder(ctx, entity, state, game, config);
     },
   };
 }
 
 /**
- * Bursts each stunned blister whose fuse has burnt down: a stun stops it moving, not its fuse.
+ * Bursts each stunned exploder whose fuse has burnt down: a stun stops it moving, not its fuse.
  * Its update, skipped while it is stunned, bursts the rest.
  */
 function burstStunned(
   game: Session,
-  config: BlisterConfig,
+  config: ExploderConfig,
   sounds: Sounds,
 ): void {
   const kind = game.kindIds.get(NAME);
   for (const entity of [...game.entities.values()]) {
     if (entity.kind !== kind || !isStunned(game, entity.id)) continue;
-    const parsed = BlisterState.safeParse(entity.data);
+    const parsed = ExploderState.safeParse(entity.data);
     if (!parsed.success || !due(parsed.data, game)) continue;
     entity.data = burst(entity, parsed.data, game, config, sounds);
   }
 }
 
 /**
- * A blister: comes alone, out of the dark, and makes no sound but its fuse and its burst. It
+ * An exploder: comes alone, out of the dark, and makes no sound but its fuse and its burst. It
  * wanders towards any noise, feels bodies through walls nearby, players and monsters alike, and
  * chases them down, by a route where one is short enough, else straight at them. Near one, hurt, or
  * stopped by a wall in its straight way, it lights a short fuse and keeps coming, then bursts,
  * knocking the walls round it down and hurting everything near, worst nearest. Once hurt, it goes
  * for whatever body hurt it, wherever it is, or with none to chase, for the nearest body.
  */
-export const blister = defineEntity(NAME, (config: BlisterConfig) => {
+export const exploder = defineEntity(NAME, (config: ExploderConfig) => {
   const sounds: Sounds = {
     fuse: sound({ url: fuseUrl, range: config.sounds.fuse }),
     blast: sound({ url: blastUrl, range: config.sounds.blast }),
@@ -520,7 +520,7 @@ export const blister = defineEntity(NAME, (config: BlisterConfig) => {
       radius: config.radius,
       config: config.spawning,
       fresh: (seed: number, game: Session) =>
-        freshBlister(Math.floor(seed * 2 ** 32), game.worldTime),
+        freshExploder(Math.floor(seed * 2 ** 32), game.worldTime),
     }),
     step(game: Session) {
       burstStunned(game, config, sounds);

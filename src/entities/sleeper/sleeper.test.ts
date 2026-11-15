@@ -16,8 +16,12 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
-import { freshWitch, witch as witchContent, WitchState } from "./index.js";
-import type { WitchConfig } from "./index.js";
+import {
+  freshSleeper,
+  sleeper as sleeperContent,
+  SleeperState,
+} from "./index.js";
+import type { SleeperConfig } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -33,7 +37,7 @@ const idle = {
   interact: false,
   drop: false,
 };
-const { witch: config } = testEntitiesConfig;
+const { sleeper: config } = testEntitiesConfig;
 
 // Her wander legs and hideouts draw from Math.random; seeded so each run is the same.
 beforeEach(() => {
@@ -47,17 +51,17 @@ afterEach(() => {
 /** The sounds each session's host has sent, by the last part of their urls. */
 const sent = new WeakMap<Session, string[]>();
 
-/** The dev square, all of it dark, with the witch; the player stands at (x, y). */
-function world(x: number, y: number, witch: WitchConfig = config): Session {
+/** The dev square, all of it dark, with the sleeper; the player stands at (x, y). */
+function world(x: number, y: number, sleeper: SleeperConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
-    "WITCH",
+    "SLEEPER",
     "dev",
     testSfx(),
     testSimConfig,
   );
-  registerContent(game, [witchContent.create({ witch })]);
+  registerContent(game, [sleeperContent.create({ sleeper })]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   sent.set(game, []);
   return game;
@@ -80,29 +84,35 @@ function run(game: Session, seconds: number): void {
   }
 }
 
-function witchAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(game, "witch", x, y, freshWitch(game.worldTime, config));
+function sleeperAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(
+    game,
+    "sleeper",
+    x,
+    y,
+    freshSleeper(game.worldTime, config),
+  );
 }
 
-const stateOf = (witch: WorldEntity) => WitchState.parse(witch.data);
+const stateOf = (sleeper: WorldEntity) => SleeperState.parse(sleeper.data);
 
-test("a dormant witch with no one near sits still and barks now and then", () => {
+test("a dormant sleeper with no one near sits still and barks now and then", () => {
   const game = world(100, 300);
-  const witch = witchAt(game, 700, 300);
+  const sleeper = sleeperAt(game, 700, 300);
   run(game, config.barkGap.dormant.max + 0.1);
-  expect(stateOf(witch).mode).toBe("dormant");
-  expect(witch.x).toBe(700);
+  expect(stateOf(sleeper).mode).toBe("dormant");
+  expect(sleeper.x).toBe(700);
   expect(played(game)).toContain("bark.mp3");
 });
 
 test("a player close by makes her growl, and if still there a second later she wakes and runs them down", () => {
   const game = world(450, 300);
-  const witch = witchAt(game, 650, 300);
+  const sleeper = sleeperAt(game, 650, 300);
   run(game, 0.1);
-  expect(stateOf(witch).mode).toBe("warning");
+  expect(stateOf(sleeper).mode).toBe("warning");
   expect(played(game)).toContain("growl.mp3");
   run(game, config.warnSeconds);
-  expect(stateOf(witch).mode).toBe("enraged");
+  expect(stateOf(sleeper).mode).toBe("enraged");
   expect(played(game)).toContain("enrage.mp3");
   run(game, 1);
   expect(game.local.health).toBeLessThan(game.local.maxHealth);
@@ -111,13 +121,13 @@ test("a player close by makes her growl, and if still there a second later she w
 
 test("a player who backs off before her growl ends leaves her dormant", () => {
   const game = world(450, 300);
-  const witch = witchAt(game, 650, 300);
+  const sleeper = sleeperAt(game, 650, 300);
   run(game, 0.1);
-  expect(stateOf(witch).mode).toBe("warning");
+  expect(stateOf(sleeper).mode).toBe("warning");
   Object.assign(game.local, { x: 100, y: 300, prevX: 100, prevY: 300 });
   run(game, config.warnSeconds);
-  expect(stateOf(witch).mode).toBe("dormant");
-  expect(witch.x).toBe(650);
+  expect(stateOf(sleeper).mode).toBe("dormant");
+  expect(sleeper.x).toBe(650);
 });
 
 test("light on her wakes her enraged, however far the players", () => {
@@ -130,24 +140,24 @@ test("light on her wakes her enraged, however far the players", () => {
     light: () => ({ range: 100 }),
     draw: () => undefined,
   });
-  const witch = witchAt(game, 700, 300);
+  const sleeper = sleeperAt(game, 700, 300);
   run(game, 0.5);
-  expect(stateOf(witch).mode).toBe("dormant");
+  expect(stateOf(sleeper).mode).toBe("dormant");
   spawnEntity(game, "lamp", 760, 300, {});
   run(game, 0.1);
-  expect(stateOf(witch).mode).toBe("enraged");
+  expect(stateOf(sleeper).mode).toBe("enraged");
 });
 
 test("hurt by a player while dormant, she wakes and runs them down", () => {
   const game = world(100, 300);
-  const witch = witchAt(game, 700, 300);
+  const sleeper = sleeperAt(game, 700, 300);
   run(game, 0.1);
-  hurt(game, witch, 15, game.localId);
+  hurt(game, sleeper, 15, game.localId);
   run(game, 0.2);
-  expect(stateOf(witch).mode).toBe("enraged");
-  expect(stateOf(witch).foe).toBe(game.localId);
-  expect(stateOf(witch).target).toMatchObject({ x: 100, y: 300 });
-  expect(witch.vx).toBeLessThan(0);
+  expect(stateOf(sleeper).mode).toBe("enraged");
+  expect(stateOf(sleeper).foe).toBe(game.localId);
+  expect(stateOf(sleeper).target).toMatchObject({ x: 100, y: 300 });
+  expect(sleeper.vx).toBeLessThan(0);
 });
 
 test("hurt by any body, she goes for it rather than the player she sees", () => {
@@ -158,44 +168,44 @@ test("hurt by any body, she goes for it rather than the player she sees", () => 
     data: z.object({}),
     draw: () => undefined,
   });
-  const witch = witchAt(game, 700, 300);
+  const sleeper = sleeperAt(game, 700, 300);
   const post = spawnEntity(game, "post", 850, 450, {});
   run(game, 0.1);
-  hurt(game, witch, 15, post.id);
+  hurt(game, sleeper, 15, post.id);
   run(game, 0.2);
-  expect(stateOf(witch).mode).toBe("enraged");
-  expect(stateOf(witch).foe).toBe(post.id);
-  expect(stateOf(witch).target).toMatchObject({ x: 850, y: 450 });
-  expect(witch.vx).toBeGreaterThan(0);
+  expect(stateOf(sleeper).mode).toBe("enraged");
+  expect(stateOf(sleeper).foe).toBe(post.id);
+  expect(stateOf(sleeper).target).toMatchObject({ x: 850, y: 450 });
+  expect(sleeper.vx).toBeGreaterThan(0);
 });
 
 test("once her rage runs out she runs for a dark spot away from the players and sleeps there", () => {
   const game = world(100, 300);
-  const witch = witchAt(game, 700, 300);
-  const state = stateOf(witch);
-  witch.data = {
+  const sleeper = sleeperAt(game, 700, 300);
+  const state = stateOf(sleeper);
+  sleeper.data = {
     ...state,
     mode: "enraged",
     until: game.worldTime + 0.5,
   };
   run(game, 0.6);
-  expect(stateOf(witch).mode).toBe("retreat");
+  expect(stateOf(sleeper).mode).toBe("retreat");
   const speed =
     testSimConfig.player.speed * testSimConfig.player.sprintMultiplier;
-  expect(Math.hypot(witch.vx, witch.vy)).toBeCloseTo(speed);
+  expect(Math.hypot(sleeper.vx, sleeper.vy)).toBeCloseTo(speed);
   run(game, 4);
-  expect(stateOf(witch).mode).toBe("dormant");
+  expect(stateOf(sleeper).mode).toBe("dormant");
   expect(
-    Math.hypot(witch.x - game.local.x, witch.y - game.local.y),
-  ).toBeGreaterThan(config.retreat.clearance - witch.radius);
+    Math.hypot(sleeper.x - game.local.x, sleeper.y - game.local.y),
+  ).toBeGreaterThan(config.retreat.clearance - sleeper.radius);
 });
 
 test("once she kills, she retreats at once", () => {
   const game = world(450, 300, { ...config, attackDamage: 1000 });
-  const witch = witchAt(game, 650, 300);
+  const sleeper = sleeperAt(game, 650, 300);
   run(game, config.warnSeconds + 1.5);
   expect(game.local.health).toBe(0);
-  expect(["retreat", "dormant"]).toContain(stateOf(witch).mode);
+  expect(["retreat", "dormant"]).toContain(stateOf(sleeper).mode);
 });
 
 /** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
@@ -213,33 +223,37 @@ function postAt(game: Session, x: number, y: number): WorldEntity {
 test("any body close by wakes her as a player does, and she runs it down", () => {
   const game = world(100, 300);
   hurtPlayer(game, game.local, Infinity);
-  const witch = witchAt(game, 650, 300);
+  const sleeper = sleeperAt(game, 650, 300);
   const post = postAt(game, 500, 300);
   run(game, 0.1);
-  expect(stateOf(witch).mode).toBe("warning");
+  expect(stateOf(sleeper).mode).toBe("warning");
   run(game, config.warnSeconds);
-  expect(stateOf(witch).mode).toBe("enraged");
+  expect(stateOf(sleeper).mode).toBe("enraged");
   run(game, 1);
   expect(post.health).toBeLessThan(1000);
 });
 
 test("a kind she ignores does not wake her", () => {
-  const game = world(100, 300, { ...config, ignores: ["witch", "post"] });
+  const game = world(100, 300, { ...config, ignores: ["sleeper", "post"] });
   hurtPlayer(game, game.local, Infinity);
-  const witch = witchAt(game, 650, 300);
+  const sleeper = sleeperAt(game, 650, 300);
   postAt(game, 500, 300);
   run(game, config.warnSeconds + 0.5);
-  expect(stateOf(witch).mode).toBe("dormant");
+  expect(stateOf(sleeper).mode).toBe("dormant");
 });
 
 test("she sleeps again away from every body she hunts, not just the players", () => {
   const game = world(100, 550);
-  const witch = witchAt(game, 450, 300);
+  const sleeper = sleeperAt(game, 450, 300);
   const post = postAt(game, 450, 450);
-  witch.data = { ...stateOf(witch), mode: "enraged", until: game.worldTime };
+  sleeper.data = {
+    ...stateOf(sleeper),
+    mode: "enraged",
+    until: game.worldTime,
+  };
   run(game, 4);
-  expect(stateOf(witch).mode).toBe("dormant");
-  expect(Math.hypot(witch.x - post.x, witch.y - post.y)).toBeGreaterThan(
-    config.retreat.clearance - witch.radius,
+  expect(stateOf(sleeper).mode).toBe("dormant");
+  expect(Math.hypot(sleeper.x - post.x, sleeper.y - post.y)).toBeGreaterThan(
+    config.retreat.clearance - sleeper.radius,
   );
 });
