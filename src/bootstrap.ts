@@ -19,6 +19,9 @@ import {
   controlsHintFor,
   createCabin,
   hintMode,
+  minimapPanel,
+  radioPanel,
+  transmitPanel,
   createHud,
   createDebugOverlay,
   createMicIndicatorView,
@@ -110,6 +113,15 @@ const sendCabin = (command: CabinCommand): void => {
 const cabin = createCabin(element("#cabin", HTMLDivElement), sendCabin);
 cabin.addPanel(storagePanel(sendCabin));
 cabin.addPanel(shopPanel(sendCabin));
+/** Whether the cabin's transmit button is held down with the mouse. */
+let cabinTransmit = false;
+cabin.addPanel(minimapPanel(config.minimap));
+cabin.addPanel(
+  transmitPanel((held) => {
+    cabinTransmit = held;
+  }),
+);
+cabin.addPanel(radioPanel(sendCabin));
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -433,9 +445,11 @@ function frame(): void {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
       speak(session, voice.speakingLevel());
+      const held = input.getControls(until);
       const controls = {
-        ...input.getControls(until),
+        ...held,
         cabin: cabinCommands.shift() ?? null,
+        transmit: held.transmit === true || cabinTransmit,
       };
       updateSession(session, controls, clock.dt);
       worldLog?.observe(session);

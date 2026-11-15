@@ -211,6 +211,13 @@ export const testEntitiesConfig = {
       noiseRadius: 100,
       volume: 1,
     },
+    radio: {
+      volume: 0.7,
+      range: 1250,
+      noiseInterval: 1,
+      switchVolume: 0.6,
+      switchRange: 100,
+    },
   },
   stunTrap: {
     radius: 10,

@@ -43,17 +43,23 @@ export const RideWire = z
 
 /**
  * What a player inside a vehicle asks of it from its cabin: to take the wheel, sound the horn,
- * or get out; to stow the item in its own slot `stow` in the vehicle's storage, in its slot
- * `into` or the first empty one; to take the item in the storage's slot `unstow`; or to buy the
- * item `buy` at the vehicle's shop.
+ * get out, tune its radio to the next station (switching it on), or switch its radio off; to stow
+ * the item in its own slot `stow` in the vehicle's storage, in its slot `into` or the first empty
+ * one; to take the item in the storage's slot `unstow`; or to buy the item `buy` at the vehicle's
+ * shop.
  */
 export type CabinCommand =
   | "drive"
   | "honk"
   | "exit"
+  | "radio"
+  | "radioOff"
   | { readonly stow: number; readonly into?: number }
   | { readonly unstow: number }
   | { readonly buy: string };
+
+/** What a radio is turned to: the next station along, switching it on, or off. */
+export type Tuning = "next" | "off";
 
 /** A vehicle's storage: items anyone inside may leave in it, or take out. */
 export interface Storage {
@@ -132,6 +138,16 @@ export interface VehicleSpec {
   /** Its horn, sounded by `by` inside it, as part of an action: an `effect` to make. None when left out. */
   honk?(game: Session, vehicle: WorldEntity, by: Player): void;
   /**
+   * Whether it carries a two-way set on the walkie band: while anyone is inside, it plays every
+   * transmission there is from where it stands, as a walkie switched on would, and whoever is
+   * inside may transmit on it. Never when left out.
+   */
+  readonly transceiver?: boolean;
+  /** Its radio, turned by `by` inside it, as part of an action. None when left out. */
+  tune?(game: Session, vehicle: WorldEntity, by: Player, to: Tuning): void;
+  /** The station its radio plays, by number, as this client has it; null while it is off. */
+  station?(vehicle: WorldEntity): number | null;
+  /**
    * Runs on the host as its driver crashes it into a wall, once, as the host first runs that
    * step; its momentum is already spent.
    */
@@ -169,6 +185,26 @@ export function occupantsOf(game: Session, id: string): Player[] {
   return [...game.players.values()].filter(
     (player) => player.ride?.vehicle === id,
   );
+}
+
+/** The vehicle `player` is inside, if it carries a set on the walkie band; null otherwise. */
+export function transceiverOf(
+  game: Session,
+  player: Player,
+): WorldEntity | null {
+  if (player.ride === null) return null;
+  const found = vehicleOf(game, player.ride.vehicle);
+  return found?.spec.transceiver === true ? found.entity : null;
+}
+
+/** Every vehicle carrying a set on the walkie band with anyone inside it: every set switched on. */
+export function liveTransceivers(game: Session): WorldEntity[] {
+  const live = new Set<WorldEntity>();
+  for (const player of game.players.values()) {
+    const vehicle = transceiverOf(game, player);
+    if (vehicle !== null) live.add(vehicle);
+  }
+  return [...live];
 }
 
 /** `value` moved towards `target` by at most `step`. */
