@@ -112,7 +112,10 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
         const struck = bodiesIn(game, area, swinger.id);
         for (const body of struck) {
           hurt(game, body, config.damage, swinger.id);
-          push(game, body, at, config.knockback, "stay");
+          push(game, body, at, config.knockback, {
+            blocked: "stay",
+            by: swinger,
+          });
         }
         const hit = struck.length > 0;
         const { center, radius } = area;

@@ -79,6 +79,7 @@ function session() {
   registerContent(game, itemContent(testItemsConfig));
   registerEntityType(game, DUMMY, {
     radius: 15,
+    mass: 1,
     maxHealth: 40,
     data: z.object({}),
     update: (_entity, data) => data,

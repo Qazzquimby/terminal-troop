@@ -59,6 +59,12 @@ export interface Strike {
 export interface EntityDefinition<S> {
   readonly radius: number;
   readonly maxHealth: number;
+  /**
+   * How hard it is to push, in player masses: a push moves it less the heavier it is than what
+   * pushes it, and Infinity makes it immovable. Left out, it weighs what a player of its size
+   * would, as `massOfSize` gives.
+   */
+  readonly mass?: number | undefined;
   readonly collides?: boolean;
   /**
    * What else the kind is, past its name, for others to filter on, such as `INERT_TAG`. The
@@ -111,6 +117,8 @@ export interface EntityDefinition<S> {
 export interface EntityType {
   readonly radius: number;
   readonly maxHealth: number;
+  /** Its declared mass, in player masses; null for one sized to its radius. */
+  readonly mass: number | null;
   readonly collides: boolean;
   readonly tags: readonly string[];
   readonly data: z.ZodType;
@@ -143,6 +151,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
   return {
     radius: definition.radius,
     maxHealth: definition.maxHealth,
+    mass: definition.mass ?? null,
     collides: definition.collides ?? true,
     tags: definition.tags ?? [],
     data: schema,

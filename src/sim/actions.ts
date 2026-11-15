@@ -33,6 +33,7 @@ import type { CarriedItem, Inventory, ItemState } from "./inventory.js";
 import { knockBack } from "./knockback.js";
 import type { Blocked } from "./knockback.js";
 import type { Point } from "./map.js";
+import { massOf, pushShare } from "./mass.js";
 import { emitNoise, kindTags } from "./noise.js";
 import type { Player } from "./player.js";
 import { dashEnd, startDash } from "./player.js";
@@ -534,18 +535,31 @@ function knockPlayer(
   });
 }
 
+/** How a push goes, past where it comes from and how far. */
+export interface PushOptions {
+  /** What it does when a wall is in its way, for a world entity; stop by default. */
+  readonly blocked?: Blocked;
+  /** The body pushing, whose mass the push has; a player's mass when left out. */
+  readonly by?: Body;
+}
+
 /**
- * Pushes `body` `distance` pixels straight away from `from`. A player is pushed by the host,
- * which runs every player, stopping at walls and bodies; a world entity is pushed on the actor's
- * client too, as predicted, and does as `blocked` says when a wall is in its way.
+ * Pushes `body` straight away from `from`, `distance` pixels if it is no heavier than what pushes
+ * it, less in proportion if it is heavier, and not at all if it is immovable, as `pushShare`
+ * says. A player is pushed by the host, which runs every player, stopping at walls and bodies; a
+ * world entity is pushed on the actor's client too, as predicted, and does as `blocked` says when
+ * a wall is in its way.
  */
 export function push(
   game: Session,
   body: Body,
   from: Point,
-  distance: number,
-  blocked: Blocked = "stop",
+  pushed: number,
+  { blocked = "stop", by }: PushOptions = {},
 ): void {
+  const pusher = by === undefined ? game.config.player.mass : massOf(game, by);
+  const distance = pushed * pushShare(pusher, massOf(game, body));
+  if (!(distance > 0)) return;
   const player = asPlayer(game, body);
   const entity = asEntity(game, body);
   if (player !== null) {

@@ -43,6 +43,8 @@ const idle: Controls = {
 /** A kind that stands still with 40 health and a radius of 15. */
 const DUMMY = "dummy";
 const DUMMY_LENGTH = 30;
+/** How far a kick sends a body of a player's mass or less: two of the kicker's body lengths. */
+const KNOCK = PLAYER_LENGTH * kick.knockback;
 
 /** One blind zombie, so it stays where it is put. */
 const entities = {
@@ -80,6 +82,7 @@ function session(): Session {
   registerContent(game, moveContent(testMovesConfig));
   registerEntityType(game, DUMMY, {
     radius: 15,
+    mass: 1,
     maxHealth: 40,
     data: z.object({}),
     update: (_entity, data) => data,
@@ -209,9 +212,76 @@ test("a kick hurts what it hits and knocks it its configured body lengths from t
   kickOnce(game);
   expect(hit.health).toBe(40 - kick.damage);
   const pushed = hit.x - at.x;
-  expect(pushed).toBeGreaterThan(DUMMY_LENGTH * kick.knockback - 5);
-  expect(pushed).toBeLessThanOrEqual(DUMMY_LENGTH * kick.knockback);
+  expect(pushed).toBeGreaterThan(KNOCK - 5);
+  expect(pushed).toBeLessThanOrEqual(KNOCK);
   expect(hit.y).toBeCloseTo(300);
+});
+
+/**
+ * How far a kick facing right sends a still body of `radius`, and of `mass` (sized to its radius
+ * when left out), standing with its near edge in the kick's hitbox.
+ */
+function kickedDistance(radius: number, mass?: number): number {
+  const game = session();
+  registerEntityType(game, "block", {
+    radius,
+    ...(mass !== undefined && { mass }),
+    maxHealth: 40,
+    data: z.object({}),
+    update: (_entity, data) => data,
+    draw: () => undefined,
+  });
+  standAt(game, { x: 300, y: 300 });
+  const hitbox = hitboxRightOf(game.local);
+  const at = { x: hitbox.x + radius, y: hitbox.y };
+  expect(isAreaFree(game.world.map, at.x + KNOCK, at.y, radius)).toBe(true);
+  const hit = spawnEntity(game, "block", at.x, at.y, {});
+  kickOnce(game);
+  expect(hit.health).toBe(40 - kick.damage);
+  return hit.x - at.x;
+}
+
+test("a kick sends a big body no farther than a small one of the same mass", () => {
+  expect(kickedDistance(8, 1)).toBeCloseTo(KNOCK);
+  expect(kickedDistance(15, 1)).toBeCloseTo(KNOCK);
+  expect(kickedDistance(40, 1)).toBeCloseTo(KNOCK);
+});
+
+test("a kick sends a body heavier than the kicker less far, in proportion", () => {
+  expect(kickedDistance(15, 2)).toBeCloseTo(KNOCK / 2);
+  expect(kickedDistance(15, 4)).toBeCloseTo(KNOCK / 4);
+});
+
+test("a body without a declared mass weighs by its size: twice a player's width, four times as heavy", () => {
+  const playerRadius = testSimConfig.player.radius;
+  expect(kickedDistance(playerRadius * 2)).toBeCloseTo(KNOCK / 4);
+  // Lighter than the kicker, it still goes only as far as one of a player's mass.
+  expect(kickedDistance(playerRadius / 2)).toBeCloseTo(KNOCK);
+});
+
+test("kicking the cruiser does not move it, but thuds and flashes as a hit", () => {
+  const game = session();
+  for (const content of entityContent(entities)) {
+    content.register(game);
+    content.populate(game);
+  }
+  const cruiserKind = game.kindIds.get("cruiser");
+  const car = [...game.entities.values()].find(
+    ({ kind }) => kind === cruiserKind,
+  );
+  if (car === undefined) throw new Error("no cruiser");
+  standAt(game, { x: 300, y: 300 });
+  const hitbox = hitboxRightOf(game.local);
+  const at = { x: hitbox.x + car.radius, y: hitbox.y };
+  Object.assign(car, { ...at, prevX: at.x, prevY: at.y, tx: at.x, ty: at.y });
+  const play = vi.mocked(game.sfx.play);
+  play.mockClear();
+  updateSession(game, kickRight(game), DT);
+  expect(game.flashes).toEqual([expect.objectContaining({ hit: true })]);
+  expect(play).toHaveBeenCalled();
+  deliverOwn(game);
+  updateSession(game, idle, DT);
+  expect(car).toMatchObject(at);
 });
 
 test("a kick that knocks something into a wall stops it there, still hurt", () => {
@@ -336,9 +406,7 @@ test("a guest's kick hurts and knocks back on the host, and both clients see it"
   run(0.5);
   const onHost = zombieOf(a);
   expect(onHost.health).toBe(entities.zombie.maxHealth - kick.damage);
-  expect(onHost.x - TARGET.x).toBeGreaterThan(
-    DUMMY_LENGTH * kick.knockback - 5,
-  );
+  expect(onHost.x - TARGET.x).toBeGreaterThan(KNOCK - 5);
   expect(zombieOf(b)).toMatchObject({ health: onHost.health, tx: onHost.x });
   const flash = { at: TARGET, radius: kick.radius, hit: true };
   expect(seen.a?.flashes).toEqual([expect.objectContaining(flash)]);

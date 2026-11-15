@@ -57,6 +57,8 @@ export interface ZombieConfig extends Hunting {
   /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
+  /** How hard it is to push, in player masses; sized to its radius when left out. */
+  readonly mass?: number;
   /** Health when at full. */
   readonly maxHealth: number;
   /** Damage dealt to each player or other prey within attack range. */
@@ -462,6 +464,7 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
   };
   return {
     radius: config.radius,
+    mass: config.mass,
     maxHealth: config.maxHealth,
     data: ZombieState,
     eyes: (_entity, state, game) => zombieEyes(state.facing, game, config),

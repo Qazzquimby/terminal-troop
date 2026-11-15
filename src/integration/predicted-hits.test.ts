@@ -26,7 +26,6 @@ const { kick } = testMovesConfig;
 const { shovel } = testItemsConfig;
 const DT = 1 / 60;
 const PLAYER_LENGTH = testSimConfig.player.radius * 2;
-const ZOMBIE_LENGTH = testEntitiesConfig.zombie.radius * 2;
 const MAX_HEALTH = testEntitiesConfig.zombie.maxHealth;
 const idle: Controls = {
   move: { x: 0, y: 0 },
@@ -226,8 +225,8 @@ function track(
 const largestStep = (from: number, xs: readonly number[]): number =>
   Math.max(...xs.map((x, index) => Math.abs(x - (xs[index - 1] ?? from))));
 
-/** How far a kick knocks the zombie. */
-const KNOCK = ZOMBIE_LENGTH * kick.knockback;
+/** How far a kick knocks the zombie, a player's mass: two of the kicker's body lengths. */
+const KNOCK = PLAYER_LENGTH * kick.knockback;
 
 test("a guest's kick knocks the zombie back on its own client at once, and its lunge carries on", async () => {
   const { b, step } = await lineUp(KICKED);
