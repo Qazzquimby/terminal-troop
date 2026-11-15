@@ -2,24 +2,29 @@ import type { Action, InputContext, UiHandlers } from "./actions.js";
 import {
   ACTIONS,
   MOUSE_BUTTONS,
+  WHEEL,
   createActionState,
   toControls,
   withUiHandlers,
 } from "./actions.js";
 import { createButtonSource } from "./buttons.js";
+import { createWheelNotches } from "./wheel.js";
+import type { WheelConfig } from "./wheel.js";
 import type { Point, Controls, ViewConfig } from "../sim/index.js";
 
 /**
  * Only actions active in the current context respond, and only their keys are kept from
  * the page; every other key keeps its default (focus moves, sliders, typing). Mouse buttons
  * pressed on the canvas drive actions like keys, and the canvas keeps its context menu to
- * itself while the right button drives an action. UI actions run immediately, outside the
- * simulation step. `toWorld` turns a canvas point into a world point.
+ * itself while the right button drives an action. Each notch of the wheel over the canvas taps
+ * its `WHEEL` key, pressed and released at once, and the page never scrolls under it. UI actions
+ * run immediately, outside the simulation step. `toWorld` turns a canvas point into a world point.
  */
 export function createInput(
   canvas: HTMLCanvasElement,
   toWorld: (screen: Point) => Point,
   view: ViewConfig,
+  wheel: WheelConfig,
   uiActions: Partial<Record<Action, UiHandlers>>,
   context: InputContext,
 ): {
@@ -47,6 +52,26 @@ export function createInput(
     const code = MOUSE_BUTTONS[event.button];
     if (code !== undefined) buttons.keyDown(code, false, event.timeStamp);
   });
+
+  const notches = createWheelNotches(wheel);
+  canvas.addEventListener(
+    "wheel",
+    (event) => {
+      // A pinch on a trackpad, or Ctrl and the wheel, zooms the page as ever.
+      if (event.ctrlKey) return;
+      event.preventDefault();
+      const notch = notches.scroll(
+        event.deltaY,
+        event.deltaMode,
+        event.timeStamp,
+      );
+      if (notch === 0) return;
+      const code = notch > 0 ? WHEEL.down : WHEEL.up;
+      buttons.keyDown(code, false, event.timeStamp);
+      buttons.keyUp(code, event.timeStamp);
+    },
+    { passive: false },
+  );
 
   canvas.addEventListener("contextmenu", (event) => {
     if (buttons.actionsFor("MouseRight").length > 0) event.preventDefault();

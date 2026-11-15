@@ -25,6 +25,7 @@ const still: Controls = {
   sprint: false,
   crouch: false,
   select: null,
+  cycle: 0,
   use: false,
   secondary: false,
   interact: false,

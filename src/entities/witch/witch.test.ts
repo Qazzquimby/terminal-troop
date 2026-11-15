@@ -26,6 +26,7 @@ const idle = {
   sprint: false,
   crouch: false,
   select: null,
+  cycle: 0,
   use: false,
   holdingUse: false,
   secondary: false,

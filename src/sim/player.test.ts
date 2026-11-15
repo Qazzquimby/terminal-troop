@@ -30,6 +30,7 @@ const rules: PlayerRules = {
     nameMax: 8,
     knockbackSeconds: 0.15,
     load: { full: 100, slowdown: 0.2 },
+    switchVolume: 0.4,
   },
   stamina: {
     max: STAMINA_MAX,
@@ -69,6 +70,7 @@ function hold(
     sprint: false,
     crouch: false,
     select: null,
+    cycle: 0,
     use: false,
     secondary: false,
     interact: false,
@@ -106,6 +108,7 @@ test("carrying weight slows the top speed evenly, to 20% slower at 100lb and no 
       sprint,
       crouch: false,
       select: null,
+      cycle: 0,
       use: false,
       secondary: false,
       interact: false,

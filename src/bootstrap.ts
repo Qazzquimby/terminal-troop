@@ -280,6 +280,7 @@ const input = createInput(
   canvas,
   (point) => screenToWorld(camera, point),
   config.view,
+  config.wheel,
   {
     toggleSettings: {
       press(time) {

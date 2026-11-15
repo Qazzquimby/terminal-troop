@@ -146,7 +146,8 @@ async function room() {
     const heard: Heard = {};
     vi.spyOn(sessionOf(joined).sfx, "play").mockImplementation((url) => {
       const file = url.split("/").pop() ?? url;
-      heard[file] = (heard[file] ?? 0) + 1;
+      // The click of switching slot is the switcher's alone, not an item's sound.
+      if (file !== "slot-switch.mp3") heard[file] = (heard[file] ?? 0) + 1;
       return Promise.resolve({
         stop: () => undefined,
         setVolume: () => undefined,
