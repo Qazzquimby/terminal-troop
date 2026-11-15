@@ -7,6 +7,11 @@ Rules for any agent working in this repo.
 - When a ticket leaves out something that is only a tuning value (speeds, ranges, damage, durations, counts, spawn weights), don't stop to ask. Look for the answer in the code (`src/config.ts`), related tickets and their comments, then make a best guess. Put it in config and list every guess in the PR description so it can be reviewed and changed.
 - When a ticket is underdeveloped in a way that config can't fix, such as a missing mechanic or behaviour that could go several different ways, reply with a list of the clarifying questions needed to continue.
 
+## Design
+
+- Lean toward designs that produce emergent systems. Build a general rule that applies to every body over a special case that applies to one.
+- Don't special-case players. They are bodies like any other: what hurts, stuns, sees, hears or targets a monster should do the same to a player, and the reverse. When a ticket says "player", consider whether it means any body. If it does, implement it for any body and note it in the PR.
+
 ## Assets
 
 - Act as if asset files exist and will be provided later. Reference them by the path they would have.
