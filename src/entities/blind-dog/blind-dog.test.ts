@@ -7,6 +7,7 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  ITEM_TAG,
   makeNoise,
   receiveEvent,
   registerContent,
@@ -262,5 +263,65 @@ describe("biting", () => {
     run(game, 0.5);
     expect(game.local.health).toBe(testSimConfig.player.maxHealth);
     expect(hound.x).toBe(450);
+  });
+});
+
+describe("a noise that goes on", () => {
+  /** Steps `seconds`, `by` making a noise where it stands every half second. */
+  function keepsUp(
+    game: Session,
+    noise: (made: Pending) => void,
+    by: WorldEntity,
+    seconds: number,
+  ): void {
+    for (let t = 0; t < seconds; t += 0.5) {
+      noise({ by, at: { x: by.x, y: by.y }, radius: 1500 });
+      run(game, 0.5);
+    }
+  }
+
+  test("it closes on the body making it and bites it, again and again", () => {
+    const { game, noise } = world();
+    registerEntityType(game, "deer", {
+      radius: 10,
+      maxHealth: 10_000,
+      data: z.object({}),
+      draw: () => undefined,
+    });
+    const hound = blindDogAt(game, 150, 300);
+    const deer = spawnEntity(game, "deer", 450, 300, {});
+    keepsUp(game, noise, deer, 10);
+
+    expect(deer.health).toBeLessThanOrEqual(10_000 - config.contactDamage * 6);
+    expect(stateOf(hound).bored).toBeNull();
+  });
+
+  test("what it cannot bite, it gives up on after its patience, huffing, and pays no mind a while", () => {
+    const { game, noise } = world();
+    registerEntityType(game, "radio", {
+      radius: 8,
+      maxHealth: 1,
+      tags: [ITEM_TAG],
+      data: z.object({}),
+      draw: () => undefined,
+    });
+    const hound = blindDogAt(game, 150, 300);
+    const radio = spawnEntity(game, "radio", 450, 300, {});
+    keepsUp(game, noise, radio, config.patience + 3);
+
+    const bored = stateOf(hound);
+    expect(bored.bored?.id).toBe(radio.id);
+    expect(bored.mode).toBe("wander");
+    expect(suspicionAt(bored, game.worldTime, config)).toBe(0);
+    expect(radio.health).toBe(1);
+    expect(played(game).some((url) => url.endsWith("huff.mp3"))).toBe(true);
+
+    keepsUp(game, noise, radio, 3);
+    expect(stateOf(hound)).toMatchObject({ mode: "wander", source: null });
+
+    // Once its boredom is over, it turns to the noise again.
+    const until = bored.bored?.until ?? 0;
+    keepsUp(game, noise, radio, until - game.worldTime + 1);
+    expect(stateOf(hound).source).toBe(radio.id);
   });
 });

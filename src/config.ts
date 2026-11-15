@@ -362,8 +362,20 @@ export const config = {
       suspicion: { max: CELL * 25, decay: CELL * 2 },
       // A charge runs 8 cells past the noise it heard last.
       overrun: CELL * 8,
-      // Its roar carries 25 cells, its snarl as it turns to a noise 4, its bite 6.
-      sounds: { roar: CELL * 25, snarl: CELL * 4, bite: CELL * 6 },
+      // Within 3 cells of the body making the noise it goes straight for it and bites. Kept 8
+      // seconds near a noise biting nothing (a radio lying about, a body out of reach), it gives
+      // up and pays that maker no mind for 20 seconds.
+      lunge: CELL * 3,
+      patience: 8,
+      boredSeconds: 20,
+      // Its roar carries 25 cells, its snarl as it turns to a noise 4, its bite 6, its huff as it
+      // gives up 4.
+      sounds: {
+        roar: CELL * 25,
+        snarl: CELL * 4,
+        bite: CELL * 6,
+        huff: CELL * 4,
+      },
     },
     // A swollen thing that comes alone, out of the dark, never within 14 cells of a player. It
     // feels prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.

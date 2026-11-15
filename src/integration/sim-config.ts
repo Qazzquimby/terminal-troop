@@ -228,7 +228,10 @@ export const testEntitiesConfig = {
     repathDistance: 50,
     suspicion: { max: 1000, decay: 100 },
     overrun: 400,
-    sounds: { roar: 1000, snarl: 200, bite: 300 },
+    lunge: 150,
+    patience: 4,
+    boredSeconds: 10,
+    sounds: { roar: 1000, snarl: 200, bite: 300, huff: 200 },
   },
   exploder: {
     spawning: { ...NEVER, unseenDistance: 700 },

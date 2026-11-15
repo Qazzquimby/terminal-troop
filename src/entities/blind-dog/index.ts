@@ -2,7 +2,9 @@ import { z } from "zod";
 import {
   defineEntity,
   effect,
+  hasKindTag,
   isAreaFree,
+  livingBody,
   noisesHeardBy,
   rounded,
   sound,
@@ -38,6 +40,7 @@ import type { SpawningConfig } from "../spawning.js";
 const roarUrl = new URL("./sfx/roar.mp3", import.meta.url).href;
 const snarlUrl = new URL("./sfx/snarl.mp3", import.meta.url).href;
 const biteUrl = new URL("./sfx/bite.mp3", import.meta.url).href;
+const huffUrl = new URL("./sfx/huff.mp3", import.meta.url).href;
 
 /**
  * How a blind dog roams, listens and charges, and how often they come. Distances are in pixels,
@@ -68,11 +71,25 @@ export interface BlindDogConfig extends Hunting {
   readonly suspicion: { readonly max: number; readonly decay: number };
   /** How far past the last noise it heard a charge runs. */
   readonly overrun: number;
+  /**
+   * Within this gap, edge to edge, of the body that made a noise it hears, it goes straight for
+   * that body rather than where the noise seemed to come from, so it closes and bites.
+   */
+  readonly lunge: number;
+  /**
+   * Seconds it keeps after one noise maker within `overrun` of where it is heard, biting nothing,
+   * before it gives up on it: something it cannot bite, or cannot reach.
+   */
+  readonly patience: number;
+  /** Seconds it then stays deaf to what made that noise. */
+  readonly boredSeconds: number;
   /** How far, in pixels, each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly roar: number;
     readonly snarl: number;
     readonly bite: number;
+    /** The huff as it gives up on a noise. */
+    readonly huff: number;
   };
 }
 
@@ -82,6 +99,8 @@ export interface BlindDogConfig extends Hunting {
  * - wander: walks `route`, then stands until `standUntil` (host), then picks a new leg
  * - stalk: walks `route` to `heard`, where the last noise it heard seemed to come from
  * - charge: runs `route` past `heard`, then stands, its suspicion spent
+ * `source` is what made the last noise it turned to, and `camped` how long it has kept near that
+ * maker's noise biting nothing; given up on, the maker goes in `bored` for a while.
  */
 export const BlindDogState = z.object({
   /** Everyone, to colour it. */
@@ -102,6 +121,12 @@ export const BlindDogState = z.object({
   biteAt: Time,
   /** Whether it bites in this step. Host. */
   biting: z.boolean(),
+  /** The id of what made the noise it follows; null for none, or a noise no one made. Host. */
+  source: z.string().max(64).nullable(),
+  /** Seconds it has kept near the noise it follows, biting nothing. Host. */
+  camped: rounded(2),
+  /** What it gave up on and pays no mind to, and until when. Host. */
+  bored: z.object({ id: z.string().max(64), until: Time }).nullable(),
   /** Radians, sent to a hundredth. Everyone. */
   facing: rounded(2),
 });
@@ -128,6 +153,9 @@ export function freshBlindDog(seed: number, now: number): BlindDogState {
     suspectedAt: now,
     biteAt: now,
     biting: false,
+    source: null,
+    camped: 0,
+    bored: null,
     facing: 0,
   };
 }
@@ -142,13 +170,30 @@ export function suspicionAt(
   return Math.max(0, state.suspicion - ebbed);
 }
 
-/** What it heard in a step: how loud it all was together, and where the loudest seemed to be. */
+/**
+ * What it heard in a step: how loud it all was together, where the loudest seemed to be, and what
+ * made it.
+ */
 interface Earful {
   readonly total: number;
   readonly at: Point | null;
+  readonly source: string | null;
 }
 
-/** Every noise but its own kind's that reaches it this step, and its seed after listening. */
+/** Whether it pays no mind, at world time `now`, to noise made by `source`. */
+function boredOf(
+  state: BlindDogState,
+  source: string | null,
+  now: number,
+): boolean {
+  const { bored } = state;
+  return bored !== null && source === bored.id && now < bored.until;
+}
+
+/**
+ * Every noise that reaches it this step but its own kind's and that of what it gave up on, and
+ * its seed after listening.
+ */
 function listen(
   state: BlindDogState,
   at: Point,
@@ -158,13 +203,16 @@ function listen(
     let total = 0;
     let loudest = -Infinity;
     let from: Point | null = null;
+    let source: string | null = null;
     for (const heard of noisesHeardBy(game, { at, rng, ignores: DEAF_TO })) {
+      if (boredOf(state, heard.source, game.worldTime)) continue;
       total += Math.max(0, heard.loudness);
       if (heard.loudness < loudest) continue;
       loudest = heard.loudness;
       from = heard.at;
+      source = heard.source;
     }
-    return { total, at: from };
+    return { total, at: from, source };
   });
 }
 
@@ -216,7 +264,16 @@ function react(
   );
   const mode: Mode =
     state.mode === "charge" || suspicion >= max ? "charge" : "stalk";
-  const raised = { ...state, suspicion, suspectedAt: now, standUntil: null };
+  const { source } = earful;
+  const camped = source === state.source ? state.camped : 0;
+  const raised = {
+    ...state,
+    suspicion,
+    suspectedAt: now,
+    standUntil: null,
+    source,
+    camped,
+  };
   const noise = earful.at;
   const { heard } = state;
   if (
@@ -264,6 +321,52 @@ function settle(
   return stand({ ...settled, route: [] }, game, config);
 }
 
+/**
+ * Goes straight for the body that made the noise it follows, when that is a living body it bites
+ * within `lunge` of it, edge to edge, so it closes on it rather than stopping where it seemed to be.
+ */
+function lunge(
+  state: BlindDogState,
+  self: Prey,
+  game: Session,
+  config: BlindDogConfig,
+): BlindDogState {
+  const maker = livingBody(game, state.source);
+  if (maker === null || maker.id === self.id) return state;
+  if (hasKindTag(game, maker.id, [...config.ignores, ...NEVER_PREY]))
+    return state;
+  const gap =
+    Math.hypot(maker.x - self.x, maker.y - self.y) - self.radius - maker.radius;
+  if (gap > config.lunge) return state;
+  return { ...state, route: [{ x: maker.x, y: maker.y }] };
+}
+
+/**
+ * Counts the time it keeps within `overrun` of the noise it follows, and once that passes its
+ * patience, gives up on what made it: it settles, its suspicion spent, deaf to it a while.
+ */
+function tire(
+  state: BlindDogState,
+  self: Point,
+  dt: number,
+  game: Session,
+  config: BlindDogConfig,
+): BlindDogState {
+  const { heard } = state;
+  if (state.mode === "wander" || heard === null) return state;
+  const near = Math.hypot(heard.x - self.x, heard.y - self.y) <= config.overrun;
+  if (!near) return state;
+  const camped = state.camped + dt;
+  if (camped < config.patience) return { ...state, camped };
+  const now = game.worldTime;
+  const bored =
+    state.source === null
+      ? state.bored
+      : { id: state.source, until: now + config.boredSeconds };
+  const spent = { ...state, suspicion: 0, suspectedAt: now, bored };
+  return settle({ ...spent, source: null, camped: 0 }, game, config);
+}
+
 /** Walks its leg, stands a while once it ends, then picks another. */
 function roam(
   state: BlindDogState,
@@ -285,10 +388,13 @@ function roam(
   };
 }
 
-/** What it does next: turns to what it hears, else goes on, settles, or roams. */
+/**
+ * What it does next: turns to what it hears, going straight for its maker once close, else goes
+ * on, settles, or roams.
+ */
 function think(
   state: BlindDogState,
-  self: Point,
+  self: Prey,
   game: Session,
   config: BlindDogConfig,
 ): BlindDogState {
@@ -296,7 +402,12 @@ function think(
   const listened = { ...state, seed };
   const { at } = earful;
   if (at !== null)
-    return react(listened, self, { ...earful, at }, game, config);
+    return lunge(
+      react(listened, self, { ...earful, at }, game, config),
+      self,
+      game,
+      config,
+    );
   if (listened.mode === "wander") return roam(listened, self, game, config);
   if (listened.route.length > 0) return listened;
   return settle(listened, game, config);
@@ -320,7 +431,7 @@ function bite(
   const now = game.worldTime;
   const biting = now >= state.biteAt && touching(self, game, config).length > 0;
   return biting
-    ? { ...state, biting, biteAt: now + config.contactCooldown }
+    ? { ...state, biting, biteAt: now + config.contactCooldown, camped: 0 }
     : { ...state, biting };
 }
 
@@ -329,6 +440,7 @@ interface Sounds {
   readonly roar: Sound;
   readonly snarl: Sound;
   readonly bite: Sound;
+  readonly huff: Sound;
 }
 
 /** Sounds, as the host, on every client, what a step from `previous` to `next` did. */
@@ -343,6 +455,9 @@ function cue(
     previous.mode !== "charge" && next.mode === "charge" && sounds.roar,
     previous.mode === "wander" && next.mode === "stalk" && sounds.snarl,
     next.biting && sounds.bite,
+    next.bored !== null &&
+      next.bored.until !== previous.bored?.until &&
+      sounds.huff,
   ];
   for (const sound of made)
     if (sound !== false) effect(game, { at: entity, sound }, entity);
@@ -424,6 +539,7 @@ function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
     roar: sound({ url: roarUrl, range: config.sounds.roar }),
     snarl: sound({ url: snarlUrl, range: config.sounds.snarl }),
     bite: sound({ url: biteUrl, range: config.sounds.bite }),
+    huff: sound({ url: huffUrl, range: config.sounds.huff }),
   };
   return {
     radius: config.radius,
@@ -431,7 +547,7 @@ function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
     data: BlindDogState,
     update(entity, state, dt, game) {
       const next = bite(
-        think(state, entity, game, config),
+        tire(think(state, entity, game, config), entity, dt, game, config),
         entity,
         game,
         config,
