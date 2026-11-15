@@ -4,9 +4,8 @@ import {
   dash,
   defineAction,
   effect,
-  entitiesIn,
   hurt,
-  playersIn,
+  bodiesIn,
   push,
   sound,
 } from "../../sim/index.js";
@@ -69,12 +68,9 @@ export const kick: Content<"kick", KickConfig> = {
           seconds: config.lunge.seconds,
         });
         const area = circleAhead(at, aim, config.reach, config.radius);
-        const struck = [
-          ...entitiesIn(game, area),
-          ...playersIn(game, area, kicker.id),
-        ];
+        const struck = bodiesIn(game, area, kicker.id);
         for (const body of struck) {
-          hurt(game, body, config.damage);
+          hurt(game, body, config.damage, kicker.id);
           push(game, body, at, bodyLength(body) * config.knockback);
         }
         effect(game, {

@@ -6,6 +6,8 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  hurt,
+  lastHurtBy,
   makeNoise,
   receiveEvent,
   registerContent,
@@ -19,6 +21,7 @@ import type {
   WorldContent,
   WorldEntity,
 } from "../../sim/index.js";
+import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
 import type { BlisterConfig } from "./index.js";
 import {
   blastDamage,
@@ -43,7 +46,10 @@ const idle = {
 const { blister: config } = testEntitiesConfig;
 
 /** The dev square, 18x12 cells, its pillars at x 200-300, y 50-150 and x 600-700, y 450-550. */
-function world(blister: BlisterConfig = config): {
+function world(
+  blister: BlisterConfig = config,
+  others: readonly WorldContent[] = [],
+): {
   game: Session;
   noise: (at: Point, radius: number) => void;
 } {
@@ -70,7 +76,11 @@ function world(blister: BlisterConfig = config): {
         makeNoise(session, session.local, made);
     },
   };
-  registerContent(game, [blisterContent.create({ blister }), noiser]);
+  registerContent(game, [
+    blisterContent.create({ blister }),
+    noiser,
+    ...others,
+  ]);
   standAt(game, 875, 575);
   return { game, noise: (at, radius) => pending.push({ at, radius }) };
 }
@@ -79,19 +89,8 @@ function standAt(game: Session, x: number, y: number): void {
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
 }
 
-function blisterAt(
-  game: Session,
-  x: number,
-  y: number,
-  blister: BlisterConfig = config,
-): WorldEntity {
-  return spawnEntity(
-    game,
-    "blister",
-    x,
-    y,
-    freshBlister(1, game.worldTime, blister),
-  );
+function blisterAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(game, "blister", x, y, freshBlister(1, game.worldTime));
 }
 
 const stateOf = (entity: WorldEntity): BlisterState =>
@@ -192,6 +191,7 @@ describe("bursting", () => {
     const lost = testSimConfig.player.maxHealth - game.local.health;
     expect(lost).toBeGreaterThan(70);
     expect(lost).toBeLessThan(100);
+    expect(lastHurtBy(game, game.localId)).toBe(sac.id);
   });
 
   test("its burst knocks down the walls it reaches", () => {
@@ -208,7 +208,7 @@ describe("bursting", () => {
     const { game } = world({ ...config, senseRange: 0, fuseRange: 0 });
     const first = blisterAt(game, 400, 300);
     const second = blisterAt(game, 500, 300);
-    first.health -= 1;
+    hurt(game, first, 1, null);
     run(game, DT);
     expect(stateOf(first).fuseAt).not.toBeNull();
     expect(stateOf(second).fuseAt).toBeNull();
@@ -218,16 +218,40 @@ describe("bursting", () => {
     expect(stateOf(second).fuseAt).not.toBeNull();
   });
 
-  test("hurt, it lights its fuse at once and goes for the nearest player, however far", () => {
+  test("hurt by no one, it lights its fuse at once and goes for the nearest player, however far", () => {
     const { game } = world({ ...config, senseRange: 50 });
     standAt(game, 800, 500);
     const sac = blisterAt(game, 100, 300);
-    sac.health -= 10;
+    hurt(game, sac, 10, null);
     run(game, DT);
     const state = stateOf(sac);
     expect(state.fuseAt).not.toBeNull();
     expect(state.mode).toBe("chase");
     expect(state.goal).toMatchObject({ x: 800, y: 500 });
+  });
+
+  test("hurt by a zombie, it lights its fuse and chases the zombie, not the player nearer it", () => {
+    const zombie = zombieContent.create({ zombie: testEntitiesConfig.zombie });
+    const { game } = world({ ...config, senseRange: 50 }, [zombie]);
+    standAt(game, 200, 300);
+    const sac = blisterAt(game, 100, 300);
+    const biter = spawnEntity(
+      game,
+      "zombie",
+      800,
+      500,
+      freshZombie(1, game.worldTime, testEntitiesConfig.zombie),
+    );
+    // Held still, so where the blister heads is where the zombie stands.
+    stun(game, biter.id, 5);
+    hurt(game, sac, 10, biter.id);
+    run(game, DT);
+    const state = stateOf(sac);
+    expect(state.fuseAt).not.toBeNull();
+    expect(state.attacker).toBe(biter.id);
+    expect(state.goal).toMatchObject({ x: 800, y: 500 });
+    run(game, DT * 10);
+    expect(stateOf(sac).goal).toMatchObject({ x: 800, y: 500 });
   });
 
   test("stunned with its fuse lit, it still bursts on time", () => {

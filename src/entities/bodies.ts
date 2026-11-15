@@ -1,9 +1,4 @@
-import {
-  canSeeFrom,
-  directionalVision,
-  isGhost,
-  livingPlayers,
-} from "../sim/index.js";
+import { canSeeFrom, directionalVision, livingPlayers } from "../sim/index.js";
 import type { Player, Point, Session, WorldEntity } from "../sim/index.js";
 import { preyNear } from "./hunt.js";
 import type { Prey } from "./hunt.js";
@@ -66,12 +61,4 @@ export function drawRing(
   ctx.beginPath();
   ctx.arc(body.x, body.y, body.radius + 2 + gap, 0, Math.PI * 2);
   ctx.stroke();
-}
-
-/** Whether the player or world entity `id` is gone from the world, dead, or a ghost. */
-export function isGone(game: Session, id: string): boolean {
-  const player = game.players.get(id);
-  if (player !== undefined) return isGhost(player);
-  const entity = game.entities.get(id);
-  return entity === undefined || entity.health <= 0;
 }

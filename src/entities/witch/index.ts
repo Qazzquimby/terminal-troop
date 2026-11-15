@@ -5,7 +5,10 @@ import {
   effect,
   INERT_TAG,
   isAreaFree,
+  hurtSinceLastStep,
+  isGone,
   isLit,
+  livingBody,
   livingPlayers,
   sound,
 } from "../../sim/index.js";
@@ -18,7 +21,7 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { drawRing, isGone, nearestSeenPlayer, touching } from "../bodies.js";
+import { drawRing, nearestSeenPlayer, touching } from "../bodies.js";
 import {
   between,
   Route,
@@ -110,8 +113,8 @@ export const WitchState = z.object({
   barkAt: Time,
   attackAt: Time,
   attacking: z.boolean(),
-  /** Her health as of her last step, so she can tell she was hurt. */
-  health: z.number().min(0),
+  /** The body that hurt her, which she runs down while it lives, until she retreats. */
+  foe: z.string().nullable(),
   /** The body she last struck, to tell when she has killed. */
   victim: z.string().nullable(),
 });
@@ -142,7 +145,7 @@ export function freshWitch(now: number, config: WitchConfig): WitchState {
     barkAt: now + between(Math.random, config.barkGap.dormant),
     attackAt: now,
     attacking: false,
-    health: config.maxHealth,
+    foe: null,
     victim: null,
   };
 }
@@ -176,7 +179,7 @@ function enrage(state: WitchState, game: Session, config: WitchConfig) {
 
 /** Goes back to sleep where she is. */
 function sleep(state: WitchState): WitchState {
-  return { ...state, mode: "dormant", route: [], target: null };
+  return { ...state, mode: "dormant", route: [], target: null, foe: null };
 }
 
 /**
@@ -240,27 +243,19 @@ function pursue(
 }
 
 /**
- * The player who hurt her, as best she can tell: the nearest living one she has a clear line to,
- * however far. Damage carries no one's name, so this stands in for it.
- */
-function damager(self: WorldEntity, game: Session): Point | null {
-  return nearestSeenPlayer(game, self, Infinity);
-}
-
-/**
- * Enraged: runs down the player she sees, or who just hurt her, to where she last saw them; with
- * neither, she wanders fast. Light is nothing to her now.
+ * Enraged: runs down whatever body hurt her, wherever it is, while it lives; otherwise the player
+ * she sees, to where she last saw them; with neither, she wanders fast. Light is nothing to her
+ * now.
  */
 function rage(
   state: WitchState,
   self: WorldEntity,
   game: Session,
   config: WitchConfig,
-  hurt: boolean,
 ): WitchState {
   const seen =
-    nearestSeenPlayer(game, self, config.sightRange) ??
-    (hurt ? damager(self, game) : null);
+    livingBody(game, state.foe) ??
+    nearestSeenPlayer(game, self, config.sightRange);
   if (seen !== null) return pursue(state, self, seen, game, config);
   if (state.route.length > 0) return state;
   const { map } = game.world;
@@ -291,13 +286,30 @@ function think(
   config: WitchConfig,
 ): WitchState {
   const now = game.worldTime;
-  const hurt = self.health < state.health;
+  const hurt = hurtSinceLastStep(game, self.id);
+  const by = hurt?.by ?? null;
+  const marked =
+    by === null || by === self.id || state.mode === "retreat"
+      ? state
+      : { ...state, foe: by };
+  return respond(marked, self, game, config, hurt !== null, now);
+}
+
+/** What she does in her mode, `hurt` or not since her last step, at world time `now`. */
+function respond(
+  state: WitchState,
+  self: WorldEntity,
+  game: Session,
+  config: WitchConfig,
+  hurt: boolean,
+  now: number,
+): WitchState {
   switch (state.mode) {
     case "dormant":
     case "warning": {
       if (hurt || isLit(game, self)) {
         const woken = enrage(state, game, config);
-        return hurt ? rage(woken, self, game, config, true) : woken;
+        return hurt ? rage(woken, self, game, config) : woken;
       }
       const close = playerClose(self, game, config);
       if (state.mode === "dormant")
@@ -310,8 +322,13 @@ function think(
     case "enraged": {
       const killed = state.victim !== null && isGone(game, state.victim);
       if (killed || now >= state.until)
-        return retreat({ ...state, victim: null }, self, game, config);
-      return rage(state, self, game, config, hurt);
+        return retreat(
+          { ...state, victim: null, foe: null },
+          self,
+          game,
+          config,
+        );
+      return rage(state, self, game, config);
     }
     case "retreat":
       return state.route.length > 0 ? state : sleep(state);
@@ -402,7 +419,7 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
       const next = bark(acted, game, config);
       cue(entity, state, next, game, sounds);
       const route = steer(entity, next.route, runSpeed(game), dt);
-      return { ...next, route, health: entity.health };
+      return { ...next, route };
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];

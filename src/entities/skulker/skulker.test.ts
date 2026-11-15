@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testSfx,
@@ -8,9 +9,12 @@ import {
   canSeeFrom,
   createPlayer,
   createSession,
+  hurt,
   directionalVision,
+  lastHurtBy,
   receiveEvent,
   registerContent,
+  registerEntityType,
   spawnEntity,
   updateSession,
 } from "../../sim/index.js";
@@ -73,13 +77,7 @@ function run(game: Session, seconds: number, look: Point): void {
 }
 
 function skulkerAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(
-    game,
-    "skulker",
-    x,
-    y,
-    freshSkulker(game.worldTime, config.maxHealth),
-  );
+  return spawnEntity(game, "skulker", x, y, freshSkulker(game.worldTime));
 }
 
 const stateOf = (entity: WorldEntity): SkulkerState =>
@@ -187,7 +185,7 @@ test("hurt, it shrieks and rages at the nearest living thing, watched or not, th
   run(game, DT, { x: 0, y: 300 });
   expect(stateOf(skulker).mode).toBe("retreat");
 
-  skulker.health -= 15;
+  hurt(game, skulker, 15, game.localId);
   run(game, DT, { x: 0, y: 300 });
   expect(stateOf(skulker).mode).toBe("enraged");
   expect(sounded(game, "enraged.mp3")).toBe(true);
@@ -196,4 +194,24 @@ test("hurt, it shrieks and rages at the nearest living thing, watched or not, th
 
   run(game, config.enragedSeconds, { x: 0, y: 300 });
   expect(stateOf(skulker).mode).toBe("hunt");
+});
+
+test("hurt by another body, it rages at that body rather than the player nearer it", () => {
+  const game = world(450, 300);
+  registerEntityType(game, "post", {
+    radius: 10,
+    maxHealth: 1000,
+    data: z.object({}),
+    draw: () => undefined,
+  });
+  const skulker = skulkerAt(game, 400, 300);
+  const post = spawnEntity(game, "post", 100, 300, {});
+  hurt(game, skulker, 15, post.id);
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(skulker).mode).toBe("enraged");
+  expect(stateOf(skulker).foe).toBe(post.id);
+  expect(skulker.vx).toBeLessThan(0);
+  run(game, 1.5, { x: 900, y: 300 });
+  expect(post.health).toBeLessThan(post.maxHealth);
+  expect(lastHurtBy(game, post.id)).toBe(skulker.id);
 });

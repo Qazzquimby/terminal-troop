@@ -1,10 +1,11 @@
 import type { z } from "zod";
+import { bodyById } from "./bodies.js";
 import { moveWithCollision } from "./collision.js";
 import type { Entity } from "./entity.js";
 import { changedData } from "./entity-delta.js";
 import type { EntityChange, EntityDelta } from "./entity-delta.js";
-import { applyDamage, isDead } from "./entity.js";
-import { hurtPlayer } from "./health.js";
+import { isDead } from "./entity.js";
+import { dealDamage, pruneHurts, settleHurts } from "./hurts.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { easeToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
@@ -36,10 +37,14 @@ export const INERT_TAG = "inert";
  */
 export const ITEM_TAG = "item";
 
-/** Damage an entity deals to `target`, a player or another world entity. */
+/**
+ * Damage an entity deals to `target`, any body. It is down to `by`, a body's id, or to no one for
+ * null; to the striking entity when left out.
+ */
 export interface Strike {
   readonly target: string;
   readonly amount: number;
+  readonly by?: string | null;
 }
 
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
@@ -235,12 +240,12 @@ export function spawnEntity(
 function runKind(game: Session, entity: WorldEntity, dt: number): void {
   const type = game.entityTypes.get(entity.kind);
   type?.update(entity, dt, game);
+  settleHurts(game, entity.id);
   if (!game.entities.has(entity.id)) return;
-  type?.strikes(entity, game).forEach(({ target, amount }) => {
-    const player = game.players.get(target);
-    if (player !== undefined) hurtPlayer(game, player, amount);
-    const struck = game.entities.get(target);
-    if (struck !== undefined) applyDamage(struck, amount);
+  type?.strikes(entity, game).forEach(({ target, amount, by }) => {
+    const struck = bodyById(game, target);
+    if (struck !== null)
+      dealDamage(game, struck, amount, by === undefined ? entity.id : by);
   });
 }
 
@@ -253,6 +258,7 @@ function runKind(game: Session, entity: WorldEntity, dt: number): void {
 export function updateEntities(game: Session, dt: number): void {
   cullDeadEntities(game);
   pruneStatuses(game);
+  pruneHurts(game);
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;

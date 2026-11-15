@@ -5,6 +5,7 @@ import {
   effect,
   INERT_TAG,
   isAreaFree,
+  isGone,
   isLit,
   sound,
 } from "../../sim/index.js";
@@ -19,7 +20,6 @@ import type {
 } from "../../sim/index.js";
 import {
   drawRing,
-  isGone,
   isLookedAt,
   nearestSeenPlayer,
   touching,

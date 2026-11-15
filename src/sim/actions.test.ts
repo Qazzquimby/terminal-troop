@@ -53,7 +53,7 @@ const bonk = defineAction("bonk", {
     const body = game.entities.get(target) ?? game.players.get(target);
     if (body === undefined) return;
     dash(game, actor, { aim: 0, distance: 20, seconds: 0.1 });
-    hurt(game, body, 5);
+    hurt(game, body, 5, actor.id);
     push(game, body, actor, 30);
     effect(game, {
       at: { x: body.x, y: body.y },

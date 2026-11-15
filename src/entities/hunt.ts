@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   hasKindTag,
   ITEM_TAG,
-  livingPlayers,
+  livingBodies,
   isAreaFree,
   mulberry32Next,
   noisesHeardBy,
@@ -77,8 +77,7 @@ export function preyNear(
   ignores: readonly string[],
 ): Prey[] {
   const near: Prey[] = [];
-  const bodies = [...livingPlayers(game), ...game.entities.values()];
-  for (const body of bodies) {
+  for (const body of livingBodies(game)) {
     if (body.id === hunter.id) continue;
     const distance = Math.hypot(body.x - hunter.x, body.y - hunter.y);
     if (distance > reach(body)) continue;
