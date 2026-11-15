@@ -67,6 +67,12 @@ export interface Hunting {
    * monster hunts inert things or items lying about, whatever this says.
    */
   readonly ignores: readonly string[];
+  /**
+   * When given, the only kind tags it picks as quarry: "player" hunts players alone. Absent, it
+   * hunts any body it does not ignore. It narrows only whom it goes after; it still strikes
+   * whatever it touches that it does not ignore.
+   */
+  readonly targets?: readonly string[];
 }
 
 /** A body a monster may hunt. */

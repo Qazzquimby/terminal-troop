@@ -371,7 +371,7 @@ function think(
   if (taker !== null) return enter(state, "revenge", now, now, taker.id);
   if (hurt !== null) {
     const attacker = hurt.by === self.id ? null : livingBody(game, hurt.by);
-    const quarry = attacker ?? nearestPrey(game, self, config.ignores);
+    const quarry = attacker ?? nearestPrey(game, self, config);
     return enter(state, "spook", now + config.spookSeconds, now, quarry?.id);
   }
   const over = state.mode !== "wander" && now >= state.until;
@@ -383,7 +383,7 @@ function think(
   if (state.mode === "spook") return state;
   const nest = nestOf(state);
   const sees = seer(game, self, state, config);
-  const seen = seenPrey(game, self, config.ignores);
+  const seen = seenPrey(game, self, config);
   if (seen.some((body) => distance(body, nest) <= config.nestRadius)) {
     const until = now + config.guardSeconds;
     return state.mode === "guard"

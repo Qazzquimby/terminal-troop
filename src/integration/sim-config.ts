@@ -207,6 +207,7 @@ export const testEntitiesConfig = {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,
     ignores: ["snail"],
+    targets: ["player"],
     speedShare: 0.2,
     damage: 500,
     attackCooldown: 1,

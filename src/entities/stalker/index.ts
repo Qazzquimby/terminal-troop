@@ -175,7 +175,7 @@ function retreatRoute(
   config: StalkerConfig,
 ): Point[] {
   const { map } = game.world;
-  const hunted = preyFor(game, self, config.ignores);
+  const hunted = preyFor(game, self, config);
   const keep = Math.min(config.retreatDistance, distanceFrom(hunted, self));
   const avoid = avoidingWhere(map, (at) => distanceFrom(hunted, at) < keep);
   const route = planRoute(map, self.radius, self, home, avoid);
@@ -200,7 +200,7 @@ function plan(
   const { map } = game.world;
   switch (state.mode) {
     case "hunt": {
-      const quarry = nearestPrey(game, self, config.ignores);
+      const quarry = nearestPrey(game, self, config);
       if (quarry === null) return [];
       const watched = watcher(game, self, config);
       // A cell any part of which is watched, its middle or near any corner, is kept out of, so
@@ -221,7 +221,7 @@ function plan(
       return retreatRoute(game, self, state.home ?? self, config);
     case "enraged": {
       const prey =
-        livingBody(game, state.foe) ?? nearestPrey(game, self, config.ignores);
+        livingBody(game, state.foe) ?? nearestPrey(game, self, config);
       if (prey === null) return [];
       return (
         planRoute(map, self.radius, self, prey) ?? [{ x: prey.x, y: prey.y }]
