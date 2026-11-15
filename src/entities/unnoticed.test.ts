@@ -22,7 +22,7 @@ import { exploder, ExploderState, freshExploder } from "./exploder/index.js";
 import { freshHoarder, hoarder, HoarderState } from "./hoarder/index.js";
 import { freshSleeper, sleeper, SleeperState } from "./sleeper/index.js";
 import { freshSnail, snail } from "./snail/index.js";
-import { freshStalker, stalker, StalkerState } from "./stalker/index.js";
+import { freshStalker, stalker } from "./stalker/index.js";
 import { freshStatue, statue } from "./statue/index.js";
 import { freshZombie, zombie } from "./zombie/index.js";
 
@@ -138,7 +138,7 @@ const CASES: readonly Case[] = [
     content: stalker,
     spawn: (game) => spawnEntity(game, "stalker", AT.x, AT.y, freshStalker(0)),
     seconds: 3,
-    grudge: (monster) => StalkerState.parse(monster.data).foe,
+    // It turns on players alone, its targets, so a post hurting it shows nothing here.
   },
   {
     name: "hoarder",

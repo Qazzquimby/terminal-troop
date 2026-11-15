@@ -12,7 +12,6 @@ import {
   hurt,
   hurtPlayer,
   directionalVision,
-  lastHurtBy,
   receiveEvent,
   registerContent,
   registerEntityType,
@@ -20,6 +19,7 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Player, Point, Session, WorldEntity } from "../../sim/index.js";
+import { freshZombie, zombie } from "../zombie/index.js";
 import type { StalkerConfig } from "./index.js";
 import {
   freshStalker,
@@ -198,24 +198,32 @@ test("hurt, it shrieks and rages at the nearest living thing, watched or not, th
   expect(stateOf(stalker).mode).toBe("hunt");
 });
 
-test("hurt by another body, it rages at that body rather than the player nearer it", () => {
-  const game = world(450, 300);
-  registerEntityType(game, "post", {
-    radius: 10,
-    maxHealth: 1000,
-    data: z.object({}),
-    draw: () => undefined,
-  });
+test("hurt by a zombie, it rages at the player it targets rather than the zombie", () => {
+  const game = world(650, 300);
+  registerContent(game, [zombie.create(testEntitiesConfig)]);
   const stalker = stalkerAt(game, 400, 300);
-  const post = spawnEntity(game, "post", 100, 300, {});
-  hurt(game, stalker, 15, post.id);
+  const biter = spawnEntity(
+    game,
+    "zombie",
+    100,
+    300,
+    freshZombie(1, 0, testEntitiesConfig.zombie),
+  );
+  hurt(game, stalker, 15, biter.id);
   run(game, DT, { x: 900, y: 300 });
   expect(stateOf(stalker).mode).toBe("enraged");
-  expect(stateOf(stalker).foe).toBe(post.id);
-  expect(stalker.vx).toBeLessThan(0);
-  run(game, 1.5, { x: 900, y: 300 });
-  expect(post.health).toBeLessThan(post.maxHealth);
-  expect(lastHurtBy(game, post.id)).toBe(stalker.id);
+  expect(stateOf(stalker).foe).toBeNull();
+  expect(stalker.vx).toBeGreaterThan(0);
+});
+
+test("it passes over a nearer body that is not a player and stalks the player", () => {
+  const game = world(650, 300);
+  const stalker = stalkerAt(game, 400, 300);
+  const post = lookoutAt(game, 300, 300, 0);
+  run(game, 0.5, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stalker.vx).toBeGreaterThan(0);
+  expect(post.health).toBe(1000);
 });
 
 /**
@@ -242,16 +250,17 @@ function lookoutAt(
   return spawnEntity(game, "lookout", x, y, { range });
 }
 
-test("with no player about, it creeps up on the nearest body and strikes it", () => {
+test("with no player about, it leaves other bodies be, but strikes one it touches", () => {
   const game = world(100, 550);
   hurtPlayer(game, game.local, Infinity);
   const stalker = stalkerAt(game, 650, 300);
-  const prey = lookoutAt(game, 200, 300, 0);
-  run(game, 0.5, { x: 900, y: 300 });
-  expect(stateOf(stalker).mode).toBe("hunt");
-  expect(stalker.vx).toBeLessThan(0);
+  const far = lookoutAt(game, 200, 300, 0);
+  const touched = lookoutAt(game, 670, 300, 0);
   run(game, 2.5, { x: 900, y: 300 });
-  expect(prey.health).toBeLessThan(1000);
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(Math.abs(stalker.x - 650)).toBeLessThan(10);
+  expect(far.health).toBe(1000);
+  expect(touched.health).toBeLessThan(1000);
 });
 
 test("any body's gaze sends it back, as far as that body looks", () => {

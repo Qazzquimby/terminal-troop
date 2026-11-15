@@ -507,6 +507,7 @@ export const config = {
         unseenDistance: CELL * 30,
       },
       ignores: ["stalker"],
+      targets: ["player"],
       radius: 14,
       maxHealth: SHOVEL_DAMAGE * 5,
       speed: PLAYER_SPEED * 1.2,
