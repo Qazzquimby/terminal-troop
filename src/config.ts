@@ -14,6 +14,7 @@ import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, UiConfig } from "./ui/index.js";
+import type { WheelConfig } from "./input/index.js";
 
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
@@ -37,6 +38,7 @@ interface AppConfig extends SimConfig {
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
+  readonly wheel: WheelConfig;
 }
 
 const CELL = 50;
@@ -86,6 +88,9 @@ export const config = {
     },
   },
   view: { width: 900, height: 600 },
+  // One notch of scroll is 40px: under a click of most wheels (100px in Chromium, 3 lines of 16px
+  // in Firefox) and a short trackpad flick. A part-notch is forgotten after a quarter second idle.
+  wheel: { notch: 40, line: 16, page: 600, idleMs: 250 },
   // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
   // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads
   // it. A jump of more than 4 cells, such as a respawn, is cut to rather than panned across.
@@ -145,6 +150,8 @@ export const config = {
     // Every pound carried slows a player evenly, to 20% slower at 100lb and no slower past it:
     // a shovel and a scrap (30lb) cost 6%.
     load: { full: 100, slowdown: 0.2 },
+    // A quiet click on switching slot, heard only by the one switching.
+    switchVolume: 0.4,
   },
   stamina: {
     max: STAMINA_MAX,

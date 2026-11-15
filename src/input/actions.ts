@@ -2,8 +2,8 @@ import type { Point, Controls } from "../sim/index.js";
 
 /**
  * The only place key codes and context permissions are named: each action's keys,
- * and the input contexts it is active in. Keys are `KeyboardEvent.code`s, or a
- * `MOUSE_BUTTONS` name for a mouse button.
+ * and the input contexts it is active in. Keys are `KeyboardEvent.code`s, a
+ * `MOUSE_BUTTONS` name for a mouse button, or a `WHEEL` name for a notch of the wheel.
  */
 export const ACTIONS = {
   moveUp: { keys: ["KeyW", "ArrowUp"], contexts: ["play"] },
@@ -29,6 +29,8 @@ export const ACTIONS = {
   select7: { keys: ["Digit7"], contexts: ["play"] },
   select8: { keys: ["Digit8"], contexts: ["play"] },
   select9: { keys: ["Digit9"], contexts: ["play"] },
+  slotNext: { keys: ["WheelDown"], contexts: ["play"] },
+  slotPrevious: { keys: ["WheelUp"], contexts: ["play"] },
 } as const;
 
 export type Action = keyof typeof ACTIONS;
@@ -39,6 +41,9 @@ export const MOUSE_BUTTONS: readonly string[] = [
   "MouseMiddle",
   "MouseRight",
 ];
+
+/** The key code a notch of the mouse wheel taps: up, towards the screen's top, and down. */
+export const WHEEL = { up: "WheelUp", down: "WheelDown" } as const;
 
 /** The number keys select inventory slots; a key's position here is its slot index. */
 const SLOT_ACTIONS = [
@@ -59,6 +64,8 @@ const NAMED_KEYS: Readonly<Record<string, string>> = {
   Escape: "Esc",
   MouseLeft: "Click",
   MouseRight: "Right click",
+  WheelUp: "Scroll",
+  WheelDown: "Scroll",
   ArrowUp: "↑",
   ArrowDown: "↓",
   ArrowLeft: "←",
@@ -291,6 +298,9 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     sprint: frame.held.has("sprint"),
     crouch: frame.pressed.has("crouch"),
     select: pressedSlot(frame),
+    cycle:
+      Number(frame.pressed.has("slotNext")) -
+      Number(frame.pressed.has("slotPrevious")),
     use: frame.pressed.has("useItem"),
     secondary: frame.pressed.has("secondary"),
     interact: frame.pressed.has("interact"),

@@ -66,6 +66,7 @@ export const testSimConfig: SimConfig = {
     nameMax: 8,
     knockbackSeconds: 0.15,
     load: { full: 100, slowdown: 0.2 },
+    switchVolume: 0.4,
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },

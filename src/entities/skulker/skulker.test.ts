@@ -58,6 +58,7 @@ function run(game: Session, seconds: number, look: Point): void {
     sprint: false,
     crouch: false,
     select: null,
+    cycle: 0,
     use: false,
     holdingUse: false,
     secondary: false,

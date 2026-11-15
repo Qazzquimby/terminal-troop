@@ -17,6 +17,7 @@ const controls = (moving: boolean, sprinting: boolean): Controls => ({
   sprint: sprinting,
   crouch: false,
   select: null,
+  cycle: 0,
   use: false,
   secondary: false,
   interact: false,

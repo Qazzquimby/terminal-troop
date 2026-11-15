@@ -16,7 +16,7 @@ const rebind = (changes: Partial<Bindings>): Bindings => ({
 test("the hint matches the default bindings", () => {
   expect(controlsHintFor("foot", false)).toBe(
     "WASD / ↑←↓→ to move · Shift to sprint · C to toggle crouch · Click to use · " +
-      "Right click to kick · E to pick up / get in / work item · F to drop · Esc for settings",
+      "Right click to kick · E to pick up / get in / work item · F to drop · Scroll to switch item · Esc for settings",
   );
 });
 
