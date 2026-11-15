@@ -6,20 +6,27 @@ import {
   testSimConfig,
 } from "../../integration/sim-config.js";
 import {
+  createPlayer,
   createSession,
   hurtPlayer,
   inRect,
   mulberry32,
   registerContent,
   registerEntityType,
+  removePlayer,
   spawnEntity,
   stun,
   updateSession,
 } from "../../sim/index.js";
-import type { Session, WorldEntity } from "../../sim/index.js";
+import type { Player, Session, WorldEntity } from "../../sim/index.js";
 import { entityContent } from "../index.js";
 import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
-import { freshSnail, snail as snailContent, SnailState } from "./index.js";
+import {
+  freshSnail,
+  quarryName,
+  snail as snailContent,
+  SnailState,
+} from "./index.js";
 import type { SnailConfig } from "./index.js";
 
 const DT = 1 / 60;
@@ -178,12 +185,9 @@ test("snails come through the spawner once their time has come, out of the start
   vi.restoreAllMocks();
   // No longer one at a time: each roll brings another.
   expect(snails().length).toBeGreaterThan(1);
-  // Each picks a body to follow, the player or another, never a snail.
-  for (const arrived of snails()) {
-    const { quarry } = SnailState.parse(arrived.data);
-    expect(quarry).not.toBeNull();
-    expect(snails().map(({ id }) => id)).not.toContain(quarry);
-  }
+  // Each picks the player to follow.
+  for (const arrived of snails())
+    expect(SnailState.parse(arrived.data).quarry).toBe("me");
 });
 
 /** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
@@ -198,26 +202,92 @@ function postAt(game: Session, x: number, y: number): WorldEntity {
   return spawnEntity(game, "post", x, y, {});
 }
 
-test("with no player alive it creeps after another body, and picks again once that one dies", () => {
-  const game = world("dev");
-  hurtPlayer(game, game.local, Infinity);
-  const snail = snailAt(game, 400, 300);
-  const first = postAt(game, 440, 300);
+/** Another player, `id`, standing at (x, y) in `game`. */
+function otherAt(game: Session, id: string, x: number, y: number): Player {
+  const other = createPlayer(id, id.toUpperCase(), { x, y }, testSimConfig);
+  game.players.set(other.id, other);
+  return other;
+}
+
+function quarryOf(snail: WorldEntity): string | null {
+  return SnailState.parse(snail.data).quarry;
+}
+
+test("it picks only players, passing over nearer bodies of other kinds", () => {
+  const game = world("dev", 1200, 300);
+  const snail = spawnEntity(
+    game,
+    "snail",
+    400,
+    300,
+    freshSnail(null, game.worldTime),
+  );
+  postAt(game, 440, 300);
+  const zombie = spawnEntity(
+    game,
+    "zombie",
+    360,
+    300,
+    freshZombie(1, game.worldTime, testEntitiesConfig.zombie),
+  );
+  stun(game, zombie.id, 10);
   run(game, 0.1);
-  expect(SnailState.parse(snail.data).quarry).toBe(first.id);
-  run(game, 1);
-  expect(game.entities.has(first.id)).toBe(false);
-  const second = postAt(game, 200, 300);
-  run(game, 0.1);
-  expect(SnailState.parse(snail.data).quarry).toBe(second.id);
-  expect(snail.vx).toBeLessThan(0);
+  expect(quarryOf(snail)).toBe("me");
 });
 
-test("it never picks a kind it ignores", () => {
+test("it picks another player once its own dies", () => {
+  const game = world("dev", 1200, 300);
+  const other = otherAt(game, "other", 200, 300);
+  const snail = spawnEntity(
+    game,
+    "snail",
+    400,
+    300,
+    freshSnail(other.id, game.worldTime),
+  );
+  run(game, 0.1);
+  expect(quarryOf(snail)).toBe(other.id);
+  hurtPlayer(game, other, Infinity);
+  run(game, 0.1);
+  expect(quarryOf(snail)).toBe("me");
+});
+
+test("it picks another player once its own leaves", () => {
+  const game = world("dev", 1200, 300);
+  const other = otherAt(game, "other", 200, 300);
+  const snail = spawnEntity(
+    game,
+    "snail",
+    400,
+    300,
+    freshSnail(other.id, game.worldTime),
+  );
+  run(game, 0.1);
+  removePlayer(game, other.id);
+  run(game, 0.1);
+  expect(quarryOf(snail)).toBe("me");
+});
+
+test("with no player alive it stands, whatever other bodies are about, but still kills what it touches", () => {
   const game = world("dev");
   hurtPlayer(game, game.local, Infinity);
   const snail = snailAt(game, 400, 300);
-  spawnEntity(game, "snail", 600, 300, freshSnail(null, game.worldTime));
-  run(game, 0.1);
-  expect(SnailState.parse(snail.data).quarry).toBeNull();
+  const post = postAt(game, 420, 300);
+  postAt(game, 200, 300);
+  run(game, 0.5);
+  expect(quarryOf(snail)).toBeNull();
+  expect(Math.hypot(snail.vx, snail.vy)).toBe(0);
+  expect(game.entities.has(post.id)).toBe(false);
+});
+
+test("the name under it is its quarry's, from its synced state alone, and none without one", () => {
+  // As a client reads it: the snail's state as it came over the wire.
+  const game = world("dev");
+  otherAt(game, "other", 200, 300);
+  const sent: unknown = JSON.parse(
+    JSON.stringify(freshSnail("other", game.worldTime)),
+  );
+  expect(quarryName(game, SnailState.parse(sent))).toBe("OTHER");
+  expect(quarryName(game, freshSnail(null, game.worldTime))).toBeNull();
+  expect(quarryName(game, freshSnail("gone", game.worldTime))).toBeNull();
 });

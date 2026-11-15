@@ -317,8 +317,8 @@ export const config = {
       volume: 0.8,
     },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
-    // body it picks, any but another snail, at a fifth of a player's walk, kills whatever it
-    // touches, at most once a second, and replans its way every 2 seconds.
+    // player it picks, standing while there is none, at a fifth of a player's walk, kills
+    // whatever it touches, at most once a second, and replans its way every 2 seconds.
     snail: {
       spawning: {
         weight: 30,
@@ -328,6 +328,7 @@ export const config = {
       },
       radius: 12,
       ignores: ["snail"],
+      targets: ["player"],
       speedShare: 0.2,
       damage: 500,
       attackCooldown: 1,

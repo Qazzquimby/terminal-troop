@@ -189,7 +189,7 @@ function hideout(
   const { map } = game.world;
   const { distance, clearance } = config.retreat;
   const avoid = avoidingLight(game);
-  const hunted = preyFor(game, self, config.ignores);
+  const hunted = preyFor(game, self, config);
   for (let attempt = 0; attempt < config.retreat.tries; attempt++) {
     const to = pointAround(self, distance.min, distance.max);
     if (!isAreaFree(map, to.x, to.y, self.radius) || isLit(game, to)) continue;
@@ -250,7 +250,7 @@ function rage(
 ): SleeperState {
   const seen =
     livingBody(game, state.foe) ??
-    nearestSeenBody(game, self, config.ignores, config.sightRange);
+    nearestSeenBody(game, self, config, config.sightRange);
   if (seen !== null) return pursue(state, self, seen, game, config);
   if (state.route.length > 0) return state;
   const { map } = game.world;
@@ -270,7 +270,7 @@ function bodyClose(
   game: Session,
   config: SleeperConfig,
 ): boolean {
-  return nearestSeenBody(game, self, config.ignores, config.wakeRange) !== null;
+  return nearestSeenBody(game, self, config, config.wakeRange) !== null;
 }
 
 /** The state sleeper `self` moves to this step. */

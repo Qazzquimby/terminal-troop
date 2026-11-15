@@ -16,7 +16,7 @@ import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 /**
- * The snail: picks one body when it arrives, a player or a monster, and creeps after it, slow,
+ * The snail: picks one body of the kinds it targets when it arrives, and creeps after it, slow,
  * never stopping, and kills whatever it touches. It cannot die. Distances in pixels.
  */
 export interface SnailConfig extends Hunting {
@@ -45,7 +45,8 @@ const Time = rounded(2);
 
 /**
  * The body it is after, by id, null while there is none to pick; its route there, when it next
- * plans it, when it may next strike and whether it strikes this step. Only the host reads them.
+ * plans it, when it may next strike and whether it strikes this step. Every client reads its
+ * quarry, to name it under the snail; only the host reads the rest.
  */
 export const SnailState = z.object({
   quarry: z.string().nullable(),
@@ -66,7 +67,7 @@ function pickQuarry(
   self: WorldEntity | null,
   config: SnailConfig,
 ): string | null {
-  const ids = preyFor(game, self, config.ignores).map((body) => body.id);
+  const ids = preyFor(game, self, config).map((body) => body.id);
   return ids[Math.floor(Math.random() * ids.length)] ?? null;
 }
 
@@ -116,6 +117,15 @@ function hunt(
   };
 }
 
+/**
+ * The name shown under a snail: its quarry's, as players see it over that player's head; null
+ * while it has no quarry, or one with no name.
+ */
+export function quarryName(game: Session, state: SnailState): string | null {
+  if (state.quarry === null) return null;
+  return game.players.get(state.quarry)?.name ?? null;
+}
+
 /** Strikes once the cooldown is over, when it touches anything. */
 function attack(
   state: SnailState,
@@ -154,15 +164,22 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
         amount: config.damage,
       }));
     },
-    draw(ctx, entity) {
+    draw(ctx, entity, state, _now, game) {
       drawEmoji(ctx, entity, SNAIL_GLYPH, entity.radius * 2);
+      const name = quarryName(game, state);
+      if (name === null) return;
+      ctx.font = "12px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#eee";
+      ctx.fillText(name, entity.x, entity.y + entity.radius + 14);
     },
   };
 }
 /**
- * The snail: rare. When it arrives it picks a body, a player or a monster, and
- * creeps after it at a fraction of a player's pace, round the walls, for as long as it lives, then
- * picks another. Whatever it touches, player or monster, takes damage enough to kill it, and
+ * The snail: rare. When it arrives it picks a body of the kinds its config targets (players), and
+ * creeps after it at a fraction of a player's pace, round the walls, for as long as it lives or
+ * stays, then picks another; with none to pick it stands. Its quarry's name shows under it on
+ * every screen. Whatever it touches, player or monster, takes damage enough to kill it, and
  * nothing kills it. It makes no sound, pays light no mind, and a stun holds it like anything else.
  */
 export const snail = defineEntity(NAME, (config: SnailConfig) => ({
