@@ -37,6 +37,11 @@ interface PlayerConfig {
   readonly inventorySlots: number;
   /** Longest name, in characters. */
   readonly nameMax: number;
+  /**
+   * A player's mass: the unit every body's mass is reckoned in, and what a kind declaring none
+   * weighs at a player's size. A push moves a body less the heavier it is than its pusher.
+   */
+  readonly mass: number;
   /** How long, in seconds, a knocked-back player slides to where the blow sends it. */
   readonly knockbackSeconds: number;
   /** How what a player carries slows it. */

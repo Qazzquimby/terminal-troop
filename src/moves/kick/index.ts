@@ -20,7 +20,11 @@ export interface KickConfig {
   readonly radius: number;
   /** Damage dealt to every world entity and other player in the hitbox. */
   readonly damage: number;
-  /** How far a kicked entity or player is pushed away from the kicker, in its own body lengths. */
+  /**
+   * How far a kicked body is pushed away from the kicker, in the kicker's body lengths. A body
+   * heavier than the kicker goes less far, and one that cannot be moved, such as the cruiser,
+   * stays put, as `push` says; the kick still thuds and flashes on it.
+   */
   readonly knockback: number;
   /** Minimum time between kicks. */
   readonly cooldown: number;
@@ -71,7 +75,9 @@ export const kick: Content<"kick", KickConfig> = {
         const struck = bodiesIn(game, area, kicker.id);
         for (const body of struck) {
           hurt(game, body, config.damage, kicker.id);
-          push(game, body, at, bodyLength(body) * config.knockback);
+          push(game, body, at, bodyLength(kicker) * config.knockback, {
+            by: kicker,
+          });
         }
         effect(game, {
           at: area.center,

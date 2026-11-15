@@ -177,6 +177,8 @@ export const nearCruiser = (
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   radius: config.radius,
   maxHealth: Infinity,
+  // Immovable: a kick, a swing or another cruiser's ram thuds off it.
+  mass: Infinity,
   collides: false,
   tags: [INERT_TAG],
   data: CruiserState,

@@ -315,10 +315,9 @@ test("a guest's kick knocks the zombie back on the step it kicks, and the guest 
     });
   const shown = client("a").net.counts.shown;
   step(facingRight(true));
-  const zombieLength = testEntitiesConfig.zombie.radius * 2;
-  expect(zombie("b").x - target.x).toBeGreaterThan(
-    zombieLength * kick.knockback - 5,
-  );
+  // The zombie weighs a player, so it goes two of the kicker's body lengths.
+  const knock = PLAYER_LENGTH * kick.knockback;
+  expect(zombie("b").x - target.x).toBeGreaterThan(knock - 5);
   run(kick.lunge.seconds + 0.5, facingRight(false));
   expect(guest.local.x - start.x).toBeCloseTo(PLAYER_LENGTH, 0);
   expect(guest.local.y).toBeCloseTo(start.y, 0);

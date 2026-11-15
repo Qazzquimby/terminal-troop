@@ -38,6 +38,8 @@ const strikeUrl = new URL("./sfx/strike.mp3", import.meta.url).href;
 export interface StatueConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
+  /** How hard it is to push, in player masses; sized to its radius when left out. */
+  readonly mass?: number;
   /** How far it sees, all round it, along a clear line. */
   readonly sightRange: number;
   /** Its round: back and forth between where it arrived and a point about this far off. */
@@ -326,6 +328,7 @@ function definition(config: StatueConfig): EntityDefinition<StatueState> {
   };
   return {
     radius: config.radius,
+    mass: config.mass,
     // It cannot die, whatever it takes.
     maxHealth: Infinity,
     // Stone that cannot die: no monster hunts, strikes or turns on it, even when it strikes them.

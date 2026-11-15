@@ -195,13 +195,9 @@ function ram(
       y: body.y - across.y * side,
     };
     hurt(game, body, config.ram.damage, driver.id);
-    push(
-      game,
-      body,
-      from,
-      entity.radius + body.radius - Math.abs(offset) + 1,
-      "stop",
-    );
+    push(game, body, from, entity.radius + body.radius - Math.abs(offset) + 1, {
+      by: entity,
+    });
     effect(
       game,
       {

@@ -29,6 +29,7 @@ const rules: PlayerRules = {
     inventorySlots: 4,
     nameMax: 8,
     knockbackSeconds: 0.15,
+    mass: 1,
     load: { full: 100, slowdown: 0.2 },
     switchVolume: 0.4,
   },

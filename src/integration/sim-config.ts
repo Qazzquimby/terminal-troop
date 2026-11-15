@@ -65,6 +65,7 @@ export const testSimConfig: SimConfig = {
     maxHealth: 100,
     nameMax: 8,
     knockbackSeconds: 0.15,
+    mass: 1,
     load: { full: 100, slowdown: 0.2 },
     switchVolume: 0.4,
   },
@@ -155,6 +156,7 @@ export const testEntitiesConfig = {
     spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
+    mass: 1,
     ignores: ["zombie", "exploder"],
     maxHealth: 40,
     attackDamage: 25,
@@ -452,7 +454,7 @@ export const testItemsConfig: ItemsConfig = {
 
 /**
  * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
- * test zombie falls to its fourth, sending what it hits two of its own body lengths away. It costs
+ * test zombie falls to its fourth, sending what it hits two of the kicker's body lengths away. It costs
  * a third of the test stamina bar, at most twice a second.
  */
 export const testMovesConfig: MovesConfig = {

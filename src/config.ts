@@ -152,6 +152,9 @@ export const config = {
     inventorySlots: 6,
     nameMax: 8,
     knockbackSeconds: 0.15,
+    // The unit every body's mass is reckoned in: a body no heavier than its pusher takes the
+    // whole push, a heavier one less, in proportion.
+    mass: 1,
     // Every pound carried slows a player evenly, to 20% slower at 100lb and no slower past it:
     // a shovel and a scrap (30lb) cost 6%.
     load: { full: 100, slowdown: 0.5 },
@@ -243,6 +246,8 @@ export const config = {
         group: { min: 1, max: 5, spread: CELL * 2 },
       },
       radius: 15,
+      // A person's weight, as a player's: a kick sends it as far as it would a player.
+      mass: 1,
       // It hunts any living body but its own kind and exploders: a zombie that bit an exploder would
       // set it off, and a crowd of them would level the buildings before any player came.
       ignores: ["zombie", "exploder"],
@@ -460,6 +465,8 @@ export const config = {
       },
       ignores: ["statue"],
       radius: 16,
+      // Solid stone: a kick or a swing barely rocks it, a tenth of the way it would a player.
+      mass: 10,
       sightRange: CELL * 16,
       patrol: { distance: CELL * 30, spread: CELL * 5, tries: 16, retry: 2 },
       huntSeconds: 10,
@@ -700,7 +707,8 @@ export const config = {
   },
   moves: {
     // A lunge of one body length into a kick that lands a little short of the shovel; five
-    // kicks fell a zombie, each sending it 2.5 of its own body lengths away.
+    // kicks fell a zombie, each sending it two of the kicker's body lengths away, less for
+    // anything heavier than the kicker.
     kick: {
       reach: 32,
       radius: 18,

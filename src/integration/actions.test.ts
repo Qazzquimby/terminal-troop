@@ -82,6 +82,7 @@ const pokes: WorldContent = {
   register(game) {
     registerEntityType(game, "dummy", {
       radius: 15,
+      mass: 1,
       maxHealth: FULL,
       data: z.object({}),
       update: (_entity, data) => data,
