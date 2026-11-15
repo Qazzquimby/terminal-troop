@@ -1,3 +1,4 @@
+import { meanBy } from "lodash-es";
 import { expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { defineItem, registerContent, setDanger } from "./index.js";
@@ -6,7 +7,7 @@ import { lootContent, pickLoot } from "./loot.js";
 import type { LootConfig } from "./loot.js";
 import { createSession } from "./session.js";
 import type { Session } from "./session.js";
-import { isAreaFree } from "./map.js";
+import { danger as dangerOf, isAreaFree } from "./map.js";
 import type { WorldConfig } from "./map.js";
 
 const DANGER: LootConfig["danger"] = {
@@ -166,4 +167,64 @@ test("the same room lays its guaranteed items at the same spots; another room el
 
 test("guaranteed loot naming no item is an error", () => {
   expect(() => guaranteed(1, "LOOT", "nothing")).toThrow(/nothing/);
+});
+
+/** A world of only rolled lamps, `count` spots of `scatter`'s danger, no second item at any. */
+function lamps(count: number, danger: number): Session {
+  const game = createSession(
+    "me",
+    "ME",
+    "LOOT",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  const loot = lootContent({
+    scatter: { count, seed: 1, clearance: 0, danger },
+    guaranteed: [],
+    danger: { ...DANGER, extra: 0 },
+  });
+  registerContent(game, [pick("lamp", 1), loot]);
+  loot.populate(game);
+  return game;
+}
+
+/** The mean danger, 0..1, of where `game`'s loot lies. */
+function meanDanger(game: Session): number {
+  return meanBy(spots(game), (spot) => dangerOf(game.world, spot));
+}
+
+test("loot favours dangerous spots, where monsters spawn, as strongly as its scatter's danger says", () => {
+  const even = meanDanger(lamps(60, 0));
+  const favoured = meanDanger(lamps(60, 1));
+  expect(favoured).toBeGreaterThan(even + 0.1);
+  expect(meanDanger(lamps(60, 3))).toBeGreaterThan(favoured);
+  expect(spots(lamps(60, 1))).toHaveLength(60);
+});
+
+/** A world of only `count` bolts, laid by their own scatter, as scrap is, favouring danger by `danger`. */
+function bolts(count: number, danger: number): Session {
+  const game = createSession(
+    "me",
+    "ME",
+    "LOOT",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  const bolt = defineItem("bolt", () => ({
+    name: "Bolt",
+    emoji: "?",
+    scatter: { count, seed: 3, clearance: 0, danger },
+  })).create({ bolt: undefined });
+  registerContent(game, [bolt]);
+  bolt.populate(game);
+  return game;
+}
+
+test("an item scattered by itself, as scrap is, favours dangerous spots by its scatter's danger", () => {
+  expect(spots(bolts(60, 1))).toHaveLength(60);
+  expect(meanDanger(bolts(60, 1))).toBeGreaterThan(
+    meanDanger(bolts(60, 0)) + 0.1,
+  );
 });
