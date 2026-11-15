@@ -62,10 +62,10 @@ export const config = {
     seed: 1,
     wallBounce: 0,
     generation: {
-      road: { width: { min: 8, max: 18 }, step: 16, meander: 8, margin: 18 },
+      road: { width: { min: 6, max: 12 }, step: 10, meander:10, margin: 18 },
       yard: {
-        depth: { min: 3, max: 7 },
-        clutter: { near: 0.1, far: 0.9 },
+        depth: { min: 4, max: 10 },
+        clutter: { near: 0.2, far: 0.9 },
         tries: 0.6,
       },
       rooms: {
@@ -277,7 +277,7 @@ export const config = {
       // Its engine idles 3 cells off once a second, so a fuelled car is barely heard; driven, it
       // is heard 14 cells off twice a second, past a walk, short of a sprint.
       engine: {
-        idle: { interval: 1, radius: CELL * 3 },
+        idle: { interval: 1, radius: 0 },
         drive: { interval: 0.5, radius: CELL * 14 },
       },
       // Losing half its top speed against a wall knocks the wall down and stops it dead, for 50
@@ -321,7 +321,7 @@ export const config = {
     // whatever it touches, at most once a second, and replans its way every 2 seconds.
     snail: {
       spawning: {
-        weight: 30,
+        weight: 10,
         after: 240,
         tries: 24,
         unseenDistance: CELL * 14,
@@ -408,7 +408,7 @@ export const config = {
       attackDamage: SHOVEL_DAMAGE * 3,
       attackCooldown: 1,
       barkGap: {
-        dormant: { min: 3, max: 6 },
+        dormant: { min: 13, max: 16 },
         enraged: { min: 1.5, max: 3 },
       },
       retreat: {
@@ -457,7 +457,7 @@ export const config = {
     // 16, its strike 8.
     stalker: {
       spawning: {
-        weight: 30,
+        weight: 40,
         after: 240,
         tries: 24,
         unseenDistance: CELL * 30,
@@ -577,7 +577,7 @@ export const config = {
     fuel: {
       weight: 30,
       loot: { weight: 15, rarity: "common" },
-      seconds: 15,
+      seconds: 5,
       reach: CELL,
       cooldown: 0.5,
       volume: 0.8,
@@ -609,7 +609,6 @@ export const config = {
     // 8 minutes of battery switched on, a use a second, so the toolbar counts it down in seconds.
     // Its switch clicks 2 cells out; the click of keying it barely past arm's length, making no
     // noise. A walkie playing speech is heard 80% as far as the speech itself carries.
-    // A fallen player's body: 50lb, as the ticket says, slowing its carrier by a tenth.
     corpse: { weight: 50, volume: 0.8 },
     walkie: {
       weight: 2,
