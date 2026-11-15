@@ -382,7 +382,8 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
       const { local } = game;
       const key = timer(game);
       const { stamina } = spec;
-      if (isGhost(local) || isStunned(game, local.id)) return false;
+      if (isGhost(local) || isStunned(game, local.id) || !game.hostKnown)
+        return false;
       if (game.time < (game.localReadyAt.get(key) ?? -Infinity)) return false;
       if (stamina !== undefined && local.stamina.value < stamina) return false;
       if (

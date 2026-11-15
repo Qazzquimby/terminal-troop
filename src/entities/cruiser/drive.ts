@@ -44,6 +44,11 @@ export interface DrivingConfig {
   readonly reach: number;
   /** Seconds of fuel burnt each second it moves. */
   readonly burn: number;
+  /**
+   * Slower than this, it counts as standing: it burns no fuel and its engine idles. Throttled
+   * nose-first into a wall it creeps along at a few pixels a second, which is standing.
+   */
+  readonly standing: number;
   /** Seconds of fuel its gauge shows as full; it holds more. */
   readonly gauge: number;
   /** Its engine: quietly while it stands fuelled, loud while it is driven. */
@@ -73,9 +78,6 @@ export interface DrivingConfig {
 
 /** The tag the engine's noise carries, past its maker's kind. */
 const ENGINE_TAG = "engine";
-
-/** Slower than this, in pixels per second, the cruiser counts as standing: it burns no fuel. */
-const MOVING = 1;
 
 /**
  * The cruiser's state: seconds of driving its fuel has left, unpowered at 0; damage taken since
@@ -283,7 +285,7 @@ export function stepCruiser(
   }
   entity.x = driver.x;
   entity.y = driver.y;
-  const moving = Math.abs(ride.speed) > MOVING;
+  const moving = Math.abs(ride.speed) > config.standing;
   const fuel = moving ? Math.max(0, state.fuel - config.burn * dt) : state.fuel;
   ram(game, entity, driver, ride.speed, ride.heading, config);
   runEngine(game, entity, moving ? driver : null, config);

@@ -76,7 +76,7 @@ export const isHeld = (game: Session, entity: WorldEntity): boolean =>
 /**
  * Lets go of each prediction the host has confirmed, that has run out, or whose entity is gone,
  * and of every prediction once this client hosts: each entity takes the host's health, and from
- * here eases to the host's position.
+ * here moves steadily to the host's position, over as long as it takes to reach a new one.
  */
 export function settlePredictions(game: Session): void {
   const handled = handledActions.get(game)[game.localId] ?? 0;
@@ -89,7 +89,10 @@ export function settlePredictions(game: Session): void {
       game.time < held.until
     )
       continue;
-    if (entity !== undefined) entity.health = held.health;
+    if (entity !== undefined) {
+      entity.health = held.health;
+      entity.glide = Math.max(entity.glide ?? 0, game.config.net.glide);
+    }
     game.predictions.delete(id);
   }
 }

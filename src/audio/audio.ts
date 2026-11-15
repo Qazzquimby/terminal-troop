@@ -109,13 +109,33 @@ export function rangedFalloff(
   return { ...falloff, full: Math.min(falloff.full, silent / 2), silent };
 }
 
+/** A handle to a sound that never played: there is nothing to stop, fade or move. */
+const silentHandle: SoundHandle = {
+  stop: () => undefined,
+  setVolume: () => undefined,
+  setPosition: () => undefined,
+};
+
+async function fetchBuffer(
+  context: BaseAudioContext,
+  url: string,
+): Promise<AudioBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load audio "${url}": ${String(response.status)}`,
+    );
+  }
+  return context.decodeAudioData(await response.arrayBuffer());
+}
+
 /** Positioned sounds fade and pan by `falloff`, or out to their own range. */
 export function createSfx(falloff: SpatialFalloff): Sfx {
   let audioContext: AudioContext | null = null;
   let master: GainNode | null = null;
   let masterVolume = 1;
 
-  const buffers = new Map<string, Promise<AudioBuffer>>();
+  const buffers = new Map<string, Promise<AudioBuffer | null>>();
   const activeLoops = new Map<string, SoundHandle>();
   const pendingLoops = new Map<string, symbol>();
   const streams = new Set<SoundHandle>();
@@ -140,21 +160,20 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     if (master !== null) master.gain.value = value;
   }
 
-  function loadBuffer(url: string): Promise<AudioBuffer> {
+  /**
+   * The decoded sound at `url`, fetched once. A sound that fails to load or decode resolves to
+   * null, warned about once, and is not fetched again: assets can lag behind the code using them.
+   */
+  function loadBuffer(url: string): Promise<AudioBuffer | null> {
     const cached = buffers.get(url);
     if (cached !== undefined) return cached;
 
-    const context = getAudioContext();
-    const promise = fetch(url)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(
-            `Failed to load audio "${url}": ${String(response.status)}`,
-          );
-        }
-        return response.arrayBuffer();
-      })
-      .then((data) => context.decodeAudioData(data));
+    const promise = fetchBuffer(getAudioContext(), url).catch(
+      (error: unknown) => {
+        console.warn(`Sound "${url}" is unavailable:`, error);
+        return null;
+      },
+    );
 
     buffers.set(url, promise);
     return promise;
@@ -169,6 +188,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
     const buffer = await loadBuffer(url);
+    if (buffer === null) return silentHandle;
 
     // Browsers usually require an AudioContext to be resumed after a user interaction.
     await context.resume();
