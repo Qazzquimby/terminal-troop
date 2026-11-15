@@ -409,6 +409,11 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
     radius: config.radius,
     maxHealth: config.maxHealth,
     data: WitchState,
+    // She sees all round her, asleep or awake, but looks down no cone.
+    eyes: () => ({
+      cone: null,
+      around: Math.max(config.sightRange, config.wakeRange),
+    }),
     update(entity, state, dt, game) {
       const acted = attack(
         think(state, entity, game, config),

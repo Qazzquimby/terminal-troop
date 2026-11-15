@@ -160,7 +160,14 @@ export const config = {
   // A player who falls drops what it carried within a cell of where it fell. Revived, it comes
   // back on half its health, near whatever revived it.
   death: { scatter: CELL, reviveHealth: 50 },
-  vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
+  // A player looks down its cone, holding an idol and the like, out to 10 cells, light or no
+  // light: past a flashlight's 6, short of an idol's 16-cell sight.
+  vision: {
+    coneAngle: Math.PI / 2,
+    rays: 360,
+    surroundingsRadius: CELL * 1.4,
+    lookRange: CELL * 10,
+  },
   light: { range: CELL * 6 },
   // A guest holds a hit it predicted for up to a second before the host confirms it.
   net: { smoothing: 12, predictionHold: 1 },

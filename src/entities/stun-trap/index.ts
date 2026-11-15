@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { drawEmoji } from "../../render/index.js";
 import {
-  canSeeFrom,
   defineEntity,
   effect,
   hasKindTag,
   INERT_TAG,
   ITEM_TAG,
   isStunned,
+  notices,
   removeFromWorld,
   rounded,
   spawn,
@@ -96,15 +96,14 @@ function steppedOn(game: Session, trap: WorldEntity): WorldEntity | null {
 }
 
 /**
- * Stuns every world entity within the flash's range with a clear line to the trap; one already
- * stunned sees nothing, so this flash does not reach it.
+ * Stuns every world entity whose eyes see the trap, down their cone or all round, within the
+ * flash's range. A blind one is spared, and one already stunned sees nothing, so this flash does
+ * not reach it.
  */
 function flash(game: Session, trap: WorldEntity, config: StunTrapConfig): void {
-  const source = { range: config.stunRange };
   for (const body of [...game.entities.values()]) {
     if (!actsOn(game, trap, body) || isStunned(game, body.id)) continue;
-    if (!canSeeFrom(game.world.map, { ...source, x: body.x, y: body.y }, trap))
-      continue;
+    if (!notices(game, body, trap, config.stunRange)) continue;
     stun(game, body.id, config.stunSeconds);
   }
 }

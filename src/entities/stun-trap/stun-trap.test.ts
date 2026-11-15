@@ -13,7 +13,11 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
-import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
+import {
+  freshZombie,
+  zombie as zombieContent,
+  ZombieState,
+} from "../zombie/index.js";
 import { placeStunTrap, stunTrap, TrapState } from "./index.js";
 
 const DT = 1 / 60;
@@ -92,12 +96,23 @@ test("a trap arms once its arming time is up, and nothing sets it off before", (
   expect(game.entities.has(trap.id)).toBe(true);
 });
 
-test("an armed trap goes off under an entity, stunning those that see it within range", () => {
+/** Turns `zombie` to face `facing`, in radians. */
+function face(zombie: WorldEntity, facing: number): WorldEntity {
+  zombie.data = { ...ZombieState.parse(zombie.data), facing };
+  return zombie;
+}
+
+test("an armed trap goes off under an entity, stunning those whose eyes see it within range", () => {
   const game = world();
   const trap = trapAt(game, 400, 300);
   run(game, config.armSeconds + 0.1);
 
-  const near = zombieAt(game, 400 + config.stunRange - 20, 300);
+  // Facing the trap, down its cone.
+  const near = face(zombieAt(game, 400 + config.stunRange - 20, 300), Math.PI);
+  // Back turned, the trap well past the small circle it sees all round it.
+  const turned = face(zombieAt(game, 400, 300 - config.stunRange + 20), 0);
+  // Back turned, but the trap within that small circle.
+  const close = face(zombieAt(game, 400, 340), 0);
   // Behind the pillar at x 200-300, y 50-150.
   const hidden = zombieAt(game, 250, 30);
   const far = zombieAt(game, 400, 300 + config.stunRange + 40);
@@ -106,6 +121,8 @@ test("an armed trap goes off under an entity, stunning those that see it within 
 
   expect(isStunned(game, stepper.id)).toBe(true);
   expect(isStunned(game, near.id)).toBe(true);
+  expect(isStunned(game, close.id)).toBe(true);
+  expect(isStunned(game, turned.id)).toBe(false);
   expect(isStunned(game, hidden.id)).toBe(false);
   expect(isStunned(game, far.id)).toBe(false);
   expect(isStunned(game, trap.id)).toBe(false);
