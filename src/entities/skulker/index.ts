@@ -1,16 +1,15 @@
 import { z } from "zod";
 import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
-  canSeeFrom,
   defineEntity,
-  directionalVision,
   distanceToWall,
   effect,
+  eyesOf,
+  hasKindTag,
   hurtSinceLastStep,
-  INERT_TAG,
-  isStunned,
+  inCone,
+  livingBodies,
   livingBody,
-  livingPlayers,
   rounded,
   sound,
 } from "../../sim/index.js";
@@ -22,9 +21,9 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
+import type { Hunting } from "../hunt.js";
 import {
   nearest,
-  preyNear,
   Route,
   strikeEach,
   strikeIf,
@@ -32,7 +31,7 @@ import {
   walk,
   Waypoint,
 } from "../hunt.js";
-import { drawRing, touching } from "../bodies.js";
+import { drawRing, nearestPrey, preyFor, touching } from "../bodies.js";
 import { avoidingWhere, planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -43,11 +42,11 @@ const enragedUrl = new URL("./sfx/enraged.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 
 /**
- * The skulker: knows where every player is and which way they face, creeps up on the nearest out
+ * The skulker: knows where every body is and which way it faces, creeps up on the nearest out
  * of everyone's sight, backs off when looked at, and goes wild when hurt. Distances in pixels,
  * times in sim seconds.
  */
-export interface SkulkerConfig {
+export interface SkulkerConfig extends Hunting {
   /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -58,9 +57,12 @@ export interface SkulkerConfig {
   readonly damage: number;
   /** Seconds between two touches' damage. */
   readonly attackCooldown: number;
-  /** How far down a player's view cone it counts as watched, light or no light. */
+  /**
+   * How far down a body's view cone it counts as watched, light or no light: as far as that body
+   * looks, but never past this.
+   */
   readonly watchRange: number;
-  /** Least distance a retreat keeps from every player, where it can. */
+  /** Least distance a retreat keeps from every body it hunts, where it can. */
   readonly retreatDistance: number;
   /** Seconds a retreat lasts before it hunts again. */
   readonly retreatSeconds: number;
@@ -80,9 +82,6 @@ const NAME = "skulker";
 
 const GLYPH = "👤";
 
-/** Kinds it pays no mind, even raging: what is not alive. */
-const IGNORES = [INERT_TAG];
-
 /** A cell's middle and its four corners, as offsets from the middle. */
 const CORNERS = [
   [0, 0],
@@ -100,8 +99,8 @@ const COLOURS = {
 
 /**
  * Everyone reads its mode, to draw it, and its facing; the rest only the host reads.
- * - hunt: heads for the nearest living player by a way no player watches
- * - retreat: heads home, keeping its distance from every player, until `until`
+ * - hunt: heads for the nearest living body it hunts by a way no body watches
+ * - retreat: heads home, keeping its distance from every body it hunts, until `until`
  * - enraged: runs straight at `foe`, while it lives, or else the nearest living body, until `until`
  * `home` is where it arrived, null until it first steps; `foe` is the body that last hurt it,
  * which it goes for while enraged.
@@ -138,37 +137,36 @@ export function freshSkulker(now: number): SkulkerState {
 }
 
 /**
- * Whether any living player watches a point: it lies within their view cone, out to the watch
- * range, with nothing in the way. Light plays no part, nor what lies behind a player. A stunned
- * player watches nothing.
+ * Whether any living body but the kinds it ignores watches a point: it lies within that body's
+ * view cone, as far as it looks but no further than the watch range, with nothing in the way.
+ * Light plays no part, nor what lies behind a body. A stunned or blind body watches nothing.
  */
-function watcher(game: Session, config: SkulkerConfig): (at: Point) => boolean {
-  const cones = livingPlayers(game)
-    .filter((player) => !isStunned(game, player.id))
-    .map(
-      (player) =>
-        directionalVision(
-          player,
-          player.aim,
-          game.config.vision,
-          config.watchRange,
-        )[0],
-    );
-  return (at) => cones.some((cone) => canSeeFrom(game.world.map, cone, at));
+function watcher(
+  game: Session,
+  self: WorldEntity,
+  config: SkulkerConfig,
+): (at: Point) => boolean {
+  const sights = livingBodies(game)
+    .filter(
+      (body) =>
+        body.id !== self.id && !hasKindTag(game, body.id, config.ignores),
+    )
+    .map((body) => eyesOf(game, body))
+    .filter((sight) => (sight?.cone ?? null) !== null);
+  return (at) =>
+    sights.some((sight) => inCone(game, sight, at, config.watchRange));
 }
 
-/** How far `at` is from the nearest living player; Infinity with none. */
-function playerDistance(game: Session, at: Point): number {
-  const player = nearest(at, livingPlayers(game));
-  return player === null
-    ? Infinity
-    : Math.hypot(player.x - at.x, player.y - at.y);
+/** How far `at` is from the nearest of `bodies`; Infinity with none. */
+function distanceFrom(bodies: readonly Point[], at: Point): number {
+  const body = nearest(at, bodies);
+  return body === null ? Infinity : Math.hypot(body.x - at.x, body.y - at.y);
 }
 
 /**
- * Its way home keeping at least the retreat distance from every player, or, while a player is
+ * Its way home keeping at least the retreat distance from every body it hunts, or, while one is
  * already nearer than that, never nearer than it stands now. With no such way, straight away from
- * the nearest player as far as the walls let it run.
+ * the nearest as far as the walls let it run.
  */
 function retreatRoute(
   game: Session,
@@ -177,13 +175,14 @@ function retreatRoute(
   config: SkulkerConfig,
 ): Point[] {
   const { map } = game.world;
-  const keep = Math.min(config.retreatDistance, playerDistance(game, self));
-  const avoid = avoidingWhere(map, (at) => playerDistance(game, at) < keep);
+  const hunted = preyFor(game, self, config.ignores);
+  const keep = Math.min(config.retreatDistance, distanceFrom(hunted, self));
+  const avoid = avoidingWhere(map, (at) => distanceFrom(hunted, at) < keep);
   const route = planRoute(map, self.radius, self, home, avoid);
   if (route !== null) return route;
-  const player = nearest(self, livingPlayers(game));
-  if (player === null) return [];
-  const away = Math.atan2(self.y - player.y, self.x - player.x);
+  const body = nearest(self, hunted);
+  if (body === null) return [];
+  const away = Math.atan2(self.y - body.y, self.x - body.x);
   const direction = { x: Math.cos(away), y: Math.sin(away) };
   const run =
     distanceToWall(map, self, direction, config.retreatDistance) - self.radius;
@@ -201,9 +200,9 @@ function plan(
   const { map } = game.world;
   switch (state.mode) {
     case "hunt": {
-      const quarry = nearest(self, livingPlayers(game));
+      const quarry = nearestPrey(game, self, config.ignores);
       if (quarry === null) return [];
-      const watched = watcher(game, config);
+      const watched = watcher(game, self, config);
       // A cell any part of which is watched, its middle or near any corner, is kept out of, so
       // a body heading through the cells left never steps into view. The last cell or so up to
       // its quarry it takes whatever way, to reach it at all.
@@ -222,11 +221,7 @@ function plan(
       return retreatRoute(game, self, state.home ?? self, config);
     case "enraged": {
       const prey =
-        livingBody(game, state.foe) ??
-        nearest(
-          self,
-          preyNear(game, self, () => Infinity, IGNORES),
-        );
+        livingBody(game, state.foe) ?? nearestPrey(game, self, config.ignores);
       if (prey === null) return [];
       return (
         planRoute(map, self.radius, self, prey) ?? [{ x: prey.x, y: prey.y }]
@@ -247,7 +242,7 @@ function enter(
 
 /**
  * The mode it moves to: hurt, it rages; a rage or retreat run out goes back to the hunt; and a
- * hunt that any player's gaze falls on turns to retreat.
+ * hunt that any body's gaze falls on, its own kind's aside, turns to retreat.
  */
 function think(
   state: SkulkerState,
@@ -268,7 +263,7 @@ function think(
   }
   if (state.mode !== "hunt" && now >= state.until)
     return enter(state, "hunt", now, now);
-  if (state.mode === "hunt" && watcher(game, config)(self))
+  if (state.mode === "hunt" && watcher(game, self, config)(self))
     return enter(state, "retreat", now, now + config.retreatSeconds);
   return state;
 }
@@ -327,7 +322,7 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
     radius: config.radius,
     maxHealth: config.maxHealth,
     data: SkulkerState,
-    // It needs no eyes to know where players are, but it has them: it sees as a player does,
+    // It needs no eyes to know where bodies are, but it has them: it sees as a player does,
     // down its facing.
     eyes: (_entity, state, game) => {
       const { coneAngle, lookRange, surroundingsRadius } = game.config.vision;
@@ -350,7 +345,7 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
       const next = strikeIf(
         thought,
         game.worldTime,
-        touching(game, entity, IGNORES).length > 0,
+        touching(game, entity, config.ignores).length > 0,
         config.attackCooldown,
       );
       cue(entity, state, next, game, sounds);
@@ -358,7 +353,9 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
     },
     strikes(entity, state, game): Strike[] {
       // A blow on whatever it touches, the step it strikes.
-      const struck = state.attacking ? touching(game, entity, IGNORES) : [];
+      const struck = state.attacking
+        ? touching(game, entity, config.ignores)
+        : [];
       return strikeEach(struck, config.damage);
     },
     draw(ctx, entity, state, now) {
@@ -383,8 +380,8 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
 
 /**
  * The skulker: alone, arriving in the dark out of every player's sight. It knows
- * where every player is and which way each faces, and creeps up on the nearest along a way no
- * player looks down, faster than a walk. Caught in a player's gaze, it hisses and backs off to
+ * where every body is and which way each faces, and creeps up on the nearest along a way no
+ * body looks down, faster than a walk. Caught in any body's gaze, it hisses and backs off to
  * where it arrived, keeping well away, for a long while. Hurt, it shrieks and runs at whatever
  * lives nearest, for a short while. Whatever it touches takes a killing blow. Light means nothing
  * to it once it is about; a stun holds it like anything else.

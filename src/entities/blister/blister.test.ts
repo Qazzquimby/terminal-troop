@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testSfx,
@@ -7,10 +8,12 @@ import {
 import {
   createSession,
   hurt,
+  hurtPlayer,
   lastHurtBy,
   makeNoise,
   receiveEvent,
   registerContent,
+  registerEntityType,
   spawnEntity,
   stun,
   updateSession,
@@ -171,6 +174,38 @@ describe("hunting", () => {
     expect(stateOf(sac).fuseAt).not.toBeNull();
     expect(sac.x).toBeLessThanOrEqual(450 - config.radius + 1);
   });
+
+  /** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
+  function postAt(game: Session, x: number, y: number): WorldEntity {
+    if (!game.kindIds.has("post"))
+      registerEntityType(game, "post", {
+        radius: 10,
+        maxHealth: 1000,
+        data: z.object({}),
+        draw: () => undefined,
+      });
+    return spawnEntity(game, "post", x, y, {});
+  }
+
+  test("with no player about, it feels any body behind a pillar, chases it and lights its fuse by it", () => {
+    const { game } = world();
+    hurtPlayer(game, game.local, Infinity);
+    const post = postAt(game, 250, 25);
+    const sac = blisterAt(game, 250, 400);
+    run(game, DT);
+    expect(stateOf(sac)).toMatchObject({ mode: "chase", straight: false });
+    run(game, 4);
+    expect(post.health).toBeLessThan(1000);
+  });
+
+  test("a kind it ignores it neither hunts nor lights its fuse by", () => {
+    const { game } = world({ ...config, ignores: ["blister", "post"] });
+    hurtPlayer(game, game.local, Infinity);
+    postAt(game, 480, 300);
+    const sac = blisterAt(game, 450, 300);
+    run(game, DT);
+    expect(stateOf(sac)).toMatchObject({ mode: "wander", fuseAt: null });
+  });
 });
 
 describe("bursting", () => {
@@ -204,8 +239,9 @@ describe("bursting", () => {
     expect(solidAt(game, 12, 9)).toBe(true);
   });
 
-  test("its burst sets off another blister it hurts", () => {
-    const { game } = world({ ...config, senseRange: 0, fuseRange: 0 });
+  /** Two blisters a cell apart, the first set off by no one, its burst hurting the second. */
+  function chain(blister: BlisterConfig): BlisterState {
+    const { game } = world({ ...blister, senseRange: 0, fuseRange: 0 });
     const first = blisterAt(game, 400, 300);
     const second = blisterAt(game, 500, 300);
     hurt(game, first, 1, null);
@@ -214,8 +250,28 @@ describe("bursting", () => {
     expect(stateOf(second).fuseAt).toBeNull();
     run(game, config.fuse + DT);
     expect(game.entities.has(first.id)).toBe(false);
+    expect(second.health).toBeLessThan(config.maxHealth);
     run(game, DT * 2);
-    expect(stateOf(second).fuseAt).not.toBeNull();
+    return stateOf(second);
+  }
+
+  test("its burst sets off another blister it hurts, unless its kind is one that does not", () => {
+    const fuseOnHurt = { minDamage: 0, except: [] };
+    expect(chain({ ...config, fuseOnHurt }).fuseAt).not.toBeNull();
+    expect(chain(config).fuseAt).toBeNull();
+  });
+
+  test("a hurt lighter than the least that lights its fuse leaves it unlit", () => {
+    const fuseOnHurt = { minDamage: 20, except: [] };
+    const { game } = world({ ...config, senseRange: 0, fuseOnHurt });
+    const light = blisterAt(game, 400, 300);
+    const heavy = blisterAt(game, 400, 450);
+    run(game, DT);
+    hurt(game, light, 10, null);
+    hurt(game, heavy, 25, null);
+    run(game, DT);
+    expect(stateOf(light).fuseAt).toBeNull();
+    expect(stateOf(heavy).fuseAt).not.toBeNull();
   });
 
   test("hurt by no one, it lights its fuse at once and goes for the nearest player, however far", () => {

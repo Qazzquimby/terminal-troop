@@ -10,6 +10,7 @@ import {
   hurtPlayer,
   mulberry32,
   registerContent,
+  registerEntityType,
   spawnEntity,
   stun,
   updateSession,
@@ -224,4 +225,37 @@ test("it cannot die", () => {
   idol.health -= 1e9;
   run(game, 0.1);
   expect(game.entities.has(idol.id)).toBe(true);
+});
+
+/** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
+function postAt(game: Session, x: number, y: number): WorldEntity {
+  if (!game.kindIds.has("post"))
+    registerEntityType(game, "post", {
+      radius: 10,
+      maxHealth: 1000,
+      data: z.object({}),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "post", x, y, {});
+}
+
+test("it hunts any body it sees, not just players, and strikes it", () => {
+  const game = world(100, 550);
+  hurtPlayer(game, game.local, Infinity);
+  const idol = idolAt(game, 650, 300);
+  const post = postAt(game, 400, 300);
+  run(game, 0.1);
+  expect(stateOf(idol)).toMatchObject({ mode: "hunt", quarry: post.id });
+  run(game, 1);
+  expect(post.health).toBe(1000 - config.damage);
+});
+
+test("a kind it ignores it neither hunts nor strikes", () => {
+  const game = world(100, 550, { ...config, ignores: ["idol", "post"] });
+  hurtPlayer(game, game.local, Infinity);
+  const idol = idolAt(game, 650, 300);
+  const post = postAt(game, 630, 300);
+  run(game, 1);
+  expect(stateOf(idol).mode).toBe("patrol");
+  expect(post.health).toBe(1000);
 });

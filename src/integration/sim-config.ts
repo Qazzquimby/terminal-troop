@@ -153,6 +153,7 @@ export const testEntitiesConfig = {
     spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
+    ignores: ["zombie", "blister"],
     maxHealth: 40,
     attackDamage: 25,
     wanderSpeed: 50,
@@ -204,6 +205,7 @@ export const testEntitiesConfig = {
   snail: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,
+    ignores: ["snail"],
     speedShare: 0.2,
     damage: 500,
     attackCooldown: 1,
@@ -212,6 +214,7 @@ export const testEntitiesConfig = {
   lurcher: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 72,
+    ignores: ["lurcher"],
     maxHealth: 75,
     contactDamage: 100,
     contactCooldown: 1,
@@ -228,6 +231,7 @@ export const testEntitiesConfig = {
   blister: {
     spawning: { ...NEVER, unseenDistance: 700 },
     radius: 16,
+    ignores: ["blister", "zombie", "magpie"],
     maxHealth: 45,
     wanderSpeed: 80,
     chaseSpeed: 120,
@@ -237,6 +241,7 @@ export const testEntitiesConfig = {
     repathDistance: 25,
     detour: { factor: 2, slack: 100 },
     fuseRange: 100,
+    fuseOnHurt: { minDamage: 0, except: ["blister"] },
     fuse: 1,
     blast: { radius: 150, centre: 100, edge: 30 },
     sounds: { fuse: 300, blast: 2000 },
@@ -244,6 +249,7 @@ export const testEntitiesConfig = {
   witch: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
+    ignores: ["witch"],
     maxHealth: 75,
     sightRange: 400,
     wakeRange: 250,
@@ -264,6 +270,7 @@ export const testEntitiesConfig = {
   idol: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 16,
+    ignores: ["idol"],
     sightRange: 800,
     patrol: { distance: 300, spread: 50, tries: 16, retry: 2 },
     huntSeconds: 10,
@@ -276,6 +283,7 @@ export const testEntitiesConfig = {
   skulker: {
     spawning: { ...NEVER, unseenDistance: 700 },
     radius: 14,
+    ignores: ["skulker"],
     maxHealth: 75,
     speed: 264,
     damage: 100,
@@ -294,6 +302,7 @@ export const testEntitiesConfig = {
       group: { min: 3, max: 5, spread: 100 },
     },
     radius: 13,
+    ignores: ["magpie", "blister"],
     maxHealth: 45,
     wanderSpeed: 176,
     chaseSpeed: 242,

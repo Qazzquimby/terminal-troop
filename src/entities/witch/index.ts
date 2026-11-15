@@ -3,13 +3,11 @@ import { drawEmoji } from "../../render/index.js";
 import {
   defineEntity,
   effect,
-  INERT_TAG,
   isAreaFree,
   hurtSinceLastStep,
   isGone,
   isLit,
   livingBody,
-  livingPlayers,
   sound,
 } from "../../sim/index.js";
 import type {
@@ -20,7 +18,8 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { drawRing, nearestSeenPlayer, touching } from "../bodies.js";
+import { drawRing, nearestSeenBody, preyFor, touching } from "../bodies.js";
+import type { Hunting } from "../hunt.js";
 import {
   between,
   Route,
@@ -47,19 +46,19 @@ interface Gap {
 }
 
 /**
- * The witch: sleeps in the dark until light or a player close by wakes her, then runs down
+ * The witch: sleeps in the dark until light or a body close by wakes her, then runs down
  * whoever she sees for a while before slinking off to a dark corner to sleep again. Distances in
  * pixels, times in sim seconds; she runs at a player's sprint.
  */
-export interface WitchConfig {
+export interface WitchConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
   /** How far she sees, all round her, along a clear line. */
   readonly sightRange: number;
-  /** How close a player she sees must be to wake her. */
+  /** How close a body she sees, player or monster, must be to wake her. */
   readonly wakeRange: number;
-  /** Seconds she growls at a player that close before she wakes, if they are still there. */
+  /** Seconds she growls at a body that close before she wakes, if they are still there. */
   readonly warnSeconds: number;
   /** Seconds she stays enraged, unless she kills before then. */
   readonly rageSeconds: number;
@@ -72,7 +71,7 @@ export interface WitchConfig {
   readonly attackCooldown: number;
   /** Seconds between barks: dormant, and enraged. */
   readonly barkGap: { readonly dormant: Gap; readonly enraged: Gap };
-  /** Where she goes to sleep again: a dark spot this far off, and this far from every player. */
+  /** Where she sleeps again: a dark spot this far off, and this far from every body she hunts. */
   readonly retreat: {
     readonly distance: { readonly min: number; readonly max: number };
     readonly clearance: number;
@@ -91,9 +90,9 @@ export interface WitchConfig {
 /**
  * What she is doing, which everyone reads, to draw her:
  * - dormant: sits still, barking now and then
- * - warning: growls at a player close by, until `until`, then wakes if they are still there
+ * - warning: growls at a body close by, until `until`, then wakes if they are still there
  * - enraged: runs down `target`, where she last saw prey, or wanders fast, until `until`
- * - retreat: runs for a dark spot away from the players, along `route`, and sleeps there
+ * - retreat: runs for a dark spot away from what she hunts, along `route`, and sleeps there
  */
 const MODES = ["dormant", "warning", "enraged", "retreat"] as const;
 
@@ -120,9 +119,6 @@ export const WitchState = z.object({
 export type WitchState = z.output<typeof WitchState>;
 
 const NAME = "witch";
-
-/** What she pays no mind: other witches, and inert things. */
-const IGNORES = [NAME, INERT_TAG];
 
 const WITCH_GLYPH = "🧙‍♀️";
 
@@ -181,9 +177,9 @@ function sleep(state: WitchState): WitchState {
 }
 
 /**
- * A dark spot she may retreat to from `self`, far enough from every player, and her route there:
- * kept off lit ground where it can be, straight through it where it cannot. Null when none of the
- * tries finds one.
+ * A dark spot she may retreat to from `self`, far enough from every body she hunts, and her route
+ * there: kept off lit ground where it can be, straight through it where it cannot. Null when none
+ * of the tries finds one.
  */
 function hideout(
   self: WorldEntity,
@@ -193,11 +189,12 @@ function hideout(
   const { map } = game.world;
   const { distance, clearance } = config.retreat;
   const avoid = avoidingLight(game);
+  const hunted = preyFor(game, self, config.ignores);
   for (let attempt = 0; attempt < config.retreat.tries; attempt++) {
     const to = pointAround(self, distance.min, distance.max);
     if (!isAreaFree(map, to.x, to.y, self.radius) || isLit(game, to)) continue;
-    const near = livingPlayers(game).some(
-      (player) => Math.hypot(player.x - to.x, player.y - to.y) < clearance,
+    const near = hunted.some(
+      (body) => Math.hypot(body.x - to.x, body.y - to.y) < clearance,
     );
     if (near) continue;
     const route =
@@ -241,8 +238,8 @@ function pursue(
 }
 
 /**
- * Enraged: runs down whatever body hurt her, wherever it is, while it lives; otherwise the player
- * she sees, to where she last saw them; with neither, she wanders fast. Light is nothing to her
+ * Enraged: runs down whatever body hurt her, wherever it is, while it lives; otherwise the nearest
+ * body she sees, to where she last saw it; with neither, she wanders fast. Light is nothing to her
  * now.
  */
 function rage(
@@ -253,7 +250,7 @@ function rage(
 ): WitchState {
   const seen =
     livingBody(game, state.foe) ??
-    nearestSeenPlayer(game, self, config.sightRange);
+    nearestSeenBody(game, self, config.ignores, config.sightRange);
   if (seen !== null) return pursue(state, self, seen, game, config);
   if (state.route.length > 0) return state;
   const { map } = game.world;
@@ -267,13 +264,13 @@ function rage(
   return { ...state, target: null, route: leg ?? [] };
 }
 
-/** Whether she sees a living player within her wake range. */
-function playerClose(
+/** Whether she sees a living body she hunts within her wake range. */
+function bodyClose(
   self: WorldEntity,
   game: Session,
   config: WitchConfig,
 ): boolean {
-  return nearestSeenPlayer(game, self, config.wakeRange) !== null;
+  return nearestSeenBody(game, self, config.ignores, config.wakeRange) !== null;
 }
 
 /** The state witch `self` moves to this step. */
@@ -309,7 +306,7 @@ function respond(
         const woken = enrage(state, game, config);
         return hurt ? rage(woken, self, game, config) : woken;
       }
-      const close = playerClose(self, game, config);
+      const close = bodyClose(self, game, config);
       if (state.mode === "dormant")
         return close
           ? { ...state, mode: "warning", until: now + config.warnSeconds }
@@ -342,7 +339,7 @@ function attack(
 ): WitchState {
   if (state.mode !== "enraged" || game.worldTime < state.attackAt)
     return { ...state, attacking: false };
-  const struck = touching(game, self, IGNORES)[0];
+  const struck = touching(game, self, config.ignores)[0];
   if (struck === undefined) return { ...state, attacking: false };
   return {
     ...state,
@@ -426,7 +423,10 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      return strikeEach(touching(game, entity, IGNORES), config.attackDamage);
+      return strikeEach(
+        touching(game, entity, config.ignores),
+        config.attackDamage,
+      );
     },
     draw(ctx, entity, state, now) {
       const size = entity.radius * (state.mode === "enraged" ? 2.4 : 2);
@@ -439,12 +439,12 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
 }
 
 /**
- * The witch: sits dormant in the dark, barking now and then. Light on her, or a player she sees
- * close by for a moment after her growl, wakes her enraged: she screams, then for a while runs
- * at a player's sprint after whoever she sees, or whoever hurts her, to where she last saw them,
- * wandering fast with no one in sight. Once she kills, or her rage runs out, she runs for a dark
- * spot away from the players and sleeps there. She arrives now and then, out of the world's start,
- * of the light and of every player's sight.
+ * The witch: sits dormant in the dark, barking now and then. Light on her, or a body she sees
+ * close by for a moment after her growl, a player or a monster alike, wakes her enraged: she
+ * screams, then for a while runs at a player's sprint after whoever she sees, or whoever hurts her,
+ * to where she last saw them, wandering fast with no one in sight. Once she kills, or her rage runs
+ * out, she runs for a dark spot away from what she hunts and sleeps there. She arrives now and
+ * then, out of the world's start, of the light and of every player's sight.
  */
 export const witch = defineEntity(NAME, (config: WitchConfig) => ({
   ...definition(config),

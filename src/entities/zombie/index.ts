@@ -7,7 +7,6 @@ import {
   defineEntity,
   effect,
   INERT_TAG,
-  inView,
   isGone,
   rounded,
   sound,
@@ -38,7 +37,8 @@ import {
   wanderLeg,
   withSeed,
 } from "../hunt.js";
-import type { Prey } from "../hunt.js";
+import type { Hunting, Prey } from "../hunt.js";
+import { nearestSeenBody } from "../bodies.js";
 import { planRoute } from "../route.js";
 import { arrivals, spawnWeight } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -47,7 +47,7 @@ import type { SpawningConfig } from "../spawning.js";
  * How a zombie moves and hunts, and how it arrives. Distances are in pixels, speeds in pixels per
  * second.
  */
-export interface ZombieConfig {
+export interface ZombieConfig extends Hunting {
   /**
    * A fixed number a new world scatters, past what the spawner brings; none when left out. Tests
    * use it to start with a known crowd.
@@ -152,11 +152,8 @@ const ZOMBIE_GLYPH = "🧟";
 /** The kind's name. */
 const NAME = "zombie";
 
-/**
- * The kind tags a zombie pays no mind: other zombies, whether it hears them or sees them, and
- * what is not worth hunting.
- */
-const IGNORES = [NAME, INERT_TAG];
+/** The kind tags a zombie is deaf to: other zombies, and what is not worth hunting. */
+const DEAF_TO = [NAME, INERT_TAG];
 
 /** A fresh zombie's state at world time `now`, its random draws seeded by `seed`. */
 export function freshZombie(
@@ -183,15 +180,16 @@ export function freshZombie(
 }
 
 /**
- * Every player and world entity within `reach` of `hunter` that it hunts: anything but zombies
- * and what the world tags as not worth hunting.
+ * Every player and world entity within `reach` of `hunter` that it hunts: anything but the kinds
+ * it ignores and what the world tags as not worth hunting.
  */
 function preyNear(
   game: Session,
   hunter: Prey,
   reach: (prey: Prey) => number,
+  config: ZombieConfig,
 ): Prey[] {
-  return preyAround(game, hunter, reach, IGNORES);
+  return preyAround(game, hunter, reach, [...config.ignores, INERT_TAG]);
 }
 
 /**
@@ -207,25 +205,13 @@ function zombieEyes(facing: number, game: Session, config: ZombieConfig): Eyes {
   };
 }
 
-/** The nearest prey a zombie sees within its cone or surroundings, or null. */
+/** Where the nearest prey a zombie sees within its cone or surroundings stands, or null. */
 function sighting(
   game: Session,
-  self: Prey,
-  facing: number,
+  self: WorldEntity,
   config: ZombieConfig,
 ): Prey | null {
-  const sight = { x: self.x, y: self.y, ...zombieEyes(facing, game, config) };
-  const range = config.sightRange;
-  let nearest: Prey | null = null;
-  let nearestDistance = Infinity;
-  for (const prey of preyNear(game, self, () => range)) {
-    const distance = Math.hypot(prey.x - self.x, prey.y - self.y);
-    if (distance < nearestDistance && inView(game, sight, prey)) {
-      nearest = prey;
-      nearestDistance = distance;
-    }
-  }
-  return nearest;
+  return nearestSeenBody(game, self, config.ignores, config.sightRange);
 }
 
 function pauseLength(rng: Rng, config: ZombieConfig): number {
@@ -246,7 +232,7 @@ function listen(
   game: Session,
 ): { result: Heard | null; seed: number } {
   return withSeed(state.seed, (rng) =>
-    clearestNoise(game, { at, rng, ignores: IGNORES }),
+    clearestNoise(game, { at, rng, ignores: DEAF_TO }),
   );
 }
 
@@ -380,7 +366,7 @@ function giveUp(
  */
 function think(
   state: ZombieState,
-  self: Prey,
+  self: WorldEntity,
   game: Session,
   config: ZombieConfig,
 ): ZombieState {
@@ -390,9 +376,7 @@ function think(
     if (isGone(game, state.prey)) return giveUp(state, game, config);
   }
   const seen =
-    game.worldTime >= state.restUntil
-      ? sighting(game, self, state.facing, config)
-      : null;
+    game.worldTime >= state.restUntil ? sighting(game, self, config) : null;
   if (seen !== null) return pursue(state, self, seen, game, config);
   if (state.mode === "wander") return wander(state, self, game, config);
   return state.route.length > 0 ? state : giveUp(state, game, config);
@@ -400,8 +384,11 @@ function think(
 
 /** The prey close enough to zombie `self` to be hit by its attack. */
 function inReach(self: Prey, game: Session, config: ZombieConfig): Prey[] {
-  return preyNear(game, self, (prey) =>
-    Math.max(config.attackRange, self.radius + prey.radius + 1),
+  return preyNear(
+    game,
+    self,
+    (prey) => Math.max(config.attackRange, self.radius + prey.radius + 1),
+    config,
   );
 }
 
@@ -506,8 +493,9 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
 
 /**
  * A zombie: wanders slowly, drawn towards what it hears but deaf to other zombies, and runs down
- * anything living it sees, zombies and inert things aside, to where it last saw it. The world's
- * spawner brings them in groups, out of sight, each drawing its own seed.
+ * any living body it sees, player or monster, but the kinds it ignores and inert things, to where
+ * it last saw it. The world's spawner brings them in groups, out of sight, each drawing its own
+ * seed.
  */
 export const zombie = defineEntity(NAME, (config: ZombieConfig) => ({
   ...definition(config),

@@ -1,14 +1,6 @@
 import { z } from "zod";
 import { drawEmoji } from "../../render/index.js";
-import {
-  defineEntity,
-  hasKindTag,
-  INERT_TAG,
-  ITEM_TAG,
-  livingBodies,
-  livingPlayers,
-  rounded,
-} from "../../sim/index.js";
+import { defineEntity, livingBody, rounded } from "../../sim/index.js";
 import type {
   EntityDefinition,
   Point,
@@ -16,15 +8,18 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
+import { preyFor, touching } from "../bodies.js";
+import type { Hunting } from "../hunt.js";
+import { strikeIf } from "../hunt.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 /**
- * The snail: picks one player when it arrives and creeps after them, slow, never stopping, and
- * kills whatever it touches. It cannot die. Distances in pixels.
+ * The snail: picks one body when it arrives, a player or a monster, and creeps after it, slow,
+ * never stopping, and kills whatever it touches. It cannot die. Distances in pixels.
  */
-export interface SnailConfig {
+export interface SnailConfig extends Hunting {
   /** How the world's spawner brings it. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -52,7 +47,7 @@ const Waypoint = z.object({ x: rounded(1), y: rounded(1) });
 const Time = rounded(2);
 
 /**
- * The player it is after, by id, null while there is none to pick; its route there, when it next
+ * The body it is after, by id, null while there is none to pick; its route there, when it next
  * plans it, when it may next strike and whether it strikes this step. Only the host reads them.
  */
 export const SnailState = z.object({
@@ -65,13 +60,20 @@ export const SnailState = z.object({
 
 type SnailState = z.output<typeof SnailState>;
 
-/** A living player drawn at random, by id, or null when there is none. */
-function pickQuarry(game: Session): string | null {
-  const ids = livingPlayers(game).map((player) => player.id);
+/**
+ * A living body `self` may hunt drawn at random, by id, or null when there is none; `self` is null
+ * for a snail yet to arrive.
+ */
+function pickQuarry(
+  game: Session,
+  self: WorldEntity | null,
+  config: SnailConfig,
+): string | null {
+  const ids = preyFor(game, self, config.ignores).map((body) => body.id);
   return ids[Math.floor(Math.random() * ids.length)] ?? null;
 }
 
-/** A fresh snail's state at world time `now`, after the player `quarry`. */
+/** A fresh snail's state at world time `now`, after the body `quarry`. */
 export function freshSnail(quarry: string | null, now: number): SnailState {
   return {
     quarry,
@@ -80,17 +82,6 @@ export function freshSnail(quarry: string | null, now: number): SnailState {
     attackAt: now,
     attacking: false,
   };
-}
-
-/** A body the snail touches: a player or a world entity, anything but itself and inert things. */
-function touching(game: Session, self: WorldEntity): { id: string }[] {
-  return livingBodies(game).filter(
-    (body) =>
-      body.id !== self.id &&
-      Math.hypot(body.x - self.x, body.y - self.y) <=
-        self.radius + body.radius + 1 &&
-      !hasKindTag(game, body.id, [INERT_TAG, ITEM_TAG]),
-  );
 }
 
 /**
@@ -115,13 +106,11 @@ function hunt(
 ): SnailState {
   const now = game.worldTime;
   const kept =
-    state.quarry !== null &&
-    livingPlayers(game).some(({ id }) => id === state.quarry)
+    livingBody(game, state.quarry) !== null
       ? state
-      : { ...state, quarry: pickQuarry(game), repathAt: now };
-  const quarry =
-    kept.quarry === null ? undefined : game.players.get(kept.quarry);
-  if (quarry === undefined) return { ...kept, route: [] };
+      : { ...state, quarry: pickQuarry(game, self, config), repathAt: now };
+  const quarry = livingBody(game, kept.quarry);
+  if (quarry === null) return { ...kept, route: [] };
   if (now < kept.repathAt) return kept;
   return {
     ...kept,
@@ -137,14 +126,12 @@ function attack(
   game: Session,
   config: SnailConfig,
 ): SnailState {
-  const attacking =
-    game.worldTime >= state.attackAt && touching(game, self).length > 0;
-  if (!attacking) return { ...state, attacking };
-  return {
-    ...state,
-    attacking,
-    attackAt: game.worldTime + config.attackCooldown,
-  };
+  return strikeIf(
+    state,
+    game.worldTime,
+    touching(game, self, config.ignores).length > 0,
+    config.attackCooldown,
+  );
 }
 
 function definition(config: SnailConfig): EntityDefinition<SnailState> {
@@ -165,7 +152,7 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      return touching(game, entity).map((body) => ({
+      return touching(game, entity, config.ignores).map((body) => ({
         target: body.id,
         amount: config.damage,
       }));
@@ -180,10 +167,10 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
   };
 }
 /**
- * The snail, "The Unhurried": rare. When it arrives it picks a player and creeps after them at a
- * fraction of their pace, round the walls, for as long as they are in the world. Whatever it
- * touches, player or monster, takes damage enough to kill it, and nothing kills it. It makes no
- * sound, pays light no mind, and a stun holds it like anything else.
+ * The snail, "The Unhurried": rare. When it arrives it picks a body, a player or a monster, and
+ * creeps after it at a fraction of a player's pace, round the walls, for as long as it lives, then
+ * picks another. Whatever it touches, player or monster, takes damage enough to kill it, and
+ * nothing kills it. It makes no sound, pays light no mind, and a stun holds it like anything else.
  */
 export const snail = defineEntity(NAME, (config: SnailConfig) => ({
   ...definition(config),
@@ -194,6 +181,6 @@ export const snail = defineEntity(NAME, (config: SnailConfig) => ({
     // Light does not keep it away.
     rules: { inLight: true },
     fresh: (_seed: number, game: Session) =>
-      freshSnail(pickQuarry(game), game.worldTime),
+      freshSnail(pickQuarry(game, null, config), game.worldTime),
   }),
 }));

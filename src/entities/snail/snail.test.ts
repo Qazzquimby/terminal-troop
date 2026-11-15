@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testSfx,
@@ -6,9 +7,11 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  hurtPlayer,
   inRect,
   mulberry32,
   registerContent,
+  registerEntityType,
   spawnEntity,
   stun,
   updateSession,
@@ -174,6 +177,46 @@ test("snails come through the spawner once their time has come, out of the start
   vi.restoreAllMocks();
   // No longer one at a time: each roll brings another.
   expect(snails().length).toBeGreaterThan(1);
-  for (const arrived of snails())
-    expect(SnailState.parse(arrived.data).quarry).toBe("me");
+  // Each picks a body to follow, the player or another, never a snail.
+  for (const arrived of snails()) {
+    const { quarry } = SnailState.parse(arrived.data);
+    expect(quarry).not.toBeNull();
+    expect(snails().map(({ id }) => id)).not.toContain(quarry);
+  }
+});
+
+/** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
+function postAt(game: Session, x: number, y: number): WorldEntity {
+  if (!game.kindIds.has("post"))
+    registerEntityType(game, "post", {
+      radius: 10,
+      maxHealth: 100,
+      data: z.object({}),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "post", x, y, {});
+}
+
+test("with no player alive it creeps after another body, and picks again once that one dies", () => {
+  const game = world("dev");
+  hurtPlayer(game, game.local, Infinity);
+  const snail = snailAt(game, 400, 300);
+  const first = postAt(game, 440, 300);
+  run(game, 0.1);
+  expect(SnailState.parse(snail.data).quarry).toBe(first.id);
+  run(game, 1);
+  expect(game.entities.has(first.id)).toBe(false);
+  const second = postAt(game, 200, 300);
+  run(game, 0.1);
+  expect(SnailState.parse(snail.data).quarry).toBe(second.id);
+  expect(snail.vx).toBeLessThan(0);
+});
+
+test("it never picks a kind it ignores", () => {
+  const game = world("dev");
+  hurtPlayer(game, game.local, Infinity);
+  const snail = snailAt(game, 400, 300);
+  spawnEntity(game, "snail", 600, 300, freshSnail(null, game.worldTime));
+  run(game, 0.1);
+  expect(SnailState.parse(snail.data).quarry).toBeNull();
 });

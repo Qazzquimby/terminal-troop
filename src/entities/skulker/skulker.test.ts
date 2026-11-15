@@ -10,6 +10,7 @@ import {
   createPlayer,
   createSession,
   hurt,
+  hurtPlayer,
   directionalVision,
   lastHurtBy,
   receiveEvent,
@@ -214,4 +215,62 @@ test("hurt by another body, it rages at that body rather than the player nearer 
   run(game, 1.5, { x: 900, y: 300 });
   expect(post.health).toBeLessThan(post.maxHealth);
   expect(lastHurtBy(game, post.id)).toBe(skulker.id);
+});
+
+/**
+ * A body with eyes but no will at (x, y), looking left down a player's cone out to `range`, or
+ * blind for 0, which a skulker hunts like any other.
+ */
+function lookoutAt(
+  game: Session,
+  x: number,
+  y: number,
+  range: number,
+): WorldEntity {
+  if (!game.kindIds.has("lookout"))
+    registerEntityType(game, "lookout", {
+      radius: 10,
+      maxHealth: 1000,
+      data: z.object({ range: z.number() }),
+      eyes: (_entity, state) => ({
+        cone: { direction: Math.PI, angle: Math.PI / 2, range: state.range },
+        around: 0,
+      }),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "lookout", x, y, { range });
+}
+
+test("with no player about, it creeps up on the nearest body and strikes it", () => {
+  const game = world(100, 550);
+  hurtPlayer(game, game.local, Infinity);
+  const skulker = skulkerAt(game, 650, 300);
+  const prey = lookoutAt(game, 200, 300, 0);
+  run(game, 0.5, { x: 900, y: 300 });
+  expect(stateOf(skulker).mode).toBe("hunt");
+  expect(skulker.vx).toBeLessThan(0);
+  run(game, 2.5, { x: 900, y: 300 });
+  expect(prey.health).toBeLessThan(1000);
+});
+
+test("any body's gaze sends it back, as far as that body looks", () => {
+  const game = world(100, 550);
+  hurtPlayer(game, game.local, Infinity);
+  const near = skulkerAt(game, 500, 300);
+  const far = skulkerAt(game, 300, 100);
+  lookoutAt(game, 700, 300, 300);
+  lookoutAt(game, 700, 100, 300);
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(near).mode).toBe("retreat");
+  expect(stateOf(far).mode).toBe("hunt");
+});
+
+test("its own kind's gaze does not send it back", () => {
+  const game = world(100, 550);
+  hurtPlayer(game, game.local, Infinity);
+  const skulker = skulkerAt(game, 400, 300);
+  const other = skulkerAt(game, 600, 300);
+  other.data = { ...stateOf(other), facing: Math.PI };
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(skulker).mode).toBe("hunt");
 });

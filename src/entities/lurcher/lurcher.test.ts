@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testSfx,
@@ -9,6 +10,7 @@ import {
   makeNoise,
   receiveEvent,
   registerContent,
+  registerEntityType,
   spawnEntity,
   stun,
   updateSession,
@@ -26,6 +28,7 @@ import {
   LurcherState,
   suspicionAt,
 } from "./index.js";
+import type { LurcherConfig } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -50,7 +53,10 @@ interface Pending {
 }
 
 /** The dev square, its pillars at x 200-300, y 50-150 and x 600-700, y 450-550. */
-function world(): { game: Session; noise: (made: Pending) => void } {
+function world(lurcher: LurcherConfig = config): {
+  game: Session;
+  noise: (made: Pending) => void;
+} {
   const game = createSession(
     "me",
     "ME",
@@ -74,7 +80,7 @@ function world(): { game: Session; noise: (made: Pending) => void } {
         makeNoise(session, by, { at, radius });
     },
   };
-  registerContent(game, [lurcherContent.create({ lurcher: config }), noiser]);
+  registerContent(game, [lurcherContent.create({ lurcher }), noiser]);
   Object.assign(game.local, { x: 50, y: 575, prevX: 50, prevY: 575 });
   return { game, noise: (made) => pending.push(made) };
 }
@@ -231,6 +237,19 @@ describe("biting", () => {
 
     run(game, config.contactCooldown / 2);
     expect(stateOf(hound).biting).toBe(false);
+  });
+
+  test("it bites any body it touches but the kinds it ignores", () => {
+    const { game } = world({ ...config, ignores: ["lurcher", "rock"] });
+    const body = { radius: 10, data: z.object({}), draw: () => undefined };
+    registerEntityType(game, "deer", { ...body, maxHealth: 1000 });
+    registerEntityType(game, "rock", { ...body, maxHealth: 1000 });
+    lurcherAt(game, 450, 300);
+    const deer = spawnEntity(game, "deer", 450 + config.radius + 10, 300, {});
+    const rock = spawnEntity(game, "rock", 450 - config.radius - 10, 300, {});
+    run(game, DT);
+    expect(deer.health).toBe(1000 - config.contactDamage);
+    expect(rock.health).toBe(1000);
   });
 
   test("a stunned one neither moves nor bites", () => {

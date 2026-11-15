@@ -60,6 +60,15 @@ export function between(
   return range.min + (range.max - range.min) * rng();
 }
 
+/** Who a monster kind passes over, which its config says. */
+export interface Hunting {
+  /**
+   * Kind tags it neither hunts nor strikes, its own kind as a rule; "player" spares players. No
+   * monster hunts inert things or items lying about, whatever this says.
+   */
+  readonly ignores: readonly string[];
+}
+
 /** A body a monster may hunt. */
 export interface Prey extends Point {
   readonly id: string;

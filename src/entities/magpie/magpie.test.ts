@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testItemsConfig,
@@ -9,12 +10,14 @@ import { itemContent } from "../../items/index.js";
 import {
   createSession,
   hurt,
+  hurtPlayer,
   giveItem,
   itemInstances,
   itemIn,
   mulberry32,
   receiveEvent,
   registerContent,
+  registerEntityType,
   spawnEntity,
   spawnWorldItem,
   takeItem,
@@ -257,4 +260,49 @@ test("dying, it drops what it carries", () => {
   run(game, DT);
   expect(game.entities.has(bug.id)).toBe(false);
   expect(scrapLying(game)).toHaveLength(1);
+});
+
+/** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
+function postAt(game: Session, x: number, y: number): WorldEntity {
+  if (!game.kindIds.has("post"))
+    registerEntityType(game, "post", {
+      radius: 10,
+      maxHealth: 1000,
+      data: z.object({}),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "post", x, y, {});
+}
+
+test("any body it sees near its nest sets it guarding; one close by away from the nest spooks it, and it bites", () => {
+  const game = world(850, 575);
+  hurtPlayer(game, game.local, Infinity);
+  const bug = magpieAt(game, 300, 300);
+  run(game, DT);
+  postAt(game, 400, 300);
+  bug.data = { ...stateOf(bug), facing: 0 };
+  run(game, DT);
+  expect(stateOf(bug).mode).toBe("guard");
+
+  const away = world(850, 575);
+  hurtPlayer(away, away.local, Infinity);
+  const far = magpieAt(away, 100, 300);
+  run(away, DT);
+  Object.assign(far, { x: 400, y: 300, prevX: 400, prevY: 300 });
+  const post = postAt(away, 600, 300);
+  far.data = { ...stateOf(far), facing: 0, route: [] };
+  run(away, DT);
+  expect(stateOf(far)).toMatchObject({ mode: "spook", quarry: post.id });
+  run(away, 2);
+  expect(post.health).toBeLessThan(1000);
+});
+
+test("hurt by no one, it is spooked by the nearest body, player or not", () => {
+  const game = world(850, 575);
+  const bug = magpieAt(game, 300, 300);
+  const post = postAt(game, 450, 300);
+  run(game, DT);
+  hurt(game, bug, 5, null);
+  run(game, DT);
+  expect(stateOf(bug)).toMatchObject({ mode: "spook", quarry: post.id });
 });
