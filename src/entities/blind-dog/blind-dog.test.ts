@@ -23,7 +23,7 @@ import type {
   WorldEntity,
 } from "../../sim/index.js";
 import {
-  chargeEnd,
+  dashEnd,
   freshBlindDog,
   blindDog as blindDogContent,
   BlindDogState,
@@ -166,54 +166,200 @@ describe("hearing", () => {
 });
 
 describe("charging", () => {
-  test("a big noise makes it roar and run at and on past it, at its charging speed", () => {
+  test("a big noise beyond its reach makes it roar and run there, at its charging speed", () => {
     const { game, noise } = world();
-    const hound = blindDogAt(game, 150, 300);
-    noise({ by: game.local, at: { x: 450, y: 300 }, radius: 1500 });
+    const hound = blindDogAt(game, 100, 300);
+    noise({ by: game.local, at: { x: 800, y: 300 }, radius: 2000 });
     run(game, DT);
 
     const state = stateOf(hound);
     expect(state.mode).toBe("charge");
     expect(played(game).some((url) => url.endsWith("roar.mp3"))).toBe(true);
     expect(Math.hypot(hound.vx, hound.vy)).toBeCloseTo(config.chargeSpeed);
-    expect(state.route.at(-1)?.x).toBeGreaterThan(700);
+    // Where it heard the noise, as near as a blind dog's ears tell it.
+    const end = state.route.at(-1) ?? { x: 0, y: 0 };
+    expect(Math.hypot(end.x - 800, end.y - 300)).toBeLessThan(50);
   });
 
-  test("a charge runs the overrun past the noise, short of the first wall", () => {
+  test("a dash runs its length, short of the first wall", () => {
     const map = createSession("me", "ME", "C", "dev", testSfx(), testSimConfig)
       .world.map;
-    const open = chargeEnd(
-      map,
-      20,
-      { x: 100, y: 300 },
-      { x: 300, y: 300 },
-      200,
-    );
+    const open = dashEnd(map, 20, { x: 100, y: 300 }, 0, 400);
     expect(open.x).toBeCloseTo(500);
-    const walled = chargeEnd(
+    expect(open.y).toBeCloseTo(300);
+    const walled = dashEnd(
       map,
       config.radius,
       { x: 150, y: 300 },
-      { x: 450, y: 300 },
-      config.overrun,
+      0,
+      300 + config.overrun,
     );
     expect(walled.x).toBeLessThanOrEqual(900 - config.radius);
-    expect(walled.x).toBeGreaterThan(900 - config.radius - 13);
+    expect(walled.x).toBeGreaterThan(900 - config.radius - 7);
   });
 
-  test("steers for each new noise as it runs, and once there settles, its suspicion spent", () => {
+  test("steers for each new noise as it runs, and once it has pounced settles, its suspicion spent", () => {
     const { game, noise } = world();
-    const hound = blindDogAt(game, 150, 300);
-    noise({ by: game.local, at: { x: 450, y: 300 }, radius: 1500 });
+    const hound = blindDogAt(game, 100, 300);
+    noise({ by: game.local, at: { x: 800, y: 300 }, radius: 2000 });
     run(game, DT);
     noise({ by: game.local, at: { x: 450, y: 520 }, radius: 1500 });
     run(game, DT);
+    expect(stateOf(hound).mode).toBe("charge");
     expect(hound.vy).toBeGreaterThan(0);
 
     run(game, 4);
     const state = stateOf(hound);
     expect(state.mode).toBe("wander");
     expect(state.suspicion).toBe(0);
+  });
+});
+
+describe("pouncing", () => {
+  /** Steps until it is in `mode`, at most `seconds`; each step's spot, in order. */
+  function until(
+    game: Session,
+    hound: WorldEntity,
+    mode: BlindDogState["mode"],
+    seconds = 5,
+  ): Point[] {
+    const path: Point[] = [];
+    for (let t = 0; t < seconds && stateOf(hound).mode !== mode; t += DT) {
+      run(game, DT);
+      path.push({ x: hound.x, y: hound.y });
+    }
+    expect(stateOf(hound).mode).toBe(mode);
+    return path;
+  }
+
+  /** How far `at` is off the line through `from` and `to`. */
+  function offLine(at: Point, from: Point, to: Point): number {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    return (
+      Math.abs((at.x - from.x) * dy - (at.y - from.y) * dx) / Math.hypot(dx, dy)
+    );
+  }
+
+  const gap = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+  /** A hound at (150, 300) crouched to pounce at a big noise at (350, 300). */
+  function crouched(): {
+    game: Session;
+    noise: (made: Pending) => void;
+    hound: WorldEntity;
+  } {
+    const { game, noise } = world();
+    const hound = blindDogAt(game, 150, 300);
+    noise({ by: game.local, at: { x: 350, y: 300 }, radius: 1500 });
+    run(game, DT);
+    expect(stateOf(hound).mode).toBe("crouch");
+    return { game, noise, hound };
+  }
+
+  test("within reach it crouches, growling and still, facing its target, then leaps with a roar", () => {
+    const { game, hound } = crouched();
+    const state = stateOf(hound);
+    expect(state.facing).toBeCloseTo(0, 1);
+    expect(Math.hypot(hound.vx, hound.vy)).toBe(0);
+    expect(played(game).some((url) => url.endsWith("growl.mp3"))).toBe(true);
+    expect(played(game).some((url) => url.endsWith("pounce.mp3"))).toBe(false);
+
+    run(game, config.pounce.windup / 2);
+    expect(stateOf(hound).mode).toBe("crouch");
+    expect(hound.x).toBe(150);
+
+    until(game, hound, "pounce", config.pounce.windup);
+    run(game, DT);
+    expect(Math.hypot(hound.vx, hound.vy)).toBeCloseTo(config.pounce.speed);
+    expect(played(game).some((url) => url.endsWith("pounce.mp3"))).toBe(true);
+  });
+
+  test("it dashes in a straight line through its target and the overrun past it, then skids", () => {
+    const { game, hound } = crouched();
+    const start = { x: hound.x, y: hound.y };
+    const { heard, dash } = stateOf(hound);
+    if (heard === null || dash === null) throw new Error("no target");
+    expect(gap(start, dash.to)).toBeCloseTo(
+      gap(start, heard) + config.overrun,
+      0,
+    );
+
+    const path = until(game, hound, "skid");
+    for (const at of path)
+      expect(offLine(at, start, dash.to)).toBeLessThan(0.01);
+    // It gets there, then starts to skid on.
+    expect(gap(hound, dash.to)).toBeLessThan(config.pounce.speed * DT);
+    expect(played(game).some((url) => url.endsWith("skid.mp3"))).toBe(true);
+
+    until(game, hound, "wander", config.pounce.recover + 0.1);
+    expect(gap(start, hound)).toBeGreaterThan(gap(start, dash.to));
+    expect(stateOf(hound).suspicion).toBe(0);
+  });
+
+  test("it does not steer for a noise it hears mid-dash", () => {
+    const { game, noise, hound } = crouched();
+    const start = { x: hound.x, y: hound.y };
+    until(game, hound, "pounce");
+    const { dash } = stateOf(hound);
+    if (dash === null) throw new Error("no dash");
+
+    noise({ by: game.local, at: { x: 450, y: 560 }, radius: 1500 });
+    const path = until(game, hound, "skid");
+    for (const at of path)
+      expect(offLine(at, start, dash.to)).toBeLessThan(0.01);
+    expect(stateOf(hound).dash?.to).toEqual(dash.to);
+  });
+
+  test("a wall stops it short", () => {
+    const { game, noise } = world();
+    const hound = blindDogAt(game, 300, 300);
+    noise({ by: game.local, at: { x: 550, y: 300 }, radius: 1500 });
+    run(game, DT);
+    expect(stateOf(hound).mode).toBe("crouch");
+
+    until(game, hound, "skid");
+    expect(hound.x).toBeLessThanOrEqual(900 - config.radius);
+    expect(hound.x).toBeGreaterThan(900 - config.radius - 10);
+    until(game, hound, "wander", config.pounce.recover + 0.1);
+    expect(hound.x).toBeLessThanOrEqual(900 - config.radius);
+  });
+
+  test("it bites a body in its path once, and passes by one beside it", () => {
+    const { game, noise } = world();
+    const body = { radius: 10, data: z.object({}), draw: () => undefined };
+    registerEntityType(game, "deer", { ...body, maxHealth: 10_000 });
+    const hound = blindDogAt(game, 150, 300);
+    const inPath = spawnEntity(game, "deer", 500, 310, {});
+    const beside = spawnEntity(game, "deer", 500, 300 + config.radius + 40, {});
+    noise({ by: game.local, at: { x: 350, y: 300 }, radius: 1500 });
+    run(game, DT);
+    until(game, hound, "skid");
+
+    expect(inPath.health).toBe(10_000 - config.contactDamage);
+    expect(beside.health).toBe(10_000);
+  });
+
+  test("it pounces at the body making a noise within lunge range, through and past it", () => {
+    const { game, noise } = world();
+    const body = { radius: 10, data: z.object({}), draw: () => undefined };
+    registerEntityType(game, "deer", { ...body, maxHealth: 10_000 });
+    const hound = blindDogAt(game, 150, 300);
+    const deer = spawnEntity(game, "deer", 330, 300, {});
+    noise({ by: deer, at: { x: 330, y: 300 }, radius: 300 });
+    run(game, DT);
+    const { mode, dash } = stateOf(hound);
+    expect(mode).toBe("crouch");
+    // Straight at the body itself, not where its noise seemed to be.
+    expect(dash?.to).toEqual({ x: 330 + config.overrun, y: 300 });
+
+    until(game, hound, "skid");
+    // Through the body, not shoving it along.
+    expect(hound.x).toBeGreaterThan(
+      330 + config.overrun - config.pounce.speed * DT,
+    );
+    expect(deer.x).toBeCloseTo(330, 0);
+    expect(deer.health).toBe(10_000 - config.contactDamage);
   });
 });
 
@@ -233,12 +379,12 @@ describe("biting", () => {
     expect(game.local.health).toBe(
       testSimConfig.player.maxHealth - config.contactDamage,
     );
-    expect(stateOf(hound).biting).toBe(true);
+    expect(stateOf(hound).bites).toEqual([game.local.id]);
     expect(other.health).toBe(config.maxHealth);
     expect(played(game).some((url) => url.endsWith("bite.mp3"))).toBe(true);
 
     run(game, config.contactCooldown / 2);
-    expect(stateOf(hound).biting).toBe(false);
+    expect(stateOf(hound).bites).toEqual([]);
   });
 
   test("it bites any body it touches but the kinds it ignores", () => {
@@ -280,7 +426,7 @@ describe("a noise that goes on", () => {
     }
   }
 
-  test("it closes on the body making it and bites it, again and again", () => {
+  test("it pounces through the body making it and bites it, again and again", () => {
     const { game, noise } = world();
     registerEntityType(game, "deer", {
       radius: 10,
@@ -292,7 +438,8 @@ describe("a noise that goes on", () => {
     const deer = spawnEntity(game, "deer", 450, 300, {});
     keepsUp(game, noise, deer, 10);
 
-    expect(deer.health).toBeLessThanOrEqual(10_000 - config.contactDamage * 6);
+    // A pounce, a skid, a turn and back: about one bite every 3 seconds.
+    expect(deer.health).toBeLessThanOrEqual(10_000 - config.contactDamage * 3);
     expect(stateOf(hound).bored).toBeNull();
   });
 

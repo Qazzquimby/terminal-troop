@@ -360,6 +360,17 @@ export const config = {
       wanderSpeed: PLAYER_SPEED * 0.6,
       stalkSpeed: PLAYER_SPEED * 0.8,
       chargeSpeed: PLAYER_SPEED * SPRINT * 1.2,
+      // Within 6 cells of its target, with a clear line, it crouches 0.3s, growling, then dashes
+      // at 1.8x a player's sprint through the target and 8 cells (`overrun`) on, unsteered, then
+      // skids a cell and finds its feet in 0.6s. A player already moving sideways as it growls
+      // is out of the line before it lands.
+      pounce: {
+        reach: CELL * 6,
+        windup: 0.3,
+        speed: PLAYER_SPEED * SPRINT * 1.8,
+        recover: 0.6,
+        skid: CELL,
+      },
       wanderRange: CELL * 8,
       wanderPause: { min: 1, max: 3 },
       repathDistance: CELL,
@@ -368,7 +379,7 @@ export const config = {
       // within 5 cells at once, at a walk 2 cells off in about 6s, at a sprint 5 cells off in
       // under a second.
       suspicion: { max: CELL * 25, decay: CELL * 2 },
-      // A charge runs 8 cells past the noise it heard last.
+      // A pounce runs 8 cells past its target.
       overrun: CELL * 8,
       // Within 3 cells of the body making the noise it goes straight for it and bites. Kept 8
       // seconds near a noise biting nothing (a radio lying about, a body out of reach), it gives
@@ -377,12 +388,15 @@ export const config = {
       patience: 8,
       boredSeconds: 20,
       // Its roar carries 25 cells, its snarl as it turns to a noise 4, its bite 6, its huff as it
-      // gives up 4.
+      // gives up 4, its growl as it crouches to pounce 5, its roar as it leaps 15, its skid 5.
       sounds: {
         roar: CELL * 25,
         snarl: CELL * 4,
         bite: CELL * 6,
         huff: CELL * 4,
+        growl: CELL * 5,
+        pounce: CELL * 15,
+        skid: CELL * 5,
       },
     },
     // A swollen thing that comes alone, out of the dark, never within 14 cells of a player. It
