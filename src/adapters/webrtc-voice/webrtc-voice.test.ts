@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { RADIO_SOUND } from "./radio-sound.fixture.js";
 import type {
   VoiceConnectionConfig,
   VoiceSettings,
@@ -103,7 +104,11 @@ class FakePeerConnection extends EventTarget {
 }
 
 function fakeNode() {
-  const param = () => ({ value: 0, setTargetAtTime: vi.fn() });
+  const param = () => ({
+    value: 0,
+    setTargetAtTime: vi.fn(),
+    cancelScheduledValues: vi.fn(),
+  });
   return {
     connect: vi.fn(),
     disconnect: vi.fn(),
@@ -119,8 +124,30 @@ class FakeAudioContext {
   createGain = fakeNode;
   createStereoPanner = fakeNode;
   createMediaStreamSource = fakeNode;
+  sampleRate = 8000;
   createBiquadFilter() {
-    return { ...fakeNode(), type: "", frequency: { value: 0 } };
+    return {
+      ...fakeNode(),
+      type: "",
+      frequency: { value: 0 },
+      Q: { value: 0 },
+    };
+  }
+  createWaveShaper() {
+    return { ...fakeNode(), curve: null };
+  }
+  createBuffer(_channels: number, length: number) {
+    const samples = new Float32Array(length);
+    return { getChannelData: () => samples };
+  }
+  createBufferSource() {
+    return {
+      ...fakeNode(),
+      buffer: null,
+      loop: false,
+      start: vi.fn(),
+      stop: vi.fn(),
+    };
   }
   createAnalyser() {
     return {
@@ -193,6 +220,7 @@ function voiceIn(settings: VoiceSettings = OPEN_MIC) {
     { audioContext: () => context, output: () => output },
     settings,
     CONFIG,
+    RADIO_SOUND,
   );
   const failed: string[] = [];
   const room = voice.join(ME, () => undefined, {

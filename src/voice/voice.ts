@@ -78,8 +78,67 @@ export interface VoiceDiagnostics {
 export interface PeerMix {
   volume: number;
   pan: number;
-  /** How loud and where it plays through a speaker; silent when left out. */
-  radio?: { volume: number; pan: number };
+  /**
+   * How loud and where it plays through a speaker, and how much it breaks up on the way there,
+   * 0..1 (none when left out); silent when left out.
+   */
+  radio?: { volume: number; pan: number; interference?: number };
+}
+
+/** A range a value is picked from, evenly. */
+interface Span {
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * How a voice sounds through a cheap speaker such as a walkie talkie's, at no interference
+ * (`clean`) and at full interference (`worst`), with everything between blended. Times in
+ * seconds, rates in events a second, volumes as shares of the voice's own volume there.
+ */
+export interface RadioSoundConfig {
+  /** Hz below and above which the voice, and its static, is cut. */
+  readonly band: { readonly low: number; readonly high: number };
+  /** A boost, in dB, of the middle of the band that gives a small speaker its honk. */
+  readonly honk: {
+    readonly frequency: number;
+    readonly gain: number;
+    readonly q: number;
+  };
+  /**
+   * How hard the voice is driven into clipping (a gain before it); `makeup` scales it back after,
+   * and `steps` is how many levels the clipped voice is crushed to.
+   */
+  readonly crunch: {
+    readonly clean: number;
+    readonly worst: number;
+    readonly makeup: number;
+    readonly steps: number;
+  };
+  /** The steady hiss of static under the voice while it plays. */
+  readonly hiss: { readonly clean: number; readonly worst: number };
+  /** The burst of static as a transmission opens and closes. */
+  readonly squelch: {
+    readonly volume: number;
+    readonly open: number;
+    readonly close: number;
+  };
+  /** Moments the voice nearly cuts out, and the static swells by `swell` times. */
+  readonly dropout: {
+    readonly clean: number;
+    readonly worst: number;
+    readonly length: Span;
+    /** The voice's volume during one. */
+    readonly depth: number;
+    readonly swell: number;
+  };
+  /** Sharp pops of static. */
+  readonly crackle: {
+    readonly clean: number;
+    readonly worst: number;
+    readonly length: Span;
+    readonly volume: number;
+  };
 }
 
 /** Timings and limits a voice implementation holds its connections to. */

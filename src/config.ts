@@ -16,7 +16,11 @@ import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, UiConfig } from "./ui/index.js";
 import type { WheelConfig } from "./input/index.js";
 
-import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
+import type {
+  RadioSoundConfig,
+  VoiceConnectionConfig,
+  VoiceFalloff,
+} from "./voice/index.js";
 
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
 interface AppConfig extends SimConfig {
@@ -35,6 +39,7 @@ interface AppConfig extends SimConfig {
   readonly moves: MovesConfig;
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
+  readonly voiceRadio: RadioSoundConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
@@ -694,12 +699,40 @@ export const config = {
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
   // A voice through a walkie talkie's small speaker is full only within a cell of it and gone 8
-  // cells off, where a voice in the air carries 12.
+  // cells off, where a voice in the air carries 12. Carried between walkies it always breaks up a
+  // tenth, and breaks up more past 6 cells apart, all the way 90 cells apart: most of the world's
+  // 140 cell width.
   voice: {
     full: 100,
     silent: 600,
     pan: 300,
     radio: { full: CELL, silent: CELL * 8, pan: 300 },
+    interference: { clear: CELL * 6, lost: CELL * 90, floor: 0.1 },
+  },
+  // A cheap walkie's speaker: 300 to 3000 Hz with a honk at 1.8 kHz, driven into clipping 3x
+  // clean, 10x at worst, crushed to 32 levels. Static hisses at 4% of the voice clean, 30% at worst,
+  // and bursts at 80% for a tenth of a second as a transmission opens, a fifth as it closes. Clean,
+  // the voice drops out once in 20s and pops 0.3 times a second at 70%; at worst twice and 4 times a
+  // second.
+  voiceRadio: {
+    band: { low: 300, high: 3000 },
+    honk: { frequency: 1800, gain: 6, q: 1 },
+    crunch: { clean: 3, worst: 10, makeup: 0.35, steps: 32 },
+    hiss: { clean: 0.04, worst: 0.3 },
+    squelch: { volume: 0.8, open: 0.1, close: 0.2 },
+    dropout: {
+      clean: 0.05,
+      worst: 2,
+      length: { min: 0.05, max: 0.3 },
+      depth: 0.05,
+      swell: 2.5,
+    },
+    crackle: {
+      clean: 0.3,
+      worst: 4,
+      length: { min: 0.01, max: 0.04 },
+      volume: 0.7,
+    },
   },
   voiceConnections: {
     levelRampS: 0.05,

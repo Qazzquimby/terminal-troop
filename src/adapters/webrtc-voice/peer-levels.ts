@@ -14,6 +14,10 @@ export interface PeerLevels {
   readonly pan: number;
   readonly radioGain: number;
   readonly radioPan: number;
+  /** Whether a transmission plays through a speaker at all, at any volume; never while muted. */
+  readonly radioKeyed: boolean;
+  /** How much that transmission breaks up, 0..1. */
+  readonly radioInterference: number;
 }
 
 /**
@@ -44,12 +48,14 @@ export function createPeerLevels() {
     levels(peerId: string): PeerLevels {
       const mix = mixes.get(peerId) ?? DEFAULT_PEER_MIX;
       const mute = muted.has(peerId);
-      const radio = mix.radio ?? { volume: 0, pan: 0 };
+      const radio = mix.radio ?? { volume: 0, pan: 0, interference: 0 };
       return {
         gain: peerGain(mix, mute),
         pan: mix.pan,
         radioGain: peerGain(radio, mute),
         radioPan: radio.pan,
+        radioKeyed: mix.radio !== undefined && !mute,
+        radioInterference: radio.interference ?? 0,
       };
     },
     mutedPeers: (): string[] => [...muted],

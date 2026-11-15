@@ -85,9 +85,11 @@ function receivers(game: Session, speaker: Player): ItemInstance[] {
 const walkieChannel: VoiceChannel = {
   routes(game, speaker) {
     if (!transmitting(game, speaker)) return [];
+    const from = { x: speaker.x, y: speaker.y };
     return receivers(game, speaker).map((instance) => ({
       at: instance.at,
       via: "radio" as const,
+      from,
     }));
   },
 };

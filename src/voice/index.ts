@@ -10,6 +10,7 @@ export type {
   MicState,
   PeerDiagnostics,
   PeerMix,
+  RadioSoundConfig,
   Voice,
   VoiceConnectionConfig,
   VoiceDiagnostics,
