@@ -14,7 +14,6 @@ import {
 import type {
   EntityDefinition,
   Point,
-  Scatter,
   Session,
   Sound,
   Strike,
@@ -36,7 +35,6 @@ const strikeUrl = new URL("./sfx/strike.mp3", import.meta.url).href;
  * sprint.
  */
 export interface IdolConfig {
-  readonly spawn: Scatter;
   readonly spawning: SpawningConfig;
   readonly radius: number;
   /** How far it sees, all round it, along a clear line. */
@@ -391,7 +389,6 @@ export const idol = defineEntity(NAME, (config: IdolConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    scatter: config.spawn,
     fresh: (_seed: number, game: Session) => freshIdol(game.worldTime),
   }),
 }));

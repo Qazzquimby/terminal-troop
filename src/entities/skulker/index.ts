@@ -17,7 +17,6 @@ import {
 import type {
   EntityDefinition,
   Point,
-  Scatter,
   Session,
   Sound,
   Strike,
@@ -49,8 +48,7 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
  * times in sim seconds.
  */
 export interface SkulkerConfig {
-  /** Where a new world puts its first; none, as a rule, so they only arrive later. */
-  readonly spawn: Scatter;
+  /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -384,7 +382,7 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
 }
 
 /**
- * The skulker: rare, one at a time, arriving in the dark out of every player's sight. It knows
+ * The skulker: alone, arriving in the dark out of every player's sight. It knows
  * where every player is and which way each faces, and creeps up on the nearest along a way no
  * player looks down, faster than a walk. Caught in a player's gaze, it hisses and backs off to
  * where it arrived, keeping well away, for a long while. Hurt, it shrieks and runs at whatever
@@ -397,7 +395,6 @@ export const skulker = defineEntity(NAME, (config: SkulkerConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    scatter: config.spawn,
     fresh: (_seed: number, game: Session) => freshSkulker(game.worldTime),
   }),
 }));

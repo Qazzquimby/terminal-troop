@@ -16,7 +16,6 @@ import {
 import type {
   EntityDefinition,
   Point,
-  Scatter,
   Session,
   Sound,
   TileMap,
@@ -48,7 +47,6 @@ const blastUrl = new URL("./sfx/blast.mp3", import.meta.url).href;
  * in pixels per second, times in seconds.
  */
 export interface BlisterConfig {
-  readonly spawn: Scatter;
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -486,20 +484,17 @@ export const blister = defineEntity(NAME, (config: BlisterConfig) => {
     fuse: sound({ url: fuseUrl, range: config.sounds.fuse }),
     blast: sound({ url: blastUrl, range: config.sounds.blast }),
   };
-  const arriving = arrivals({
-    kind: NAME,
-    radius: config.radius,
-    config: config.spawning,
-    scatter: config.spawn,
-    fresh: (seed: number, game: Session) =>
-      freshBlister(Math.floor(seed * 2 ** 32), game.worldTime),
-  });
   return {
     ...definition(config, sounds),
-    ...arriving,
+    ...arrivals({
+      kind: NAME,
+      radius: config.radius,
+      config: config.spawning,
+      fresh: (seed: number, game: Session) =>
+        freshBlister(Math.floor(seed * 2 ** 32), game.worldTime),
+    }),
     step(game: Session) {
       burstStunned(game, config, sounds);
-      arriving.step(game);
     },
   };
 });

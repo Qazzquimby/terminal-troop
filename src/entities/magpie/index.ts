@@ -25,7 +25,6 @@ import type {
   ItemInstance,
   Player,
   Point,
-  Scatter,
   Session,
   Sound,
   Strike,
@@ -59,8 +58,7 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
  * sim seconds.
  */
 export interface MagpieConfig {
-  readonly spawn: Scatter;
-  /** How groups keep arriving; each group shares one nest. */
+  /** How the world's spawner brings groups; each group shares one nest. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -733,7 +731,6 @@ export const magpie = defineEntity(NAME, (config: MagpieConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    scatter: config.spawn,
     fresh: (_seed: number, game: Session) => freshMagpie(game.worldTime),
   }),
 }));

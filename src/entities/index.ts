@@ -9,6 +9,7 @@ import { witch } from "./witch/index.js";
 import { idol } from "./idol/index.js";
 import { skulker } from "./skulker/index.js";
 import { magpie } from "./magpie/index.js";
+import { spawner } from "./spawning.js";
 
 export {
   departingIn,
@@ -30,6 +31,8 @@ const ENTITIES = [
   idol,
   skulker,
   magpie,
+  // Registers no kind, so its place in the order numbers none; brings every kind above.
+  spawner,
 ] as const;
 
 /** Each entry's config, under its name. */

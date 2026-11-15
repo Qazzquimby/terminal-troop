@@ -131,7 +131,6 @@ export {
   takeWorldEntries,
   worldData,
 } from "./world-data.js";
-export type { WorldData } from "./world-data.js";
 export { movement } from "./movement.js";
 export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
 export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";

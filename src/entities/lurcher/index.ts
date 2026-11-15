@@ -11,7 +11,6 @@ import {
 import type {
   EntityDefinition,
   Point,
-  Scatter,
   Session,
   Sound,
   Strike,
@@ -45,7 +44,6 @@ const biteUrl = new URL("./sfx/bite.mp3", import.meta.url).href;
  * speeds in pixels per second, times in seconds.
  */
 export interface LurcherConfig {
-  readonly spawn: Scatter;
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -465,7 +463,6 @@ export const lurcher = defineEntity(NAME, (config: LurcherConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    scatter: config.spawn,
     // It comes out in the light as well as the dark.
     rules: { inLight: true },
     fresh: (seed: number, game: Session) =>

@@ -35,7 +35,6 @@ const entities: EntitiesConfig = {
   zombie: {
     ...testEntitiesConfig.zombie,
     spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
-    spawning: { ...testEntitiesConfig.zombie.spawning, maxAlive: 0 },
   },
 };
 
