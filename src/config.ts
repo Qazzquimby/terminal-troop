@@ -378,9 +378,9 @@ export const config = {
       detour: { factor: 2, slack: CELL * 2 },
       // Within 2 cells of a body it hunts it lights a 1s fuse, and keeps coming. Any hurt lights it
       // too, but another exploder's burst, so one burst does not set off every exploder near it.
-      fuseRange: CELL * 2,
+      fuseRange: CELL * 3,
       fuseOnHurt: { minDamage: 0, except: ["exploder"] },
-      fuse: 1,
+      fuse: 2,
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
       blast: { radius: CELL * 3, centre: 100, edge: 30 },
