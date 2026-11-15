@@ -31,7 +31,6 @@ function entitiesWith(zombies: number): EntitiesConfig {
     zombie: {
       ...testEntitiesConfig.zombie,
       spawn: { ...testEntitiesConfig.zombie.spawn, count: zombies },
-      spawning: { ...testEntitiesConfig.zombie.spawning, maxAlive: 0 },
     },
     cruiser: { ...testEntitiesConfig.cruiser, radius: 40 },
   };

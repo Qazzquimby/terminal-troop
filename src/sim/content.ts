@@ -178,6 +178,11 @@ export interface EntitySpec<S> extends EntityDefinition<S> {
   readonly world?: WorldDataSet;
   /** Runs on the host, each step, once the entities have moved. */
   step?(game: Session, dt: number): void;
+  /**
+   * Runs as the kind is registered with a new session, after the kind itself: to enlist it with
+   * what the world does for every kind, such as spawning.
+   */
+  register?(game: Session): void;
 }
 
 /** How strongly a scatter favours the spot `at`: 0 or more. */
@@ -317,6 +322,7 @@ export function defineEntity<N extends string, C, S>(
         world: spec.world,
         register(game) {
           kind.register(game);
+          spec.register?.(game);
         },
         step(game, dt) {
           spec.step?.(game, dt);

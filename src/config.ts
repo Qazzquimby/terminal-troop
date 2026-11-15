@@ -221,16 +221,8 @@ export const config = {
   greeting: { replayMs: 10_000 },
   entities: {
     zombie: {
-      spawn: {
-        count: { density: 0.4, min: 1 },
-        seed: 1,
-        clearance: CELL * 10,
-      },
       spawning: {
-        firstGap: 36,
-        lastGap: 3,
-        rampSeconds: 300,
-        maxAlive: 120,
+        weight: 100,
         tries: 24,
         unseenDistance: 700,
         group: { min: 1, max: 5, spread: CELL * 2 },
@@ -312,14 +304,13 @@ export const config = {
       sounds: { beep: CELL * 8, flash: CELL * 12 },
       volume: 0.8,
     },
-    // At most one alive, the first 4 minutes into a world, never within 14 cells of a player, then
-    // a try every 5 minutes, should it ever be gone. It creeps at a fifth of a player's walk, kills
-    // whatever it touches, at most once a second, and replans its way every 2 seconds.
+    // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps at a
+    // fifth of a player's walk, kills whatever it touches, at most once a second, and replans its
+    // way every 2 seconds.
     snail: {
       spawning: {
-        firstDelay: 240,
-        gap: 300,
-        maxAlive: 1,
+        weight: 30,
+        after: 240,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -329,20 +320,10 @@ export const config = {
       attackCooldown: 1,
       repathInterval: 2,
     },
-    // A blind hound three cells across, light or no light. One roams a new world; another arrives
-    // every 150s at first, every 60s after ten minutes, never more than 3, never within 30 cells
-    // of a player. Five shovel hits fell it; touching it costs 100 health, once a second.
+    // A blind hound three cells across, light or no light, never arriving within 30 cells of a
+    // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     lurcher: {
-      spawn: { count: 1, seed: 11, clearance: CELL * 30 },
-      spawning: {
-        firstGap: 150,
-        lastGap: 60,
-        rampSeconds: 600,
-        maxAlive: 3,
-        tries: 24,
-        unseenDistance: CELL * 30,
-        group: { min: 1, max: 1, spread: 0 },
-      },
+      spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
       radius: CELL * 1.5 - 3,
       maxHealth: SHOVEL_DAMAGE * 5,
       contactDamage: 100,
@@ -363,24 +344,10 @@ export const config = {
       // Its roar carries 25 cells, its snarl as it turns to a noise 4, its bite 6.
       sounds: { roar: CELL * 25, snarl: CELL * 4, bite: CELL * 6 },
     },
-    // A swollen thing that comes alone, out of the dark: four in a new world, another every 60s
-    // at first, every 20s after five minutes, never more than 15 nor within 14 cells of a player.
-    // It feels prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
+    // A swollen thing that comes alone, out of the dark, never within 14 cells of a player. It
+    // feels prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
     blister: {
-      spawn: {
-        count: { density: 0.15, min: 1 },
-        seed: 13,
-        clearance: CELL * 12,
-      },
-      spawning: {
-        firstGap: 60,
-        lastGap: 20,
-        rampSeconds: 300,
-        maxAlive: 15,
-        tries: 24,
-        unseenDistance: CELL * 14,
-        group: { min: 1, max: 1, spread: 0 },
-      },
+      spawning: { weight: 70, tries: 24, unseenDistance: CELL * 14 },
       radius: 16,
       maxHealth: SHOVEL_DAMAGE * 3,
       wanderSpeed: PLAYER_SPEED * 0.8,
@@ -400,25 +367,14 @@ export const config = {
       blast: { radius: CELL * 3, centre: 100, edge: 30 },
       sounds: { fuse: CELL * 6, blast: CELL * 40 },
     },
-    // One sleeps somewhere in a new world, at least 20 cells from the players; another arrives
-    // every 120s at first, every 90s after ten minutes, never more than 2, in the dark and never
-    // within 14 cells of a player. Five shovel hits fell her. She sees 8 cells all round her,
+    // She arrives in the dark, never within 14 cells of a player. Five shovel hits fell her. She sees 8 cells all round her,
     // wakes to a player she sees within 5 cells if they are still there after her 1s growl, and
     // rages 10s; she runs at a player's sprint. Enraged, she hits as hard as the shovel does
     // thrice, once a second, and wanders 8 cells at a time. She sleeps again 10 to 20 cells off,
     // at least 12 from every player. Her bark carries 8 cells every 3 to 6s while dormant; enraged,
     // every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16.
     witch: {
-      spawn: { count: 1, seed: 15, clearance: CELL * 20 },
-      spawning: {
-        firstGap: 120,
-        lastGap: 90,
-        rampSeconds: 600,
-        maxAlive: 2,
-        tries: 24,
-        unseenDistance: CELL * 14,
-        group: { min: 1, max: 1, spread: 0 },
-      },
+      spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
       radius: 15,
       maxHealth: SHOVEL_DAMAGE * 5,
       sightRange: CELL * 8,
@@ -446,22 +402,18 @@ export const config = {
         attack: CELL * 6,
       },
     },
-    // None in a new world; one arrives 3 minutes in, and, should it ever be gone, a try every 3
-    // minutes after, never more than one, in the dark and never within 14 cells of a player. It
+    // None in the first 3 minutes of a world; it arrives in the dark, never within 14 cells of a
+    // player. It
     // sees 16 cells all round it and walks a round 30 cells long, give or take 5, planning it
     // anew every 2s while no leg can be found. A hunt lasts 10s of moving, its route to its
     // quarry planned every quarter second. Its touch deals 90, once a second. Its tread carries 14
     // cells, between a walk and a sprint, every 0.3s, a sprint's pace; its blow 8.
     idol: {
-      spawn: { count: 0, seed: 17, clearance: CELL * 20 },
       spawning: {
-        firstGap: 180,
-        lastGap: 180,
-        rampSeconds: 1,
-        maxAlive: 1,
+        weight: 10,
+        after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
-        group: { min: 1, max: 1, spread: 0 },
       },
       radius: 16,
       sightRange: CELL * 16,
@@ -473,22 +425,18 @@ export const config = {
       step: { interval: 0.3, range: CELL * 14 },
       strikeRange: CELL * 8,
     },
-    // Rare and alone: none in a new world, the first after 4 minutes, then a try every 4 minutes,
-    // never more than one, never within 30 cells of a player. Five shovel hits fell it; it moves
+    // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
+    // player. Five shovel hits fell it; it moves
     // at 1.2 times a walk, and touching it costs 100 health, once a second. A player sees it down
     // their view cone as far as a flashlight reaches, 14 cells. Seen, it backs off for 25s,
     // keeping 12 cells from every player where it can; hurt, it rages for 10s. It replans twice a
     // second. Its hiss as it backs off carries 6 cells, its shriek of rage 16, its strike 8.
     skulker: {
-      spawn: { count: 0, seed: 15, clearance: CELL * 30 },
       spawning: {
-        firstGap: 240,
-        lastGap: 240,
-        rampSeconds: 600,
-        maxAlive: 1,
+        weight: 30,
+        after: 240,
         tries: 24,
         unseenDistance: CELL * 30,
-        group: { min: 1, max: 1, spread: 0 },
       },
       radius: 14,
       maxHealth: SHOVEL_DAMAGE * 5,
@@ -502,24 +450,14 @@ export const config = {
       repathInterval: 0.5,
       sounds: { retreat: CELL * 6, enraged: CELL * 16, attack: CELL * 8 },
     },
-    // Groups of 3 to 5 sharing a nest: about three groups in a new world, another every 3 minutes
-    // at first, every 90s after ten minutes, never more than 16, never within 14 cells of a player.
-    // Three shovel hits fell one. It forages at 0.8 times a walk and chases at 1.1, sees 6 cells,
+    // Groups of 3 to 5 sharing a nest, never arriving within 14 cells of a player. Three shovel hits fell one. It forages at 0.8 times a walk and chases at 1.1, sees 6 cells,
     // and searches 16 spots up to 15 cells from its nest. It guards 4 cells round the nest for 15s,
     // is spooked by a player within 8 cells for 5s, and bites its quarry for 10 once a second. A
     // nest's revenge lasts until the thief is 5 cells from what it stole. Its chitter carries 4
     // cells every 5 to 10s, its alarm 10, its pick-up 3, its bite 5.
     magpie: {
-      spawn: {
-        count: { density: 0.1, min: 1 },
-        seed: 17,
-        clearance: CELL * 14,
-      },
       spawning: {
-        firstGap: 180,
-        lastGap: 90,
-        rampSeconds: 600,
-        maxAlive: 16,
+        weight: 50,
         tries: 24,
         unseenDistance: CELL * 14,
         group: { min: 3, max: 5, spread: CELL * 2 },
@@ -548,6 +486,12 @@ export const config = {
         attack: CELL * 5,
       },
     },
+    // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
+    // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
+    // first, one every 10s from then on. Each roll that brings something picks a kind by its
+    // `spawning.weight`. A new world starts with 5 minutes of rolls at the starting chance:
+    // about 15 spawns.
+    spawner: { period: 10, nothing: 0.5, certainAfter: 1200, headStart: 300 },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.

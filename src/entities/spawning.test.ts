@@ -1,33 +1,35 @@
-import { mean } from "lodash-es";
+import { mean, omit } from "lodash-es";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   testEntitiesConfig,
   testSfx,
   testSimConfig,
-} from "../../integration/sim-config.js";
+} from "../integration/sim-config.js";
 import {
   AREA,
   createPlayer,
   createSession,
   dangerWeight,
+  inRect,
   isLit,
   mulberry32,
   randomFreePosition,
   registerContent,
   remoteness,
   updateSession,
-} from "../../sim/index.js";
+} from "../sim/index.js";
 import type {
   Controls,
   DangerConfig,
   Session,
   SimConfig,
-} from "../../sim/index.js";
-import type { EntitiesConfig } from "../index.js";
-import { entityContent } from "../index.js";
-import { spawnAllowed } from "../spawn-rules.js";
-import { spawnWeight } from "../spawning.js";
-import type { SpawningConfig } from "../spawning.js";
+  WorldKind,
+} from "../sim/index.js";
+import type { EntitiesConfig } from "./index.js";
+import { entityContent } from "./index.js";
+import { spawnAllowed } from "./spawn-rules.js";
+import { nothingChance, spawnWeight } from "./spawning.js";
+import type { SpawnerConfig, SpawningConfig } from "./spawning.js";
 
 const DT = 1 / 60;
 
@@ -44,10 +46,23 @@ const still: Controls = {
   holdingUse: false,
 };
 
-const SPAWNING = testEntitiesConfig.zombie.spawning;
+/** A roll every 5 seconds, each sure to bring something, and no head start. */
+const CERTAIN: SpawnerConfig = {
+  period: 5,
+  nothing: 0,
+  certainAfter: 20,
+  headStart: 0,
+};
 
-// Spawn spots and group members are drawn from Math.random, and a draw that finds no allowed spot
-// (lit, seen, or blocked) delays a spawn; every test here runs on a fixed seed so timings hold.
+/** Zombies alone, one at a time, never within 1100px of a player. */
+const ZOMBIES: SpawningConfig = {
+  weight: 1,
+  tries: 24,
+  unseenDistance: 1100,
+};
+
+// Rolls, picks and spawn spots draw from Math.random; every test here runs on a fixed seed so
+// counts and timings hold.
 beforeEach(() => {
   vi.spyOn(Math, "random").mockImplementation(mulberry32(1));
 });
@@ -55,38 +70,57 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+interface Tuning {
+  readonly spawner?: SpawnerConfig;
+  readonly zombie?: SpawningConfig;
+  readonly blister?: SpawningConfig;
+  readonly sim?: SimConfig;
+  readonly kind?: WorldKind;
+}
+
 /**
- * A new world with its cruiser and no starting zombies, blind ones so none runs at the player,
- * spawning by `spawning`.
+ * A new world with its cruiser and no scattered zombies, blind ones so none runs at the player,
+ * its spawner and kinds tuned by `tuning`; zombies alone may come unless it says otherwise.
  */
-function world(
-  spawning: SpawningConfig = SPAWNING,
-  sim: SimConfig = testSimConfig,
-): Session {
+function world(tuning: Tuning = {}): Session {
+  const zombie = omit(testEntitiesConfig.zombie, "spawn");
   const entities: EntitiesConfig = {
     ...testEntitiesConfig,
-    zombie: {
-      ...testEntitiesConfig.zombie,
-      sightRange: 0,
-      spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
-      spawning,
+    spawner: tuning.spawner ?? CERTAIN,
+    zombie: { ...zombie, sightRange: 0, spawning: tuning.zombie ?? ZOMBIES },
+    blister: {
+      ...testEntitiesConfig.blister,
+      senseRange: 0,
+      ...(tuning.blister !== undefined && { spawning: tuning.blister }),
     },
   };
-  const game = createSession("me", "ME", "SPAWNS", "standard", testSfx(), sim);
+  const game = createSession(
+    "me",
+    "ME",
+    "SPAWNS",
+    tuning.kind ?? "standard",
+    testSfx(),
+    tuning.sim ?? testSimConfig,
+  );
   registerContent(game, entityContent(entities));
   for (const content of game.contents) content.populate(game);
   return game;
 }
 
-/** A zombie spawned: when, and how far it was from the nearest player. */
+/** A monster spawned: its kind, when, and how far it was from the nearest player. */
 interface Spawned {
+  readonly kind: string;
   readonly time: number;
   readonly distance: number;
 }
 
-/** Runs `seconds` standing still, returning each zombie that spawned meanwhile. */
+function kindName(game: Session, id: number): string {
+  for (const [name, kind] of game.kindIds) if (kind === id) return name;
+  return "?";
+}
+
+/** Runs `seconds` standing still, returning each zombie or blister that spawned meanwhile. */
 function play(game: Session, seconds: number): Spawned[] {
-  const kind = game.kindIds.get("zombie");
   const known = new Set(game.entities.keys());
   const spawned: Spawned[] = [];
   for (let step = 0; step < Math.round(seconds / DT); step++) {
@@ -94,11 +128,13 @@ function play(game: Session, seconds: number): Spawned[] {
     for (const entity of game.entities.values()) {
       if (known.has(entity.id)) continue;
       known.add(entity.id);
-      if (entity.kind !== kind) continue;
+      const kind = kindName(game, entity.kind);
+      if (kind !== "zombie" && kind !== "blister") continue;
       const distances = [...game.players.values()].map((player) =>
         Math.hypot(player.x - entity.x, player.y - entity.y),
       );
       spawned.push({
+        kind,
         time: game.worldTime,
         distance: Math.min(...distances),
       });
@@ -107,48 +143,120 @@ function play(game: Session, seconds: number): Spawned[] {
   return spawned;
 }
 
-function zombies(game: Session): number {
-  const kind = game.kindIds.get("zombie");
+function count(game: Session, name: string): number {
+  const kind = game.kindIds.get(name);
   return [...game.entities.values()].filter((entity) => entity.kind === kind)
     .length;
 }
 
-test("nothing spawns before the first gap, and one spawns once it is up", () => {
+test("the chance of nothing falls evenly from its start to none, then stays none", () => {
+  const config = { ...CERTAIN, nothing: 0.6, certainAfter: 100 };
+  expect(nothingChance(config, 0)).toBeCloseTo(0.6);
+  expect(nothingChance(config, 50)).toBeCloseTo(0.3);
+  expect(nothingChance(config, 100)).toBe(0);
+  expect(nothingChance(config, 1000)).toBe(0);
+});
+
+test("the spawner rolls once a period, and a sure roll always brings something", () => {
   const game = world();
-  expect(play(game, SPAWNING.firstGap - 0.1)).toEqual([]);
+  expect(play(game, CERTAIN.period - 0.1)).toEqual([]);
   expect(play(game, 0.2)).toHaveLength(1);
+  expect(play(game, CERTAIN.period * 4)).toHaveLength(4);
 });
 
-test("the gap falls from the first to the last over the ramp", () => {
-  const game = world({ ...SPAWNING, maxAlive: 1000 });
-  const times = play(game, SPAWNING.rampSeconds + 4 * SPAWNING.lastGap).map(
-    ({ time }) => time,
+test("a roll may bring nothing while the world is young, never once it is old enough", () => {
+  const spawner = { ...CERTAIN, nothing: 1, certainAfter: 60 };
+  const game = world({ spawner });
+  const early = play(game, 20);
+  // Each roll in the first 20 seconds brings nothing at least two times in three.
+  expect(early.length).toBeLessThan(4);
+  play(game, 40);
+  // A roll may still find nowhere to put its zombie.
+  expect(play(game, CERTAIN.period * 10).length).toBeGreaterThanOrEqual(9);
+});
+
+test("a kind with no weight never comes", () => {
+  const game = world({ zombie: { ...ZOMBIES, weight: 0 } });
+  expect(play(game, 60)).toEqual([]);
+});
+
+test("kinds come in proportion to their weights", () => {
+  // A head start of 200 sure rolls, so no step of the world need be run.
+  const game = world({
+    spawner: { ...CERTAIN, period: 1, headStart: 200 },
+    zombie: { ...ZOMBIES, weight: 3 },
+    blister: { ...ZOMBIES, weight: 1 },
+  });
+  const zombies = count(game, "zombie");
+  const blisters = count(game, "blister");
+  expect(zombies + blisters).toBeGreaterThan(150);
+  expect(zombies / blisters).toBeGreaterThan(2);
+  expect(zombies / blisters).toBeLessThan(4.5);
+});
+
+test("a kind whose time has not come is left out of the picks", () => {
+  const game = world({
+    zombie: { ...ZOMBIES, weight: 1 },
+    blister: { ...ZOMBIES, weight: 1000, after: 30 },
+  });
+  const early = play(game, 29);
+  expect(early.length).toBeGreaterThan(3);
+  expect(early.every(({ kind }) => kind === "zombie")).toBe(true);
+  const late = play(game, 30);
+  expect(late.filter(({ kind }) => kind === "blister").length).toBeGreaterThan(
+    3,
   );
-  const gaps = times.slice(1).map((time, index) => time - (times[index] ?? 0));
-  expect(times[0]).toBeCloseTo(SPAWNING.firstGap, 1);
-  expect(gaps[0]).toBeLessThan(SPAWNING.firstGap);
-  for (const [index, gap] of gaps.slice(1).entries())
-    expect(gap).toBeLessThanOrEqual((gaps[index] ?? 0) + DT);
-  expect(gaps.at(-1)).toBeCloseTo(SPAWNING.lastGap, 1);
 });
 
-test("spawning stops at the cap, and goes on once one falls", () => {
-  const game = world({ ...SPAWNING, maxAlive: 3 });
-  play(game, SPAWNING.rampSeconds + 4 * SPAWNING.lastGap);
-  expect(zombies(game)).toBe(3);
+test("a kind with nowhere to appear gives way to another", () => {
+  const game = world({
+    zombie: { ...ZOMBIES, weight: 1000, unseenDistance: 1_000_000 },
+    blister: { ...ZOMBIES, weight: 1 },
+  });
+  const spawned = play(game, CERTAIN.period * 5 + 0.1);
+  expect(spawned).toHaveLength(5);
+  expect(spawned.every(({ kind }) => kind === "blister")).toBe(true);
+});
+
+test("a new world starts with its head start of rolls, each at the chance it begins with", () => {
+  const sure = world({ spawner: { ...CERTAIN, headStart: 30 } });
+  expect(count(sure, "zombie")).toBe(30 / CERTAIN.period);
+  // Rolls 20 minutes on would be sure to bring something; the head start's are not.
+  const never = world({
+    spawner: { ...CERTAIN, nothing: 1, certainAfter: 1, headStart: 30 },
+  });
+  expect(count(never, "zombie")).toBe(0);
+});
+
+test("a new world's head start brings no kind whose time has not come", () => {
+  const game = world({
+    spawner: { ...CERTAIN, headStart: 60 },
+    zombie: { ...ZOMBIES, after: 1 },
+  });
+  expect(count(game, "zombie")).toBe(0);
+});
+
+test("a new world's head start keeps out of every player's sight, and out of the start", () => {
+  const game = world({ spawner: { ...CERTAIN, headStart: 60 } });
   const kind = game.kindIds.get("zombie");
-  const fallen = [...game.entities.values()].find(
-    (entity) => entity.kind === kind,
-  );
-  if (fallen !== undefined) fallen.health = 0;
-  play(game, DT);
-  expect(zombies(game)).toBe(2);
-  expect(play(game, SPAWNING.lastGap + 0.1)).toHaveLength(1);
-  expect(zombies(game)).toBe(3);
+  const spawned = [...game.entities.values()].filter((e) => e.kind === kind);
+  expect(spawned).toHaveLength(12);
+  for (const zombie of spawned) {
+    expect(inRect(game.world.layout.start, zombie)).toBe(false);
+    expect(
+      Math.hypot(zombie.x - game.local.x, zombie.y - game.local.y),
+    ).toBeGreaterThanOrEqual(ZOMBIES.unseenDistance);
+  }
 });
 
-test("no zombie spawns within the unseen distance of any player", () => {
-  const game = world({ ...SPAWNING, maxAlive: 1000 });
+test("the dev square, too small to hide in, still starts with some, as far as they can stand", () => {
+  const game = world({ spawner: { ...CERTAIN, headStart: 30 }, kind: "dev" });
+  expect(count(game, "zombie")).toBeGreaterThan(0);
+  expect(play(game, CERTAIN.period * 3)).toEqual([]);
+});
+
+test("no spawn comes within the unseen distance of any player", () => {
+  const game = world();
   const other = createPlayer(
     "other",
     "OTHER",
@@ -156,43 +264,20 @@ test("no zombie spawns within the unseen distance of any player", () => {
     testSimConfig,
   );
   game.players.set(other.id, other);
-  const spawned = play(game, SPAWNING.rampSeconds + 10);
+  const spawned = play(game, CERTAIN.period * 15 + 0.1);
   expect(spawned.length).toBeGreaterThan(10);
   for (const { distance } of spawned)
-    expect(distance).toBeGreaterThanOrEqual(SPAWNING.unseenDistance);
+    expect(distance).toBeGreaterThanOrEqual(ZOMBIES.unseenDistance);
 });
 
 test("only the host spawns", () => {
   const game = world();
   game.hosting = false;
-  expect(play(game, SPAWNING.rampSeconds)).toEqual([]);
-});
-
-test("in a world of 100 by 80 cells, a spawn every 12 seconds at first still finds room 700px from the players", () => {
-  const spawning: SpawningConfig = {
-    firstGap: 12,
-    lastGap: 1,
-    rampSeconds: 300,
-    maxAlive: 120,
-    tries: 24,
-    unseenDistance: 700,
-    group: { min: 1, max: 1, spread: 100 },
-  };
-  const game = world(spawning, {
-    ...testSimConfig,
-    world: { ...testSimConfig.world, cell: 50, cols: 100, rows: 80 },
-  });
-  expect([game.world.W, game.world.H]).toEqual([5000, 4000]);
-  const spawned = play(game, 60);
-  expect(spawned.length).toBeGreaterThan(3);
-  expect(spawned[0]?.time).toBeCloseTo(spawning.firstGap, 1);
-  for (const { distance } of spawned)
-    expect(distance).toBeGreaterThanOrEqual(spawning.unseenDistance);
+  expect(play(game, 60)).toEqual([]);
 });
 
 const GROUP_OF_FIVE: SpawningConfig = {
-  ...SPAWNING,
-  maxAlive: 1000,
+  ...ZOMBIES,
   group: { min: 5, max: 5, spread: 100 },
 };
 
@@ -205,22 +290,18 @@ function zombiePoints(game: Session): { x: number; y: number }[] {
 }
 
 test("a spawn brings a whole group at once, standing together, apart and unseen", () => {
-  // Placing members draws from Math.random, and a draw can land a member somewhere it may not
-  // stand (lit, or seen), cutting the group short; seeded so the run is the same every time.
-  vi.spyOn(Math, "random").mockImplementation(mulberry32(1));
-  const game = world(GROUP_OF_FIVE);
-  const spawned = play(game, SPAWNING.firstGap + 0.1);
-  vi.restoreAllMocks();
+  const game = world({ zombie: GROUP_OF_FIVE });
+  const spawned = play(game, CERTAIN.period + 0.1);
   expect(spawned).toHaveLength(5);
   expect(new Set(spawned.map(({ time }) => time)).size).toBe(1);
   for (const { distance } of spawned)
-    expect(distance).toBeGreaterThanOrEqual(SPAWNING.unseenDistance);
+    expect(distance).toBeGreaterThanOrEqual(ZOMBIES.unseenDistance);
   const points = zombiePoints(game);
   const [first] = points;
   for (const [index, point] of points.entries()) {
     expect(
       Math.hypot(point.x - (first?.x ?? 0), point.y - (first?.y ?? 0)),
-    ).toBeLessThanOrEqual(GROUP_OF_FIVE.group.spread + 10);
+    ).toBeLessThanOrEqual(100 + 10);
     for (const other of points.slice(index + 1))
       expect(
         Math.hypot(point.x - other.x, point.y - other.y),
@@ -230,54 +311,19 @@ test("a spawn brings a whole group at once, standing together, apart and unseen"
 
 test("groups come in sizes between the least and the most", () => {
   const game = world({
-    ...SPAWNING,
-    maxAlive: 1000,
-    firstGap: 0.5,
-    lastGap: 0.5,
-    rampSeconds: 1,
-    group: { min: 1, max: 5, spread: 100 },
+    spawner: { ...CERTAIN, period: 0.5 },
+    zombie: { ...ZOMBIES, group: { min: 1, max: 5, spread: 100 } },
   });
   const sizes = new Map<number, number>();
-  // Short gaps, so enough groups arrive without simulating a crowd for minutes.
   for (const { time } of play(game, 10))
     sizes.set(time, (sizes.get(time) ?? 0) + 1);
   const counts = [...sizes.values()];
   expect(counts.length).toBeGreaterThan(10);
-  for (const count of counts) {
-    expect(count).toBeGreaterThanOrEqual(1);
-    expect(count).toBeLessThanOrEqual(5);
+  for (const size of counts) {
+    expect(size).toBeGreaterThanOrEqual(1);
+    expect(size).toBeLessThanOrEqual(5);
   }
   expect(new Set(counts).size).toBeGreaterThan(1);
-});
-
-test("a group that would overfill the world comes short", () => {
-  const game = world({ ...GROUP_OF_FIVE, maxAlive: 3 });
-  expect(play(game, SPAWNING.firstGap + 0.1)).toHaveLength(3);
-});
-
-test("each zombie a new world scatters is gathered into a group as spawning begins", () => {
-  const entities: EntitiesConfig = {
-    ...testEntitiesConfig,
-    zombie: {
-      ...testEntitiesConfig.zombie,
-      sightRange: 0,
-      spawning: { ...GROUP_OF_FIVE, group: { min: 3, max: 3, spread: 100 } },
-    },
-  };
-  const game = createSession(
-    "me",
-    "ME",
-    "SPAWNS",
-    "standard",
-    testSfx(),
-    testSimConfig,
-  );
-  registerContent(game, entityContent(entities));
-  for (const content of game.contents) content.populate(game);
-  const leaders = zombies(game);
-  expect(leaders).toBeGreaterThan(0);
-  play(game, DT);
-  expect(zombies(game)).toBe(leaders * 3);
 });
 
 /** The test tuning, its world as dangerous as `danger` makes it; the layout is the same. */
@@ -291,22 +337,18 @@ function dangerous(danger: DangerConfig): SimConfig {
   };
 }
 
-/** How remote each zombie that spawned over `seconds` is, with no cap. */
-function spawnSpots(danger: DangerConfig, seconds: number) {
-  const game = world({ ...SPAWNING, maxAlive: 1000 }, dangerous(danger));
-  const kind = game.kindIds.get("zombie");
-  play(game, seconds);
-  return [...game.entities.values()]
-    .filter((entity) => entity.kind === kind)
-    .map(({ x, y }) => remoteness(game.world, { x, y }));
-}
-
 test("spawns favour dangerous spots: far from the road, and towards the exit's side", () => {
-  // Spawns draw from Math.random; seeded here so the comparison is the same every run.
   const seeded = (danger: DangerConfig) => {
     vi.spyOn(Math, "random").mockImplementation(mulberry32(11));
-    const spots = spawnSpots(danger, SPAWNING.rampSeconds + 30);
+    // A head start of 100 rolls, so each stands where it spawned; more tries than the test
+    // zombie's, so the weighing shows over the noise.
+    const game = world({
+      spawner: { ...CERTAIN, period: 1, headStart: 100 },
+      zombie: { ...ZOMBIES, tries: 64 },
+      sim: dangerous(danger),
+    });
     vi.restoreAllMocks();
+    const spots = zombiePoints(game).map((at) => remoteness(game.world, at));
     return {
       count: spots.length,
       road: mean(spots.map(({ road }) => road)),
@@ -380,7 +422,7 @@ test("a kind whose rules allow light may appear in the sunlit road, but still no
   expect(spawnAllowed(game, inStart, rules)).toBe(false);
 });
 
-test("a new world's first zombies favour the same spots", () => {
+test("zombies a new world scatters favour the same spots", () => {
   const first = (danger: DangerConfig) => {
     const entities: EntitiesConfig = {
       ...testEntitiesConfig,

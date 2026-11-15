@@ -15,7 +15,6 @@ import {
 import type {
   EntityDefinition,
   Point,
-  Scatter,
   Session,
   Sound,
   Strike,
@@ -53,7 +52,6 @@ interface Gap {
  * pixels, times in sim seconds; she runs at a player's sprint.
  */
 export interface WitchConfig {
-  readonly spawn: Scatter;
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -454,7 +452,6 @@ export const witch = defineEntity(NAME, (config: WitchConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    scatter: config.spawn,
     fresh: (_seed: number, game: Session) => freshWitch(game.worldTime, config),
   }),
 }));

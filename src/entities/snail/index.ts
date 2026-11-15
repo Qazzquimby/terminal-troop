@@ -3,15 +3,11 @@ import { drawEmoji } from "../../render/index.js";
 import {
   defineEntity,
   hasKindTag,
-  inRect,
   INERT_TAG,
   ITEM_TAG,
-  isAreaFree,
   livingBodies,
   livingPlayers,
   rounded,
-  spawn,
-  worldData,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -21,27 +17,16 @@ import type {
   WorldEntity,
 } from "../../sim/index.js";
 import { MAX_WAYPOINTS, planRoute, steer } from "../route.js";
-
-/** How the world comes to hold its snail. Times in sim seconds, distances in pixels. */
-interface SnailSpawningConfig {
-  /** Seconds into the world before the first may arrive. */
-  readonly firstDelay: number;
-  /** Seconds between later tries, each only while fewer than the most are alive. */
-  readonly gap: number;
-  /** Most alive at once. */
-  readonly maxAlive: number;
-  /** Points tried for a spawn before skipping it. */
-  readonly tries: number;
-  /** Least distance a spawn keeps from every player, so none sees it appear. */
-  readonly unseenDistance: number;
-}
+import { arrivals } from "../spawning.js";
+import type { SpawningConfig } from "../spawning.js";
 
 /**
  * The snail: picks one player when it arrives and creeps after them, slow, never stopping, and
  * kills whatever it touches. It cannot die. Distances in pixels.
  */
 export interface SnailConfig {
-  readonly spawning: SnailSpawningConfig;
+  /** How the world's spawner brings it. */
+  readonly spawning: SpawningConfig;
   readonly radius: number;
   /** Its speed, as a share of a player's walking speed. */
   readonly speedShare: number;
@@ -194,73 +179,21 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
     },
   };
 }
-
 /**
- * When, on the world's clock, the next snail may arrive; null until a host first steps the world.
- * Kept in the world so a new host goes on from it.
- */
-const snailSpawning = worldData({
-  schema: z.object({ nextAt: z.number() }).nullable(),
-  initial: null,
-});
-
-function countAlive(game: Session): number {
-  const id = game.kindIds.get(NAME);
-  let count = 0;
-  for (const entity of game.entities.values()) if (entity.kind === id) count++;
-  return count;
-}
-
-/**
- * A free point out of the world's start and far enough from every player that none sees it
- * appear, or null when none of the tries finds one. Light does not keep it away.
- */
-function unseenPoint(game: Session, config: SnailConfig): Point | null {
-  const { world } = game;
-  for (let attempt = 0; attempt < config.spawning.tries; attempt++) {
-    const at = { x: Math.random() * world.W, y: Math.random() * world.H };
-    if (!isAreaFree(world.map, at.x, at.y, config.radius)) continue;
-    if (inRect(world.layout.start, at)) continue;
-    const seen = livingPlayers(game).some(
-      (player) =>
-        Math.hypot(player.x - at.x, player.y - at.y) <
-        config.spawning.unseenDistance,
-    );
-    if (!seen) return at;
-  }
-  return null;
-}
-
-/**
- * Brings a snail into the world once one is due and fewer than the most are alive, out of every
- * player's sight. Runs on the host.
- */
-function stepSpawning(game: Session, config: SnailConfig): void {
-  const now = game.worldTime;
-  const held = snailSpawning.get(game);
-  const { spawning } = config;
-  if (held === null) {
-    snailSpawning.set(game, { nextAt: now + spawning.firstDelay });
-    return;
-  }
-  if (now < held.nextAt) return;
-  snailSpawning.set(game, { nextAt: now + spawning.gap });
-  if (countAlive(game) >= spawning.maxAlive) return;
-  const at = unseenPoint(game, config);
-  if (at === null) return;
-  spawn(game, NAME, at, freshSnail(pickQuarry(game), now));
-}
-
-/**
- * The snail, "The Unhurried": rare, and never more than a few. When it arrives it picks a player
- * and creeps after them at a fraction of their pace, round the walls, for as long as they are in
- * the world. Whatever it touches, player or monster, takes damage enough to kill it, and nothing
- * kills it. It makes no sound, pays light no mind, and a stun holds it like anything else.
+ * The snail, "The Unhurried": rare. When it arrives it picks a player and creeps after them at a
+ * fraction of their pace, round the walls, for as long as they are in the world. Whatever it
+ * touches, player or monster, takes damage enough to kill it, and nothing kills it. It makes no
+ * sound, pays light no mind, and a stun holds it like anything else.
  */
 export const snail = defineEntity(NAME, (config: SnailConfig) => ({
   ...definition(config),
-  world: { spawning: snailSpawning },
-  step(game: Session) {
-    stepSpawning(game, config);
-  },
+  ...arrivals({
+    kind: NAME,
+    radius: config.radius,
+    config: config.spawning,
+    // Light does not keep it away.
+    rules: { inLight: true },
+    fresh: (_seed: number, game: Session) =>
+      freshSnail(pickQuarry(game), game.worldTime),
+  }),
 }));

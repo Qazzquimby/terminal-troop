@@ -39,16 +39,20 @@ import {
 } from "../hunt.js";
 import type { Prey } from "../hunt.js";
 import { planRoute } from "../route.js";
-import { arrivals } from "../spawning.js";
+import { arrivals, spawnWeight } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 /**
- * How a zombie moves and hunts, and how many a new world starts with. Distances are in pixels,
- * speeds in pixels per second.
+ * How a zombie moves and hunts, and how it arrives. Distances are in pixels, speeds in pixels per
+ * second.
  */
 export interface ZombieConfig {
-  readonly spawn: Scatter;
-  /** How more keep arriving once the world has begun. */
+  /**
+   * A fixed number a new world scatters, past what the spawner brings; none when left out. Tests
+   * use it to start with a known crowd.
+   */
+  readonly spawn?: Scatter;
+  /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
   /** Health when at full. */
@@ -466,9 +470,8 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
 
 /**
  * A zombie: wanders slowly, drawn towards what it hears but deaf to other zombies, and runs down
- * anything living it sees, zombies and inert things aside, to where it last saw it. A new world
- * scatters groups of them away from the players, each drawing its own seed, and more groups keep
- * arriving out of sight, ever faster as the world ages.
+ * anything living it sees, zombies and inert things aside, to where it last saw it. The world's
+ * spawner brings them in groups, out of sight, each drawing its own seed.
  */
 export const zombie = defineEntity(NAME, (config: ZombieConfig) => ({
   ...definition(config),
@@ -476,8 +479,16 @@ export const zombie = defineEntity(NAME, (config: ZombieConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    scatter: config.spawn,
     fresh: (seed: number, game: Session) =>
       freshZombie(Math.floor(seed * 2 ** 32), game.worldTime, config),
+  }),
+  ...(config.spawn !== undefined && {
+    spawn: {
+      at: "scatter" as const,
+      ...config.spawn,
+      data: (rng: Rng, game: Session) =>
+        freshZombie(Math.floor(rng() * 2 ** 32), game.worldTime, config),
+      weight: (game: Session, at: Point) => spawnWeight(game, at),
+    },
   }),
 }));

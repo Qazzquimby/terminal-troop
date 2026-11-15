@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   testEntitiesConfig,
   testSfx,
@@ -7,12 +7,14 @@ import {
 import {
   createSession,
   inRect,
+  mulberry32,
   registerContent,
   spawnEntity,
   stun,
   updateSession,
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
+import { entityContent } from "../index.js";
 import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
 import { freshSnail, snail as snailContent, SnailState } from "./index.js";
 import type { SnailConfig } from "./index.js";
@@ -30,10 +32,17 @@ const idle = {
   interact: false,
   drop: false,
 };
-/** The test snail, the first arriving 10 seconds in, a try for another every 10 seconds after. */
+/** Seconds into a world before the spawner may bring the test snail. */
+const ARRIVES_AFTER = 10;
+
+/** The test snail, which the spawner may bring 10 seconds into a world. */
 const config: SnailConfig = {
   ...testEntitiesConfig.snail,
-  spawning: { ...testEntitiesConfig.snail.spawning, firstDelay: 10, gap: 10 },
+  spawning: {
+    ...testEntitiesConfig.snail.spawning,
+    weight: 1,
+    after: ARRIVES_AFTER,
+  },
 };
 
 /** A session of `kind`, with zombies and the snail; the player stands at (x, y). */
@@ -122,25 +131,49 @@ test("a snail with no player to follow picks another, or stands", () => {
   expect(SnailState.parse(snail.data).quarry).toBe("me");
 });
 
-test("one snail arrives after its first delay, out of the start and far from the players, and never a second", () => {
-  const game = world("standard");
-  const start = game.world.layout.start;
+test("snails come through the spawner once their time has come, out of the start and far from the players, after a player", () => {
+  vi.spyOn(Math, "random").mockImplementation(mulberry32(3));
+  const game = createSession(
+    "me",
+    "ME",
+    "SNAIL",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  registerContent(
+    game,
+    entityContent({
+      ...testEntitiesConfig,
+      spawner: { period: 5, nothing: 0, certainAfter: 1, headStart: 60 },
+      snail: config,
+    }),
+  );
+  for (const content of game.contents) content.populate(game);
   Object.assign(game.local, { x: game.rally.x, y: game.rally.y });
   const snails = () =>
     [...game.entities.values()].filter(
       (entity) => entity.kind === game.kindIds.get("snail"),
     );
-  run(game, config.spawning.firstDelay - 1);
+  // Its time has not come as the world starts, so its head start brings none.
   expect(snails()).toHaveLength(0);
-  run(game, 1.5);
-  const [arrived, ...more] = snails();
-  expect(more).toHaveLength(0);
-  expect(arrived).toBeDefined();
-  if (arrived === undefined) return;
-  expect(inRect(start, arrived)).toBe(false);
-  expect(
-    Math.hypot(arrived.x - game.local.x, arrived.y - game.local.y),
-  ).toBeGreaterThan(config.spawning.unseenDistance - 50);
-  run(game, config.spawning.gap + 1);
-  expect(snails()).toHaveLength(1);
+  run(game, ARRIVES_AFTER - 1);
+  expect(snails()).toHaveLength(0);
+  const known = new Set(game.entities.keys());
+  for (let step = 0; step < Math.round(15 / DT); step++) {
+    updateSession(game, idle, DT);
+    for (const arrived of snails()) {
+      if (known.has(arrived.id)) continue;
+      known.add(arrived.id);
+      expect(inRect(game.world.layout.start, arrived)).toBe(false);
+      expect(
+        Math.hypot(arrived.x - game.local.x, arrived.y - game.local.y),
+      ).toBeGreaterThanOrEqual(config.spawning.unseenDistance);
+    }
+  }
+  vi.restoreAllMocks();
+  // No longer one at a time: each roll brings another.
+  expect(snails().length).toBeGreaterThan(1);
+  for (const arrived of snails())
+    expect(SnailState.parse(arrived.data).quarry).toBe("me");
 });

@@ -15,16 +15,26 @@ import { testEntitiesConfig, testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
 
-/** No starting zombies, and blind ones, so only spawning adds them and none runs anyone down. */
+/**
+ * A roll every 2 seconds, sure to bring nothing as a world begins and sure to bring something
+ * 20 seconds in, and no head start.
+ */
+const spawner = { period: 2, nothing: 1, certainAfter: 20, headStart: 0 };
+
+/**
+ * No starting zombies, and blind ones, so only the spawner adds them and none runs anyone down;
+ * zombies are all it brings.
+ */
 const entities = {
   ...testEntitiesConfig,
+  spawner,
   zombie: {
     ...testEntitiesConfig.zombie,
     sightRange: 0,
     spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
+    spawning: { ...testEntitiesConfig.zombie.spawning, weight: 1 },
   },
 };
-const { spawning } = entities.zombie;
 
 const still: Controls = {
   move: { x: 0, y: 0 },
@@ -52,7 +62,7 @@ function zombies(room: Room): number {
     .length;
 }
 
-test("a new host goes on along the spawning ramp rather than starting it again", async () => {
+test("a new host goes on along the spawner's clock rather than starting it again", async () => {
   const hub = createHub();
   const clock = createManualClock();
   const client = (id: string): Room =>
@@ -94,7 +104,7 @@ test("a new host goes on along the spawning ramp rather than starting it again",
   };
   clock.advance(1000);
   expect(a.hostId()).toBe("a");
-  play(spawning.rampSeconds + 1);
+  play(spawner.certainAfter + 1);
   clock.advance(clock.now() + 1000 / testRoomConfig.sendHz);
   a.frame(clock.now());
   const before = zombies(b);
@@ -106,11 +116,7 @@ test("a new host goes on along the spawning ramp rather than starting it again",
   clock.advance(clock.now() + 3000);
   expect(b.hostId()).toBe("b");
 
-  // Spawning started again would wait out the first gap; at the ramp's end they come each last gap.
-  play(spawning.firstGap - spawning.lastGap);
-  expect(zombies(b)).toBeGreaterThanOrEqual(
-    before +
-      Math.floor((spawning.firstGap - spawning.lastGap) / spawning.lastGap) -
-      1,
-  );
+  // Started again, most rolls would bring nothing; gone on, every one brings a zombie.
+  play(spawner.period * 5);
+  expect(zombies(b)).toBeGreaterThanOrEqual(before + 4);
 });

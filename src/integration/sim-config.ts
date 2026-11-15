@@ -126,26 +126,20 @@ export const testMapMemoryConfig: MapMemoryConfig = {
   wall: { fill: "#333", edge: "#444", alpha: 0.5 },
 };
 
-/** A tide that never brings anything: none may be alive at once. */
-const NO_TIDE = {
-  firstGap: 5,
-  lastGap: 5,
-  rampSeconds: 20,
-  maxAlive: 0,
-  tries: 24,
-  group: { min: 1, max: 1, spread: 0 },
-} as const;
+/** A kind the spawner never picks: it has no weight. */
+const NEVER = { weight: 0, tries: 24 } as const;
 
 /**
- * Three zombies in the 4000x3000 test world, two in the dev square; they walk at 50px/s, chase at
- * 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most every 1.5
- * seconds. One more arrives every 5 seconds as a world begins, the gap falling to 1 second over
- * 20 seconds, one at a time, never past 20 alive nor within 1100px of a player, so never in the dev square,
- * whose far corners are nearer than that. A cruiser starts at the rally point, its two headlights
+ * Three zombies scattered in the 4000x3000 test world, two in the dev square; they walk at 50px/s,
+ * chase at 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most
+ * every 1.5 seconds. The spawner brings nothing unless a test gives a kind weight: it then rolls
+ * every 5 seconds, half of them bringing nothing as a world begins and every one 20 seconds in,
+ * and a new world starts with 30 seconds of rolls. A zombie it brings arrives alone, never within
+ * 1100px of a player. A cruiser starts at the rally point, its two headlights
  * 45 degree cones reaching 400px. A stun trap arms in 3s and stuns for 5s within 250px. The
- * snail creeps at a fifth of a player's pace and kills what it touches; none arrives in the first
- * ten minutes, so it stays out of tests that are not about it. No lurcher nor blister appears
- * unless a test spawns one: a lurcher 144px across, felled by three test shovel hits, charging at full suspicion of 1000; a
+ * snail creeps at a fifth of a player's pace and kills what it touches. No lurcher nor blister
+ * appears unless a test spawns one: a lurcher 144px across, felled by three test shovel hits,
+ * charging at full suspicion of 1000; a
  * blister that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
  * round, from 100 damage to 30. Nor does a witch or an idol. No skulker nor magpie beetle appears
  * unless a test spawns one: a
@@ -153,18 +147,11 @@ const NO_TIDE = {
  * 600px clear; magpie beetles at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
  * nest, spooked within 400px, avenging a theft until the thief is 250px from it.
  */
-export const testEntitiesConfig: EntitiesConfig = {
+export const testEntitiesConfig = {
+  spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
   zombie: {
     spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
-    spawning: {
-      firstGap: 5,
-      lastGap: 1,
-      rampSeconds: 20,
-      maxAlive: 20,
-      tries: 24,
-      unseenDistance: 1100,
-      group: { min: 1, max: 1, spread: 100 },
-    },
+    spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
     maxHealth: 40,
     attackDamage: 25,
@@ -214,13 +201,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     volume: 1,
   },
   snail: {
-    spawning: {
-      firstDelay: 600,
-      gap: 600,
-      maxAlive: 1,
-      tries: 24,
-      unseenDistance: 1100,
-    },
+    spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,
     speedShare: 0.2,
     damage: 500,
@@ -228,8 +209,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     repathInterval: 1,
   },
   lurcher: {
-    spawn: { count: 0, seed: 11, clearance: 400 },
-    spawning: { ...NO_TIDE, unseenDistance: 1100 },
+    spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 72,
     maxHealth: 75,
     contactDamage: 100,
@@ -245,8 +225,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     sounds: { roar: 1000, snarl: 200, bite: 300 },
   },
   blister: {
-    spawn: { count: 0, seed: 13, clearance: 400 },
-    spawning: { ...NO_TIDE, unseenDistance: 700 },
+    spawning: { ...NEVER, unseenDistance: 700 },
     radius: 16,
     maxHealth: 45,
     wanderSpeed: 80,
@@ -262,8 +241,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     sounds: { fuse: 300, blast: 2000 },
   },
   witch: {
-    spawn: { count: 0, seed: 15, clearance: 400 },
-    spawning: { ...NO_TIDE, unseenDistance: 1100 },
+    spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
     maxHealth: 75,
     sightRange: 400,
@@ -283,8 +261,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     sounds: { bark: 400, growl: 300, enrage: 800, rageBark: 600, attack: 300 },
   },
   idol: {
-    spawn: { count: 0, seed: 17, clearance: 400 },
-    spawning: { ...NO_TIDE, unseenDistance: 1100 },
+    spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 16,
     sightRange: 800,
     patrol: { distance: 300, spread: 50, tries: 16, retry: 2 },
@@ -296,8 +273,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     strikeRange: 400,
   },
   skulker: {
-    spawn: { count: 0, seed: 15, clearance: 400 },
-    spawning: { ...NO_TIDE, unseenDistance: 700 },
+    spawning: { ...NEVER, unseenDistance: 700 },
     radius: 14,
     maxHealth: 75,
     speed: 264,
@@ -311,9 +287,8 @@ export const testEntitiesConfig: EntitiesConfig = {
     sounds: { retreat: 300, enraged: 800, attack: 400 },
   },
   magpie: {
-    spawn: { count: 0, seed: 17, clearance: 400 },
     spawning: {
-      ...NO_TIDE,
+      ...NEVER,
       unseenDistance: 700,
       group: { min: 3, max: 5, spread: 100 },
     },
@@ -336,7 +311,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     chitterGap: { min: 5, max: 10 },
     sounds: { chitter: 200, alarm: 500, pickUp: 150, attack: 250 },
   },
-};
+} satisfies EntitiesConfig;
 
 /**
  * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
