@@ -19,6 +19,7 @@ import {
   heldItemOf,
   isGhost,
   isStunned,
+  isBodyVisible,
   isVisible,
   stunLeft,
   lightSources,
@@ -906,7 +907,14 @@ export function draw(
   applyCamera(sceneCtx, camera, () => {
     drawTerrain(sceneCtx, game.world, camera);
     drawBodies(sceneCtx, game, camera, now, isAway, viewer, (body) =>
-      isVisible(map, sources, lights, body, ambient),
+      isBodyVisible(
+        map,
+        sources,
+        lights,
+        body,
+        game.config.vision.footprintSpacing,
+        ambient,
+      ),
     );
     drawFlashes(sceneCtx, flashes, now);
   });

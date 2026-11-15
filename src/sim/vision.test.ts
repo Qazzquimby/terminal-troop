@@ -7,7 +7,9 @@ import type { VisibilityPolygon, VisionSource } from "./vision.js";
 import {
   canSeeFrom,
   directionalVision,
+  footprintPoints,
   hasLineOfSight,
+  isBodyVisible,
   isVisible,
   lightSources,
   litWalls,
@@ -81,6 +83,7 @@ test("directional vision combines a cone with short omnidirectional sight", () =
       rays: 64,
       surroundingsRadius: 40,
       lookRange: Infinity,
+      footprintSpacing: 10,
     },
     100,
   );
@@ -102,6 +105,7 @@ test("surroundings never exceed the viewer's sight range", () => {
       rays: 64,
       surroundingsRadius: 70,
       lookRange: Infinity,
+      footprintSpacing: 10,
     },
     20,
   );
@@ -124,6 +128,7 @@ test("walls block the omnidirectional part of directional vision", () => {
     rays: 64,
     surroundingsRadius: 150,
     lookRange: Infinity,
+    footprintSpacing: 10,
   });
 
   expect(
@@ -401,6 +406,7 @@ function viewerFacingRight(map: TileMap, x: number, y: number) {
       rays: 64,
       surroundingsRadius: SURROUNDINGS,
       lookRange: Infinity,
+      footprintSpacing: 10,
     },
   });
   const viewer = { id: "me", x, y, aim: 0 };
@@ -439,4 +445,74 @@ test("visibility is blocked by walls", () => {
     false,
   );
   expect(hasLineOfSight(map, { x: 75, y: 75 }, { x: 175, y: 75 })).toBe(true);
+});
+
+test("a footprint's points cover its disc out to its edge, and a point body is its centre alone", () => {
+  const points = footprintPoints({ x: 100, y: 100, radius: 40 }, 10);
+  const from = (point: { x: number; y: number }) =>
+    Math.hypot(point.x - 100, point.y - 100);
+
+  expect(points[0]).toEqual({ x: 100, y: 100 });
+  for (const point of points)
+    expect(from(point)).toBeLessThanOrEqual(40 + 1e-9);
+  // The outer ring lies on the edge, its neighbours no further apart than the spacing.
+  const edge = points.filter((point) => Math.abs(from(point) - 40) < 1e-9);
+  expect(edge.length).toBeGreaterThan(0);
+  expect((Math.PI * 2 * 40) / edge.length).toBeLessThanOrEqual(10);
+  expect(footprintPoints({ x: 5, y: 5, radius: 0 }, 10)).toEqual([
+    { x: 5, y: 5 },
+  ]);
+});
+
+test("a big body shows while its edge is in the view cone, though its centre is out of it", () => {
+  const map = emptyMap();
+  const source: VisionSource = {
+    x: 50,
+    y: 150,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+  const lights = [{ x: 50, y: 150, range: 300 }];
+  const centre = { x: 50, y: 250 };
+
+  expect(isVisible(map, [source], lights, centre)).toBe(false);
+  expect(
+    isBodyVisible(map, [source], lights, { ...centre, radius: 100 }, 10),
+  ).toBe(true);
+  // A small body in the same place is still out of sight.
+  expect(
+    isBodyVisible(map, [source], lights, { ...centre, radius: 10 }, 10),
+  ).toBe(false);
+  // Nor does the big one show where none of it is lit.
+  expect(isBodyVisible(map, [source], [], { ...centre, radius: 100 }, 10)).toBe(
+    false,
+  );
+});
+
+test("a big body whose centre is behind a wall shows by the part that sticks out", () => {
+  const map = mapWithCenterWall();
+  const source = { x: 25, y: 125 };
+  const lights = [{ x: 25, y: 125, range: 400 }];
+  const centre = { x: 175, y: 125 };
+
+  expect(isVisible(map, [source], lights, centre)).toBe(false);
+  expect(
+    isBodyVisible(map, [source], lights, { ...centre, radius: 70 }, 10),
+  ).toBe(true);
+  expect(
+    isBodyVisible(map, [source], lights, { ...centre, radius: 20 }, 10),
+  ).toBe(false);
+});
+
+test("a body wholly behind the view cone stays hidden however big", () => {
+  const map = emptyMap();
+  const source: VisionSource = {
+    x: 200,
+    y: 150,
+    shape: { kind: "cone", direction: 0, angle: Math.PI / 2 },
+  };
+  const lights = [{ x: 200, y: 150, range: 400 }];
+
+  expect(
+    isBodyVisible(map, [source], lights, { x: 80, y: 150, radius: 60 }, 10),
+  ).toBe(false);
 });

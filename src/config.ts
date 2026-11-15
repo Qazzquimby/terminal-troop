@@ -186,6 +186,9 @@ export const config = {
     rays: 360,
     surroundingsRadius: CELL * 1.4,
     lookRange: CELL * 7,
+    // Any part of a body in sight shows it, checked every quarter cell over its footprint: a
+    // cruiser 4 cells across stays drawn while its nose is in view.
+    footprintSpacing: CELL / 4,
   },
   light: { range: CELL * 6 },
   // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it

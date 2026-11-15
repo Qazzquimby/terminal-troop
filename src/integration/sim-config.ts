@@ -81,6 +81,7 @@ export const testSimConfig: SimConfig = {
     rays: 64,
     surroundingsRadius: 70,
     lookRange: 400,
+    footprintSpacing: 12.5,
   },
   light: { range: 200 },
   net: { smoothing: 12, glide: 0.15, predictionHold: 0.5 },

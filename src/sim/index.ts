@@ -168,6 +168,7 @@ export {
   directionalVision,
   distanceToWall,
   emittedLights,
+  isBodyVisible,
   isVisible,
   lightSources,
   litWalls,
