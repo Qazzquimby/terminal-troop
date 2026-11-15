@@ -231,7 +231,7 @@ function think(
 ): StatueState {
   const now = game.worldTime;
   if (state.mode === "patrol") {
-    const seen = nearestSeenBody(game, self, config.ignores);
+    const seen = nearestSeenBody(game, self, config);
     if (seen !== null)
       return hunt(
         {
@@ -287,9 +287,7 @@ function freeze(
   const huntUntil =
     state.mode === "hunt" ? state.huntUntil + dt : state.huntUntil;
   const noticed =
-    state.mode === "patrol"
-      ? nearestSeenBody(game, self, config.ignores)
-      : null;
+    state.mode === "patrol" ? nearestSeenBody(game, self, config) : null;
   const now = game.worldTime;
   return {
     ...state,

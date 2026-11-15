@@ -257,7 +257,7 @@ function quarry(
   const attacker = livingBody(game, state.attacker);
   if (attacker !== null) return attacker;
   const range = hurt ? Infinity : config.senseRange;
-  return nearestPrey(game, self, config.ignores, range);
+  return nearestPrey(game, self, config, range);
 }
 
 /** What it does next: hunts a body it feels, keeps on after one it lost, or wanders. */
@@ -312,8 +312,7 @@ function ignite(
   config: ExploderConfig,
 ): ExploderState {
   if (state.fuseAt !== null) return state;
-  const close =
-    nearestPrey(game, self, config.ignores, config.fuseRange) !== null;
+  const close = nearestPrey(game, self, config, config.fuseRange) !== null;
   const blocked =
     state.mode === "chase" &&
     state.straight &&

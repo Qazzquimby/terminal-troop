@@ -207,6 +207,7 @@ export const testEntitiesConfig = {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,
     ignores: ["snail"],
+    targets: ["player"],
     speedShare: 0.2,
     damage: 500,
     attackCooldown: 1,
@@ -327,11 +328,12 @@ export const testEntitiesConfig = {
 /**
  * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
  * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
- * second. A handgun with 6 shots of 50 out to 600px; a shotgun with 2 blasts of six shots of 5,
- * fanned across 30 degrees out to 400px; a flashlight whose 45 degree beam reaches 600px, its
- * battery 10 seconds. A walkie with a 10-second battery whose speaker carries half as far as the
- * speech it plays; a radio heard, and making noise, 1000px round each second. All weigh nothing,
- * so what a player carries does not slow it, and no loot is laid.
+ * second, clattering 400px round as it drops. A handgun with 6 shots of 50 out to 600px; a
+ * shotgun with 2 blasts of six shots of 5, fanned across 30 degrees out to 400px; a flashlight
+ * whose 45 degree beam reaches 600px, its battery 10 seconds. A walkie with a 10-second battery
+ * whose speaker carries half as far as the speech it plays; a radio heard, and making noise,
+ * 1000px round each second. All weigh nothing, so what a player carries does not slow it, and no
+ * loot is laid.
  */
 export const testItemsConfig: ItemsConfig = {
   shovel: {
@@ -385,6 +387,7 @@ export const testItemsConfig: ItemsConfig = {
     cashoutRadius: 150,
     sellInterval: 0.25,
     volume: 1,
+    dropNoiseRadius: 400,
     scatter: { count: 3, seed: 5, clearance: 200 },
   },
   flashlight: {
@@ -426,6 +429,7 @@ export const testItemsConfig: ItemsConfig = {
   },
   loot: {
     scatter: { count: 0, seed: 6, clearance: 200 },
+    guaranteed: [],
     danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
   },
 };

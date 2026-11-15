@@ -317,8 +317,8 @@ export const config = {
       volume: 0.8,
     },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
-    // body it picks, any but another snail, at a fifth of a player's walk, kills whatever it
-    // touches, at most once a second, and replans its way every 2 seconds.
+    // player it picks, standing while there is none, at a fifth of a player's walk, kills
+    // whatever it touches, at most once a second, and replans its way every 2 seconds.
     snail: {
       spawning: {
         weight: 30,
@@ -328,6 +328,7 @@ export const config = {
       },
       radius: 12,
       ignores: ["snail"],
+      targets: ["player"],
       speedShare: 0.2,
       damage: 500,
       attackCooldown: 1,
@@ -337,7 +338,7 @@ export const config = {
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     blindDog: {
       spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
-      radius: CELL - 3 , // Currently size 2 // 3-> Cell * 1.5 - 3,
+      radius: CELL - 3, // Currently size 2 // 3-> Cell * 1.5 - 3,
       ignores: ["blindDog"],
       maxHealth: SHOVEL_DAMAGE * 5,
       contactDamage: 100,
@@ -581,12 +582,15 @@ export const config = {
       cooldown: 0.5,
       volume: 0.8,
     },
+    // Sells within 3 cells of the cruiser, a scrap every quarter second, from any slot. Dropped, by a
+    // player or a hoarder, it clatters 8 cells round, which monsters hear.
     scrap: {
       weight: 15,
       value: 1,
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
       volume: 0.8,
+      dropNoiseRadius: CELL * 8,
       scatter: { count: 50, seed: 2, clearance: CELL * 3 },
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
@@ -641,9 +645,17 @@ export const config = {
     },
     // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
     // most dangerous spot there is an even chance of a second, an uncommon item is twice as
-    // likely, a rare one four times.
+    // likely, a rare one four times. On top of those it always lays 15 cans of fuel, one in each
+    // fifteenth of its width from start to exit, so the cruiser can always be driven out; fuel
+    // may still be picked as loot besides.
     loot: {
       scatter: { count: 20, seed: 4, clearance: CELL * 3 },
+      guaranteed: [
+        {
+          item: "fuel",
+          scatter: { count: 15, seed: 5, clearance: CELL * 3, spread: "x" },
+        },
+      ],
       danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
     },
   },

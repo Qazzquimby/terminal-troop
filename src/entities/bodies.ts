@@ -8,12 +8,13 @@ import {
 } from "../sim/index.js";
 import type { Body, Point, Session, WorldEntity } from "../sim/index.js";
 import { preyNear } from "./hunt.js";
-import type { Prey } from "./hunt.js";
+import type { Hunting, Prey } from "./hunt.js";
 
 /*
  * Who a monster hunts. Players are bodies like any other: a monster hunts, notices, chases and
  * strikes any living body, player or world entity, but itself, inert things, items lying about,
- * and the kinds its config tells it to ignore, its own kind by default.
+ * and the kinds its config tells it to ignore, its own kind by default. A kind whose config names
+ * `targets` hunts only bodies of those kind tags, though it still strikes whatever it touches.
  */
 
 /** Kind tags no monster hunts, whatever its config says: inert things and items lying about. */
@@ -21,16 +22,21 @@ const NEVER_PREY = [INERT_TAG, ITEM_TAG];
 
 /**
  * Every living body `self` may hunt, null for a hunter yet to arrive: players and world entities
- * alike, but itself, inert things, items lying about, and those of the kind tags in `ignores`.
+ * alike, but itself, inert things, items lying about, those of the kind tags `hunting` ignores,
+ * and, when `hunting` names targets, those of none of them.
  */
 export function preyFor(
   game: Session,
   self: { readonly id: string } | null,
-  ignores: readonly string[],
+  hunting: Hunting,
 ): Body[] {
-  const passed = [...ignores, ...NEVER_PREY];
+  const passed = [...hunting.ignores, ...NEVER_PREY];
+  const { targets } = hunting;
   return livingBodies(game).filter(
-    (body) => body.id !== self?.id && !hasKindTag(game, body.id, passed),
+    (body) =>
+      body.id !== self?.id &&
+      !hasKindTag(game, body.id, passed) &&
+      (targets === undefined || hasKindTag(game, body.id, targets)),
   );
 }
 
@@ -59,10 +65,10 @@ function nearestWithin<T extends Point>(
 export function nearestPrey(
   game: Session,
   self: WorldEntity,
-  ignores: readonly string[],
+  hunting: Hunting,
   range = Infinity,
 ): Body | null {
-  return nearestWithin(self, preyFor(game, self, ignores), range);
+  return nearestWithin(self, preyFor(game, self, hunting), range);
 }
 
 /**
@@ -72,12 +78,12 @@ export function nearestPrey(
 export function seenPrey(
   game: Session,
   self: WorldEntity,
-  ignores: readonly string[],
+  hunting: Hunting,
   range = Infinity,
 ): Body[] {
   const sight = eyesOf(game, self);
   if (sight === null) return [];
-  return preyFor(game, self, ignores).filter((body) =>
+  return preyFor(game, self, hunting).filter((body) =>
     inView(game, sight, body, range),
   );
 }
@@ -89,14 +95,14 @@ export function seenPrey(
 export function nearestSeenBody(
   game: Session,
   self: WorldEntity,
-  ignores: readonly string[],
+  hunting: Hunting,
   range = Infinity,
 ): Body | null {
   const sight = eyesOf(game, self);
   if (sight === null) return null;
   let nearest: Body | null = null;
   let nearestDistance = range;
-  for (const body of preyFor(game, self, ignores)) {
+  for (const body of preyFor(game, self, hunting)) {
     const distance = Math.hypot(body.x - self.x, body.y - self.y);
     if (distance > nearestDistance) continue;
     if (!inView(game, sight, body, range)) continue;

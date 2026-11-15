@@ -211,7 +211,7 @@ function sighting(
   self: WorldEntity,
   config: ZombieConfig,
 ): Prey | null {
-  return nearestSeenBody(game, self, config.ignores, config.sightRange);
+  return nearestSeenBody(game, self, config, config.sightRange);
 }
 
 function pauseLength(rng: Rng, config: ZombieConfig): number {

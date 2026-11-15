@@ -8,8 +8,13 @@ import { registerEntityType, spawnEntity } from "./entities.js";
 import { livingPlayers } from "./ghosts.js";
 import { placeItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
-import { isAreaFree, mulberry32, randomFreePosition } from "./map.js";
-import type { Point, Rng } from "./map.js";
+import {
+  isAreaFree,
+  mulberry32,
+  randomFreePosition,
+  randomFreePositionIn,
+} from "./map.js";
+import type { Point, Rect, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { LightEmission } from "./vision.js";
@@ -149,6 +154,12 @@ export interface Scatter {
   readonly seed: number;
   /** Least distance, in pixels, from every player each starts at, where the world has room. */
   readonly clearance: number;
+  /**
+   * How the spots spread over the world: "x" splits its width into as many equal bands as there
+   * are spots and puts one in each, anywhere free in its band, so they run evenly from left to
+   * right. Anywhere at random when left out.
+   */
+  readonly spread?: "x";
 }
 
 /**
@@ -225,6 +236,41 @@ function scatterPoint(
   return best;
 }
 
+/** The `index`th of `count` equal bands across the world's width, its full height. */
+function xBand(game: Session, index: number, count: number): Rect {
+  const w = game.world.W / count;
+  return { x: index * w, y: 0, w, h: game.world.H };
+}
+
+/**
+ * A free spot within `band`, preferring one at least `clearance` from every player as
+ * `scatterPoint` does; anywhere, as `scatterPoint` draws it, when the band has no free spot.
+ */
+function bandPoint(
+  game: Session,
+  rng: Rng,
+  radius: number,
+  clearance: number,
+  band: Rect,
+): Point {
+  let best: Point | null = null;
+  let bestDistance = -Infinity;
+  for (
+    let attempt = 0;
+    attempt < SPAWN_ATTEMPTS && bestDistance < clearance;
+    attempt++
+  ) {
+    const point = randomFreePositionIn(game.world, band, radius, rng);
+    if (point === null) break;
+    const distance = distanceToPlayers(game, point);
+    if (distance > bestDistance) {
+      best = point;
+      bestDistance = distance;
+    }
+  }
+  return best ?? scatterPoint(game, rng, radius, clearance);
+}
+
 /** Spots drawn for each entity of a weighted scatter, among which it picks by weight. */
 const WEIGHED_SPOTS = 24;
 
@@ -270,13 +316,16 @@ export function scatterEach(
 ): void {
   const rng = mulberry32(game.seed ^ scatter.seed);
   const count = scatterCount(game, scatter.count);
-  for (let i = 0; i < count; i++)
-    place(
-      scatter.weight === undefined
-        ? scatterPoint(game, rng, radius, scatter.clearance)
-        : weighedPoint(game, rng, radius, scatter.clearance, scatter.weight),
-      rng,
-    );
+  for (let i = 0; i < count; i++) {
+    const { clearance, weight } = scatter;
+    let at: Point;
+    if (scatter.spread === "x")
+      at = bandPoint(game, rng, radius, clearance, xBand(game, i, count));
+    else if (weight === undefined)
+      at = scatterPoint(game, rng, radius, clearance);
+    else at = weighedPoint(game, rng, radius, clearance, weight);
+    place(at, rng);
+  }
 }
 
 function spawnByRule<S>(
