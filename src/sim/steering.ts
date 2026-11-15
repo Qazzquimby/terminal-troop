@@ -22,6 +22,7 @@ import {
 } from "./player.js";
 import type { Session } from "./session.js";
 import type { Stamina } from "./stamina.js";
+import { isStunned } from "./status.js";
 
 /*
  * Players move as the host runs them. Each client runs the same movement code for its own player
@@ -76,6 +77,12 @@ const SteerWire = z.object({
 interface StepInput {
   readonly steer: Steer;
   readonly crouch: boolean;
+  /**
+   * Whether the player was stunned in the step, as the client that first ran it found it: it then
+   * stands still whatever it steers with. A step run again keeps it, so a stun that starts later
+   * does not reach back.
+   */
+  readonly stunned?: boolean;
 }
 
 /** Everything a step of a player's movement reads and changes. */
@@ -299,12 +306,13 @@ const sameSteer = (a: Steer, b: Steer): boolean =>
  * One step of `player`'s movement: it walks as `input` steers it, slowed by what it carries,
  * goes on with any dash, then steps out of every body it overlaps; or, at the wheel, drives. The
  * same on every client that runs the player. `live` is false while running a step again. A
- * ghost's body is not moved: where it watches from is its own client's.
+ * ghost's body is not moved: where it watches from is its own client's. A stunned player steers
+ * nothing, as if it let go of every control, but goes on with any dash or knockback.
  */
 function movePlayer(
   game: Session,
   player: Player,
-  { steer, crouch }: StepInput,
+  input: StepInput,
   dt: number,
   live = true,
 ): void {
@@ -314,6 +322,10 @@ function movePlayer(
     player.dash = null;
     return;
   }
+  const { steer, crouch } =
+    input.stunned === true
+      ? { steer: { ...IDLE, held: input.steer.held }, crouch: false }
+      : input;
   if (player.ride !== null) {
     drive(game, player, steer.move, dt, live, game.config);
     return;
@@ -466,7 +478,11 @@ function runStep(
   feed.time += dt;
   player.held = feed.steer.held;
   heldSlot.set(player, player.held);
-  const input = { steer: feed.steer, crouch };
+  const input = {
+    steer: feed.steer,
+    crouch,
+    stunned: redo?.input.stunned ?? isStunned(game, player.id),
+  };
   movePlayer(game, player, input, dt, redo === undefined);
   feed.marks.push({
     step,
@@ -568,7 +584,16 @@ function stepFeeds(game: Session, dt: number): void {
     player.aim = lerpAngle(player.aim, player.taim, amount);
     const feed = feedOf(game, player.id);
     if (feed.label === null) {
-      movePlayer(game, player, { steer: feed.steer, crouch: false }, dt);
+      movePlayer(
+        game,
+        player,
+        {
+          steer: feed.steer,
+          crouch: false,
+          stunned: isStunned(game, player.id),
+        },
+        dt,
+      );
       continue;
     }
     if (feed.resumed !== null) takeUpTo(feed, feed.resumed);
@@ -609,8 +634,9 @@ export function steerLocal(
   if (controls.select !== null)
     local.held = selectSlot(local.inventory, controls.select);
   local.aim = aimAt(local, controls.aim);
+  const stunned = isStunned(game, local.id);
   const input: StepInput = pilot.halted
-    ? { steer: { ...IDLE, held: local.held }, crouch: false }
+    ? { steer: { ...IDLE, held: local.held }, crouch: false, stunned }
     : {
         steer: {
           move: { x: controls.move.x, y: controls.move.y },
@@ -618,6 +644,7 @@ export function steerLocal(
           held: local.held,
         },
         crouch: controls.crouch,
+        stunned,
       };
   pilot.halted = false;
   pilot.steer = input.steer;

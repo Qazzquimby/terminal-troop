@@ -8,6 +8,7 @@ import {
   effect,
   hurtSinceLastStep,
   INERT_TAG,
+  isStunned,
   livingBody,
   livingPlayers,
   rounded,
@@ -140,18 +141,21 @@ export function freshSkulker(now: number): SkulkerState {
 
 /**
  * Whether any living player watches a point: it lies within their view cone, out to the watch
- * range, with nothing in the way. Light plays no part, nor what lies behind a player.
+ * range, with nothing in the way. Light plays no part, nor what lies behind a player. A stunned
+ * player watches nothing.
  */
 function watcher(game: Session, config: SkulkerConfig): (at: Point) => boolean {
-  const cones = livingPlayers(game).map(
-    (player) =>
-      directionalVision(
-        player,
-        player.aim,
-        game.config.vision,
-        config.watchRange,
-      )[0],
-  );
+  const cones = livingPlayers(game)
+    .filter((player) => !isStunned(game, player.id))
+    .map(
+      (player) =>
+        directionalVision(
+          player,
+          player.aim,
+          game.config.vision,
+          config.watchRange,
+        )[0],
+    );
   return (at) => cones.some((cone) => canSeeFrom(game.world.map, cone, at));
 }
 

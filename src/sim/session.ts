@@ -47,6 +47,8 @@ import {
   steerLocal,
 } from "./steering.js";
 import type { Corrections, Feed, Pilot, PlayerEntry } from "./steering.js";
+import { hearStatuses } from "./status.js";
+import type { StunnedConfig } from "./status.js";
 import type { ItemBehaviour } from "./use.js";
 import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
@@ -78,6 +80,7 @@ export interface SimConfig extends PlayerRules {
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
   readonly death: DeathConfig;
+  readonly stunned: StunnedConfig;
 }
 
 export interface Session {
@@ -334,6 +337,7 @@ export function updateSession(
 
   followHealth(game);
   followItemSounds(game);
+  hearStatuses(game);
 }
 
 /** Drops a remote player; false when there is none by that id. */

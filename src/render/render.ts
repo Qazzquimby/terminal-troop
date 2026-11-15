@@ -20,6 +20,7 @@ import {
   isGhost,
   isStunned,
   isVisible,
+  stunLeft,
   lightSources,
   litWalls,
   movement,
@@ -193,17 +194,36 @@ export function drawEmoji(
   ctx.restore();
 }
 
-/** Seconds a stunned entity's stars take to circle its head once. */
+/** Seconds a stunned body's stars take to circle its head once. */
 const STUN_SPIN = 1.2;
 
-/** Stars circling above a stunned entity's head, whatever its kind. */
+/** Pixels above a stunned body's top that its stars circle; a player's clear its name and bar. */
+const STUN_ABOVE = { entity: 6, player: 34 } as const;
+
+/**
+ * How dark `viewer`'s view goes for being stunned, 0..1: the stunned config's darkness while the
+ * stun lasts, clearing over its last seconds; 0 when it is not stunned.
+ */
+export function blindness(game: Session, viewer: Player): number {
+  const left = stunLeft(game, viewer.id);
+  if (left === null) return 0;
+  const { darkness, fadeOut } = game.config.stunned;
+  return darkness * Math.min(1, fadeOut > 0 ? left / fadeOut : 1);
+}
+
+/**
+ * Stars circling `gap` pixels above a stunned body's head, a player or a world entity of any
+ * kind, at `now` in milliseconds.
+ */
 function drawStunned(
   ctx: CanvasRenderingContext2D,
   entity: Entity,
   now: number,
+  gap: number,
 ): void {
-  const turn = ((now % STUN_SPIN) / STUN_SPIN) * Math.PI * 2;
-  const above = entity.y - entity.radius - 6;
+  const seconds = now / 1000;
+  const turn = ((seconds % STUN_SPIN) / STUN_SPIN) * Math.PI * 2;
+  const above = entity.y - entity.radius - gap;
   for (const offset of [0, Math.PI]) {
     const angle = turn + offset;
     drawEmoji(
@@ -668,7 +688,8 @@ function drawBodies(
     ctx.save();
     definition.draw(ctx, entity, now, game);
     ctx.restore();
-    if (isStunned(game, entity.id)) drawStunned(ctx, entity, now);
+    if (isStunned(game, entity.id))
+      drawStunned(ctx, entity, now, STUN_ABOVE.entity);
     drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
   });
   game.players.forEach((player) => {
@@ -676,6 +697,8 @@ function drawBodies(
     if (!shows(player)) return;
     drawPlayer(ctx, game, player, false, isAway(player.id));
     drawHealthBar(ctx, player, player.y - player.radius - 26);
+    if (isStunned(game, player.id))
+      drawStunned(ctx, player, now, STUN_ABOVE.player);
   });
 }
 
@@ -837,7 +860,9 @@ export function draw(
     ...fixtureLit,
   ];
   const walls = litWalls(seen, lit);
-  memory.see({ seen, lit, walls }, area);
+  // A stunned viewer sees nothing, so learns nothing of the map.
+  const blind = blindness(game, viewer);
+  if (blind === 0) memory.see({ seen, lit, walls }, area);
 
   const { width, height } = camera.view;
   ctx.fillStyle = "#000";
@@ -891,19 +916,29 @@ export function draw(
   // What the local player hears: a ring for a player's noise or one whose maker it can see, a
   // glow at the screen's edge for any other.
   const seenMade = (ripple: Ripple): boolean =>
-    ripple.player ||
-    (inView({ ...ripple.origin, radius: 0 }, camera) &&
-      isVisible(map, sources, lights, ripple.origin, ambient));
+    blind === 0 &&
+    (ripple.player ||
+      (inView({ ...ripple.origin, radius: 0 }, camera) &&
+        isVisible(map, sources, lights, ripple.origin, ambient)));
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));
 
-  // Above the darkness: lit wall faces, rings, then the player and its HUD, then edge glows.
+  // Above the darkness: lit wall faces; a stunned viewer's blindness over all it would see;
+  // then rings, the player and its HUD, then edge glows.
   applyCamera(ctx, camera, () => {
     drawLitWalls(ctx, walls);
+  });
+  if (blind > 0) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${String(blind)})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+  applyCamera(ctx, camera, () => {
     drawRipples(ctx, ripples.config, rings, now, camera);
     drawPlayer(ctx, game, viewer, viewer === game.local);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
     drawStamina(ctx, viewer, game.config.stamina.max);
+    if (isStunned(game, viewer.id))
+      drawStunned(ctx, viewer, now, STUN_ABOVE.player);
   });
   if (glows.length > 0)
     drawEdgeGlows(ctx, ripples.config, glows, now, camera, viewer);

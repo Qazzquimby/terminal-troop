@@ -160,6 +160,13 @@ export const config = {
   // A player who falls drops what it carried within a cell of where it fell. Revived, it comes
   // back on half its health, near whatever revived it.
   death: { scatter: CELL, reviveHealth: 50 },
+  // A stunned player sees next to nothing, its view clearing over the last second of the stun,
+  // its ears ringing at half volume until then, the ring fading out over a second.
+  stunned: {
+    darkness: 0.95,
+    fadeOut: 1,
+    ring: { volume: 0.5, fadeSeconds: 1 },
+  },
   // A player looks down its cone, holding an idol and the like, out to 10 cells, light or no
   // light: past a flashlight's 6, short of an idol's 16-cell sight.
   vision: {
@@ -297,8 +304,8 @@ export const config = {
       revive: { reach: CELL, volume: 0.8 },
     },
     // Arms 3s after it is put down, then beeps, heard 2 cells off. Whatever steps on it sets it
-    // off: a bang heard 12 cells off, and a flash that stuns for 5s every entity with a clear line
-    // to it within 5 cells, lighting 8 cells round it for half a second.
+    // off: a bang heard 12 cells off, and a flash that stuns for 5s every body, players included,
+    // whose eyes catch it within 5 cells, lighting 8 cells round it for half a second.
     stunTrap: {
       radius: 10,
       armSeconds: 3,

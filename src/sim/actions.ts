@@ -9,6 +9,7 @@ import { removeEntity, spawnEntity } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
 import { isGhost } from "./ghosts.js";
+import { isStunned } from "./status.js";
 import { dealDamage } from "./hurts.js";
 import {
   carriedIn,
@@ -74,7 +75,7 @@ export interface ActionSpec<I> {
 export interface Action<I> {
   readonly name: string;
   /**
-   * Acts for the local player, if it is alive, off cooldown and has the stamina: applies the
+   * Acts for the local player, if it is alive, not stunned, off cooldown and has the stamina: applies the
    * action at once and sends `input` to the host. Returns whether it acted.
    */
   perform(game: Session, input: I): boolean;
@@ -316,7 +317,7 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
   const accepts = (game: Session, actor: Player, input: I): boolean => {
     const { stamina } = spec;
     const cooldown = cooldownIn(game);
-    if (isGhost(actor)) return false;
+    if (isGhost(actor) || isStunned(game, actor.id)) return false;
     if (stamina !== undefined && actor.stamina.value < stamina) return false;
     if (spec.check !== undefined && !spec.check(game, actor, input))
       return false;
@@ -381,7 +382,7 @@ export function defineAction<I>(name: string, spec: ActionSpec<I>): Action<I> {
       const { local } = game;
       const key = timer(game);
       const { stamina } = spec;
-      if (isGhost(local)) return false;
+      if (isGhost(local) || isStunned(game, local.id)) return false;
       if (game.time < (game.localReadyAt.get(key) ?? -Infinity)) return false;
       if (stamina !== undefined && local.stamina.value < stamina) return false;
       if (
