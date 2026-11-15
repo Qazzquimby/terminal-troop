@@ -1,8 +1,5 @@
-import type { Point, Session, WorldEntity } from "../../sim/index.js";
+import type { BoxSize, Point, Session, WorldEntity } from "../../sim/index.js";
 import type { CruiserState } from "./drive.js";
-
-/** The car's width, as a share of its length, which spans its body. */
-const WIDTH = 0.6;
 
 const COLOURS = {
   powered: "#3b6ea5",
@@ -47,20 +44,20 @@ function gauge(
 }
 
 /**
- * The cruiser seen from above, pointing along its heading: windscreen and headlamps at its front,
- * lamps lit while it has fuel. Under it, its fuel gauge while it has fuel, against `fullTank`,
- * and its damage towards breaking down once it has taken any.
+ * The cruiser seen from above, its body the box of `size` pointing along its heading: windscreen
+ * and headlamps at its front, lamps lit while it has fuel. Under it, its fuel gauge while it has
+ * fuel, against `fullTank`, and its damage towards breaking down once it has taken any.
  */
 export function drawCruiser(
   ctx: CanvasRenderingContext2D,
   entity: WorldEntity,
   state: CruiserState,
   game: Session,
+  size: BoxSize,
   gauges: { readonly fullTank: number; readonly breakdown: number },
 ): void {
   const { at, heading } = placed(game, entity, state);
-  const length = entity.radius * 2;
-  const width = length * WIDTH;
+  const { length, width } = size;
   const powered = state.fuel > 0;
   ctx.save();
   ctx.translate(at.x, at.y);
@@ -80,7 +77,12 @@ export function drawCruiser(
     ctx.fill();
   }
   ctx.restore();
-  const below = at.y + width / 2 + 10;
+  // Just under the body however it is turned.
+  const reach =
+    (Math.abs(Math.sin(heading)) * length +
+      Math.abs(Math.cos(heading)) * width) /
+    2;
+  const below = at.y + reach + 10;
   if (powered)
     gauge(
       ctx,

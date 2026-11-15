@@ -2,6 +2,7 @@ import type { WorldEntity } from "./entities.js";
 import { isGhost, livingPlayers } from "./ghosts.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
+import type { Footprint } from "./shape.js";
 
 /*
  * A body is anything in the world that stands somewhere, has health and can be hurt: a player or a
@@ -64,4 +65,17 @@ export function livingBody(
 ): Body | null {
   const body = bodyById(game, id);
   return body === null || isGone(game, body.id) ? null : body;
+}
+
+/**
+ * Where `body` is and what it fills: its kind's box, turned the way it points, or else the disc
+ * of its radius, as every player's is.
+ */
+export function footprintOf(game: Session, body: Body): Footprint {
+  const entity = asEntity(game, body);
+  const box =
+    entity === null
+      ? null
+      : (game.entityTypes.get(entity.kind)?.box(entity) ?? null);
+  return { x: body.x, y: body.y, radius: body.radius, box };
 }

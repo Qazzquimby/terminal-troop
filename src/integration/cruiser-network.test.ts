@@ -13,7 +13,7 @@ const content = () => [
       ...testEntitiesConfig.zombie,
       spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
     },
-    cruiser: { ...testEntitiesConfig.cruiser, radius: 40 },
+    cruiser: { ...testEntitiesConfig.cruiser, length: 80, width: 48 },
   }),
   ...itemContent({
     ...testItemsConfig,

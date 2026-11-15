@@ -5,6 +5,8 @@ import type { Point } from "./map.js";
 import { movement } from "./movement.js";
 import type { Player, PlayerRules } from "./player.js";
 import type { Session } from "./session.js";
+import { moveBox, nudgeBoxFree, turnBox } from "./shape.js";
+import type { BoxSize } from "./shape.js";
 import { updateStamina } from "./stamina.js";
 import type { WallArea } from "./walls.js";
 
@@ -136,6 +138,15 @@ function throttled(
 const CRASH_PROBE = 0.25;
 
 /**
+ * Pixels a turning box may be nudged past how far its corners swing, to come clear of the wall
+ * it turns against.
+ */
+const TURN_NUDGE = 1;
+
+/** How far a box found standing in a wall may be moved out of it, in its own widths. */
+const UNSTICK = 0.25;
+
+/**
  * One step of `player` driving its vehicle on `move`: up throttles, down brakes and reverses, and
  * sideways turns it, the more the faster it goes. It stops at walls, sliding along one it only
  * grazes, and a wall hit hard enough is a crash: it stops dead, and on a live run on the host the
@@ -167,28 +178,107 @@ export function drive(
   const throttle = powered ? clamp(-move.y, 1) : 0;
   const speed = throttled(ride.speed, throttle, handling, dt);
   const grip = handling.grip > 0 ? clamp(speed / handling.grip, 1) : 1;
-  const heading =
+  const turned =
     ride.heading + clamp(move.x, 1) * handling.turnRate * grip * dt;
+  const size = game.entityTypes.get(entity.kind)?.box(entity) ?? null;
+  const step =
+    size === null
+      ? roll(game, entity.radius, player, turned, speed, dt)
+      : rollBox(game, size, player, ride.heading, turned, speed, dt);
+  const { from, to, heading } = step;
   const way = { x: Math.cos(heading), y: Math.sin(heading) };
-  const from = { x: player.x, y: player.y };
-  const body = { ...from, vx: way.x * speed, vy: way.y * speed };
-  moveWithCollision(body, entity.radius, dt, game.world.map, 0);
-  const moved = ((body.x - from.x) * way.x + (body.y - from.y) * way.y) / dt;
+  const moved = ((to.x - from.x) * way.x + (to.y - from.y) * way.y) / dt;
   const lost = Math.abs(speed - moved);
   const crashed = lost >= spec.crashSpeed;
-  player.x = body.x;
-  player.y = body.y;
-  player.vx = (body.x - from.x) / dt;
-  player.vy = (body.y - from.y) / dt;
+  player.x = to.x;
+  player.y = to.y;
+  player.vx = (to.x - from.x) / dt;
+  player.vy = (to.y - from.y) / dt;
   player.ride = { ...ride, heading, speed: crashed ? 0 : moved };
   if (!crashed || !live || !game.hosting) return;
-  const probe = Math.sign(speed) * entity.radius * CRASH_PROBE;
   spec.crash?.(game, entity, player, {
     speed: lost,
-    area: {
-      center: { x: body.x + way.x * probe, y: body.y + way.y * probe },
-      radius: entity.radius,
-      shape: "square",
-    },
+    area: crashArea(entity.radius, size, to, way, Math.sign(speed)),
   });
+}
+
+/** Where a step of driving starts, once turned, and ends, and the way the vehicle then points. */
+interface Rolled {
+  readonly from: Point;
+  readonly to: Point;
+  readonly heading: number;
+}
+
+/** A step of a vehicle whose body is the square of half-size `radius`, which turns freely. */
+function roll(
+  game: Session,
+  radius: number,
+  at: Point,
+  heading: number,
+  speed: number,
+  dt: number,
+): Rolled {
+  const from = { x: at.x, y: at.y };
+  const body = {
+    ...from,
+    vx: Math.cos(heading) * speed,
+    vy: Math.sin(heading) * speed,
+  };
+  moveWithCollision(body, radius, dt, game.world.map, 0);
+  return { from, to: { x: body.x, y: body.y }, heading };
+}
+
+/**
+ * A step of a vehicle whose body is a box of `size`. It first comes clear of any wall it stands in,
+ * then turns, nudged off a wall the turn swings its corners into, or not turning at all where no
+ * small nudge clears it, then rolls on, sliding along a wall it meets at a slant.
+ */
+function rollBox(
+  game: Session,
+  size: BoxSize,
+  at: Point,
+  heading: number,
+  turned: number,
+  speed: number,
+  dt: number,
+): Rolled {
+  const { map } = game.world;
+  const start = { ...size, x: at.x, y: at.y, heading };
+  const clear = nudgeBoxFree(map, start, size.width * UNSTICK) ?? start;
+  const swing =
+    Math.abs(turned - heading) * Math.hypot(size.length, size.width);
+  const placed = turnBox(
+    map,
+    { ...start, ...clear },
+    turned,
+    swing / 2 + TURN_NUDGE,
+  );
+  const to = moveBox(
+    map,
+    placed,
+    Math.cos(placed.heading) * speed * dt,
+    Math.sin(placed.heading) * speed * dt,
+  );
+  return { from: { x: placed.x, y: placed.y }, to, heading: placed.heading };
+}
+
+/**
+ * The walls a crash knocks down: ahead of the vehicle's front, or its back when it reverses
+ * (`sign` -1), a little past it. A box's is as wide as the box; a square body's is its square.
+ */
+function crashArea(
+  radius: number,
+  size: BoxSize | null,
+  at: Point,
+  way: Point,
+  sign: number,
+): WallArea {
+  const probe = radius * CRASH_PROBE;
+  const ahead =
+    size === null ? probe : size.length / 2 - size.width / 2 + probe;
+  return {
+    center: { x: at.x + way.x * ahead * sign, y: at.y + way.y * ahead * sign },
+    radius: size === null ? radius : size.width / 2,
+    shape: "square",
+  };
 }

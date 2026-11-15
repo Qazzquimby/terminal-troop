@@ -1,20 +1,26 @@
 import { minBy } from "lodash-es";
 import { z } from "zod";
 import {
+  axesOf,
   livingPlayers,
   changeEntity,
   destroyWalls,
   driverOf,
   effect,
   eject,
+  footprintOf,
+  gapTo,
   hasKindTag,
   hurt,
   INERT_TAG,
   push,
+  reachAlong,
   rounded,
+  touches,
 } from "../../sim/index.js";
 import type {
   Body,
+  Footprint,
   Handling,
   Impact,
   Player,
@@ -148,8 +154,28 @@ function crash(
 /** When each body was last rammed, on the world's clock, by body id, per session. */
 const rammed = new WeakMap<Session, Map<string, number>>();
 
-/** Every body the cruiser at `at` overlaps that it may ram: players but its driver, and living entities. */
-function struck(game: Session, entity: WorldEntity, driver: Player): Body[] {
+/** `vehicle`'s footprint, its box turned to `heading`, the way its driver now points it. */
+function turnedTo(
+  game: Session,
+  vehicle: WorldEntity,
+  heading: number,
+): Footprint {
+  const { box, ...disc } = footprintOf(game, vehicle);
+  return box === null || box === undefined
+    ? disc
+    : { ...disc, box: { ...box, heading } };
+}
+
+/**
+ * Every body the cruiser's footprint, `body`, overlaps that it may ram: players but its driver,
+ * and living entities.
+ */
+function struck(
+  game: Session,
+  entity: WorldEntity,
+  body: Footprint,
+  driver: Player,
+): Body[] {
   const bodies = [
     ...livingPlayers(game),
     ...[...game.entities.values()].filter(
@@ -160,16 +186,14 @@ function struck(game: Session, entity: WorldEntity, driver: Player): Body[] {
     ),
   ];
   return bodies.filter(
-    (body) =>
-      body !== driver &&
-      Math.hypot(body.x - entity.x, body.y - entity.y) <
-        entity.radius + body.radius,
+    (other) => other !== driver && touches(body, other, other.radius),
   );
 }
 
 /**
- * Hurts every body the cruiser, going at `speed` or faster, drives into, at most once each ram
- * cooldown, and shoves it aside, clear of the cruiser's side, so the cruiser goes on past it.
+ * Hurts every body the cruiser, going at `speed` or faster, drives into, nose or side, at most
+ * once each ram cooldown, and shoves it aside, clear of the cruiser's side, so the cruiser goes on
+ * past it.
  */
 function ram(
   game: Session,
@@ -182,8 +206,10 @@ function ram(
   if (Math.abs(speed) < config.ram.speed) return;
   const last = rammed.get(game) ?? new Map<string, number>();
   rammed.set(game, last);
-  const across = { x: -Math.sin(heading), y: Math.cos(heading) };
-  for (const body of struck(game, entity, driver)) {
+  const footprint = turnedTo(game, entity, heading);
+  const { across } = axesOf(heading);
+  const flank = reachAlong(footprint, across);
+  for (const body of struck(game, entity, footprint, driver)) {
     if (game.worldTime < (last.get(body.id) ?? -Infinity) + config.ram.cooldown)
       continue;
     last.set(body.id, game.worldTime);
@@ -195,7 +221,7 @@ function ram(
       y: body.y - across.y * side,
     };
     hurt(game, body, config.ram.damage, driver.id);
-    push(game, body, from, entity.radius + body.radius - Math.abs(offset) + 1, {
+    push(game, body, from, flank + body.radius - Math.abs(offset) + 1, {
       by: entity,
     });
     effect(
@@ -297,11 +323,9 @@ export function cruiserNear(
 ): WorldEntity | null {
   const id = game.kindIds.get(kind);
   const distance = (entity: WorldEntity): number =>
-    Math.hypot(entity.x - at.x, entity.y - at.y);
+    gapTo(footprintOf(game, entity), at);
   const near = [...game.entities.values()].filter(
-    (entity) =>
-      entity.kind === id &&
-      distance(entity) <= entity.radius + at.radius + reach,
+    (entity) => entity.kind === id && distance(entity) <= at.radius + reach,
   );
   return minBy(near, distance) ?? null;
 }
