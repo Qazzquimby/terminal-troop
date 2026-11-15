@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { settle, stubAudio } from "../integration/fake-audio.js";
 import { createSfx, rangedFalloff, spatialMix } from "./audio.js";
 
 const falloff = { full: 100, silent: 1000, pan: 500 };
@@ -69,5 +70,55 @@ describe("a sound whose file is missing", () => {
     expect(loop).not.toBeNull();
     expect(audio.fetches()).toBe(1);
     expect(audio.warnings()).toBe(1);
+  });
+});
+
+describe("a positioned sound still playing", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("is heard anew from wherever the listener goes", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    void sfx.play("long.mp3", { x: 0, y: 0 }, { x: 0, y: 0 }, { range: 400 });
+    await settle();
+    const [long] = audio.sounds();
+    expect(long?.volume()).toBe(1);
+
+    sfx.listen({ x: 400, y: 0 });
+    expect(long?.volume()).toBe(0);
+    sfx.listen({ x: 300, y: 0 });
+    expect(long?.volume()).toBeGreaterThan(0);
+    expect(long?.volume()).toBeLessThan(1);
+  });
+
+  test("is heard from where it was made, wherever the point it was made at goes", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    const maker = { x: 0, y: 0 };
+    void sfx.play("long.mp3", maker, { x: 0, y: 0 }, { range: 400 });
+    await settle();
+    maker.x = 1000;
+    sfx.listen({ x: 0, y: 0 });
+    expect(audio.sounds()[0]?.volume()).toBe(1);
+  });
+
+  test("is left alone once it ends or is stopped, as is one without a position", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    const near = { x: 0, y: 0 };
+    void sfx.play("ended.mp3", near, near, { range: 400 });
+    const stopping = sfx.play("stopped.mp3", near, near, { range: 400 });
+    void sfx.play("everywhere.mp3", null, null);
+    await settle();
+    const [ended, stopped, everywhere] = audio.sounds();
+    ended?.end();
+    (await stopping).stop(0);
+
+    sfx.listen({ x: 300, y: 0 });
+    expect(ended?.volume()).toBe(1);
+    expect(stopped?.volume()).toBe(0);
+    expect(everywhere?.volume()).toBe(1);
   });
 });

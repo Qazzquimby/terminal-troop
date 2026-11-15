@@ -34,3 +34,6 @@ export function sound(spec: Sound): Sound {
 /** The sound declared at `url`; undefined for one no content declared. */
 export const declaredSound = (url: string): Sound | undefined =>
   declared.get(url);
+
+/** Every sound content has declared so far. */
+export const declaredSounds = (): Sound[] => [...declared.values()];

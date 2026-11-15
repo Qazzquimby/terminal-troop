@@ -149,7 +149,7 @@ export { movement } from "./movement.js";
 export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
 export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";
 export type { Heard } from "./noise.js";
-export { sound } from "./sound.js";
+export { declaredSounds, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
 export { registerItem } from "./use.js";

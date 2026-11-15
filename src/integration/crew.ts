@@ -1,4 +1,5 @@
 import { expect } from "vitest";
+import type { Sfx } from "../audio/index.js";
 import { createScope } from "../lib/scope/index.js";
 import { createRoom } from "../room/index.js";
 import type { Room } from "../room/index.js";
@@ -88,6 +89,8 @@ interface CrewSetup {
   readonly spots: Readonly<Record<string, Point>>;
   readonly content?: readonly WorldContent[];
   readonly delay?: () => number;
+  /** Each client's sound effects, by client id; none play when left out. */
+  readonly sfx?: (id: string) => Sfx;
 }
 
 /** Sends arriving 60 to 180ms later, in a fixed jittered sequence. */
@@ -98,7 +101,7 @@ export function jitter(): () => number {
 
 /** Clients `ids` joined to one room on a JSON hub, the first hosting, each at its spot. */
 export async function crew(setup: CrewSetup, ...ids: string[]) {
-  const { spots, content = [], delay } = setup;
+  const { spots, content = [], delay, sfx = testSfx } = setup;
   const hub = createHub();
   const clock = createManualClock();
   const nets = new Map<string, ReturnType<typeof delayed>>();
@@ -120,7 +123,7 @@ export async function crew(setup: CrewSetup, ...ids: string[]) {
         volume: 1,
         inputDevice: null,
       }),
-      sfx: testSfx(),
+      sfx: sfx(id),
       scope: createScope(),
       clock,
       config: testRoomConfig,
