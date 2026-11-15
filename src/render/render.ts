@@ -41,6 +41,8 @@ import type {
   MapMemoryConfig,
   RememberedTerrain,
 } from "./map-memory.js";
+import { inkMask } from "./ink.js";
+import type { AgeGrid, InkFadeConfig } from "./ink.js";
 import { flashDisc } from "./flashes.js";
 import type { Flashes } from "./flashes.js";
 import { edgeGlow, rippleRing } from "./ripples.js";
@@ -604,6 +606,42 @@ const AMBIENT_TINT: Readonly<Record<AmbientLight, string>> = {
 
 let sceneCache: Layer | null = null;
 let maskCache: Layer | null = null;
+let memoryCache: Layer | null = null;
+let inkCache: Layer | null = null;
+
+/**
+ * Keeps what is drawn on `ctx` only as far as ink is left over `ages` (see `inkMask`): the mask,
+ * a few spots to a cell, is drawn stretched and smoothed over the cells, so the ragged edge where
+ * remembered terrain has faded is soft, as ink soaking away. `scratch` holds the mask.
+ */
+function fadeLikeInk(
+  ctx: CanvasRenderingContext2D,
+  scratch: Layer,
+  ages: AgeGrid,
+  fade: InkFadeConfig,
+  cell: number,
+): void {
+  if (fade.seconds <= 0 || ages.cols <= 0 || ages.rows <= 0) return;
+  const mask = inkMask(ages, fade);
+  const layer = sized(scratch, mask.width, mask.height);
+  layer.ctx.putImageData(
+    new ImageData(mask.data, mask.width, mask.height),
+    0,
+    0,
+  );
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    layer.canvas,
+    ages.col * cell,
+    ages.row * cell,
+    ages.cols * cell,
+    ages.rows * cell,
+  );
+  ctx.restore();
+}
 
 function createLayer(): Layer {
   const canvas = document.createElement("canvas");
@@ -890,15 +928,27 @@ export function draw(
   const walls = litWalls(seen, lit);
   // A stunned viewer sees nothing, so learns nothing of the map.
   const blind = blindness(game, viewer);
-  if (blind === 0) memory.see({ seen, lit, walls }, area);
+  if (blind === 0) memory.see({ seen, lit, walls }, area, now);
 
   const { width, height } = camera.view;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
 
-  applyCamera(ctx, camera, () => {
-    drawRemembered(ctx, memory.within(area), memory.config, map.cell);
+  // Remembered terrain, drawn on its own layer so the ink fading it eats into it alone.
+  const remembered = memory.within(area, now);
+  const recall = sized((memoryCache ??= createLayer()), width, height);
+  recall.ctx.clearRect(0, 0, width, height);
+  applyCamera(recall.ctx, camera, () => {
+    drawRemembered(recall.ctx, remembered, memory.config, map.cell);
+    fadeLikeInk(
+      recall.ctx,
+      (inkCache ??= createLayer()),
+      remembered.ages,
+      memory.config.fade,
+      map.cell,
+    );
   });
+  ctx.drawImage(recall.canvas, 0, 0);
 
   // Inside the darkness: only what is both seen and lit, its edges faded, with the ground each
   // light reaches tinted its colour: sunlight blue, a room's fixture warm white, and an emissive

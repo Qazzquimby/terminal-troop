@@ -29,7 +29,9 @@ export const testGeneration: GenerationConfig = {
     hallwayChance: 0.2,
     hallway: { width: 2, length: 14 },
     door: { min: 1, max: 3 },
-    loops: 0.35,
+    loops: 0.1,
+    exits: [0.6, 0.3, 0.1],
+    building: { min: 3, max: 8 },
   },
   lights: { fixture: 0.5, powered: 0.5 },
   danger: { road: 3, right: 3 },
@@ -127,6 +129,7 @@ export const testMapMemoryConfig: MapMemoryConfig = {
   maxRooms: 3,
   floor: { fill: "#111", grid: "#222", alpha: 0.5 },
   wall: { fill: "#333", edge: "#444", alpha: 0.5 },
+  fade: { seconds: 10, spread: 0.6, blot: 3, detail: 4, refresh: 0.25 },
 };
 
 /** A kind the spawner never picks: it has no weight. */

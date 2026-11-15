@@ -37,7 +37,14 @@ function smallWorld(): World {
     -1, -1, -1, 0, 0,
     -1, -1, -1, 1, 1,
   ]);
-  const box = { col: 3, cols: 2, rows: 1, cells: 2, hallway: false };
+  const box = {
+    col: 3,
+    cols: 2,
+    rows: 1,
+    cells: 2,
+    hallway: false,
+    building: 0,
+  };
   const rooms: Room[] = [
     { ...box, id: 0, row: 0, rows: 2, fixture: true, powered: true },
     { ...box, id: 1, row: 2, fixture: true, powered: false },
@@ -141,6 +148,7 @@ test("rooms get fixtures and power by chance, power drawn apart from fixtures", 
     rows: 1,
     cells: 1,
     hallway: false,
+    building: 0,
   }));
   const none = lightRooms(rooms, { fixture: 0, powered: 0 }, mulberry32(1));
   expect(none.some((each) => each.fixture || each.powered)).toBe(false);

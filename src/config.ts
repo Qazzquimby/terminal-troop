@@ -60,8 +60,9 @@ export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
   // with 3 to 7 cells of yard either side: clutter by a tenth of the tries by the road, nine
   // tenths at the yard's far edge. Past it, buildings of 3x3 to 9x9 rooms, a fifth of cuts laying a
-  // 2-wide hallway up to 16 long, doors 1 to 3 wide; a third of the spare ways get doors too, so
-  // routes loop. The start is the road's first 6 columns, the exit its last 8.
+  // 2-wide hallway up to 16 long, doors 1 to 3 wide. Each building (rooms sharing walls) is a tree of
+  // doors with a tenth of its spare inner walls doored too, so a few ways loop, and 1 door out (6 in
+  // 10), 2 (3 in 10) or 3 (1 in 10). The start is the road's first 6 columns, the exit its last 8.
   world: {
     cell: CELL,
     cols: 140,
@@ -82,7 +83,9 @@ export const config = {
         hallwayChance: 0.2,
         hallway: { width: 2, length: 16 },
         door: { min: 1, max: 3 },
-        loops: 0.35,
+        loops: 0.1,
+        exits: [0.6, 0.3, 0.1],
+        building: { min: 3, max: 8 },
       },
       // Half the rooms have a light fixture, and a third have power, so one room in six is lit.
       // The road and yards are always lit, by sunlight. Monsters never appear in light.
@@ -126,11 +129,14 @@ export const config = {
     },
   },
   // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
+  // It fades like ink soaking away: blots about 3 cells across go from 4s after last seen, the
+  // last at 10s, each darkening faster as its time comes. Terrain in sight is renewed 4x a second.
   mapMemory: {
     saveInterval: 5,
     maxRooms: 50,
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
+    fade: { seconds: 10, spread: 0.6, blot: 3, detail: 4, refresh: 0.25 },
   },
   // Where the player stands, saved every 2s while it moves, so a reload puts it back there.
   positionMemory: { saveInterval: 2, maxRooms: 50 },

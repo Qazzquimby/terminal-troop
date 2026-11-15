@@ -75,6 +75,8 @@ export interface Room {
   readonly cells: number;
   /** Whether it is a long, narrow room: a hallway. */
   readonly hallway: boolean;
+  /** Which building it is part of: rooms sharing walls, joined by doors inside, numbered from 0. */
+  readonly building: number;
   /** Whether it has a light fixture, which lights it while it has power. */
   readonly fixture: boolean;
   /** Whether it has power; see `powerRooms`. */
@@ -187,6 +189,7 @@ export function buildDevWorld(
           rows,
           cells: solid.filter((value) => value === 0).length,
           hallway: false,
+          building: 0,
           fixture: false,
           powered: false,
         },

@@ -223,8 +223,8 @@ function bolts(count: number, danger: number): Session {
 }
 
 test("an item scattered by itself, as scrap is, favours dangerous spots by its scatter's danger", () => {
-  expect(spots(bolts(60, 1))).toHaveLength(60);
-  expect(meanDanger(bolts(60, 1))).toBeGreaterThan(
-    meanDanger(bolts(60, 0)) + 0.1,
+  expect(spots(bolts(200, 1))).toHaveLength(200);
+  expect(meanDanger(bolts(200, 1))).toBeGreaterThan(
+    meanDanger(bolts(200, 0)) + 0.1,
   );
 });

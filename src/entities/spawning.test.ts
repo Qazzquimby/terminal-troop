@@ -238,7 +238,11 @@ test("a new world's head start brings no kind whose time has not come", () => {
 });
 
 test("a new world's head start keeps out of every player's sight, and out of the start", () => {
-  const game = world({ spawner: { ...CERTAIN, headStart: 60 } });
+  // Tries enough that a spot out of sight is found, rather than falling back to the farthest tried.
+  const game = world({
+    spawner: { ...CERTAIN, headStart: 60 },
+    zombie: { ...ZOMBIES, tries: 100 },
+  });
   const kind = game.kindIds.get("zombie");
   const spawned = [...game.entities.values()].filter((e) => e.kind === kind);
   expect(spawned).toHaveLength(12);

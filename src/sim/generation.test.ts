@@ -1,3 +1,4 @@
+import { sumBy } from "lodash-es";
 import { describe, expect, test } from "vitest";
 import { testGeneration, testSimConfig } from "../integration/sim-config.js";
 import { buildWorld } from "./generation.js";
@@ -121,6 +122,48 @@ function roomLinks(world: World): Map<number, Set<number>> {
   return links;
 }
 
+/**
+ * Each room's neighbours across a single wall cell, by id, higher ids only, so each pair is
+ * counted once: the ways a door could join two rooms.
+ */
+function sharedWalls(world: World): Map<number, Set<number>> {
+  const { cols, rows } = world.map;
+  const { area, room } = world.layout;
+  const walls = new Map<number, Set<number>>();
+  const share = (a: number, b: number) => {
+    const ra = area[a] === AREA.room ? (room[a] ?? -1) : -1;
+    const rb = area[b] === AREA.room ? (room[b] ?? -1) : -1;
+    if (ra < 0 || rb < 0 || ra === rb) return;
+    const low = Math.min(ra, rb);
+    const set = walls.get(low) ?? new Set<number>();
+    set.add(Math.max(ra, rb));
+    walls.set(low, set);
+  };
+  area.forEach((code, i) => {
+    if (code !== AREA.wall && code !== AREA.door) return;
+    const col = i % cols;
+    const row = (i / cols) | 0;
+    if (col > 0 && col < cols - 1) share(i - 1, i + 1);
+    if (row > 0 && row < rows - 1) share(i - cols, i + cols);
+  });
+  return walls;
+}
+
+/** The buildings, as the room ids in each. */
+function buildings(world: World): number[][] {
+  const groups = new Map<number, number[]>();
+  for (const { id, building } of world.layout.rooms)
+    groups.set(building, [...(groups.get(building) ?? []), id]);
+  return [...groups.values()];
+}
+
+/** Whether rooms `a` and `b` are in the same building; outdoors, -1, is in none. */
+function together(world: World, a: number, b: number): boolean {
+  const { rooms } = world.layout;
+  if (a < 0 || b < 0) return false;
+  return rooms[a]?.building === rooms[b]?.building;
+}
+
 test("the same seed lays out the same world", () => {
   const first = build(testSimConfig.world, 9);
   const second = build(testSimConfig.world, 9);
@@ -223,18 +266,90 @@ describe.each(WORLDS)("%s world", (_, worldConfig) => {
     },
   );
 
-  test("most rooms have more than one way out, so paths loop", () => {
-    let rooms = 0;
-    let deadEnds = 0;
+  test.each(SEEDS)(
+    "seed %i: each building has 1 to as many doors out as the config allows",
+    (seed) => {
+      const world = build(worldConfig, seed);
+      const links = roomLinks(world);
+      const counts = new Map<number, number>();
+      for (const building of buildings(world)) {
+        const out = sumBy(
+          building,
+          (id) =>
+            [...(links.get(id) ?? [])].filter(
+              (other) => !together(world, id, other),
+            ).length,
+        );
+        expect(out).toBeGreaterThanOrEqual(1);
+        expect(out).toBeLessThanOrEqual(generation.rooms.exits.length);
+        counts.set(out, (counts.get(out) ?? 0) + 1);
+      }
+      // Most have the fewest the config gives most often.
+      expect(counts.get(1) ?? 0).toBeGreaterThan(counts.get(3) ?? 0);
+    },
+  );
+
+  test.each(SEEDS)(
+    "seed %i: a building's rooms are all joined by doors inside it",
+    (seed) => {
+      const world = build(worldConfig, seed);
+      const links = roomLinks(world);
+      for (const building of buildings(world)) {
+        const first = building[0] ?? 0;
+        const seen = new Set([first]);
+        const stack = [first];
+        for (let at = stack.pop(); at !== undefined; at = stack.pop())
+          for (const next of links.get(at) ?? [])
+            if (together(world, at, next) && !seen.has(next)) {
+              seen.add(next);
+              stack.push(next);
+            }
+        expect(seen.size).toBe(building.length);
+      }
+    },
+  );
+
+  test("buildings are mostly grown to the size the config gives", () => {
+    const sizes = SEEDS.flatMap((seed) =>
+      buildings(build(worldConfig, seed)).map((each) => each.length),
+    );
+    const { min, max } = generation.rooms.building;
+    const sized = sizes.filter((size) => size <= max).length;
+    expect(sized / sizes.length).toBeGreaterThan(0.7);
+    const median = sizes.sort((a, b) => a - b)[sizes.length >> 1] ?? 0;
+    expect(median).toBeGreaterThanOrEqual(Math.min(2, min));
+    expect(median).toBeLessThanOrEqual(max);
+  });
+
+  test("each building is a tree of doors with about `loops` of its spare inner walls doored too", () => {
+    let spare = 0;
+    let looped = 0;
     for (const seed of SEEDS) {
       const world = build(worldConfig, seed);
       const links = roomLinks(world);
-      for (const each of world.layout.rooms) {
-        rooms++;
-        if ((links.get(each.id)?.size ?? 0) <= 1) deadEnds++;
+      const walls = sharedWalls(world);
+      for (const building of buildings(world)) {
+        const inner = (id: number) =>
+          [...(links.get(id) ?? [])].filter(
+            (other) => other > id && together(world, id, other),
+          ).length;
+        const doors = sumBy(building, inner);
+        const shared = sumBy(
+          building,
+          (id) =>
+            [...(walls.get(id) ?? [])].filter((other) =>
+              together(world, id, other),
+            ).length,
+        );
+        // Joined up by the fewest doors, plus the loops.
+        expect(doors).toBeGreaterThanOrEqual(building.length - 1);
+        spare += shared - (building.length - 1);
+        looped += doors - (building.length - 1);
       }
     }
-    expect(deadEnds / rooms).toBeLessThan(0.25);
+    expect(spare).toBeGreaterThan(50);
+    expect(looped / spare).toBeGreaterThan(generation.rooms.loops * 0.5);
+    expect(looped / spare).toBeLessThan(generation.rooms.loops * 1.6);
   });
 
   test("clutter is thicker away from the road than beside it", () => {

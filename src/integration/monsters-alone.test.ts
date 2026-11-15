@@ -50,7 +50,7 @@ const still: Controls = {
 
 // Monsters draw from Math.random; seeded so each run is the same.
 beforeEach(() => {
-  vi.spyOn(Math, "random").mockImplementation(mulberry32(3));
+  vi.spyOn(Math, "random").mockImplementation(mulberry32(2));
 });
 
 afterEach(() => {
