@@ -70,6 +70,11 @@ export const testSimConfig: SimConfig = {
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
   death: { scatter: 40, reviveHealth: 50 },
+  stunned: {
+    darkness: 0.95,
+    fadeOut: 1,
+    ring: { volume: 0.5, fadeSeconds: 1 },
+  },
   vision: {
     coneAngle: Math.PI / 2,
     rays: 64,

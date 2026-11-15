@@ -175,6 +175,6 @@ export type {
   VisibilityPolygon,
   VisionSource,
 } from "./vision.js";
-export { isStunned, stun } from "./status.js";
+export { isStunned, stun, stunLeft } from "./status.js";
 export { ambientLightAt, ambientPolygons, isLit } from "./light.js";
 export type { AmbientLight } from "./light.js";

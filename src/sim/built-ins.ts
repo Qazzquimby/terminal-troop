@@ -9,7 +9,7 @@ import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
-import { entityStatuses } from "./status.js";
+import { bodyStatuses } from "./status.js";
 import { steeringEvents } from "./steering.js";
 import { heldSlot, inventories } from "./inventories.js";
 import { registerWorldData } from "./world-data.js";
@@ -49,8 +49,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/on-air": { player: onAir },
   /** Each player's health, which the host alone changes. */
   "core/health": { world: { players: playerHealth } },
-  /** The statuses each world entity is under, such as stunned, and when each ends. */
-  "core/statuses": { world: { entities: entityStatuses } },
+  /** The statuses each body, player or entity, is under, such as stunned, and when each ends. */
+  "core/statuses": { world: { bodies: bodyStatuses } },
   /** Who last hurt each body, players and world entities alike, and when. */
   "core/hurts": { world: { last: lastHurts } },
   /** Every fallen player's body, lying as a corpse; and how ghosts hear each other. */
