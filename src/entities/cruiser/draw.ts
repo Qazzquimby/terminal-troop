@@ -49,14 +49,15 @@ function gauge(
 const WHEEL_MARK = "🛞";
 
 /**
- * Who is inside the cruiser, for everyone to see: their names in a row over it, bottom centred on
- * `above`, the driver's marked with a wheel.
+ * Who is inside the cruiser, for everyone who sees it: how many and their names, in a row across
+ * its roof, centred on `at`, the driver's marked with a wheel. On the roof, it shows wherever the
+ * car does, not in the dark beside it.
  */
 function drawOccupants(
   ctx: CanvasRenderingContext2D,
   game: Session,
   entity: WorldEntity,
-  above: Point,
+  at: Point,
 ): void {
   const inside = occupantsOf(game, entity.id);
   if (inside.length === 0) return;
@@ -67,12 +68,12 @@ function drawOccupants(
   ctx.save();
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
+  ctx.textBaseline = "middle";
   const width = ctx.measureText(text).width;
   ctx.fillStyle = COLOURS.gauge;
-  ctx.fillRect(above.x - width / 2 - 4, above.y - 15, width + 8, 16);
+  ctx.fillRect(at.x - width / 2 - 4, at.y - 8, width + 8, 16);
   ctx.fillStyle = COLOURS.names;
-  ctx.fillText(text, above.x, above.y);
+  ctx.fillText(text, at.x, at.y);
   ctx.restore();
 }
 
@@ -115,7 +116,7 @@ export function drawCruiser(
     (Math.abs(Math.sin(heading)) * length +
       Math.abs(Math.cos(heading)) * width) /
     2;
-  drawOccupants(ctx, game, entity, { x: at.x, y: at.y - reach - 8 });
+  drawOccupants(ctx, game, entity, at);
   const below = at.y + reach + 10;
   if (powered)
     gauge(
