@@ -164,6 +164,7 @@ export const testEntitiesConfig = {
     barkGap: { min: 4, max: 8 },
     attackRange: 32,
     attackCooldown: 1.5,
+    chase: { limit: 15, rest: 5 },
     sounds: { bark: 400, alert: 500, attack: 250 },
   },
   cruiser: {

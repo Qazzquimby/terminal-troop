@@ -19,6 +19,7 @@ import {
   receiveEvent,
   registerContent,
   registerEntityType,
+  removeEntity,
   spawnEntity,
   takeWorldEntries,
   updateSession,
@@ -615,5 +616,72 @@ describe("prey", () => {
     expect(mine.health).toBe(mine.maxHealth);
     expect(loot.health).toBe(loot.maxHealth);
     expect(other.health).toBe(other.maxHealth);
+  });
+
+  test("a chase tires after its limit: it wanders, minding nothing it sees for a rest, then chases again", () => {
+    const game = wild();
+    registerEntityType(game, "ox", {
+      radius: 10,
+      data: z.object({}),
+      draw: () => undefined,
+      maxHealth: Infinity,
+    });
+    const ox = spawnEntity(game, "ox", 400, 400, {});
+    const zombie = zombieAt(game, 200, 400);
+    run(game, DT);
+    const began = game.worldTime;
+    expect(stateOf(zombie)).toMatchObject({ mode: "chase", prey: ox.id });
+
+    const tired = runUntil(
+      game,
+      config.chase.limit + 1,
+      () => stateOf(zombie).mode === "wander",
+    );
+    expect(tired).toBe(true);
+    expect(game.worldTime - began).toBeCloseTo(config.chase.limit, 1);
+
+    // Kept right in front of it, the ox is let be until the rest is over.
+    const rested = runUntil(game, config.chase.rest + 1, () => {
+      const { facing } = stateOf(zombie);
+      const x = zombie.x + Math.cos(facing) * 40;
+      const y = zombie.y + Math.sin(facing) * 40;
+      Object.assign(ox, { x, y, prevX: x, prevY: y });
+      return stateOf(zombie).mode === "chase";
+    });
+    expect(rested).toBe(true);
+    expect(game.worldTime - began).toBeCloseTo(
+      config.chase.limit + config.chase.rest,
+      1,
+    );
+  });
+
+  test.each([
+    [
+      "dies",
+      (_game: Session, deer: WorldEntity) => {
+        deer.health = 0;
+      },
+    ],
+    [
+      "is gone",
+      (game: Session, deer: WorldEntity) => {
+        removeEntity(game, deer.id);
+      },
+    ],
+  ])("a chase ends as soon as its prey %s", (_, end) => {
+    const game = wild();
+    const deer = spawnEntity(game, "deer", 400, 400, {});
+    const zombie = zombieAt(game, 200, 400);
+    run(game, DT);
+    expect(stateOf(zombie)).toMatchObject({ mode: "chase", prey: deer.id });
+
+    end(game, deer);
+    run(game, DT);
+    expect(stateOf(zombie)).toMatchObject({
+      mode: "wander",
+      route: [],
+      target: null,
+    });
+    expect(stateOf(zombie).restUntil).toBeLessThanOrEqual(game.worldTime);
   });
 });

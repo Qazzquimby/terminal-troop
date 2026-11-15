@@ -239,6 +239,8 @@ export const config = {
       barkGap: { min: 6, max: 12 },
       attackRange: 30,
       attackCooldown: 2,
+      // A chase lasts 15s at most, then it turns away and pays what it sees no mind for 5s.
+      chase: { limit: 15, rest: 5 },
       sounds: { bark: CELL * 8, alert: CELL * 10, attack: CELL * 5 },
     },
     // Four cells across. It drives like a heavy car: up to 6 cells a second, 2s to accelerate,

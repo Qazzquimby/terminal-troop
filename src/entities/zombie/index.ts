@@ -8,6 +8,7 @@ import {
   effect,
   INERT_TAG,
   inView,
+  isGone,
   rounded,
   sound,
 } from "../../sim/index.js";
@@ -75,6 +76,11 @@ export interface ZombieConfig {
   readonly attackRange: number;
   /** Seconds between attacks. */
   readonly attackCooldown: number;
+  /**
+   * How long a chase lasts: past `limit` seconds it gives up and wanders, paying what it sees no
+   * mind for `rest` seconds after, or it would take up the same chase at once.
+   */
+  readonly chase: { readonly limit: number; readonly rest: number };
   /** How far, in pixels, each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly bark: number;
@@ -96,6 +102,8 @@ const Shared = {
   attackAt: Time,
   /** Whether it attacks in this step. Host. */
   attacking: z.boolean(),
+  /** Until when it pays what it sees no mind, after a chase it tired of. Host. */
+  restUntil: Time,
   /** Host. */
   seed: Seed,
   /** Host. */
@@ -111,7 +119,8 @@ const Shared = {
  * - wander: walks `route`, then stands until `standUntil`, set once it stops (host), then picks
  *   a new leg; a heard noise turns its route towards `noiseTarget` (everyone), where the noise
  *   seemed to come from
- * - chase: heads along `route` for `target`, where prey was last seen
+ * - chase: heads along `route` for `target`, where `prey`, the body it chases, was last seen
+ *   (host), until `chaseUntil` (host), when it tires of it
  */
 export const ZombieState = z.discriminatedUnion("mode", [
   z.object({
@@ -120,7 +129,12 @@ export const ZombieState = z.discriminatedUnion("mode", [
     standUntil: Time.nullable(),
     noiseTarget: Waypoint.nullable(),
   }),
-  z.object({ ...Shared, mode: z.literal("chase") }),
+  z.object({
+    ...Shared,
+    mode: z.literal("chase"),
+    prey: z.string(),
+    chaseUntil: Time,
+  }),
 ]);
 
 export type ZombieState = z.output<typeof ZombieState>;
@@ -163,6 +177,7 @@ export function freshZombie(
     barkAt: now + result,
     attackAt: now,
     attacking: false,
+    restUntil: now,
     facing: 0,
   };
 }
@@ -198,15 +213,15 @@ function sighting(
   self: Prey,
   facing: number,
   config: ZombieConfig,
-): Point | null {
+): Prey | null {
   const sight = { x: self.x, y: self.y, ...zombieEyes(facing, game, config) };
   const range = config.sightRange;
-  let nearest: Point | null = null;
+  let nearest: Prey | null = null;
   let nearestDistance = Infinity;
   for (const prey of preyNear(game, self, () => range)) {
     const distance = Math.hypot(prey.x - self.x, prey.y - self.y);
     if (distance < nearestDistance && inView(game, sight, prey)) {
-      nearest = { x: prey.x, y: prey.y };
+      nearest = prey;
       nearestDistance = distance;
     }
   }
@@ -298,38 +313,50 @@ function stand(state: Wander, game: Session, config: ZombieConfig): Wander {
 
 /** What a zombie carries over from `state` on changing mode. */
 function kept(state: ZombieState) {
-  const { seed, barkAt, attackAt, attacking, facing } = state;
-  return { seed, barkAt, attackAt, attacking, facing };
+  const { seed, barkAt, attackAt, attacking, restUntil, facing } = state;
+  return { seed, barkAt, attackAt, attacking, restUntil, facing };
 }
 
-/** Heads for `seen`, planning anew unless the chase already heads close enough to it. */
+/**
+ * Chases `seen`, planning anew unless the chase already heads close enough to it. A chase already
+ * under way keeps its end, whoever it now chases.
+ */
 function pursue(
   state: ZombieState,
   at: Point,
-  seen: Point,
-  map: TileMap,
+  seen: Prey,
+  game: Session,
   config: ZombieConfig,
 ): ZombieState {
-  const { target } = state;
-  if (
-    target !== null &&
-    state.route.length > 0 &&
-    Math.hypot(target.x - seen.x, target.y - seen.y) <= config.repathDistance
-  )
-    return state;
+  const target = { x: seen.x, y: seen.y };
+  const { target: was } = state;
+  if (state.mode === "chase") {
+    if (
+      was !== null &&
+      state.route.length > 0 &&
+      Math.hypot(was.x - target.x, was.y - target.y) <= config.repathDistance
+    )
+      return { ...state, prey: seen.id };
+  }
   return {
     ...kept(state),
     mode: "chase",
-    route: planRoute(map, config.radius, at, seen) ?? [],
-    target: seen,
+    prey: seen.id,
+    chaseUntil:
+      state.mode === "chase"
+        ? state.chaseUntil
+        : game.worldTime + config.chase.limit,
+    route: planRoute(game.world.map, config.radius, at, target) ?? [],
+    target,
   };
 }
 
-/** Back to wandering, standing a while first. */
+/** Back to wandering, standing a while first; tired of the chase, it rests its eyes too. */
 function giveUp(
   state: ZombieState,
   game: Session,
   config: ZombieConfig,
+  tired = false,
 ): Wander {
   return stand(
     {
@@ -339,6 +366,7 @@ function giveUp(
       target: null,
       standUntil: null,
       noiseTarget: null,
+      restUntil: tired ? game.worldTime + config.chase.rest : state.restUntil,
     },
     game,
     config,
@@ -346,8 +374,9 @@ function giveUp(
 }
 
 /**
- * The state zombie `self` moves to: sighted prey starts or steers a chase, a chase that reaches
- * where its prey was last seen gives up, and otherwise it wanders, drawn by what it hears.
+ * The state zombie `self` moves to: a chase ends once it has lasted its limit or its prey is dead
+ * or gone; sighted prey starts or steers a chase, unless it is resting from one; a chase that
+ * reaches where its prey was last seen gives up; and otherwise it wanders, drawn by what it hears.
  */
 function think(
   state: ZombieState,
@@ -355,9 +384,16 @@ function think(
   game: Session,
   config: ZombieConfig,
 ): ZombieState {
-  const { map } = game.world;
-  const seen = sighting(game, self, state.facing, config);
-  if (seen !== null) return pursue(state, self, seen, map, config);
+  if (state.mode === "chase") {
+    if (game.worldTime >= state.chaseUntil)
+      return giveUp(state, game, config, true);
+    if (isGone(game, state.prey)) return giveUp(state, game, config);
+  }
+  const seen =
+    game.worldTime >= state.restUntil
+      ? sighting(game, self, state.facing, config)
+      : null;
+  if (seen !== null) return pursue(state, self, seen, game, config);
   if (state.mode === "wander") return wander(state, self, game, config);
   return state.route.length > 0 ? state : giveUp(state, game, config);
 }
