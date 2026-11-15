@@ -162,6 +162,22 @@ test("an unfuelled cruiser can't be entered; fuel used beside it is poured in, a
   expect(game.local).toMatchObject({ x: cruiser.x, y: cruiser.y });
 });
 
+test("fuel poured into a crashed cruiser mends it, its crash damage gone, at full health", () => {
+  const game = world();
+  const cruiser = park(game, { x: 450, y: 300 }, { fuel: 3, damage: 2 });
+  stand(game, { x: 450, y: 360 });
+  expect(giveItem(game, "me", "fuel", 1)).toBe(true);
+  play(game, 0.5);
+  press(game, { select: 1, use: true });
+
+  expect(itemIn(game, "me", 1)).toBeNull();
+  expect(stateOf(game)).toMatchObject({
+    fuel: 3 + items.fuel.seconds,
+    damage: 0,
+  });
+  expect(cruiser.health).toBe(cruiser.maxHealth);
+});
+
 test("fuel used away from the cruiser stays in hand", () => {
   const game = world();
   park(game, { x: 450, y: 300 });

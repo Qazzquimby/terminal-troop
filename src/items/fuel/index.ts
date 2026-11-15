@@ -22,7 +22,8 @@ const ITEM = "fuel";
 
 /**
  * Fuel: used beside the cruiser, the can is poured in, gone from its holder's items, and the
- * cruiser has that much more driving in it; once it has any, its engine runs and it can be driven.
+ * cruiser has that much more driving in it, its crash damage mended; once it has any fuel, its
+ * engine runs and it can be driven.
  * Used anywhere else, it does nothing.
  */
 export const fuel = defineItem(ITEM, (config: FuelConfig) => {
