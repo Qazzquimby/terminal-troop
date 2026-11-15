@@ -57,7 +57,7 @@ import type { LightConfig, VisionConfig } from "./vision.js";
 import { dropHeld, interact } from "./world-items.js";
 import { followWalls } from "./walls.js";
 import type { WorldItemConfig } from "./world-items.js";
-import { followItemSounds } from "./item-sounds.js";
+import { followPlayings } from "./item-sounds.js";
 
 /** How clients follow the host. */
 interface SyncConfig {
@@ -364,7 +364,7 @@ export function updateSession(
   } else followEntities(game, dt);
 
   followHealth(game);
-  followItemSounds(game);
+  followPlayings(game);
   // Sounds still playing are heard from where the local player is now, a ghost's view included.
   game.sfx.listen(game.local);
   hearStatuses(game);

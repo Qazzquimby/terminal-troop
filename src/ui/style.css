@@ -665,3 +665,59 @@ canvas {
   cursor: not-allowed;
   text-decoration: line-through;
 }
+
+/* The cabin's minimap, transmit button and radio: as ugly as the rest of it. */
+.cabin-minimap-canvas {
+  display: block;
+  border: 4px ridge #00e5ff;
+  image-rendering: pixelated;
+  transform: rotate(-1.5deg);
+}
+.cabin-minimap-row {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+}
+.cabin-minimap-name {
+  color: #ffea00;
+  font-size: 11px;
+}
+.cabin-minimap-step {
+  padding: 0 3px;
+  background: #ff00aa;
+  color: #00ff66;
+  border: 2px outset #ffea00;
+  font: inherit;
+  font-size: 10px;
+}
+.cabin-transmit-button {
+  padding: 6px 4px;
+  background: #5c5c00;
+  color: #ff7a00;
+  border: 4px outset #b0b0b0;
+  border-radius: 50% 10% 40% 5%;
+  font: inherit;
+  user-select: none;
+}
+.cabin-transmit-button.cabin-on-air {
+  background: #ff0000;
+  color: #ffff00;
+  border-style: inset;
+}
+.cabin-radio-dial {
+  margin: 2px 0;
+  padding: 1px 4px;
+  background: #001a00;
+  color: #39ff14;
+  font-family: "Courier New", monospace;
+  letter-spacing: 3px;
+}
+.cabin-radio-tune,
+.cabin-radio-off {
+  background: #8a5a00;
+  color: #c8ff00;
+  border: 3px groove #ff9cf0;
+  font: inherit;
+  font-size: 11px;
+}

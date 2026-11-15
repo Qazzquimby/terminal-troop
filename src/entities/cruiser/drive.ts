@@ -95,17 +95,24 @@ const ENGINE_TAG = "engine";
 
 /**
  * The cruiser's state: seconds of driving its fuel has left, unpowered at 0; damage taken since
- * it last broke down; and the way its front points, in radians.
+ * it last broke down; the way its front points, in radians; and the station its radio plays,
+ * null while it is off.
  */
 export const CruiserState = z.object({
   fuel: rounded(2, z.number().min(0)),
   damage: z.number().min(0),
   heading: rounded(3),
+  station: z.number().int().min(0).nullable().default(null),
 });
 export type CruiserState = z.output<typeof CruiserState>;
 
-/** A cruiser new to the world: unfuelled, undamaged, pointing right, towards the exit. */
-export const FRESH: CruiserState = { fuel: 0, damage: 0, heading: 0 };
+/** A cruiser new to the world: unfuelled, undamaged, pointing right, towards the exit, radio off. */
+export const FRESH: CruiserState = {
+  fuel: 0,
+  damage: 0,
+  heading: 0,
+  station: null,
+};
 
 /** `vehicle`'s state, or a fresh one if it does not parse. */
 function stateOf(vehicle: WorldEntity): CruiserState {

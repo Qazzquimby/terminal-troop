@@ -95,7 +95,17 @@ describe("content events", () => {
       ["core/world-items", ["pickUp", "drop"]],
       [
         "core/vehicles",
-        ["board", "wheel", "unwheel", "leave", "honk", "stow", "unstow", "buy"],
+        [
+          "board",
+          "wheel",
+          "unwheel",
+          "leave",
+          "honk",
+          "stow",
+          "unstow",
+          "buy",
+          "tune",
+        ],
       ],
       ["core/actions", ["effects"]],
     ]);

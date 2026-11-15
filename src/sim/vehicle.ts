@@ -36,6 +36,9 @@ const COOLDOWN = 0.3;
 /** Least time between two honks of one player's, in sim seconds. */
 const HONK_COOLDOWN = 0.4;
 
+/** Least time between two turns of a vehicle's radio by one player, in sim seconds. */
+const TUNE_COOLDOWN = 0.3;
+
 /** Gap, in pixels, between a vehicle's body and a player getting out beside it. */
 const STEP_OUT = 4;
 
@@ -354,6 +357,19 @@ export function cabinShop(game: Session, vehicle: string): CabinShop | null {
     : { wares: shop.wares, credit: credit.get(game) };
 }
 
+/** A player inside a vehicle turning its radio: to the next station, switching it on, or off. */
+const tune = defineAction("tune", {
+  input: z.object({ to: z.enum(["next", "off"]) }),
+  cooldown: TUNE_COOLDOWN,
+  check: (_game, player) => player.ride !== null,
+  apply(game, player, { to }) {
+    const found =
+      player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+    if (found === null) return;
+    found.spec.tune?.(game, found.entity, player, to);
+  },
+});
+
 /** Getting in and out of vehicles, and what is done inside, sent under the engine's own entry. */
 export const vehicleActions = [
   board,
@@ -364,6 +380,7 @@ export const vehicleActions = [
   stow,
   unstow,
   buy,
+  tune,
 ] as const;
 
 /**
@@ -438,6 +455,12 @@ export function cabinCommand(game: Session, command: CabinCommand): void {
       return;
     case "exit":
       leave.perform(game, {});
+      return;
+    case "radio":
+      tune.perform(game, { to: "next" });
+      return;
+    case "radioOff":
+      tune.perform(game, { to: "off" });
       return;
   }
 }

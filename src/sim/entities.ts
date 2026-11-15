@@ -15,6 +15,7 @@ import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
 import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
+import type { Playing } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
@@ -88,6 +89,15 @@ export interface EntityDefinition<S> {
   /** What makes it a vehicle a player can drive, if it is one. */
   readonly vehicle?: VehicleSpec;
   /**
+   * What it plays where it is, given its state, if anything, on every client: a car radio's
+   * station, say. Streamed as an item's is, following it as it moves.
+   */
+  readonly plays?: (
+    entity: WorldEntity,
+    data: S,
+    game: Session,
+  ) => Playing | null;
+  /**
    * Its body as a box rather than the disc of `radius`, such as a car's: `length` along the way
    * it points, which `heading` gives from its state, and `width` across. Walls stop it as it
    * drives, it touches bodies and it is seen by that box. Its `radius` should be half its length.
@@ -136,6 +146,7 @@ export interface EntityType {
   box(entity: WorldEntity): BoxPose | null;
   light(entity: WorldEntity): readonly LightEmission[];
   eyes(entity: WorldEntity, game: Session): Eyes | null;
+  plays(entity: WorldEntity, game: Session): Playing | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
   dies(entity: WorldEntity, game: Session): void;
@@ -185,6 +196,11 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return null;
       return definition.eyes?.(entity, parsed.data, game) ?? null;
+    },
+    plays(entity, game) {
+      const parsed = schema.safeParse(entity.data);
+      if (!parsed.success) return null;
+      return definition.plays?.(entity, parsed.data, game) ?? null;
     },
     update(entity, dt, game) {
       const parsed = schema.safeParse(entity.data);

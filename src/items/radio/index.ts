@@ -10,19 +10,12 @@ import {
   stateAt,
 } from "../../sim/index.js";
 import type { ItemInstance, ItemTraits, Session } from "../../sim/index.js";
+import { RADIO_TAG, STATIONS, stationPlaying } from "../../stations/index.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
 const onUrl = new URL("./sfx/on.mp3", import.meta.url).href;
 const offUrl = new URL("./sfx/off.mp3", import.meta.url).href;
 const dropUrl = new URL("./sfx/drop.mp3", import.meta.url).href;
-
-/** The songs a radio picks from as it is switched on, each streamed as it plays. */
-const SONGS: readonly string[] = [
-  new URL("./songs/song-1.mp3", import.meta.url).href,
-  new URL("./songs/song-2.mp3", import.meta.url).href,
-  new URL("./songs/song-3.mp3", import.meta.url).href,
-  new URL("./songs/song-4.mp3", import.meta.url).href,
-];
 
 /** The radio. Distances in pixels, times in sim seconds. */
 export interface RadioConfig extends ItemTraits {
@@ -42,10 +35,7 @@ export interface RadioConfig extends ItemTraits {
 
 const ITEM = "radio";
 
-/** The tag a radio's noise carries, past its maker's kind. */
-const RADIO_TAG = "radio";
-
-/** The song a radio switched on in state `state` plays, by its place in `SONGS`; null for none. */
+/** The station a radio switched on in state `state` plays, by number; null for none. */
 function songOf(
   state: ItemInstance["state"],
 ): { readonly song: number; readonly since: number } | null {
@@ -86,8 +76,8 @@ export const radio = defineItem(ITEM, (config: RadioConfig) => {
       cooldown: config.cooldown,
       apply(game, user, { slot }) {
         const on = !isOn(stateAt(game, user, slot));
-        // Only the host's switch counts, so the song is drawn there alone.
-        const song = Math.floor(Math.random() * SONGS.length);
+        // Only the host's switch counts, so the station is drawn there alone.
+        const song = Math.floor(Math.random() * STATIONS.length);
         setStateAt(
           game,
           user,
@@ -103,16 +93,9 @@ export const radio = defineItem(ITEM, (config: RadioConfig) => {
     },
     plays(instance) {
       const tune = songOf(instance.state);
-      const url = tune === null ? undefined : SONGS[tune.song];
-      if (tune === null || url === undefined) return null;
-      return {
-        key: `${String(tune.song)}@${String(tune.since)}`,
-        url,
-        since: tune.since,
-        volume: config.volume,
-        range: config.range,
-        loop: true,
-      };
+      return tune === null
+        ? null
+        : stationPlaying(tune.song, tune.since, config);
     },
     step(game, dt) {
       const due = (playing.get(game) ?? 0) - dt;

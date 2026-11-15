@@ -6,9 +6,11 @@ import {
   heldItemOf,
   isOn,
   itemInstances,
+  liveTransceivers,
   makeNoise,
   makerOf,
   onAir,
+  transceiverOf,
   setStateAt,
   sound,
   spendInstanceUses,
@@ -20,6 +22,7 @@ import type {
   ItemInstance,
   ItemTraits,
   Player,
+  Point,
   Session,
   VoiceChannel,
 } from "../../sim/index.js";
@@ -62,32 +65,52 @@ const holdsLiveWalkie = (game: Session, player: Player): boolean => {
   return held?.id === ITEM && isOn(held.state);
 };
 
+/** Whether `player` may transmit on the walkie band: holding a walkie switched on, or sitting at a set. */
+const hasTransmitter = (game: Session, player: Player): boolean =>
+  holdsLiveWalkie(game, player) || transceiverOf(game, player) !== null;
+
 /**
- * Whether `player` transmits on its walkie: on the air, holding a walkie switched on. The rest
- * of the world's walkies switched on play what it says.
+ * Whether `player` transmits on the walkie band: on the air, holding a walkie switched on or
+ * inside a vehicle with a set. Every other walkie and set switched on plays what it says.
  */
 const transmitting = (game: Session, player: Player): boolean =>
-  onAir.get(player) && holdsLiveWalkie(game, player);
+  onAir.get(player) && hasTransmitter(game, player);
 
-/** Every walkie switched on that `speaker`'s transmission plays from: all but those it carries. */
-function receivers(game: Session, speaker: Player): ItemInstance[] {
-  return itemInstances(game, ITEM).filter(
-    (instance) =>
-      isWalkie(instance) &&
-      !("carrier" in instance.place && instance.place.carrier === speaker),
-  );
+/** Something on the walkie band that plays a transmission: where it is, and what makes its noise. */
+interface Receiver {
+  readonly at: Point;
+  readonly maker: { readonly id: string };
 }
 
 /**
- * Walkie voice: a transmitting speaker is heard from every other walkie switched on, wherever it
- * is, as through a small speaker.
+ * Everything on the band that `speaker`'s transmission plays from: every walkie switched on but
+ * those it carries, and every vehicle's set with anyone inside but the one it sits in.
+ */
+function receivers(game: Session, speaker: Player): Receiver[] {
+  const walkies = itemInstances(game, ITEM)
+    .filter(
+      (instance) =>
+        isWalkie(instance) &&
+        !("carrier" in instance.place && instance.place.carrier === speaker),
+    )
+    .map((instance) => ({ at: instance.at, maker: makerOf(instance) }));
+  const own = transceiverOf(game, speaker);
+  const sets = liveTransceivers(game)
+    .filter((vehicle) => vehicle !== own)
+    .map((vehicle) => ({ at: { x: vehicle.x, y: vehicle.y }, maker: vehicle }));
+  return [...walkies, ...sets];
+}
+
+/**
+ * Walkie voice: a transmitting speaker is heard from every other walkie and set switched on,
+ * wherever it is, as through a small speaker.
  */
 const walkieChannel: VoiceChannel = {
   routes(game, speaker) {
     if (!transmitting(game, speaker)) return [];
     const from = { x: speaker.x, y: speaker.y };
-    return receivers(game, speaker).map((instance) => ({
-      at: instance.at,
+    return receivers(game, speaker).map(({ at }) => ({
+      at,
       via: "radio" as const,
       from,
     }));
@@ -99,6 +122,8 @@ const walkieChannel: VoiceChannel = {
  * battery each `drain` seconds, wherever it is, and is gone once the battery is flat. Holding it
  * on and holding the use button transmits: the holder's mic goes out whatever its voice settings,
  * and every other walkie switched on plays it, making the noise of that speech at the walkie.
+ * A vehicle's set is on the same band: holding transmit inside one transmits from it the same
+ * way, and while anyone is inside it, it plays every transmission like a walkie switched on.
  */
 export const walkie = defineItem(ITEM, (config: WalkieConfig) => {
   const sounds = {
@@ -172,10 +197,17 @@ export const walkie = defineItem(ITEM, (config: WalkieConfig) => {
     }
     speaking.set(game, game.config.voiceNoise.interval);
     const radius = loudest * config.speakerNoise;
-    const playing = new Set(speakers.flatMap((s) => receivers(game, s)));
-    for (const instance of playing)
-      makeNoise(game, makerOf(instance), {
-        at: instance.at,
+    const playing = new Map(
+      speakers
+        .flatMap((s) => receivers(game, s))
+        .map((each) => [
+          `${each.maker.id}@${String(each.at.x)},${String(each.at.y)}`,
+          each,
+        ]),
+    );
+    for (const { at, maker } of playing.values())
+      makeNoise(game, maker, {
+        at,
         radius,
         tags: [WALKIE_TAG, VOICE_TAG],
       });
@@ -202,7 +234,9 @@ export const walkie = defineItem(ITEM, (config: WalkieConfig) => {
     },
     act(game, controls) {
       const { local } = game;
-      const keyed = controls.holdingUse && holdsLiveWalkie(game, local);
+      const keyed =
+        (controls.holdingUse && holdsLiveWalkie(game, local)) ||
+        (controls.transmit === true && transceiverOf(game, local) !== null);
       if (keyed === onAir.get(local)) return;
       onAir.set(local, keyed);
       key.perform(game, { on: keyed });
