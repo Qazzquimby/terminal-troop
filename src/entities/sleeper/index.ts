@@ -46,11 +46,11 @@ interface Gap {
 }
 
 /**
- * The witch: sleeps in the dark until light or a body close by wakes her, then runs down
+ * The sleeper: sleeps in the dark until light or a body close by wakes her, then runs down
  * whoever she sees for a while before slinking off to a dark corner to sleep again. Distances in
  * pixels, times in sim seconds; she runs at a player's sprint.
  */
-export interface WitchConfig extends Hunting {
+export interface SleeperConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -102,7 +102,7 @@ type Mode = (typeof MODES)[number];
  * Her mode and what she keeps. Only the host reads the rest, and sends it so that whoever hosts
  * next goes on from it.
  */
-export const WitchState = z.object({
+export const SleeperState = z.object({
   mode: z.enum(MODES),
   until: Time,
   route: Route,
@@ -116,11 +116,11 @@ export const WitchState = z.object({
   victim: z.string().nullable(),
 });
 
-export type WitchState = z.output<typeof WitchState>;
+export type SleeperState = z.output<typeof SleeperState>;
 
-const NAME = "witch";
+const NAME = "sleeper";
 
-const WITCH_GLYPH = "🧙‍♀️";
+const SLEEPER_GLYPH = "🧙‍♀️";
 
 const COLOURS: Record<Mode, string> = {
   dormant: "#6b5a8a",
@@ -129,8 +129,8 @@ const COLOURS: Record<Mode, string> = {
   retreat: "#4a6070",
 };
 
-/** A fresh, dormant witch's state at world time `now`. */
-export function freshWitch(now: number, config: WitchConfig): WitchState {
+/** A fresh, dormant sleeper's state at world time `now`. */
+export function freshSleeper(now: number, config: SleeperConfig): SleeperState {
   return {
     mode: "dormant",
     until: now,
@@ -161,7 +161,7 @@ function pointAround(at: Point, min: number, max: number): Point {
 }
 
 /** Wakes in a rage: stays enraged for a while, starting from no target. */
-function enrage(state: WitchState, game: Session, config: WitchConfig) {
+function enrage(state: SleeperState, game: Session, config: SleeperConfig) {
   return {
     ...state,
     mode: "enraged" as const,
@@ -172,7 +172,7 @@ function enrage(state: WitchState, game: Session, config: WitchConfig) {
 }
 
 /** Goes back to sleep where she is. */
-function sleep(state: WitchState): WitchState {
+function sleep(state: SleeperState): SleeperState {
   return { ...state, mode: "dormant", route: [], target: null, foe: null };
 }
 
@@ -184,7 +184,7 @@ function sleep(state: WitchState): WitchState {
 function hideout(
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
+  config: SleeperConfig,
 ): Point[] | null {
   const { map } = game.world;
   const { distance, clearance } = config.retreat;
@@ -207,11 +207,11 @@ function hideout(
 
 /** Runs off to a dark hideout, or sleeps where she is when she finds none. */
 function retreat(
-  state: WitchState,
+  state: SleeperState,
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
-): WitchState {
+  config: SleeperConfig,
+): SleeperState {
   const route = hideout(self, game, config);
   if (route === null) return sleep(state);
   return { ...state, mode: "retreat", route, target: null };
@@ -219,12 +219,12 @@ function retreat(
 
 /** Heads for `seen`, planning anew unless she already heads close enough to it. */
 function pursue(
-  state: WitchState,
+  state: SleeperState,
   self: WorldEntity,
   seen: Point,
   game: Session,
-  config: WitchConfig,
-): WitchState {
+  config: SleeperConfig,
+): SleeperState {
   const { target, route: heading } = state;
   const onCourse =
     heading.length > 0 &&
@@ -243,11 +243,11 @@ function pursue(
  * now.
  */
 function rage(
-  state: WitchState,
+  state: SleeperState,
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
-): WitchState {
+  config: SleeperConfig,
+): SleeperState {
   const seen =
     livingBody(game, state.foe) ??
     nearestSeenBody(game, self, config.ignores, config.sightRange);
@@ -268,18 +268,18 @@ function rage(
 function bodyClose(
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
+  config: SleeperConfig,
 ): boolean {
   return nearestSeenBody(game, self, config.ignores, config.wakeRange) !== null;
 }
 
-/** The state witch `self` moves to this step. */
+/** The state sleeper `self` moves to this step. */
 function think(
-  state: WitchState,
+  state: SleeperState,
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
-): WitchState {
+  config: SleeperConfig,
+): SleeperState {
   const now = game.worldTime;
   const hurt = hurtSinceLastStep(game, self.id);
   const by = hurt?.by ?? null;
@@ -292,13 +292,13 @@ function think(
 
 /** What she does in her mode, `hurt` or not since her last step, at world time `now`. */
 function respond(
-  state: WitchState,
+  state: SleeperState,
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
+  config: SleeperConfig,
   hurt: boolean,
   now: number,
-): WitchState {
+): SleeperState {
   switch (state.mode) {
     case "dormant":
     case "warning": {
@@ -332,11 +332,11 @@ function respond(
 
 /** Strikes, while enraged and once the cooldown is over, whatever she touches. */
 function attack(
-  state: WitchState,
+  state: SleeperState,
   self: WorldEntity,
   game: Session,
-  config: WitchConfig,
-): WitchState {
+  config: SleeperConfig,
+): SleeperState {
   if (state.mode !== "enraged" || game.worldTime < state.attackAt)
     return { ...state, attacking: false };
   const struck = touching(game, self, config.ignores)[0];
@@ -351,10 +351,10 @@ function attack(
 
 /** Barks once her time comes, more often when enraged; she is quiet as she slinks off. */
 function bark(
-  state: WitchState,
+  state: SleeperState,
   game: Session,
-  config: WitchConfig,
-): WitchState {
+  config: SleeperConfig,
+): SleeperState {
   if (game.worldTime < state.barkAt || state.mode === "retreat") return state;
   const gap =
     state.mode === "enraged" ? config.barkGap.enraged : config.barkGap.dormant;
@@ -376,8 +376,8 @@ interface Sounds {
  */
 function cue(
   entity: WorldEntity,
-  previous: WitchState,
-  next: WitchState,
+  previous: SleeperState,
+  next: SleeperState,
   game: Session,
   sounds: Sounds,
 ): void {
@@ -392,7 +392,7 @@ function cue(
     if (cry !== false) effect(game, { at: entity, sound: cry }, entity);
 }
 
-function definition(config: WitchConfig): EntityDefinition<WitchState> {
+function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
   const sounds: Sounds = {
     bark: sound({ url: barkUrl, range: config.sounds.bark }),
     growl: sound({ url: growlUrl, range: config.sounds.growl }),
@@ -403,7 +403,7 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
-    data: WitchState,
+    data: SleeperState,
     // She sees all round her, asleep or awake, but looks down no cone.
     eyes: () => ({
       cone: null,
@@ -430,7 +430,7 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
     },
     draw(ctx, entity, state, now) {
       const size = entity.radius * (state.mode === "enraged" ? 2.4 : 2);
-      drawEmoji(ctx, entity, WITCH_GLYPH, size);
+      drawEmoji(ctx, entity, SLEEPER_GLYPH, size);
       const { mode } = state;
       const pulse = mode === "warning" ? 2 * Math.abs(Math.sin(now * 12)) : 0;
       drawRing(ctx, entity, COLOURS[mode], mode === "enraged" ? 3 : 2, pulse);
@@ -439,19 +439,20 @@ function definition(config: WitchConfig): EntityDefinition<WitchState> {
 }
 
 /**
- * The witch: sits dormant in the dark, barking now and then. Light on her, or a body she sees
+ * The sleeper: sits dormant in the dark, barking now and then. Light on her, or a body she sees
  * close by for a moment after her growl, a player or a monster alike, wakes her enraged: she
  * screams, then for a while runs at a player's sprint after whoever she sees, or whoever hurts her,
  * to where she last saw them, wandering fast with no one in sight. Once she kills, or her rage runs
  * out, she runs for a dark spot away from what she hunts and sleeps there. She arrives now and
  * then, out of the world's start, of the light and of every player's sight.
  */
-export const witch = defineEntity(NAME, (config: WitchConfig) => ({
+export const sleeper = defineEntity(NAME, (config: SleeperConfig) => ({
   ...definition(config),
   ...arrivals({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    fresh: (_seed: number, game: Session) => freshWitch(game.worldTime, config),
+    fresh: (_seed: number, game: Session) =>
+      freshSleeper(game.worldTime, config),
   }),
 }));

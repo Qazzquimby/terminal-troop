@@ -146,6 +146,23 @@ export function selectSlot(inventory: Inventory, slot: number): HeldSlot {
     : null;
 }
 
+/**
+ * The slot held after stepping `by` slots from `held`, wrapping round the inventory: empty slots
+ * count, as a number key can select them too. From holding nothing, a step forward holds the first
+ * slot and a step back the last. An inventory without slots holds nothing.
+ */
+export function cycleSlot(
+  inventory: Inventory,
+  held: HeldSlot,
+  by: number,
+): HeldSlot {
+  const count = inventory.length;
+  if (count === 0) return null;
+  if (by === 0) return held;
+  const from = held ?? (by > 0 ? -1 : 0);
+  return (((from + by) % count) + count) % count;
+}
+
 /** The item in the selected slot, or null when holding nothing. */
 export function heldItem(
   inventory: Inventory,

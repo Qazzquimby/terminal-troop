@@ -7,7 +7,7 @@ import { drive, RideWire } from "./driving.js";
 import type { Ride } from "./driving.js";
 import { isGhost } from "./ghosts.js";
 import { heldSlot, weightOf } from "./inventories.js";
-import { selectSlot } from "./inventory.js";
+import { cycleSlot, selectSlot } from "./inventory.js";
 import {
   glideTo,
   lerpAngle,
@@ -626,6 +626,16 @@ function stepFeeds(game: Session, dt: number): void {
   }
 }
 
+/** The click of the local player switching what it holds, heard by it alone. */
+const switchUrl = new URL("./sfx/slot-switch.mp3", import.meta.url).href;
+
+/** Plays the local player's slot-switch click. */
+function hearSwitch(game: Session): void {
+  void game.sfx.play(switchUrl, null, null, {
+    volume: game.config.player.switchVolume,
+  });
+}
+
 /**
  * Runs the local player's step on `controls`: it selects, faces and moves. While another client
  * hosts, the step is kept, and a change of steer goes to the host stamped with it.
@@ -636,8 +646,11 @@ export function steerLocal(
   dt: number,
 ): void {
   const { local, pilot } = game;
+  const before = local.held;
   if (controls.select !== null)
     local.held = selectSlot(local.inventory, controls.select);
+  local.held = cycleSlot(local.inventory, local.held, controls.cycle);
+  if (local.held !== before) hearSwitch(game);
   local.aim = aimAt(local, controls.aim);
   const stunned = isStunned(game, local.id);
   const input: StepInput = pilot.halted

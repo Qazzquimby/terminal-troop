@@ -41,6 +41,8 @@ interface PlayerConfig {
   readonly knockbackSeconds: number;
   /** How what a player carries slows it. */
   readonly load: LoadConfig;
+  /** Volume of the click a player hears switching what it holds, 0..1. */
+  readonly switchVolume: number;
 }
 
 /** How what a player carries slows it: evenly with each pound, up to a limit. */
@@ -72,6 +74,11 @@ export interface Controls {
   readonly crouch: boolean;
   /** The inventory slot to select this step, or null to keep the current one. */
   readonly select: number | null;
+  /**
+   * Slots to step the held slot by this step, after any `select`: positive steps to later slots,
+   * negative to earlier ones, wrapping round the inventory; 0 keeps it.
+   */
+  readonly cycle: number;
   /** Whether to use the held item this step. */
   readonly use: boolean;
   /** Whether the secondary action was pressed this step. */

@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { ItemDefinition } from "./inventory.js";
 import {
   addItem,
+  cycleSlot,
   createInventory,
   heldItem,
   isFull,
@@ -80,4 +81,23 @@ test("a slot number past either end holds nothing", () => {
   expect(selectSlot(inventory, 3)).toBeNull();
   expect(selectSlot(inventory, 8)).toBeNull();
   expect(selectSlot(inventory, -1)).toBeNull();
+});
+
+test("cycling steps through every slot, empty ones too, and wraps at both ends", () => {
+  const inventory = createInventory(3);
+  addItem(inventory, tool);
+  expect(cycleSlot(inventory, 0, 1)).toBe(1);
+  expect(cycleSlot(inventory, 1, 1)).toBe(2);
+  expect(cycleSlot(inventory, 2, 1)).toBe(0);
+  expect(cycleSlot(inventory, 0, -1)).toBe(2);
+  expect(cycleSlot(inventory, 1, -1)).toBe(0);
+  expect(cycleSlot(inventory, 1, 0)).toBe(1);
+});
+
+test("cycling from holding nothing holds the first slot forward and the last back", () => {
+  const inventory = createInventory(4);
+  expect(cycleSlot(inventory, null, 1)).toBe(0);
+  expect(cycleSlot(inventory, null, -1)).toBe(3);
+  expect(cycleSlot(inventory, null, 0)).toBeNull();
+  expect(cycleSlot([], 0, 1)).toBeNull();
 });

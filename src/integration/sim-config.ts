@@ -66,6 +66,7 @@ export const testSimConfig: SimConfig = {
     nameMax: 8,
     knockbackSeconds: 0.15,
     load: { full: 100, slowdown: 0.2 },
+    switchVolume: 0.4,
   },
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
@@ -137,14 +138,14 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * and a new world starts with 30 seconds of rolls. A zombie it brings arrives alone, never within
  * 1100px of a player. A cruiser starts at the rally point, its two headlights
  * 45 degree cones reaching 400px. A stun trap arms in 3s and stuns for 5s within 250px. The
- * snail creeps at a fifth of a player's pace and kills what it touches. No lurcher nor blister
- * appears unless a test spawns one: a lurcher 144px across, felled by three test shovel hits,
+ * snail creeps at a fifth of a player's pace and kills what it touches. No blind dog nor exploder
+ * appears unless a test spawns one: a blind dog 144px across, felled by three test shovel hits,
  * charging at full suspicion of 1000; a
- * blister that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
- * round, from 100 damage to 30. Nor does a witch or an idol. No skulker nor magpie beetle appears
+ * exploder that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
+ * round, from 100 damage to 30. Nor does a sleeper or a statue. No stalker nor hoarder appears
  * unless a test spawns one: a
- * skulker at 1.2 times the test player's walk, watched 700px down a player's cone, retreating
- * 600px clear; magpie beetles at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
+ * stalker at 1.2 times the test player's walk, watched 700px down a player's cone, retreating
+ * 600px clear; hoarders at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
  * nest, spooked within 400px, avenging a theft until the thief is 250px from it.
  */
 export const testEntitiesConfig = {
@@ -153,7 +154,7 @@ export const testEntitiesConfig = {
     spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
-    ignores: ["zombie", "blister"],
+    ignores: ["zombie", "exploder"],
     maxHealth: 40,
     attackDamage: 25,
     wanderSpeed: 50,
@@ -211,10 +212,10 @@ export const testEntitiesConfig = {
     attackCooldown: 1,
     repathInterval: 1,
   },
-  lurcher: {
+  blindDog: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 72,
-    ignores: ["lurcher"],
+    ignores: ["blindDog"],
     maxHealth: 75,
     contactDamage: 100,
     contactCooldown: 1,
@@ -228,10 +229,10 @@ export const testEntitiesConfig = {
     overrun: 400,
     sounds: { roar: 1000, snarl: 200, bite: 300 },
   },
-  blister: {
+  exploder: {
     spawning: { ...NEVER, unseenDistance: 700 },
     radius: 16,
-    ignores: ["blister", "zombie", "magpie"],
+    ignores: ["exploder", "zombie", "hoarder"],
     maxHealth: 45,
     wanderSpeed: 80,
     chaseSpeed: 120,
@@ -241,15 +242,15 @@ export const testEntitiesConfig = {
     repathDistance: 25,
     detour: { factor: 2, slack: 100 },
     fuseRange: 100,
-    fuseOnHurt: { minDamage: 0, except: ["blister"] },
+    fuseOnHurt: { minDamage: 0, except: ["exploder"] },
     fuse: 1,
     blast: { radius: 150, centre: 100, edge: 30 },
     sounds: { fuse: 300, blast: 2000 },
   },
-  witch: {
+  sleeper: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 15,
-    ignores: ["witch"],
+    ignores: ["sleeper"],
     maxHealth: 75,
     sightRange: 400,
     wakeRange: 250,
@@ -267,10 +268,10 @@ export const testEntitiesConfig = {
     },
     sounds: { bark: 400, growl: 300, enrage: 800, rageBark: 600, attack: 300 },
   },
-  idol: {
+  statue: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 16,
-    ignores: ["idol"],
+    ignores: ["statue"],
     sightRange: 800,
     patrol: { distance: 300, spread: 50, tries: 16, retry: 2 },
     huntSeconds: 10,
@@ -280,10 +281,10 @@ export const testEntitiesConfig = {
     step: { interval: 0.3, range: 700 },
     strikeRange: 400,
   },
-  skulker: {
+  stalker: {
     spawning: { ...NEVER, unseenDistance: 700 },
     radius: 14,
-    ignores: ["skulker"],
+    ignores: ["stalker"],
     maxHealth: 75,
     speed: 264,
     damage: 100,
@@ -295,14 +296,14 @@ export const testEntitiesConfig = {
     repathInterval: 0.25,
     sounds: { retreat: 300, enraged: 800, attack: 400 },
   },
-  magpie: {
+  hoarder: {
     spawning: {
       ...NEVER,
       unseenDistance: 700,
       group: { min: 3, max: 5, spread: 100 },
     },
     radius: 13,
-    ignores: ["magpie", "blister"],
+    ignores: ["hoarder", "exploder"],
     maxHealth: 45,
     wanderSpeed: 176,
     chaseSpeed: 242,

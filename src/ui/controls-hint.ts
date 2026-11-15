@@ -28,6 +28,7 @@ export const CONTROLS_HINT: Readonly<Record<HintMode, readonly HintEntry[]>> = {
     { actions: ["secondary"], does: "to kick" },
     { actions: ["interact"], does: "to pick up / get in / work item" },
     { actions: ["drop"], does: "to drop" },
+    { actions: ["slotPrevious", "slotNext"], does: "to switch item" },
     SETTINGS,
   ],
   driving: [

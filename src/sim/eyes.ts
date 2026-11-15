@@ -10,7 +10,7 @@ import { canSeeFrom } from "./vision.js";
  * Every body can have eyes: a player by its aim, a world entity by its kind's `eyes`. Eyes see two
  * ways, kept apart on purpose:
  * - looking: down the view cone. What lies in a body's cone along a clear line is what it looks
- *   at, as the idol, held while looked at, asks.
+ *   at, as the statue, held while looked at, asks.
  * - noticing: looking, or within the circle it sees all round it, behind it too. A flash, or a
  *   body it reacts to, need only be noticed.
  * Light plays no part: a body looking into the dark at something still looks at it.

@@ -14,6 +14,7 @@ import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, UiConfig } from "./ui/index.js";
+import type { WheelConfig } from "./input/index.js";
 
 import type { VoiceConnectionConfig, VoiceFalloff } from "./voice/index.js";
 
@@ -37,6 +38,7 @@ interface AppConfig extends SimConfig {
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
+  readonly wheel: WheelConfig;
 }
 
 const CELL = 50;
@@ -86,6 +88,9 @@ export const config = {
     },
   },
   view: { width: 900, height: 600 },
+  // One notch of scroll is 40px: under a click of most wheels (100px in Chromium, 3 lines of 16px
+  // in Firefox) and a short trackpad flick. A part-notch is forgotten after a quarter second idle.
+  wheel: { notch: 40, line: 16, page: 600, idleMs: 250 },
   // Eases out from 1:1 by a fifth of the gap each 60Hz frame. Follows the player by a quarter of
   // the gap each 60Hz frame: about 7px behind at a walk and 12px at a sprint, so a lunge leads
   // it. A jump of more than 4 cells, such as a respawn, is cut to rather than panned across.
@@ -145,6 +150,8 @@ export const config = {
     // Every pound carried slows a player evenly, to 20% slower at 100lb and no slower past it:
     // a shovel and a scrap (30lb) cost 6%.
     load: { full: 100, slowdown: 0.66 },
+    // A quiet click on switching slot, heard only by the one switching.
+    switchVolume: 0.4,
   },
   stamina: {
     max: STAMINA_MAX,
@@ -167,8 +174,8 @@ export const config = {
     fadeOut: 1,
     ring: { volume: 0.5, fadeSeconds: 1 },
   },
-  // A player looks down its cone, holding an idol and the like, out to 10 cells, light or no
-  // light: past a flashlight's 6, short of an idol's 16-cell sight.
+  // A player looks down its cone, holding a statue and the like, out to 10 cells, light or no
+  // light: past a flashlight's 6, short of a statue's 16-cell sight.
   vision: {
     coneAngle: Math.PI / 2,
     rays: 360,
@@ -228,9 +235,9 @@ export const config = {
         group: { min: 1, max: 5, spread: CELL * 2 },
       },
       radius: 15,
-      // It hunts any living body but its own kind and blisters: a zombie that bit a blister would
+      // It hunts any living body but its own kind and exploders: a zombie that bit an exploder would
       // set it off, and a crowd of them would level the buildings before any player came.
-      ignores: ["zombie", "blister"],
+      ignores: ["zombie", "exploder"],
       maxHealth: 40,
       attackDamage: 35,
       wanderSpeed: 60,
@@ -328,10 +335,10 @@ export const config = {
     },
     // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
-    lurcher: {
+    blindDog: {
       spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
       radius: CELL - 3 , // Currently size 2 // 3-> Cell * 1.5 - 3,
-      ignores: ["lurcher"],
+      ignores: ["blindDog"],
       maxHealth: SHOVEL_DAMAGE * 5,
       contactDamage: 100,
       contactCooldown: 1,
@@ -353,12 +360,12 @@ export const config = {
     },
     // A swollen thing that comes alone, out of the dark, never within 14 cells of a player. It
     // feels prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
-    blister: {
+    exploder: {
       spawning: { weight: 70, tries: 24, unseenDistance: CELL * 14 },
       radius: 16,
-      // It passes over the crowds, zombies and magpie beetles, or it would spend itself and the
+      // It passes over the crowds, zombies and hoarder beetles, or it would spend itself and the
       // walls round it on the first it felt; players and the rarer monsters it hunts.
-      ignores: ["blister", "zombie", "magpie"],
+      ignores: ["exploder", "zombie", "hoarder"],
       maxHealth: SHOVEL_DAMAGE * 3,
       wanderSpeed: PLAYER_SPEED * 0.8,
       chaseSpeed: PLAYER_SPEED * 1.1,
@@ -370,9 +377,9 @@ export const config = {
       // heads straight at its prey instead, and sets itself off at the wall in the way.
       detour: { factor: 2, slack: CELL * 2 },
       // Within 2 cells of a body it hunts it lights a 1s fuse, and keeps coming. Any hurt lights it
-      // too, but another blister's burst, so one burst does not set off every blister near it.
+      // too, but another exploder's burst, so one burst does not set off every exploder near it.
       fuseRange: CELL * 2,
-      fuseOnHurt: { minDamage: 0, except: ["blister"] },
+      fuseOnHurt: { minDamage: 0, except: ["exploder"] },
       fuse: 1,
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
@@ -386,9 +393,9 @@ export const config = {
     // thrice, once a second, and wanders 8 cells at a time. She sleeps again 10 to 20 cells off,
     // at least 12 from every body she hunts. Her bark carries 8 cells every 3 to 6s while dormant;
     // enraged, every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16.
-    witch: {
+    sleeper: {
       spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
-      ignores: ["witch"],
+      ignores: ["sleeper"],
       radius: 15,
       maxHealth: SHOVEL_DAMAGE * 5,
       sightRange: CELL * 8,
@@ -422,14 +429,14 @@ export const config = {
     // anew every 2s while no leg can be found. A hunt lasts 10s of moving, its route to its
     // quarry planned every quarter second. Its touch deals 90, once a second. Its tread carries 14
     // cells, between a walk and a sprint, every 0.3s, a sprint's pace; its blow 8.
-    idol: {
+    statue: {
       spawning: {
         weight: 10,
         after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
       },
-      ignores: ["idol"],
+      ignores: ["statue"],
       radius: 16,
       sightRange: CELL * 16,
       patrol: { distance: CELL * 30, spread: CELL * 5, tries: 16, retry: 2 },
@@ -442,19 +449,19 @@ export const config = {
     },
     // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
     // player. Five shovel hits fell it; it moves at 1.2 times a walk, and touching it costs 100
-    // health, once a second. Any body but another skulker sees it down its view cone as far as that
+    // health, once a second. Any body but another stalker sees it down its view cone as far as that
     // body looks, a player 10 cells, but never past 14, as far as a flashlight reaches. Seen, it
     // backs off for 25s, keeping 12 cells from every body it hunts where it can; hurt, it rages for
     // 10s. It replans twice a second. Its hiss as it backs off carries 6 cells, its shriek of rage
     // 16, its strike 8.
-    skulker: {
+    stalker: {
       spawning: {
         weight: 30,
         after: 240,
         tries: 24,
         unseenDistance: CELL * 30,
       },
-      ignores: ["skulker"],
+      ignores: ["stalker"],
       radius: 14,
       maxHealth: SHOVEL_DAMAGE * 5,
       speed: PLAYER_SPEED * 1.2,
@@ -472,15 +479,15 @@ export const config = {
     // is spooked by any body within 8 cells for 5s, and bites its quarry for 10 once a second. A
     // nest's revenge lasts until the thief is 5 cells from what it stole. Its chitter carries 4
     // cells every 5 to 10s, its alarm 10, its pick-up 3, its bite 5.
-    magpie: {
+    hoarder: {
       spawning: {
         weight: 50,
         tries: 24,
         unseenDistance: CELL * 14,
         group: { min: 3, max: 5, spread: CELL * 2 },
       },
-      // It leaves blisters be, or its bite would set them off by its nest.
-      ignores: ["magpie", "blister"],
+      // It leaves exploders be, or its bite would set them off by its nest.
+      ignores: ["hoarder", "exploder"],
       radius: 13,
       maxHealth: SHOVEL_DAMAGE * 3,
       wanderSpeed: PLAYER_SPEED * 0.8,

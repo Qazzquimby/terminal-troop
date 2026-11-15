@@ -25,12 +25,12 @@ import type {
   WorldEntity,
 } from "../../sim/index.js";
 import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
-import type { BlisterConfig } from "./index.js";
+import type { ExploderConfig } from "./index.js";
 import {
   blastDamage,
-  blister as blisterContent,
-  BlisterState,
-  freshBlister,
+  exploder as exploderContent,
+  ExploderState,
+  freshExploder,
 } from "./index.js";
 
 const DT = 1 / 60;
@@ -40,17 +40,18 @@ const idle = {
   sprint: false,
   crouch: false,
   select: null,
+  cycle: 0,
   use: false,
   secondary: false,
   interact: false,
   drop: false,
   holdingUse: false,
 };
-const { blister: config } = testEntitiesConfig;
+const { exploder: config } = testEntitiesConfig;
 
 /** The dev square, 18x12 cells, its pillars at x 200-300, y 50-150 and x 600-700, y 450-550. */
 function world(
-  blister: BlisterConfig = config,
+  exploder: ExploderConfig = config,
   others: readonly WorldContent[] = [],
 ): {
   game: Session;
@@ -80,7 +81,7 @@ function world(
     },
   };
   registerContent(game, [
-    blisterContent.create({ blister }),
+    exploderContent.create({ exploder }),
     noiser,
     ...others,
   ]);
@@ -92,12 +93,12 @@ function standAt(game: Session, x: number, y: number): void {
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
 }
 
-function blisterAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(game, "blister", x, y, freshBlister(1, game.worldTime));
+function exploderAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(game, "exploder", x, y, freshExploder(1, game.worldTime));
 }
 
-const stateOf = (entity: WorldEntity): BlisterState =>
-  BlisterState.parse(entity.data);
+const stateOf = (entity: WorldEntity): ExploderState =>
+  ExploderState.parse(entity.data);
 
 function played(game: Session): string[] {
   return vi.mocked(game.sfx.play).mock.calls.map(([url]) => url);
@@ -136,7 +137,7 @@ describe("hunting", () => {
   test("it feels a player behind a pillar and chases it round, silently", () => {
     const { game } = world();
     standAt(game, 250, 25);
-    const sac = blisterAt(game, 250, 400);
+    const sac = exploderAt(game, 250, 400);
     run(game, DT);
 
     const state = stateOf(sac);
@@ -150,7 +151,7 @@ describe("hunting", () => {
   test("a player beyond its sense range is not hunted, but a noise draws it", () => {
     const { game, noise } = world();
     standAt(game, 850, 300);
-    const sac = blisterAt(game, 100, 300);
+    const sac = exploderAt(game, 100, 300);
     noise({ x: 450, y: 300 }, 500);
     run(game, DT);
     const state = stateOf(sac);
@@ -165,7 +166,7 @@ describe("hunting", () => {
     for (let row = 0; row < 11; row++)
       game.world.map.solid[row * game.world.map.cols + 9] = 1;
     standAt(game, 650, 100);
-    const sac = blisterAt(game, 380, 100);
+    const sac = exploderAt(game, 380, 100);
     run(game, DT);
     expect(stateOf(sac)).toMatchObject({ mode: "chase", straight: true });
     expect(stateOf(sac).fuseAt).toBeNull();
@@ -191,7 +192,7 @@ describe("hunting", () => {
     const { game } = world();
     hurtPlayer(game, game.local, Infinity);
     const post = postAt(game, 250, 25);
-    const sac = blisterAt(game, 250, 400);
+    const sac = exploderAt(game, 250, 400);
     run(game, DT);
     expect(stateOf(sac)).toMatchObject({ mode: "chase", straight: false });
     run(game, 4);
@@ -199,10 +200,10 @@ describe("hunting", () => {
   });
 
   test("a kind it ignores it neither hunts nor lights its fuse by", () => {
-    const { game } = world({ ...config, ignores: ["blister", "post"] });
+    const { game } = world({ ...config, ignores: ["exploder", "post"] });
     hurtPlayer(game, game.local, Infinity);
     postAt(game, 480, 300);
-    const sac = blisterAt(game, 450, 300);
+    const sac = exploderAt(game, 450, 300);
     run(game, DT);
     expect(stateOf(sac)).toMatchObject({ mode: "wander", fuseAt: null });
   });
@@ -212,7 +213,7 @@ describe("bursting", () => {
   test("near a player it lights a fuse, keeps coming, and bursts a second later, hurting by distance", () => {
     const { game } = world();
     standAt(game, 540, 300);
-    const sac = blisterAt(game, 450, 300);
+    const sac = exploderAt(game, 450, 300);
     run(game, DT);
     const lit = stateOf(sac).fuseAt;
     expect(lit).toBeCloseTo(game.worldTime + config.fuse, 1);
@@ -233,17 +234,17 @@ describe("bursting", () => {
     const { game } = world();
     expect(solidAt(game, 5, 2)).toBe(true);
     standAt(game, 330, 200);
-    blisterAt(game, 250, 200);
+    exploderAt(game, 250, 200);
     run(game, config.fuse + 0.2);
     expect(solidAt(game, 5, 2)).toBe(false);
     expect(solidAt(game, 12, 9)).toBe(true);
   });
 
-  /** Two blisters a cell apart, the first set off by no one, its burst hurting the second. */
-  function chain(blister: BlisterConfig): BlisterState {
-    const { game } = world({ ...blister, senseRange: 0, fuseRange: 0 });
-    const first = blisterAt(game, 400, 300);
-    const second = blisterAt(game, 500, 300);
+  /** Two exploders a cell apart, the first set off by no one, its burst hurting the second. */
+  function chain(exploder: ExploderConfig): ExploderState {
+    const { game } = world({ ...exploder, senseRange: 0, fuseRange: 0 });
+    const first = exploderAt(game, 400, 300);
+    const second = exploderAt(game, 500, 300);
     hurt(game, first, 1, null);
     run(game, DT);
     expect(stateOf(first).fuseAt).not.toBeNull();
@@ -255,7 +256,7 @@ describe("bursting", () => {
     return stateOf(second);
   }
 
-  test("its burst sets off another blister it hurts, unless its kind is one that does not", () => {
+  test("its burst sets off another exploder it hurts, unless its kind is one that does not", () => {
     const fuseOnHurt = { minDamage: 0, except: [] };
     expect(chain({ ...config, fuseOnHurt }).fuseAt).not.toBeNull();
     expect(chain(config).fuseAt).toBeNull();
@@ -264,8 +265,8 @@ describe("bursting", () => {
   test("a hurt lighter than the least that lights its fuse leaves it unlit", () => {
     const fuseOnHurt = { minDamage: 20, except: [] };
     const { game } = world({ ...config, senseRange: 0, fuseOnHurt });
-    const light = blisterAt(game, 400, 300);
-    const heavy = blisterAt(game, 400, 450);
+    const light = exploderAt(game, 400, 300);
+    const heavy = exploderAt(game, 400, 450);
     run(game, DT);
     hurt(game, light, 10, null);
     hurt(game, heavy, 25, null);
@@ -277,7 +278,7 @@ describe("bursting", () => {
   test("hurt by no one, it lights its fuse at once and goes for the nearest player, however far", () => {
     const { game } = world({ ...config, senseRange: 50 });
     standAt(game, 800, 500);
-    const sac = blisterAt(game, 100, 300);
+    const sac = exploderAt(game, 100, 300);
     hurt(game, sac, 10, null);
     run(game, DT);
     const state = stateOf(sac);
@@ -290,7 +291,7 @@ describe("bursting", () => {
     const zombie = zombieContent.create({ zombie: testEntitiesConfig.zombie });
     const { game } = world({ ...config, senseRange: 50 }, [zombie]);
     standAt(game, 200, 300);
-    const sac = blisterAt(game, 100, 300);
+    const sac = exploderAt(game, 100, 300);
     const biter = spawnEntity(
       game,
       "zombie",
@@ -298,7 +299,7 @@ describe("bursting", () => {
       500,
       freshZombie(1, game.worldTime, testEntitiesConfig.zombie),
     );
-    // Held still, so where the blister heads is where the zombie stands.
+    // Held still, so where the exploder heads is where the zombie stands.
     stun(game, biter.id, 5);
     hurt(game, sac, 10, biter.id);
     run(game, DT);
@@ -313,7 +314,7 @@ describe("bursting", () => {
   test("stunned with its fuse lit, it still bursts on time", () => {
     const { game } = world();
     standAt(game, 540, 300);
-    const sac = blisterAt(game, 450, 300);
+    const sac = exploderAt(game, 450, 300);
     run(game, DT);
     expect(stateOf(sac).fuseAt).not.toBeNull();
     stun(game, sac.id, 5);

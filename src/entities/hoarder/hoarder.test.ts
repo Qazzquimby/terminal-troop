@@ -24,11 +24,15 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
-import { freshMagpie, magpie as magpieContent, MagpieState } from "./index.js";
-import type { MagpieConfig } from "./index.js";
+import {
+  freshHoarder,
+  hoarder as hoarderContent,
+  HoarderState,
+} from "./index.js";
+import type { HoarderConfig } from "./index.js";
 
 const DT = 1 / 60;
-const { magpie: config } = testEntitiesConfig;
+const { hoarder: config } = testEntitiesConfig;
 const SLOTS = [0, 1, 2, 3];
 
 // Nest numbers, search points and patrol spots draw from Math.random; seeded so each run is the
@@ -42,10 +46,10 @@ afterEach(() => {
 });
 
 /**
- * The dev square, 18x12 cells of 50px, all dark, with magpie beetles and the items; the local
+ * The dev square, 18x12 cells of 50px, all dark, with hoarders and the items; the local
  * player stands at (x, y).
  */
-function world(x: number, y: number, magpie: MagpieConfig = config): Session {
+function world(x: number, y: number, hoarder: HoarderConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
@@ -60,7 +64,7 @@ function world(x: number, y: number, magpie: MagpieConfig = config): Session {
     setPosition: () => undefined,
   });
   registerContent(game, [
-    magpieContent.create({ magpie }),
+    hoarderContent.create({ hoarder }),
     ...itemContent(testItemsConfig),
   ]);
   standAt(game, x, y);
@@ -79,6 +83,7 @@ function run(game: Session, seconds: number, look: Point = { x: 900, y: 600 }) {
     sprint: false,
     crouch: false,
     select: null,
+    cycle: 0,
     use: false,
     holdingUse: false,
     secondary: false,
@@ -98,12 +103,12 @@ function run(game: Session, seconds: number, look: Point = { x: 900, y: 600 }) {
   }
 }
 
-function magpieAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(game, "magpie", x, y, freshMagpie(game.worldTime));
+function hoarderAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(game, "hoarder", x, y, freshHoarder(game.worldTime));
 }
 
-const stateOf = (entity: WorldEntity): MagpieState =>
-  MagpieState.parse(entity.data);
+const stateOf = (entity: WorldEntity): HoarderState =>
+  HoarderState.parse(entity.data);
 
 const sounded = (game: Session, file: string): boolean =>
   vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith(file));
@@ -114,9 +119,9 @@ const scrapLying = (game: Session) =>
 test("a group that arrives together settles one nest, each laying search points round it", () => {
   const game = world(850, 550);
   const group = [
-    magpieAt(game, 300, 300),
-    magpieAt(game, 340, 300),
-    magpieAt(game, 300, 340),
+    hoarderAt(game, 300, 300),
+    hoarderAt(game, 340, 300),
+    hoarderAt(game, 300, 340),
   ];
   run(game, DT);
 
@@ -135,7 +140,7 @@ test("a group that arrives together settles one nest, each laying search points 
       );
   }
   // Another far off settles a nest of its own.
-  const stray = magpieAt(game, 750, 100);
+  const stray = hoarderAt(game, 750, 100);
   run(game, DT);
   expect(stateOf(stray).nestId).not.toBe(first?.nestId);
 });
@@ -146,7 +151,7 @@ test("it wanders from search point to search point, marking each seen", () => {
     ...config,
     search: { ...config.search, range: 150 },
   });
-  const bug = magpieAt(game, 300, 300);
+  const bug = hoarderAt(game, 300, 300);
   run(game, DT);
   expect(stateOf(bug).goal).not.toBeNull();
   expect(Math.hypot(bug.vx, bug.vy)).toBeCloseTo(config.wanderSpeed);
@@ -157,7 +162,7 @@ test("it wanders from search point to search point, marking each seen", () => {
 
 test("it carries scrap it sees home, held up to see, lays it by the nest as the nest's own, then guards", () => {
   const game = world(850, 575);
-  const bug = magpieAt(game, 200, 300);
+  const bug = hoarderAt(game, 200, 300);
   run(game, DT);
   const { nestId } = stateOf(bug);
   spawnWorldItem(game, { x: 380, y: 300 }, "scrap");
@@ -186,7 +191,7 @@ test("it carries scrap it sees home, held up to see, lays it by the nest as the 
 
 test("a player it sees near its nest sets it guarding; one close by away from the nest spooks it", () => {
   const game = world(850, 575);
-  const bug = magpieAt(game, 300, 300);
+  const bug = hoarderAt(game, 300, 300);
   run(game, DT);
   standAt(game, 400, 300);
   bug.data = { ...stateOf(bug), facing: 0 };
@@ -194,7 +199,7 @@ test("a player it sees near its nest sets it guarding; one close by away from th
   expect(stateOf(bug).mode).toBe("guard");
 
   const away = world(850, 575);
-  const far = magpieAt(away, 100, 300);
+  const far = hoarderAt(away, 100, 300);
   run(away, DT);
   Object.assign(far, { x: 400, y: 300, prevX: 400, prevY: 300 });
   standAt(away, 600, 300);
@@ -207,7 +212,7 @@ test("a player it sees near its nest sets it guarding; one close by away from th
 
 test("hurt, it drops what it carries and chases whoever hurt it a while, biting it", () => {
   const game = world(450, 300);
-  const bug = magpieAt(game, 300, 300);
+  const bug = hoarderAt(game, 300, 300);
   run(game, DT);
   bug.data = { ...stateOf(bug), carrying: "scrap" };
   hurt(game, bug, 15, game.localId);
@@ -227,8 +232,8 @@ test("hurt, it drops what it carries and chases whoever hurt it a while, biting 
 
 test("taking scrap its nest claimed draws the whole nest's revenge, until the thief leaves it behind", () => {
   const game = world(800, 550);
-  const leader = magpieAt(game, 200, 300);
-  const group = [leader, magpieAt(game, 230, 300)];
+  const leader = hoarderAt(game, 200, 300);
+  const group = [leader, hoarderAt(game, 230, 300)];
   run(game, DT);
   const { nestId } = stateOf(leader);
   const slot = SLOTS.find((at) => itemIn(game, "me", at) === null) ?? 0;
@@ -253,7 +258,7 @@ test("taking scrap its nest claimed draws the whole nest's revenge, until the th
 
 test("dying, it drops what it carries", () => {
   const game = world(850, 575);
-  const bug = magpieAt(game, 300, 300);
+  const bug = hoarderAt(game, 300, 300);
   run(game, DT);
   bug.data = { ...stateOf(bug), carrying: "scrap" };
   bug.health = 0;
@@ -277,7 +282,7 @@ function postAt(game: Session, x: number, y: number): WorldEntity {
 test("any body it sees near its nest sets it guarding; one close by away from the nest spooks it, and it bites", () => {
   const game = world(850, 575);
   hurtPlayer(game, game.local, Infinity);
-  const bug = magpieAt(game, 300, 300);
+  const bug = hoarderAt(game, 300, 300);
   run(game, DT);
   postAt(game, 400, 300);
   bug.data = { ...stateOf(bug), facing: 0 };
@@ -286,7 +291,7 @@ test("any body it sees near its nest sets it guarding; one close by away from th
 
   const away = world(850, 575);
   hurtPlayer(away, away.local, Infinity);
-  const far = magpieAt(away, 100, 300);
+  const far = hoarderAt(away, 100, 300);
   run(away, DT);
   Object.assign(far, { x: 400, y: 300, prevX: 400, prevY: 300 });
   const post = postAt(away, 600, 300);
@@ -299,7 +304,7 @@ test("any body it sees near its nest sets it guarding; one close by away from th
 
 test("hurt by no one, it is spooked by the nearest body, player or not", () => {
   const game = world(850, 575);
-  const bug = magpieAt(game, 300, 300);
+  const bug = hoarderAt(game, 300, 300);
   const post = postAt(game, 450, 300);
   run(game, DT);
   hurt(game, bug, 5, null);

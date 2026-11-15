@@ -30,11 +30,11 @@ const stepUrl = new URL("./sfx/step.mp3", import.meta.url).href;
 const strikeUrl = new URL("./sfx/strike.mp3", import.meta.url).href;
 
 /**
- * The idol: a stone figure that walks its round in the dark and hunts any body it sees, but cannot
+ * The statue: a stone figure that walks its round in the dark and hunts any body it sees, but cannot
  * move while anyone looks at it. Distances in pixels, times in sim seconds; it moves at a player's
  * sprint.
  */
-export interface IdolConfig extends Hunting {
+export interface StatueConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   /** How far it sees, all round it, along a clear line. */
@@ -71,7 +71,7 @@ export interface IdolConfig extends Hunting {
  *   for as long as it stands looked at
  * Only the host reads the rest, and sends it so that whoever hosts next goes on from it.
  */
-export const IdolState = z.object({
+export const StatueState = z.object({
   mode: z.enum(["patrol", "hunt"]),
   frozen: z.boolean(),
   /** Where its round starts: where it arrived, null until its first step. */
@@ -86,11 +86,11 @@ export const IdolState = z.object({
   stepAt: Time,
 });
 
-export type IdolState = z.output<typeof IdolState>;
+export type StatueState = z.output<typeof StatueState>;
 
-const NAME = "idol";
+const NAME = "statue";
 
-const IDOL_GLYPH = "🗿";
+const STATUE_GLYPH = "🗿";
 
 const COLOURS = {
   patrol: "#8c8577",
@@ -98,8 +98,8 @@ const COLOURS = {
   frozen: "#e8e2d0",
 } as const;
 
-/** A fresh idol's state at world time `now`; its round starts where it first steps. */
-export function freshIdol(now: number): IdolState {
+/** A fresh statue's state at world time `now`; its round starts where it first steps. */
+export function freshStatue(now: number): StatueState {
   return {
     mode: "patrol",
     frozen: false,
@@ -126,10 +126,10 @@ function runSpeed(game: Session): number {
  * a dark point about the patrol distance from home. Null when none of the tries finds one.
  */
 function farEnd(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   game: Session,
-  config: IdolConfig,
+  config: StatueConfig,
 ): { far: Point; route: Point[] } | null {
   const { map } = game.world;
   const { distance, spread, tries } = config.patrol;
@@ -155,7 +155,7 @@ function farEnd(
  * straight through it where it cannot, as when a hunt left it in the light.
  */
 function nextLeg(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   far: Point,
   game: Session,
@@ -175,11 +175,11 @@ function nextLeg(
 
 /** Walks its round, picking the far end first if it has none. */
 function patrol(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   game: Session,
-  config: IdolConfig,
-): IdolState {
+  config: StatueConfig,
+): StatueState {
   const now = game.worldTime;
   if (state.route.length > 0 || now < state.repathAt) return state;
   const retry = { ...state, repathAt: now + config.patrol.retry };
@@ -192,7 +192,7 @@ function patrol(
 }
 
 /** Back to its round, from wherever the hunt left it. */
-function giveUp(state: IdolState, game: Session): IdolState {
+function giveUp(state: StatueState, game: Session): StatueState {
   return {
     ...state,
     mode: "patrol",
@@ -207,11 +207,11 @@ function giveUp(state: IdolState, game: Session): IdolState {
  * planning anew now and then; or, with no route short enough, straight at them.
  */
 function hunt(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   game: Session,
-  config: IdolConfig,
-): IdolState {
+  config: StatueConfig,
+): StatueState {
   const now = game.worldTime;
   const quarry = livingBody(game, state.quarry);
   if (quarry === null || now >= state.huntUntil) return giveUp(state, game);
@@ -224,11 +224,11 @@ function hunt(
 
 /** The state it moves to: a body it sees on its round, player or monster, starts a hunt. */
 function think(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   game: Session,
-  config: IdolConfig,
-): IdolState {
+  config: StatueConfig,
+): StatueState {
   const now = game.worldTime;
   if (state.mode === "patrol") {
     const seen = nearestSeenBody(game, self, config.ignores);
@@ -252,11 +252,11 @@ function think(
 
 /** Strikes, once the cooldown is over, whatever it touches. */
 function attack(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   game: Session,
-  config: IdolConfig,
-): IdolState {
+  config: StatueConfig,
+): StatueState {
   return strikeIf(
     state,
     game.worldTime,
@@ -276,12 +276,12 @@ interface Sounds {
  * still sees, so a body it catches sight of is hunted the moment no one looks.
  */
 function freeze(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   dt: number,
   game: Session,
-  config: IdolConfig,
-): IdolState {
+  config: StatueConfig,
+): StatueState {
   self.vx = 0;
   self.vy = 0;
   const huntUntil =
@@ -308,19 +308,19 @@ function freeze(
 
 /** Its stone tread while it moves: a heavy step every so often. */
 function tread(
-  state: IdolState,
+  state: StatueState,
   self: WorldEntity,
   game: Session,
-  config: IdolConfig,
+  config: StatueConfig,
   sounds: Sounds,
-): IdolState {
+): StatueState {
   const moving = self.vx !== 0 || self.vy !== 0;
   if (!moving || game.worldTime < state.stepAt) return state;
   effect(game, { at: self, sound: sounds.step, tags: ["footstep"] }, self);
   return { ...state, stepAt: game.worldTime + config.step.interval };
 }
 
-function definition(config: IdolConfig): EntityDefinition<IdolState> {
+function definition(config: StatueConfig): EntityDefinition<StatueState> {
   const sounds: Sounds = {
     step: sound({ url: stepUrl, range: config.step.range }),
     strike: sound({ url: strikeUrl, range: config.strikeRange }),
@@ -329,8 +329,8 @@ function definition(config: IdolConfig): EntityDefinition<IdolState> {
     radius: config.radius,
     // It cannot die, whatever it takes.
     maxHealth: Infinity,
-    data: IdolState,
-    // It sees all round it, but looks at nothing: its eyes never hold another idol.
+    data: StatueState,
+    // It sees all round it, but looks at nothing: its eyes never hold another statue.
     eyes: () => ({ cone: null, around: config.sightRange }),
     update(entity, arrived, dt, game) {
       const state =
@@ -359,28 +359,28 @@ function definition(config: IdolConfig): EntityDefinition<IdolState> {
     draw(ctx, entity, state) {
       // Held, a pale stone ring stands out on a dark floor, so whoever holds it can tell.
       if (state.frozen) drawRing(ctx, entity, COLOURS.frozen, 3, 1);
-      drawEmoji(ctx, entity, IDOL_GLYPH, entity.radius * 2.2);
+      drawEmoji(ctx, entity, STATUE_GLYPH, entity.radius * 2.2);
       if (!state.frozen) drawRing(ctx, entity, COLOURS[state.mode], 2, 0);
     },
   };
 }
 
 /**
- * The idol: a stone figure that cannot die. It walks back and forth between where it arrived and a
+ * The statue: a stone figure that cannot die. It walks back and forth between where it arrived and a
  * dark point about thirty cells off, never setting foot on lit ground, its tread heard far off.
  * Once it sees a body all round it, a player or a monster it does not ignore, it hunts it for a
  * while: it always knows where it is and goes straight for it at a sprint, and whatever it touches
- * takes a heavy blow. While any living body but another idol looks at it, down its view cone and
+ * takes a heavy blow. While any living body but another statue looks at it, down its view cone and
  * within its reach, along a clear line, a player or a zombie alike, it cannot move, strike, nor run
  * down its hunt's clock; being near one, within the small circle it sees all round it, does not
  * hold it. It arrives rarely, out of the world's start, the light and every player's sight.
  */
-export const idol = defineEntity(NAME, (config: IdolConfig) => ({
+export const statue = defineEntity(NAME, (config: StatueConfig) => ({
   ...definition(config),
   ...arrivals({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    fresh: (_seed: number, game: Session) => freshIdol(game.worldTime),
+    fresh: (_seed: number, game: Session) => freshStatue(game.worldTime),
   }),
 }));

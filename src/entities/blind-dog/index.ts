@@ -40,10 +40,10 @@ const snarlUrl = new URL("./sfx/snarl.mp3", import.meta.url).href;
 const biteUrl = new URL("./sfx/bite.mp3", import.meta.url).href;
 
 /**
- * How a lurcher roams, listens and charges, and how often they come. Distances are in pixels,
+ * How a blind dog roams, listens and charges, and how often they come. Distances are in pixels,
  * speeds in pixels per second, times in seconds.
  */
-export interface LurcherConfig extends Hunting {
+export interface BlindDogConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -77,13 +77,13 @@ export interface LurcherConfig extends Hunting {
 }
 
 /**
- * A lurcher's state. Each field says who reads it: everyone, to draw it, or only the host, which
+ * A blind dog's state. Each field says who reads it: everyone, to draw it, or only the host, which
  * sends it so that whoever hosts next goes on from it. Its sounds reach every client as effects.
  * - wander: walks `route`, then stands until `standUntil` (host), then picks a new leg
  * - stalk: walks `route` to `heard`, where the last noise it heard seemed to come from
  * - charge: runs `route` past `heard`, then stands, its suspicion spent
  */
-export const LurcherState = z.object({
+export const BlindDogState = z.object({
   /** Everyone, to colour it. */
   mode: z.enum(["wander", "stalk", "charge"]),
   /** Host. */
@@ -106,18 +106,18 @@ export const LurcherState = z.object({
   facing: rounded(2),
 });
 
-export type LurcherState = z.output<typeof LurcherState>;
+export type BlindDogState = z.output<typeof BlindDogState>;
 
-type Mode = LurcherState["mode"];
+type Mode = BlindDogState["mode"];
 
 /** The kind's name. */
-const NAME = "lurcher";
+const NAME = "blindDog";
 
 /** It pays no mind to its own kind's noise. */
 const DEAF_TO = [NAME];
 
-/** A fresh lurcher's state at world time `now`, its random draws seeded by `seed`. */
-export function freshLurcher(seed: number, now: number): LurcherState {
+/** A fresh blindDog's state at world time `now`, its random draws seeded by `seed`. */
+export function freshBlindDog(seed: number, now: number): BlindDogState {
   return {
     mode: "wander",
     seed: seed | 0,
@@ -134,9 +134,9 @@ export function freshLurcher(seed: number, now: number): LurcherState {
 
 /** Its suspicion at world time `now`, ebbed since it was last raised. */
 export function suspicionAt(
-  state: LurcherState,
+  state: BlindDogState,
   now: number,
-  config: LurcherConfig,
+  config: BlindDogConfig,
 ): number {
   const ebbed = config.suspicion.decay * (now - state.suspectedAt);
   return Math.max(0, state.suspicion - ebbed);
@@ -150,7 +150,7 @@ interface Earful {
 
 /** Every noise but its own kind's that reaches it this step, and its seed after listening. */
 function listen(
-  state: LurcherState,
+  state: BlindDogState,
   at: Point,
   game: Session,
 ): { result: Earful; seed: number } {
@@ -202,12 +202,12 @@ export function chargeEnd(
  * already heads near enough the noise.
  */
 function react(
-  state: LurcherState,
+  state: BlindDogState,
   at: Point,
   earful: Earful & { readonly at: Point },
   game: Session,
-  config: LurcherConfig,
-): LurcherState {
+  config: BlindDogConfig,
+): BlindDogState {
   const now = game.worldTime;
   const { max } = config.suspicion;
   const suspicion = Math.min(
@@ -240,10 +240,10 @@ function react(
 
 /** Stands a while from now, a pause drawn from its seed, wandering once it is over. */
 function stand(
-  state: LurcherState,
+  state: BlindDogState,
   game: Session,
-  config: LurcherConfig,
-): LurcherState {
+  config: BlindDogConfig,
+): BlindDogState {
   const { result, seed } = withSeed(state.seed, (rng) =>
     between(rng, config.wanderPause),
   );
@@ -252,10 +252,10 @@ function stand(
 
 /** Back to wandering once a noise is followed up, its suspicion spent if it charged. */
 function settle(
-  state: LurcherState,
+  state: BlindDogState,
   game: Session,
-  config: LurcherConfig,
-): LurcherState {
+  config: BlindDogConfig,
+): BlindDogState {
   const spent =
     state.mode === "charge"
       ? { suspicion: 0, suspectedAt: game.worldTime }
@@ -266,11 +266,11 @@ function settle(
 
 /** Walks its leg, stands a while once it ends, then picks another. */
 function roam(
-  state: LurcherState,
+  state: BlindDogState,
   at: Point,
   game: Session,
-  config: LurcherConfig,
-): LurcherState {
+  config: BlindDogConfig,
+): BlindDogState {
   if (state.route.length > 0) return state;
   if (state.standUntil === null) return stand(state, game, config);
   if (game.worldTime < state.standUntil) return state;
@@ -287,11 +287,11 @@ function roam(
 
 /** What it does next: turns to what it hears, else goes on, settles, or roams. */
 function think(
-  state: LurcherState,
+  state: BlindDogState,
   self: Point,
   game: Session,
-  config: LurcherConfig,
-): LurcherState {
+  config: BlindDogConfig,
+): BlindDogState {
   const { result: earful, seed } = listen(state, self, game);
   const listened = { ...state, seed };
   const { at } = earful;
@@ -303,7 +303,7 @@ function think(
 }
 
 /** The bodies it touches and bites: any but the kinds it ignores, and what is not alive. */
-function touching(self: Prey, game: Session, config: LurcherConfig): Prey[] {
+function touching(self: Prey, game: Session, config: BlindDogConfig): Prey[] {
   return preyNear(game, self, (prey) => self.radius + prey.radius + 2, [
     ...config.ignores,
     INERT_TAG,
@@ -312,11 +312,11 @@ function touching(self: Prey, game: Session, config: LurcherConfig): Prey[] {
 
 /** Bites once its cooldown is over, when it touches anything it bites. */
 function bite(
-  state: LurcherState,
+  state: BlindDogState,
   self: Prey,
   game: Session,
-  config: LurcherConfig,
-): LurcherState {
+  config: BlindDogConfig,
+): BlindDogState {
   const now = game.worldTime;
   const biting = now >= state.biteAt && touching(self, game, config).length > 0;
   return biting
@@ -324,7 +324,7 @@ function bite(
     : { ...state, biting };
 }
 
-/** A lurcher's sounds, each heard, and making noise, out to its range. */
+/** A blind dog's sounds, each heard, and making noise, out to its range. */
 interface Sounds {
   readonly roar: Sound;
   readonly snarl: Sound;
@@ -334,8 +334,8 @@ interface Sounds {
 /** Sounds, as the host, on every client, what a step from `previous` to `next` did. */
 function cue(
   entity: WorldEntity,
-  previous: LurcherState,
-  next: LurcherState,
+  previous: BlindDogState,
+  next: BlindDogState,
   game: Session,
   sounds: Sounds,
 ): void {
@@ -352,7 +352,7 @@ const SPEEDS = {
   wander: "wanderSpeed",
   stalk: "stalkSpeed",
   charge: "chargeSpeed",
-} as const satisfies Record<Mode, keyof LurcherConfig>;
+} as const satisfies Record<Mode, keyof BlindDogConfig>;
 
 const LOOK = {
   body: "#2a2523",
@@ -363,10 +363,10 @@ const LOOK = {
 } as const;
 
 /** A heavy dark body, no eyes, a gaping red maw the way it faces, ringed by its mood. */
-function drawLurcher(
+function drawBlindDog(
   ctx: CanvasRenderingContext2D,
   entity: WorldEntity,
-  state: LurcherState,
+  state: BlindDogState,
 ): void {
   const { x, y, radius } = entity;
   const { facing } = state;
@@ -419,7 +419,7 @@ function drawLurcher(
   ctx.restore();
 }
 
-function definition(config: LurcherConfig): EntityDefinition<LurcherState> {
+function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
   const sounds: Sounds = {
     roar: sound({ url: roarUrl, range: config.sounds.roar }),
     snarl: sound({ url: snarlUrl, range: config.sounds.snarl }),
@@ -428,7 +428,7 @@ function definition(config: LurcherConfig): EntityDefinition<LurcherState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
-    data: LurcherState,
+    data: BlindDogState,
     update(entity, state, dt, game) {
       const next = bite(
         think(state, entity, game, config),
@@ -445,19 +445,19 @@ function definition(config: LurcherConfig): EntityDefinition<LurcherState> {
       return strikeEach(touching(entity, game, config), config.contactDamage);
     },
     draw(ctx, entity, state) {
-      drawLurcher(ctx, entity, state);
+      drawBlindDog(ctx, entity, state);
     },
   };
 }
 
 /**
- * A lurcher: a blind hound three cells across, deaf to its own kind. It roams slowly, walks to
+ * A blind dog: a hound three cells across, deaf to its own kind. It roams slowly, walks to
  * what it hears and grows suspicious by how loud it was; once suspicion is full it roars and
  * charges through where the last noise came from and on past it, steering for each new noise as
  * it runs. Anything it touches it bites hard. Light does not keep it away: it may appear outdoors
  * too, though only far from every player.
  */
-export const lurcher = defineEntity(NAME, (config: LurcherConfig) => ({
+export const blindDog = defineEntity(NAME, (config: BlindDogConfig) => ({
   ...definition(config),
   ...arrivals({
     kind: NAME,
@@ -466,6 +466,6 @@ export const lurcher = defineEntity(NAME, (config: LurcherConfig) => ({
     // It comes out in the light as well as the dark.
     rules: { inLight: true },
     fresh: (seed: number, game: Session) =>
-      freshLurcher(Math.floor(seed * 2 ** 32), game.worldTime),
+      freshBlindDog(Math.floor(seed * 2 ** 32), game.worldTime),
   }),
 }));

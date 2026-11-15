@@ -45,6 +45,7 @@ const idle: Controls = {
   sprint: false,
   crouch: false,
   select: null,
+  cycle: 0,
   use: false,
   secondary: false,
   interact: false,
@@ -121,6 +122,40 @@ test("the select control picks a slot, and null keeps the current one", () => {
   expect(game.local.held).toBe(3);
   updateSession(game, idle, DT);
   expect(game.local.held).toBe(3);
+});
+
+test("the cycle control steps the held slot as a number key would, wrapping, with a click", () => {
+  const played: string[] = [];
+  const sfx = testSfx();
+  const game = createSession(
+    "me",
+    "ME",
+    "ITEMS",
+    "dev",
+    {
+      ...sfx,
+      play: (url, ...rest) => {
+        if (url.endsWith("slot-switch.mp3")) played.push(url);
+        return sfx.play(url, ...rest);
+      },
+    },
+    testSimConfig,
+  );
+  registerContent(game, itemContent(testItemsConfig));
+  const last = game.local.inventory.length - 1;
+  updateSession(game, { ...idle, cycle: -1 }, DT);
+  expect(game.local.held).toBe(last);
+  expect(heldSlot.get(game.local)).toBe(last);
+  updateSession(game, { ...idle, cycle: 1 }, DT);
+  expect(game.local.held).toBe(0);
+  expect(heldItemOf(game, game.local)?.id).toBe("shovel");
+  updateSession(game, { ...idle, cycle: 1 }, DT);
+  expect(game.local.held).toBe(1);
+  expect(played).toHaveLength(3);
+  updateSession(game, { ...idle, select: 1 }, DT);
+  updateSession(game, idle, DT);
+  expect(game.local.held).toBe(1);
+  expect(played).toHaveLength(3);
 });
 
 test("with six slots, keys 7 to 9 select nothing: the player holds no item", () => {

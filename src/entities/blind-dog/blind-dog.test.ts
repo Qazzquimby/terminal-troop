@@ -23,12 +23,12 @@ import type {
 } from "../../sim/index.js";
 import {
   chargeEnd,
-  freshLurcher,
-  lurcher as lurcherContent,
-  LurcherState,
+  freshBlindDog,
+  blindDog as blindDogContent,
+  BlindDogState,
   suspicionAt,
 } from "./index.js";
-import type { LurcherConfig } from "./index.js";
+import type { BlindDogConfig } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -37,13 +37,14 @@ const idle = {
   sprint: false,
   crouch: false,
   select: null,
+  cycle: 0,
   use: false,
   secondary: false,
   interact: false,
   drop: false,
   holdingUse: false,
 };
-const { lurcher: config } = testEntitiesConfig;
+const { blindDog: config } = testEntitiesConfig;
 
 /** A noise to make in the next step, by whom. */
 interface Pending {
@@ -53,7 +54,7 @@ interface Pending {
 }
 
 /** The dev square, its pillars at x 200-300, y 50-150 and x 600-700, y 450-550. */
-function world(lurcher: LurcherConfig = config): {
+function world(blindDog: BlindDogConfig = config): {
   game: Session;
   noise: (made: Pending) => void;
 } {
@@ -80,17 +81,17 @@ function world(lurcher: LurcherConfig = config): {
         makeNoise(session, by, { at, radius });
     },
   };
-  registerContent(game, [lurcherContent.create({ lurcher }), noiser]);
+  registerContent(game, [blindDogContent.create({ blindDog }), noiser]);
   Object.assign(game.local, { x: 50, y: 575, prevX: 50, prevY: 575 });
   return { game, noise: (made) => pending.push(made) };
 }
 
-function lurcherAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(game, "lurcher", x, y, freshLurcher(1, game.worldTime));
+function blindDogAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(game, "blindDog", x, y, freshBlindDog(1, game.worldTime));
 }
 
-const stateOf = (entity: WorldEntity): LurcherState =>
-  LurcherState.parse(entity.data);
+const stateOf = (entity: WorldEntity): BlindDogState =>
+  BlindDogState.parse(entity.data);
 
 function played(game: Session): string[] {
   return vi.mocked(game.sfx.play).mock.calls.map(([url]) => url);
@@ -114,7 +115,7 @@ function run(game: Session, seconds: number): void {
 describe("hearing", () => {
   test("a quiet noise makes it walk there, snarling, suspicious by how loud it was", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 150, 300);
+    const hound = blindDogAt(game, 150, 300);
     noise({ by: game.local, at: { x: 450, y: 300 }, radius: 500 });
     run(game, DT);
 
@@ -128,8 +129,8 @@ describe("hearing", () => {
 
   test("its own kind's noise goes unheard", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 150, 300);
-    const other = lurcherAt(game, 700, 150);
+    const hound = blindDogAt(game, 150, 300);
+    const other = blindDogAt(game, 700, 150);
     noise({ by: other, at: { x: 450, y: 300 }, radius: 2000 });
     run(game, DT);
 
@@ -138,7 +139,7 @@ describe("hearing", () => {
 
   test("suspicion ebbs over time", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 150, 300);
+    const hound = blindDogAt(game, 150, 300);
     noise({ by: game.local, at: { x: 450, y: 300 }, radius: 800 });
     run(game, DT);
     const state = stateOf(hound);
@@ -151,7 +152,7 @@ describe("hearing", () => {
 
   test("several quieter noises add up to a charge", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 150, 300);
+    const hound = blindDogAt(game, 150, 300);
     for (let i = 0; i < 2; i++) {
       noise({ by: game.local, at: { x: 450, y: 300 }, radius: 700 });
       run(game, DT);
@@ -166,7 +167,7 @@ describe("hearing", () => {
 describe("charging", () => {
   test("a big noise makes it roar and run at and on past it, at its charging speed", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 150, 300);
+    const hound = blindDogAt(game, 150, 300);
     noise({ by: game.local, at: { x: 450, y: 300 }, radius: 1500 });
     run(game, DT);
 
@@ -201,7 +202,7 @@ describe("charging", () => {
 
   test("steers for each new noise as it runs, and once there settles, its suspicion spent", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 150, 300);
+    const hound = blindDogAt(game, 150, 300);
     noise({ by: game.local, at: { x: 450, y: 300 }, radius: 1500 });
     run(game, DT);
     noise({ by: game.local, at: { x: 450, y: 520 }, radius: 1500 });
@@ -218,8 +219,8 @@ describe("charging", () => {
 describe("biting", () => {
   test("whatever it touches loses 100 health, at most once a cooldown", () => {
     const { game } = world();
-    const hound = lurcherAt(game, 450, 300);
-    const other = lurcherAt(game, 450 - config.radius * 2 - 1, 300);
+    const hound = blindDogAt(game, 450, 300);
+    const other = blindDogAt(game, 450 - config.radius * 2 - 1, 300);
     Object.assign(game.local, {
       x: 450 + config.radius + 14,
       y: 300,
@@ -240,11 +241,11 @@ describe("biting", () => {
   });
 
   test("it bites any body it touches but the kinds it ignores", () => {
-    const { game } = world({ ...config, ignores: ["lurcher", "rock"] });
+    const { game } = world({ ...config, ignores: ["blindDog", "rock"] });
     const body = { radius: 10, data: z.object({}), draw: () => undefined };
     registerEntityType(game, "deer", { ...body, maxHealth: 1000 });
     registerEntityType(game, "rock", { ...body, maxHealth: 1000 });
-    lurcherAt(game, 450, 300);
+    blindDogAt(game, 450, 300);
     const deer = spawnEntity(game, "deer", 450 + config.radius + 10, 300, {});
     const rock = spawnEntity(game, "rock", 450 - config.radius - 10, 300, {});
     run(game, DT);
@@ -254,7 +255,7 @@ describe("biting", () => {
 
   test("a stunned one neither moves nor bites", () => {
     const { game, noise } = world();
-    const hound = lurcherAt(game, 450, 300);
+    const hound = blindDogAt(game, 450, 300);
     stun(game, hound.id, 5);
     Object.assign(game.local, { x: 450 + config.radius + 14, y: 300 });
     noise({ by: game.local, at: { x: 750, y: 300 }, radius: 1500 });
