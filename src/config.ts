@@ -380,7 +380,7 @@ export const config = {
       pounce: {
         reach: CELL * 6,
         windup: 0.3,
-        speed: PLAYER_SPEED * SPRINT * 1.8,
+        speed: PLAYER_SPEED * SPRINT * 4.0,
         recover: 0.6,
         skid: CELL,
       },
@@ -434,10 +434,10 @@ export const config = {
       // too, but another exploder's burst, so one burst does not set off every exploder near it.
       fuseRange: CELL * 3,
       fuseOnHurt: { minDamage: 0, except: ["exploder"] },
-      fuse: 2,
+      fuse: 2.5,
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
-      blast: { radius: CELL * 3, centre: 100, edge: 30 },
+      blast: { radius: CELL * 2.5, centre: 100, edge: 30 },
       sounds: { fuse: CELL * 6, blast: CELL * 40 },
     },
     // She arrives in the dark, never within 14 cells of a player. Five shovel hits fell her. She
