@@ -20,10 +20,25 @@ export interface ItemLoot {
   readonly rarity: Rarity;
 }
 
-/** How a new world lays loot: items picked by their loot weights. */
-export interface LootConfig {
-  /** Where each item is laid, one per spot. */
+/** An item a new world always lays, however the loot rolls: one at each spot of its scatter. */
+interface GuaranteedLoot {
+  /** The item's id. */
+  readonly item: string;
   readonly scatter: Scatter;
+}
+
+/**
+ * How a new world lays loot: items picked by their loot weights, and on top of them the items it
+ * always lays.
+ */
+export interface LootConfig {
+  /** Where each picked item is laid, one per spot. */
+  readonly scatter: Scatter;
+  /**
+   * Items laid whatever the loot picks, such as what the players need to win; each may still be
+   * picked as loot besides, by its loot weight.
+   */
+  readonly guaranteed: readonly GuaranteedLoot[];
   /** How the danger of a spot, 0..1, changes what is laid there. */
   readonly danger: {
     /** The chance of a second item at a spot of full danger; none at a safe one, linear between. */
@@ -94,7 +109,8 @@ export function pickLoot(
 
 /**
  * The content that lays a new world's loot: at each spot of its scatter, one item picked from
- * every item with a loot weight, and at a dangerous spot maybe a second beside it.
+ * every item with a loot weight, and at a dangerous spot maybe a second beside it; then each
+ * guaranteed item at each spot of its own scatter.
  */
 export function lootContent(config: LootConfig): WorldContent {
   return {
@@ -118,6 +134,13 @@ export function lootContent(config: LootConfig): WorldContent {
           rng,
         );
       });
+      for (const { item, scatter } of config.guaranteed) {
+        if (!game.itemDefinitions.has(item))
+          throw new Error(`guaranteed loot names no item: ${item}`);
+        scatterEach(game, scatter, radius, (at) => {
+          spawnWorldItem(game, at, item);
+        });
+      }
     },
   };
 }

@@ -6,6 +6,7 @@ import { lootContent, pickLoot } from "./loot.js";
 import type { LootConfig } from "./loot.js";
 import { createSession } from "./session.js";
 import type { Session } from "./session.js";
+import { isAreaFree } from "./map.js";
 import type { WorldConfig } from "./map.js";
 
 const DANGER: LootConfig["danger"] = {
@@ -77,6 +78,7 @@ function populated(
   });
   const loot = lootContent({
     scatter: { count, seed: 1, clearance: 0 },
+    guaranteed: [],
     danger: DANGER,
   });
   registerContent(game, [pick("lamp", 1), loot]);
@@ -108,4 +110,60 @@ test("a new world's danger is its layout's: none where nothing is dangerous, som
   };
   expect(laid(populated(40, undefined, safe))).toHaveLength(40);
   expect(laid(populated(40)).length).toBeGreaterThan(45);
+});
+
+/** A world with no rolled loot and `count` of `item` guaranteed, spread across its width. */
+function guaranteed(count: number, room = "LOOT", item = "can"): Session {
+  const game = createSession(
+    "me",
+    "ME",
+    room,
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  const loot = lootContent({
+    scatter: { count: 0, seed: 1, clearance: 0 },
+    guaranteed: [
+      { item, scatter: { count, seed: 2, clearance: 0, spread: "x" } },
+    ],
+    danger: DANGER,
+  });
+  registerContent(game, [pick("can", 0), loot]);
+  loot.populate(game);
+  return game;
+}
+
+const spots = (game: Session) =>
+  [...game.entities.values()].map(({ x, y }) => ({ x, y }));
+
+test("a guaranteed item is laid its count of times, though the loot never picks it", () => {
+  expect(laid(guaranteed(15))).toEqual(
+    Array(15).fill(JSON.stringify({ item: "can" })),
+  );
+});
+
+test("guaranteed items spread one to each equal band across the world's width", () => {
+  const game = guaranteed(15);
+  const band = game.world.W / 15;
+  const bands = spots(game)
+    .map(({ x }) => Math.floor(x / band))
+    .sort((a, b) => a - b);
+  expect(bands).toEqual([...Array(15).keys()]);
+});
+
+test("guaranteed items lie only where a body of their size is free", () => {
+  const game = guaranteed(15);
+  const { radius } = game.config.worldItems;
+  for (const { x, y } of spots(game))
+    expect(isAreaFree(game.world.map, x, y, radius)).toBe(true);
+});
+
+test("the same room lays its guaranteed items at the same spots; another room elsewhere", () => {
+  expect(spots(guaranteed(15))).toEqual(spots(guaranteed(15)));
+  expect(spots(guaranteed(15, "OTHER"))).not.toEqual(spots(guaranteed(15)));
+});
+
+test("guaranteed loot naming no item is an error", () => {
+  expect(() => guaranteed(1, "LOOT", "nothing")).toThrow(/nothing/);
 });
