@@ -25,6 +25,8 @@ import type { DrivingConfig } from "./drive.js";
 import { drawCruiser } from "./draw.js";
 import { stepRevival } from "./revive.js";
 import type { ReviveConfig } from "./revive.js";
+import { stock } from "./stock.js";
+import type { StockConfig } from "./stock.js";
 
 export { refuel } from "./drive.js";
 // The departure's sounds, once their assets land; importing a missing file breaks the build.
@@ -53,7 +55,7 @@ interface HeadlightConfig {
  * A car that starts at the world's rally point, its headlights always on, unfuelled; players get
  * in it, and fuelled, one of them can drive it.
  */
-export interface CruiserConfig extends DrivingConfig {
+export interface CruiserConfig extends DrivingConfig, StockConfig {
   /**
    * Its body, in pixels: a box `length` from back to front and `width` across, turned the way it
    * points. It is drawn, meets walls, rams bodies and is seen as that box.
@@ -177,8 +179,9 @@ export const nearCruiser = (
  * or strikes them, though they are heard from it, its horn too. It starts without fuel; once
  * fuelled its engine runs, and one of those inside can take the wheel and drive it, burning fuel
  * as it moves, ramming what it drives into and knocking down the walls it crashes into, until it
- * breaks down. Those outside walk through it. Once it reaches the world's exit, it takes everyone
- * there out after a delay.
+ * breaks down. Those inside share a storage, and buy items at its shop with the team's credit.
+ * Those outside walk through it. Once it reaches the world's exit, it takes everyone there out
+ * after a delay.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   radius: config.length / 2,
@@ -195,7 +198,7 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   data: CruiserState,
   light: (_entity, state) =>
     headlights(config.headlights, config.length / 2, state.heading),
-  vehicle: vehicle(config),
+  vehicle: { ...vehicle(config), ...stock(config) },
   update: (entity, state, dt, game) =>
     stepCruiser(game, entity, state, dt, config),
   draw(ctx, entity, state, _now, game) {

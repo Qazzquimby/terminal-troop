@@ -26,6 +26,8 @@ import {
   createStatusView,
   menuPeers,
   roomDebugInfo,
+  shopPanel,
+  storagePanel,
   trackInputContext,
   voiceDebugLines,
   element,
@@ -102,9 +104,12 @@ const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
 /** What the cabin asked of the vehicle, each run in a step of its own, oldest first. */
 const cabinCommands: CabinCommand[] = [];
-const cabin = createCabin(element("#cabin", HTMLDivElement), (command) => {
+const sendCabin = (command: CabinCommand): void => {
   cabinCommands.push(command);
-});
+};
+const cabin = createCabin(element("#cabin", HTMLDivElement), sendCabin);
+cabin.addPanel(storagePanel(sendCabin));
+cabin.addPanel(shopPanel(sendCabin));
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");

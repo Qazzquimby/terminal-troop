@@ -60,6 +60,8 @@ test("a full send carries every entry, one never set at version 0; a delta only 
   const { game, water, keeper } = withWell();
   expect(takeWorldEntries(game, true)).toEqual({
     "core/items.inventories": [0, {}],
+    "core/items.stores": [0, {}],
+    "core/team.credit": [0, 0],
     "core/health.players": [0, {}],
     "core/hurts.last": [0, {}],
     "core/hurts.fallen": [0, []],

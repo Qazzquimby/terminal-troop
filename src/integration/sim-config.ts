@@ -201,6 +201,16 @@ export const testEntitiesConfig = {
     headlights: { range: 400, angle: Math.PI / 4, spread: 7 },
     escape: { delay: 20, volume: 1 },
     revive: { reach: 50, volume: 1 },
+    storage: { slots: 6, noiseRadius: 50, volume: 1 },
+    shop: {
+      wares: [
+        { item: "walkie", price: 2 },
+        { item: "flashlight", price: 3 },
+        { item: "shovel", price: 3 },
+      ],
+      noiseRadius: 100,
+      volume: 1,
+    },
   },
   stunTrap: {
     radius: 10,
