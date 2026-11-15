@@ -1,4 +1,4 @@
-import { range } from "lodash-es";
+import { minBy, range, sumBy } from "lodash-es";
 import type {
   DangerConfig,
   Layout,
@@ -59,11 +59,22 @@ export interface GenerationConfig {
     /** A door's width, in cells. */
     readonly door: Span;
     /**
-     * Chance each way between two rooms, or a room and outdoors, beyond the fewest that join
-     * every room up, gets a door, so the ways through loop. A room with one door gets a second
-     * wherever it can.
+     * Chance each way between two rooms of a building, beyond the fewest that join all its rooms
+     * up, gets a door too, closing a loop. Low, so a building is mostly a tree of rooms with
+     * chokepoints, and now and then a second way round.
      */
     readonly loops: number;
+    /**
+     * How many rooms a building is grown to: a group of rooms sharing walls, doors between them
+     * inside, cut off from the buildings next door by walls but for its doors out. Fewer where it
+     * runs out of rooms; more where a building shut in has to become part of its neighbour.
+     */
+    readonly building: Span;
+    /**
+     * Chance a building has 1, 2, 3, ... doors out, to outdoors or to a building next door, by
+     * index, as weights. Fewer where it has no more ways out.
+     */
+    readonly exits: readonly number[];
   };
   /** Which rooms have light fixtures, and which have the power to light them. */
   readonly lights: RoomLightConfig;
@@ -540,6 +551,7 @@ function unions(count: number) {
     return at;
   };
   return {
+    root,
     join(a: number, b: number): boolean {
       const ra = root(a);
       const rb = root(b);
@@ -582,38 +594,158 @@ function cutDoor(grid: Grid, way: Way, width: number, rng: Rng): void {
   }
 }
 
+/** An index into `weights`, drawn in proportion to its weight. */
+function weighted(weights: readonly number[], rng: Rng): number {
+  const total = sumBy(weights, (weight) => Math.max(0, weight));
+  let left = rng() * total;
+  for (const [i, weight] of weights.entries()) {
+    left -= Math.max(0, weight);
+    if (left < 0) return i;
+  }
+  return Math.max(0, weights.length - 1);
+}
+
 /**
- * Joins every room up, to the others and outdoors, by the fewest doors; then adds more, each way
- * by chance, and a second door to each room left with one where it has another way out.
+ * Groups the rooms, numbered from 1, into buildings, each grown from a room through the walls it
+ * shares with others until it has as many rooms as drawn from `size`, or no more to take. Each
+ * room's building is the number of the room it was grown from; index 0, outdoors, is 0.
+ */
+function groupBuildings(
+  inside: readonly Way[],
+  count: number,
+  size: Span,
+  rng: Rng,
+): Int32Array {
+  const neighbours = new Map<number, number[]>();
+  for (const { a, b } of inside) {
+    neighbours.set(a, [...(neighbours.get(a) ?? []), b]);
+    neighbours.set(b, [...(neighbours.get(b) ?? []), a]);
+  }
+  const building = new Int32Array(count + 1);
+  for (const seed of shuffle(range(1, count + 1), rng)) {
+    if (building[seed] !== 0) continue;
+    const target = within(size, rng);
+    building[seed] = seed;
+    let members = 1;
+    const frontier = [seed];
+    while (frontier.length > 0 && members < target) {
+      const at = frontier.splice(Math.floor(rng() * frontier.length), 1)[0];
+      for (const next of neighbours.get(at ?? 0) ?? []) {
+        if (members >= target) break;
+        if (building[next] !== 0) continue;
+        building[next] = seed;
+        members++;
+        frontier.push(next);
+      }
+    }
+  }
+  // A building left smaller than `size` allows, hemmed in by others, joins its smallest neighbour.
+  const members = new Map<number, number[]>();
+  for (let place = 1; place <= count; place++) {
+    const id = building[place] ?? 0;
+    members.set(id, [...(members.get(id) ?? []), place]);
+  }
+  for (const [id, rooms] of members) {
+    if (rooms.length >= size.min) continue;
+    const others = rooms
+      .flatMap((place) => neighbours.get(place) ?? [])
+      .map((place) => building[place] ?? 0)
+      .filter((other) => other !== id);
+    const smallest = minBy(others, (other) => members.get(other)?.length ?? 0);
+    if (smallest === undefined) continue;
+    const into = members.get(smallest) ?? [];
+    for (const place of rooms) building[place] = smallest;
+    into.push(...rooms);
+    rooms.length = 0;
+  }
+  return building;
+}
+
+/**
+ * Cuts the doors. The rooms are grouped into buildings (see `groupBuildings`); each building's
+ * rooms are joined by the fewest doors between them, and by chance a few more so some ways loop.
+ * Each building draws how many doors out it has, to outdoors or to a building next door. First
+ * each gets one outdoors where it can; then each still shut in gets one to a building already
+ * joined up, or, where that building has no doors out to spare, becomes part of it. Last, each
+ * building is given its other doors out where it has ways to put them. A building with no way out
+ * at all is walled up later. Returns each room's building, numbered from 1 as rooms are.
  */
 function cutDoors(
   grid: Grid,
   config: GenerationConfig["rooms"],
   count: number,
   rng: Rng,
-): void {
+): Int32Array {
   const ways = shuffle(waysThrough(grid), rng);
-  const joined = unions(count + 1);
+  const grown = groupBuildings(
+    ways.filter((way) => way.a > 0),
+    count,
+    config.building,
+    rng,
+  );
+  const merged = unions(count + 1);
+  const of = (place: number): number => merged.root(grown[place] ?? 0);
+  const inner = (way: Way): boolean => way.a > 0 && of(way.a) === of(way.b);
   const chosen = new Set<Way>();
-  for (const way of ways) if (joined.join(way.a, way.b)) chosen.add(way);
+
+  const tree = unions(count + 1);
   for (const way of ways)
-    if (!chosen.has(way) && rng() < config.loops) chosen.add(way);
-  const doors = new Array<number>(count + 1).fill(0);
-  for (const way of chosen) {
-    doors[way.a] = (doors[way.a] ?? 0) + 1;
-    doors[way.b] = (doors[way.b] ?? 0) + 1;
+    if (inner(way) && tree.join(way.a, way.b)) chosen.add(way);
+
+  const budget = new Map<number, number>();
+  const used = new Map<number, number>();
+  for (let place = 1; place <= count; place++)
+    if (grown[place] === place)
+      budget.set(place, weighted(config.exits, rng) + 1);
+  const spare = (building: number): boolean =>
+    building === 0 || (used.get(building) ?? 0) < (budget.get(building) ?? 0);
+  const out = unions(count + 1);
+  const free = (building: number): boolean =>
+    out.root(building) !== out.root(0);
+  const link = (way: Way): void => {
+    chosen.add(way);
+    for (const building of [of(way.a), of(way.b)])
+      used.set(building, (used.get(building) ?? 0) + 1);
+    out.join(of(way.a), of(way.b));
+  };
+  const outer = (way: Way): boolean => !chosen.has(way) && !inner(way);
+
+  for (const way of ways)
+    if (way.a === 0 && free(of(way.b)) && spare(of(way.b))) link(way);
+  // A way from a building shut in to one joined up.
+  const reaching = (way: Way): boolean =>
+    outer(way) && free(of(way.a)) !== free(of(way.b));
+  for (;;) {
+    let linked = false;
+    for (const way of ways) {
+      if (!reaching(way) || !spare(of(way.a)) || !spare(of(way.b))) continue;
+      link(way);
+      linked = true;
+    }
+    if (linked) continue;
+    // None left with a door to spare: the pair that makes the smallest building becomes one.
+    const size = (building: number): number =>
+      range(1, count + 1).filter((place) => of(place) === building).length;
+    const way = minBy(
+      ways.filter(reaching),
+      (each) => size(of(each.a)) + size(of(each.b)),
+    );
+    if (way === undefined) break;
+    const [x, y] = [of(way.a), of(way.b)];
+    const [shut, open] = free(x) ? [x, y] : [y, x];
+    merged.join(shut, open);
+    out.join(shut, open);
+    chosen.add(way);
   }
   for (const way of ways) {
-    if (chosen.has(way)) continue;
-    const deadEnd = [way.a, way.b].find(
-      (side) => side > 0 && doors[side] === 1,
-    );
-    if (deadEnd === undefined) continue;
-    chosen.add(way);
-    doors[way.a] = (doors[way.a] ?? 0) + 1;
-    doors[way.b] = (doors[way.b] ?? 0) + 1;
+    if (!outer(way)) continue;
+    if (spare(of(way.a)) && spare(of(way.b))) link(way);
   }
+
+  for (const way of ways)
+    if (inner(way) && !chosen.has(way) && rng() < config.loops) chosen.add(way);
   for (const way of chosen) cutDoor(grid, way, within(config.door, rng), rng);
+  return Int32Array.from(range(count + 1), of);
 }
 
 /** Walls up every open cell `start` cannot reach, so nothing spawns sealed off. */
@@ -628,10 +760,19 @@ function sealUnreached(grid: Grid, start: number): void {
   });
 }
 
-/** The rooms as finally laid out, numbered afresh past any walled up, `grid.room` renumbered. */
-function finishRooms(grid: Grid, carved: readonly Carved[]): UnlitRoom[] {
+/**
+ * The rooms as finally laid out, numbered afresh past any walled up, `grid.room` renumbered, and
+ * their buildings numbered afresh from 0. `buildings` holds each carved room's building at its
+ * index plus one.
+ */
+function finishRooms(
+  grid: Grid,
+  carved: readonly Carved[],
+  buildings: Int32Array,
+): UnlitRoom[] {
   const rooms: UnlitRoom[] = [];
-  carved.forEach((room) => {
+  const renumbered = new Map<number, number>();
+  carved.forEach((room, index) => {
     const cells = room.cells.filter((i) => grid.room[i] !== -1);
     if (cells.length === 0) return;
     const id = rooms.length;
@@ -640,7 +781,11 @@ function finishRooms(grid: Grid, carved: readonly Carved[]): UnlitRoom[] {
     const col = Math.min(...cols);
     const row = Math.min(...rows);
     for (const i of cells) grid.room[i] = id;
+    const grown = buildings[index + 1] ?? 0;
+    const building = renumbered.get(grown) ?? renumbered.size;
+    renumbered.set(grown, building);
     rooms.push({
+      building,
       id,
       col,
       row,
@@ -698,13 +843,17 @@ export function buildWorld(config: WorldConfig, rng: Rng): World {
   });
   const carved = carveRooms(grid, generation.rooms, rng, building);
   clutterYards(grid, generation.yard, depths, distance, rng);
-  cutDoors(grid, generation.rooms, carved.length, rng);
+  const buildings = cutDoors(grid, generation.rooms, carved.length, rng);
   const middle = road[Math.floor(cols / 2)] ?? { top: 0, bottom: 0 };
   sealUnreached(
     grid,
     Math.floor((middle.top + middle.bottom) / 2) * cols + Math.floor(cols / 2),
   );
-  const rooms = lightRooms(finishRooms(grid, carved), generation.lights, rng);
+  const rooms = lightRooms(
+    finishRooms(grid, carved, buildings),
+    generation.lights,
+    rng,
+  );
   let farthest = 0;
   distance.forEach((d, i) => {
     if (grid.solid[i] !== 1) farthest = Math.max(farthest, d);

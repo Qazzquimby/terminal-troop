@@ -103,5 +103,5 @@ test("sessions build the world their kind names", () => {
   );
   expect(standard.world.W).toBe(160 * CELL);
   expect(standard.world.H).toBe(120 * CELL);
-  expect(fingerprint(standard.world.map)).toBe(2313285859);
+  expect(fingerprint(standard.world.map)).toBe(2671043802);
 });
