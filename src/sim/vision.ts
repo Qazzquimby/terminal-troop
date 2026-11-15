@@ -16,6 +16,11 @@ export interface VisionConfig {
    * while looked at asks. What it sees drawn is down to light, not this.
    */
   readonly lookRange: number;
+  /**
+   * How far apart, in pixels, the points are that a body's footprint is checked at, so a body
+   * shows while any part of it is in sight, not only its centre.
+   */
+  readonly footprintSpacing: number;
 }
 
 /** The light a player carries. */
@@ -299,6 +304,51 @@ export function isVisible(
   return (
     sources.some((source) => canSeeFrom(map, source, point)) &&
     (ambient(point) || lights.some((light) => canSeeFrom(map, light, point)))
+  );
+}
+
+/** A round body: its centre and how far it reaches from it. */
+export interface Footprint extends Point {
+  readonly radius: number;
+}
+
+/**
+ * Points spread over `body`'s disc no more than about `spacing` apart: its centre, then rings out
+ * to its edge. A body no bigger than a point is its centre alone.
+ */
+export function footprintPoints(body: Footprint, spacing: number): Point[] {
+  const points: Point[] = [{ x: body.x, y: body.y }];
+  if (body.radius <= 0 || spacing <= 0) return points;
+  const rings = Math.ceil(body.radius / spacing);
+  for (let ring = 1; ring <= rings; ring++) {
+    const radius = (body.radius * ring) / rings;
+    const count = Math.max(6, Math.ceil((Math.PI * 2 * radius) / spacing));
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      points.push({
+        x: body.x + Math.cos(angle) * radius,
+        y: body.y + Math.sin(angle) * radius,
+      });
+    }
+  }
+  return points;
+}
+
+/**
+ * Whether any part of `body` is both seen and lit, as `isVisible` judges a point, checked at
+ * points about `spacing` apart over its footprint. A big body whose centre has gone out of sight
+ * still shows while its edge is in it.
+ */
+export function isBodyVisible(
+  map: TileMap,
+  sources: readonly VisionSource[],
+  lights: readonly LightSource[],
+  body: Footprint,
+  spacing: number,
+  ambient: (point: Point) => boolean = () => false,
+): boolean {
+  return footprintPoints(body, spacing).some((point) =>
+    isVisible(map, sources, lights, point, ambient),
   );
 }
 
