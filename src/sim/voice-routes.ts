@@ -16,6 +16,11 @@ export interface VoiceRoute {
   /** Where it seems to come from; null for no place, heard at full volume dead centre. */
   readonly at: Point | null;
   readonly via: VoiceVia;
+  /**
+   * Where the voice went into whatever carried it here, for a route that carries it from one
+   * place to another: the walkie talkie it was said into, say. Left out for one that does not.
+   */
+  readonly from?: Point;
 }
 
 /**

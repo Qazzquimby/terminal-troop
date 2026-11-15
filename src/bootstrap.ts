@@ -146,7 +146,12 @@ function selectTransport(params: URLSearchParams): Transport {
 /** Incoming voice plays through the sound effects' master gain. */
 function selectVoice(initial: VoiceSettings): Voice {
   if (typeof RTCPeerConnection === "undefined") return createNullVoice(initial);
-  return createWebRtcVoice(sfx, initial, config.voiceConnections);
+  return createWebRtcVoice(
+    sfx,
+    initial,
+    config.voiceConnections,
+    config.voiceRadio,
+  );
 }
 
 const params = new URLSearchParams(location.search);

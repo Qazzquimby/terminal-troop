@@ -20,6 +20,8 @@ describe("per-peer mute", () => {
       pan: 0.75,
       radioGain: 0,
       radioPan: 0,
+      radioKeyed: false,
+      radioInterference: 0,
     });
   });
 
@@ -33,6 +35,8 @@ describe("per-peer mute", () => {
       pan: -0.25,
       radioGain: 0,
       radioPan: 0,
+      radioKeyed: false,
+      radioInterference: 0,
     });
   });
 
@@ -47,6 +51,8 @@ describe("per-peer mute", () => {
       pan: 0,
       radioGain: 0,
       radioPan: 0,
+      radioKeyed: false,
+      radioInterference: 0,
     });
     expect(levels.mutedPeers()).toEqual(["player-a"]);
   });
@@ -57,6 +63,8 @@ describe("per-peer mute", () => {
       pan: 0,
       radioGain: 0,
       radioPan: 0,
+      radioKeyed: false,
+      radioInterference: 0,
     });
   });
 
@@ -70,6 +78,8 @@ describe("per-peer mute", () => {
       pan: 0,
       radioGain: 0,
       radioPan: 0,
+      radioKeyed: false,
+      radioInterference: 0,
     });
     expect(levels.mutedPeers()).toEqual(["player-c"]);
   });
@@ -89,13 +99,15 @@ describe("a voice through a speaker", () => {
     levels.setMix("player-a", {
       volume: 0.2,
       pan: 1,
-      radio: { volume: 0.8, pan: -0.5 },
+      radio: { volume: 0.8, pan: -0.5, interference: 0.4 },
     });
     expect(levels.levels("player-a")).toEqual({
       gain: 0.2,
       pan: 1,
       radioGain: 0.8,
       radioPan: -0.5,
+      radioKeyed: true,
+      radioInterference: 0.4,
     });
   });
 

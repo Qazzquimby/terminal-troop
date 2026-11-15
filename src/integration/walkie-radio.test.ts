@@ -150,7 +150,7 @@ test("a transmission plays from every other walkie switched on, wherever it is, 
   const speaker = playerOn(client("a"), "b");
   expect(voiceRoutes(listener, speaker, listener.local)).toEqual([
     { at: { x: speaker.x, y: speaker.y }, via: "air" },
-    { at: FAR, via: "radio" },
+    { at: FAR, via: "radio", from: { x: speaker.x, y: speaker.y } },
   ]);
 
   run(300);
