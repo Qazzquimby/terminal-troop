@@ -337,7 +337,7 @@ export const config = {
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     blindDog: {
       spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
-      radius: CELL - 3 , // Currently size 2 // 3-> Cell * 1.5 - 3,
+      radius: CELL - 3, // Currently size 2 // 3-> Cell * 1.5 - 3,
       ignores: ["blindDog"],
       maxHealth: SHOVEL_DAMAGE * 5,
       contactDamage: 100,
@@ -641,9 +641,17 @@ export const config = {
     },
     // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
     // most dangerous spot there is an even chance of a second, an uncommon item is twice as
-    // likely, a rare one four times.
+    // likely, a rare one four times. On top of those it always lays 15 cans of fuel, one in each
+    // fifteenth of its width from start to exit, so the cruiser can always be driven out; fuel
+    // may still be picked as loot besides.
     loot: {
       scatter: { count: 20, seed: 4, clearance: CELL * 3 },
+      guaranteed: [
+        {
+          item: "fuel",
+          scatter: { count: 15, seed: 5, clearance: CELL * 3, spread: "x" },
+        },
+      ],
       danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
     },
   },

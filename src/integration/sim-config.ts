@@ -426,6 +426,7 @@ export const testItemsConfig: ItemsConfig = {
   },
   loot: {
     scatter: { count: 0, seed: 6, clearance: 200 },
+    guaranteed: [],
     danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
   },
 };
