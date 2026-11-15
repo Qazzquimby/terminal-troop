@@ -260,7 +260,7 @@ export const config = {
       // It hunts any living body but its own kind and exploders: a zombie that bit an exploder would
       // set it off, and a crowd of them would level the buildings before any player came.
       ignores: ["zombie", "exploder"],
-      maxHealth: 40,
+      maxHealth: 30,
       attackDamage: 35,
       wanderSpeed: 60,
       chaseSpeed: PLAYER_SPEED * 0.8,
@@ -391,7 +391,7 @@ export const config = {
       spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
       radius: CELL - 3, // Currently size 2 // 3-> Cell * 1.5 - 3,
       ignores: ["blindDog"],
-      maxHealth: SHOVEL_DAMAGE * 5,
+      maxHealth: SHOVEL_DAMAGE * 10.0,
       contactDamage: 100,
       contactCooldown: 1,
       wanderSpeed: PLAYER_SPEED * 0.6,
@@ -444,7 +444,7 @@ export const config = {
       // It passes over the crowds, zombies and hoarder beetles, or it would spend itself and the
       // walls round it on the first it felt; players and the rarer monsters it hunts.
       ignores: ["exploder", "zombie", "hoarder"],
-      maxHealth: SHOVEL_DAMAGE * 3,
+      maxHealth: SHOVEL_DAMAGE * 2,
       wanderSpeed: PLAYER_SPEED * 0.8,
       chaseSpeed: PLAYER_SPEED * 1.1,
       senseRange: CELL * 12,
@@ -765,7 +765,7 @@ export const config = {
       reach: 32,
       radius: 18,
       damage: 8,
-      knockback: 2.0,
+      knockback: 1.6,
       cooldown: 0.8,
       stamina: STAMINA_MAX * 0.2,
       lunge: { lengths: 1, seconds: 0.08 },
