@@ -154,7 +154,7 @@ export const config = {
     knockbackSeconds: 0.15,
     // Every pound carried slows a player evenly, to 20% slower at 100lb and no slower past it:
     // a shovel and a scrap (30lb) cost 6%.
-    load: { full: 100, slowdown: 0.66 },
+    load: { full: 100, slowdown: 0.5 },
     // A quiet click on switching slot, heard only by the one switching.
     switchVolume: 0.4,
   },
