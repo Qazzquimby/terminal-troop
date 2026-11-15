@@ -580,7 +580,7 @@ canvas {
 .cabin-exit-runner {
   transform: scaleX(-1);
 }
-/* The exit sign stays the cabin's last panel, whatever panels are added after it. */
+/* The exit sign stays the last panel, and sticky (above), whatever panels are added after it. */
 .cabin-panel.cabin-exit-panel {
   order: 99;
 }
@@ -588,7 +588,7 @@ canvas {
   display: none;
 }
 .cabin-storage {
-  min-width: 118px;
+  min-width: 110px;
 }
 .cabin-storage-grid {
   display: grid;
@@ -596,7 +596,7 @@ canvas {
   margin: 2px 0 3px 6px;
 }
 .cabin-slot {
-  height: 30px;
+  height: 26px;
   padding: 0;
   background: #ffe100;
   color: #000;
@@ -636,7 +636,7 @@ canvas {
   outline: 2px solid #ffffff;
 }
 .cabin-shop {
-  max-width: 200px;
+  max-width: 180px;
 }
 .cabin-wares {
   margin: 1px 0 0;

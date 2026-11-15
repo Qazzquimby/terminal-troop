@@ -51,7 +51,7 @@ export function storagePanel(send: CabinSend): CabinPanel {
   const element = make("section", "cabin-panel cabin-storage");
   const title = make("h3", "cabin-title", "CARGO HOLD (2x3)");
   const grid = make("div", "cabin-storage-grid");
-  grid.style.gridTemplateColumns = `repeat(${String(STORAGE_COLUMNS)}, 34px)`;
+  grid.style.gridTemplateColumns = `repeat(${String(STORAGE_COLUMNS)}, 30px)`;
   const caption = make("p", "cabin-caption", "your pockets ↓ click to stow");
   const pockets = make("div", "cabin-pockets");
   element.append(title, grid, caption, pockets);
