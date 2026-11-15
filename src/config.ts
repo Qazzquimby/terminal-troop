@@ -160,10 +160,26 @@ export const config = {
   // A player who falls drops what it carried within a cell of where it fell. Revived, it comes
   // back on half its health, near whatever revived it.
   death: { scatter: CELL, reviveHealth: 50 },
-  vision: { coneAngle: Math.PI / 2, rays: 360, surroundingsRadius: CELL * 1.4 },
+  // A stunned player sees next to nothing, its view clearing over the last second of the stun,
+  // its ears ringing at half volume until then, the ring fading out over a second.
+  stunned: {
+    darkness: 0.95,
+    fadeOut: 1,
+    ring: { volume: 0.5, fadeSeconds: 1 },
+  },
+  // A player looks down its cone, holding an idol and the like, out to 10 cells, light or no
+  // light: past a flashlight's 6, short of an idol's 16-cell sight.
+  vision: {
+    coneAngle: Math.PI / 2,
+    rays: 360,
+    surroundingsRadius: CELL * 1.4,
+    lookRange: CELL * 10,
+  },
   light: { range: CELL * 6 },
-  // A guest holds a hit it predicted for up to a second before the host confirms it.
-  net: { smoothing: 12, predictionHold: 1 },
+  // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
+  // follows take 0.15s, one and a half snapshots at 10 a second, to reach each reported position,
+  // so a late snapshot does not stop them.
+  net: { smoothing: 12, glide: 0.15, predictionHold: 1 },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
   // Each step is heard by anything within its radius: a sprint carries well past a zombie's
@@ -250,6 +266,9 @@ export const config = {
       },
       reach: CELL / 2,
       burn: 1,
+      // Under a quarter cell a second it stands, burning nothing: what it creeps at, throttled
+      // nose-first into a wall at an angle.
+      standing: CELL / 4,
       gauge: 30,
       // Its engine idles 3 cells off once a second, so a fuelled car is barely heard; driven, it
       // is heard 14 cells off twice a second, past a walk, short of a sprint.
@@ -281,9 +300,9 @@ export const config = {
       // A corpse carried within a cell of the cruiser's body brings its player back beside it.
       revive: { reach: CELL, volume: 0.8 },
     },
-    // Arms 3s after it is put down, then beeps, heard  cells off. Whatever steps on it sets it
-    // off: a bang heard 12 cells off, and a flash that stuns for 5s every entity with a clear line
-    // to it within 5 cells, lighting 8 cells round it for half a second.
+    // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it sets it
+    // off: a bang heard 12 cells off, and a flash that stuns for 5s every body, players included,
+    // whose eyes catch it within 5 cells, lighting 8 cells round it for half a second.
     stunTrap: {
       radius: 10,
       armSeconds: 3,

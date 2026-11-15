@@ -7,6 +7,7 @@ import {
   INERT_TAG,
   ITEM_TAG,
   isAreaFree,
+  livingBodies,
   livingPlayers,
   rounded,
   spawn,
@@ -98,8 +99,7 @@ export function freshSnail(quarry: string | null, now: number): SnailState {
 
 /** A body the snail touches: a player or a world entity, anything but itself and inert things. */
 function touching(game: Session, self: WorldEntity): { id: string }[] {
-  const bodies = [...livingPlayers(game), ...game.entities.values()];
-  return bodies.filter(
+  return livingBodies(game).filter(
     (body) =>
       body.id !== self.id &&
       Math.hypot(body.x - self.x, body.y - self.y) <=

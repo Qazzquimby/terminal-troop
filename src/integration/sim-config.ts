@@ -70,9 +70,19 @@ export const testSimConfig: SimConfig = {
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
   death: { scatter: 40, reviveHealth: 50 },
-  vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
+  stunned: {
+    darkness: 0.95,
+    fadeOut: 1,
+    ring: { volume: 0.5, fadeSeconds: 1 },
+  },
+  vision: {
+    coneAngle: Math.PI / 2,
+    rays: 64,
+    surroundingsRadius: 70,
+    lookRange: 400,
+  },
   light: { range: 200 },
-  net: { smoothing: 12, predictionHold: 0.5 },
+  net: { smoothing: 12, glide: 0.15, predictionHold: 0.5 },
   noise: { blur: 0.2 },
   footsteps: {
     walk: { interval: 0.5, radius: 150 },
@@ -182,6 +192,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     },
     reach: 25,
     burn: 1,
+    standing: 12.5,
     gauge: 30,
     engine: {
       idle: { interval: 1, radius: 150 },

@@ -1,3 +1,5 @@
+import { livingBodies } from "./bodies.js";
+import type { Body } from "./bodies.js";
 import type { WorldEntity } from "./entities.js";
 import { livingPlayers } from "./ghosts.js";
 import type { Point } from "./map.js";
@@ -44,5 +46,18 @@ export function playersIn(game: Session, area: Circle, but?: string): Player[] {
       player.id !== but &&
       Math.hypot(player.x - center.x, player.y - center.y) <=
         radius + player.radius,
+  );
+}
+
+/**
+ * Every body that touches `area`, living players and world entities alike, items lying about
+ * included, but the one with id `but`, if given.
+ */
+export function bodiesIn(game: Session, area: Circle, but?: string): Body[] {
+  const { center, radius } = area;
+  return livingBodies(game).filter(
+    (body) =>
+      body.id !== but &&
+      Math.hypot(body.x - center.x, body.y - center.y) <= radius + body.radius,
   );
 }

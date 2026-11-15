@@ -2,10 +2,9 @@ import {
   circleAhead,
   defineItem,
   effect,
-  entitiesIn,
   hurt,
   isAreaFree,
-  playersIn,
+  bodiesIn,
   push,
   sound,
 } from "../../sim/index.js";
@@ -110,12 +109,9 @@ export const shovel = defineItem("shovel", (config: ShovelConfig) => {
       apply(game, swinger, { aim }) {
         const at = { x: swinger.x, y: swinger.y };
         const area = circleAhead(at, aim, config.reach, config.radius);
-        const struck = [
-          ...entitiesIn(game, area),
-          ...playersIn(game, area, swinger.id),
-        ];
+        const struck = bodiesIn(game, area, swinger.id);
         for (const body of struck) {
-          hurt(game, body, config.damage);
+          hurt(game, body, config.damage, swinger.id);
           push(game, body, at, config.knockback, "stay");
         }
         const hit = struck.length > 0;

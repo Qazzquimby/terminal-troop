@@ -1,39 +1,54 @@
 import { z } from "zod";
+import { isGone, livingBody } from "./bodies.js";
 import { rounded } from "./rounded.js";
 import type { Session } from "./session.js";
 import { worldData } from "./world-data.js";
 
 /**
- * What can be wrong with a world entity for a while:
- * - stunned: it can neither move nor see. Its kind's update and strikes are skipped while it
- *   lasts, so every kind honours it without asking, and it goes on from the state it had.
+ * What can be wrong with a body, a player or a world entity alike, for a while:
+ * - stunned: it can neither move nor see. A world entity's kind update and strikes are skipped
+ *   while it lasts, so every kind honours it without asking, and it goes on from the state it
+ *   had. A player's steering is taken as standing still and its actions are refused, on the host
+ *   and in its own client's prediction alike, and its view goes dark.
  */
 const STATUSES = ["stunned"] as const;
 
-/** A status a world entity can be under. */
+/** A status a body can be under. */
 type Status = (typeof STATUSES)[number];
+
+/** How being stunned feels to the player it befalls: its view, and the ringing in its ears. */
+export interface StunnedConfig {
+  /** How dark the stunned player's view goes, 0..1: 1 is black. */
+  readonly darkness: number;
+  /** Seconds before the stun ends that its view starts to come back, clearing over them. */
+  readonly fadeOut: number;
+  /** The ringing in its ears while the stun lasts: how loud, 0..1, and how long it fades out. */
+  readonly ring: { readonly volume: number; readonly fadeSeconds: number };
+}
 
 /** When, on the world's clock, each status ends, sent to a hundredth of a second. */
 const Ends = z.partialRecord(z.enum(STATUSES), rounded(2));
 
 /**
- * The statuses each world entity is under, by its id: when each ends. The host keeps it, and
- * every client holds it, to draw them and so that a new host goes on from it.
+ * The statuses each body is under, by its id: when each ends. The host keeps it, and every
+ * client holds it, to draw them, to predict its own player under them, and so that a new host
+ * goes on from it.
  */
-export const entityStatuses = worldData({
+export const bodyStatuses = worldData({
   schema: z.record(z.string(), Ends),
   initial: {},
 });
 
-/** Whether the world entity `id` is under `status` now. */
-function isUnder(game: Session, id: string, status: Status): boolean {
-  const ends = entityStatuses.get(game)[id]?.[status];
-  return ends !== undefined && game.worldTime < ends;
+/** When, on the world's clock, the body `id`'s `status` ends; null when it is not under it. */
+function endOf(game: Session, id: string, status: Status): number | null {
+  const ends = bodyStatuses.get(game)[id]?.[status];
+  return ends !== undefined && game.worldTime < ends ? ends : null;
 }
 
 /**
- * Puts the world entity `id` under `status` for `seconds` from now, or for longer if it already
- * is. Only the host does; on any other client it changes nothing. Returns whether it did.
+ * Puts the body `id` under `status` for `seconds` from now, or for longer if it already is. Only
+ * the host does, and only to a body in the world that is not dead or a ghost; on any other client
+ * it changes nothing. Returns whether it did.
  */
 function inflict(
   game: Session,
@@ -41,38 +56,47 @@ function inflict(
   status: Status,
   seconds: number,
 ): boolean {
-  if (!game.hosting || !game.entities.has(id)) return false;
-  const held = entityStatuses.get(game);
+  if (!game.hosting || livingBody(game, id) === null) return false;
+  const held = bodyStatuses.get(game);
   const ends = Math.max(held[id]?.[status] ?? 0, game.worldTime + seconds);
-  return entityStatuses.set(game, {
+  return bodyStatuses.set(game, {
     ...held,
     [id]: { ...held[id], [status]: ends },
   });
 }
 
-/** Whether the world entity `id` is stunned: it can neither move nor see. */
+/** Whether the body `id`, a player or a world entity, is stunned: it can neither move nor see. */
 export function isStunned(game: Session, id: string): boolean {
-  return isUnder(game, id, "stunned");
+  return endOf(game, id, "stunned") !== null;
+}
+
+/** Seconds left of the stun on the body `id`; null when it is not stunned. */
+export function stunLeft(game: Session, id: string): number | null {
+  const ends = endOf(game, id, "stunned");
+  return ends === null ? null : ends - game.worldTime;
 }
 
 /**
- * Stuns the world entity `id` for `seconds`, or for longer if it already is; only the host does.
- * Returns whether it did.
+ * Stuns the body `id`, a player or a world entity, for `seconds`, or for longer if it already is;
+ * only the host does. Returns whether it did.
  */
 export function stun(game: Session, id: string, seconds: number): boolean {
   return inflict(game, id, "stunned", seconds);
 }
 
-/** As the host, forgets statuses that have ended, and those of entities gone from the world. */
+/**
+ * As the host, forgets statuses that have ended, and those of bodies gone from the world, dead
+ * or turned ghost.
+ */
 export function pruneStatuses(game: Session): void {
-  const held = entityStatuses.get(game);
+  const held = bodyStatuses.get(game);
   let changed = false;
   const kept: Record<string, Partial<Record<Status, number>>> = {};
   for (const [id, ends] of Object.entries(held)) {
     const lasting = Object.fromEntries(
       Object.entries(ends).filter(([, end]) => game.worldTime < end),
     );
-    if (!game.entities.has(id) || Object.keys(lasting).length === 0) {
+    if (isGone(game, id) || Object.keys(lasting).length === 0) {
       changed = true;
       continue;
     }
@@ -80,5 +104,30 @@ export function pruneStatuses(game: Session): void {
       changed = true;
     kept[id] = lasting;
   }
-  if (changed) entityStatuses.set(game, kept);
+  if (changed) bodyStatuses.set(game, kept);
+}
+
+/** The id the ringing in a stunned player's ears loops under. */
+const RING_ID = "status/stunned-ring";
+
+/** The ringing a stunned player hears, looped while the stun lasts. */
+const ringUrl = new URL("./sfx/stunned-ring.mp3", import.meta.url).href;
+
+/** Whether each session's local player was stunned as of its last step. */
+const ringing = new WeakMap<Session, boolean>();
+
+/**
+ * On every client, rings in the local player's ears while it is stunned, fading out as the stun
+ * ends: a sound for it alone, not heard in the world.
+ */
+export function hearStatuses(game: Session): void {
+  const stunned = isStunned(game, game.local.id);
+  if (stunned === (ringing.get(game) ?? false)) return;
+  ringing.set(game, stunned);
+  const { ring } = game.config.stunned;
+  if (stunned)
+    void game.sfx.playLoop(RING_ID, ringUrl, null, null, {
+      volume: ring.volume,
+    });
+  else game.sfx.stop(RING_ID, ring.fadeSeconds);
 }

@@ -1,8 +1,7 @@
 import { effect, hurt } from "./actions.js";
-import type { WorldEntity } from "./entities.js";
-import { livingPlayers } from "./ghosts.js";
+import { livingBodies } from "./bodies.js";
+import type { Body } from "./bodies.js";
 import type { Point } from "./map.js";
-import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 import { distanceToWall } from "./vision.js";
 
@@ -20,19 +19,16 @@ export interface Shot {
 export interface ShotEnd {
   readonly end: Point;
   /** The body it met first, if any. */
-  readonly struck: Player | WorldEntity | null;
+  readonly struck: Body | null;
   /** Whether a wall stopped it. */
   readonly wall: boolean;
 }
 
 /** The bodies a shot can meet: every living player and every solid world entity, but `but`. */
-function targets(game: Session, but: string): (Player | WorldEntity)[] {
-  return [
-    ...livingPlayers(game).filter((player) => player.id !== but),
-    ...[...game.entities.values()].filter(
-      (entity) => entity.collides && entity.id !== but,
-    ),
-  ];
+function targets(game: Session, but: string): Body[] {
+  return livingBodies(game).filter(
+    (body) => body.id !== but && (game.entities.get(body.id)?.collides ?? true),
+  );
 }
 
 /**
@@ -70,7 +66,7 @@ export function traceShot(
   const direction = { x: Math.cos(aim), y: Math.sin(aim) };
   const toWall = distanceToWall(game.world.map, from, direction, range);
   let distance = toWall;
-  let struck: Player | WorldEntity | null = null;
+  let struck: Body | null = null;
   for (const body of targets(game, but)) {
     const to = rayToBody(from, direction, body);
     if (to === null || to > distance) continue;
@@ -105,7 +101,7 @@ export function shoot(
 ): ShotEnd {
   const from = { x: shooter.x, y: shooter.y };
   const ended = traceShot(game, from, shot.aim, shot.range, shooter.id);
-  if (ended.struck !== null) hurt(game, ended.struck, shot.damage);
+  if (ended.struck !== null) hurt(game, ended.struck, shot.damage, shooter.id);
   const muzzle = Math.min(
     shooter.radius,
     Math.hypot(ended.end.x - from.x, ended.end.y - from.y),

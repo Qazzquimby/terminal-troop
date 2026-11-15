@@ -6,7 +6,10 @@ import {
   directionalVision,
   distanceToWall,
   effect,
+  hurtSinceLastStep,
   INERT_TAG,
+  isStunned,
+  livingBody,
   livingPlayers,
   rounded,
   sound,
@@ -101,9 +104,9 @@ const COLOURS = {
  * Everyone reads its mode, to draw it, and its facing; the rest only the host reads.
  * - hunt: heads for the nearest living player by a way no player watches
  * - retreat: heads home, keeping its distance from every player, until `until`
- * - enraged: runs straight at the nearest living body until `until`
- * `home` is where it arrived, null until it first steps; `health` is its health as last stepped,
- * so a drop shows it was hurt.
+ * - enraged: runs straight at `foe`, while it lives, or else the nearest living body, until `until`
+ * `home` is where it arrived, null until it first steps; `foe` is the body that last hurt it,
+ * which it goes for while enraged.
  */
 export const SkulkerState = z.object({
   mode: z.enum(["hunt", "retreat", "enraged"]),
@@ -113,7 +116,7 @@ export const SkulkerState = z.object({
   repathAt: Time,
   attackAt: Time,
   attacking: z.boolean(),
-  health: z.number(),
+  foe: z.string().nullable(),
   facing: rounded(2),
 });
 
@@ -121,8 +124,8 @@ export type SkulkerState = z.output<typeof SkulkerState>;
 
 type Mode = SkulkerState["mode"];
 
-/** A fresh skulker's state at world time `now`, at full `health`. */
-export function freshSkulker(now: number, health: number): SkulkerState {
+/** A fresh skulker's state at world time `now`. */
+export function freshSkulker(now: number): SkulkerState {
   return {
     mode: "hunt",
     until: now,
@@ -131,25 +134,28 @@ export function freshSkulker(now: number, health: number): SkulkerState {
     repathAt: now,
     attackAt: now,
     attacking: false,
-    health,
+    foe: null,
     facing: 0,
   };
 }
 
 /**
  * Whether any living player watches a point: it lies within their view cone, out to the watch
- * range, with nothing in the way. Light plays no part, nor what lies behind a player.
+ * range, with nothing in the way. Light plays no part, nor what lies behind a player. A stunned
+ * player watches nothing.
  */
 function watcher(game: Session, config: SkulkerConfig): (at: Point) => boolean {
-  const cones = livingPlayers(game).map(
-    (player) =>
-      directionalVision(
-        player,
-        player.aim,
-        game.config.vision,
-        config.watchRange,
-      )[0],
-  );
+  const cones = livingPlayers(game)
+    .filter((player) => !isStunned(game, player.id))
+    .map(
+      (player) =>
+        directionalVision(
+          player,
+          player.aim,
+          game.config.vision,
+          config.watchRange,
+        )[0],
+    );
   return (at) => cones.some((cone) => canSeeFrom(game.world.map, cone, at));
 }
 
@@ -217,10 +223,12 @@ function plan(
     case "retreat":
       return retreatRoute(game, self, state.home ?? self, config);
     case "enraged": {
-      const prey = nearest(
-        self,
-        preyNear(game, self, () => Infinity, IGNORES),
-      );
+      const prey =
+        livingBody(game, state.foe) ??
+        nearest(
+          self,
+          preyNear(game, self, () => Infinity, IGNORES),
+        );
       if (prey === null) return [];
       return (
         planRoute(map, self.radius, self, prey) ?? [{ x: prey.x, y: prey.y }]
@@ -250,8 +258,16 @@ function think(
   config: SkulkerConfig,
 ): SkulkerState {
   const now = game.worldTime;
-  if (self.health < state.health)
-    return enter(state, "enraged", now, now + config.enragedSeconds);
+  const hurt = hurtSinceLastStep(game, self.id);
+  if (hurt !== null) {
+    const foe = hurt.by === self.id ? null : hurt.by;
+    return enter(
+      { ...state, foe },
+      "enraged",
+      now,
+      now + config.enragedSeconds,
+    );
+  }
   if (state.mode !== "hunt" && now >= state.until)
     return enter(state, "hunt", now, now);
   if (state.mode === "hunt" && watcher(game, config)(self))
@@ -313,6 +329,15 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
     radius: config.radius,
     maxHealth: config.maxHealth,
     data: SkulkerState,
+    // It needs no eyes to know where players are, but it has them: it sees as a player does,
+    // down its facing.
+    eyes: (_entity, state, game) => {
+      const { coneAngle, lookRange, surroundingsRadius } = game.config.vision;
+      return {
+        cone: { direction: state.facing, angle: coneAngle, range: lookRange },
+        around: surroundingsRadius,
+      };
+    },
     update(entity, state, dt, game) {
       const settled =
         state.home === null
@@ -325,7 +350,7 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
         config,
       );
       const next = strikeIf(
-        { ...thought, health: entity.health },
+        thought,
         game.worldTime,
         touching(game, entity, IGNORES).length > 0,
         config.attackCooldown,
@@ -373,7 +398,6 @@ export const skulker = defineEntity(NAME, (config: SkulkerConfig) => ({
     radius: config.radius,
     config: config.spawning,
     scatter: config.spawn,
-    fresh: (_seed: number, game: Session) =>
-      freshSkulker(game.worldTime, config.maxHealth),
+    fresh: (_seed: number, game: Session) => freshSkulker(game.worldTime),
   }),
 }));

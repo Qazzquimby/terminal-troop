@@ -19,6 +19,7 @@ import {
   registerItem,
   registerEntityType,
   spawnEntity,
+  stun,
   updateSession,
   visibilityPolygon,
   visionOrigins,
@@ -26,6 +27,7 @@ import {
 import { createMapMemory } from "./map-memory.js";
 import type { MapMemory } from "./map-memory.js";
 import {
+  blindness,
   drawFlashes,
   drawHealthBar,
   drawLitWalls,
@@ -327,4 +329,23 @@ test("a flash is drawn as a filled disc and its ring on the blow, fading as it s
     ["stroke", testFlashConfig.tracer.colour, 0.5],
   ]);
   expect(calls[4]).toEqual(["fill", colour.miss, fill * 0.5]);
+});
+
+test("a stunned viewer's view goes dark while the stun lasts, clearing over its last moments", () => {
+  const game = createSession(
+    "me",
+    "ME",
+    "BLIND",
+    "dev",
+    testSfx(),
+    testSimConfig,
+  );
+  const { darkness, fadeOut } = testSimConfig.stunned;
+  expect(blindness(game, game.local)).toBe(0);
+  stun(game, "me", fadeOut * 3);
+  expect(blindness(game, game.local)).toBe(darkness);
+  game.worldTime += fadeOut * 2.5;
+  expect(blindness(game, game.local)).toBeCloseTo(darkness / 2);
+  game.worldTime += fadeOut;
+  expect(blindness(game, game.local)).toBe(0);
 });

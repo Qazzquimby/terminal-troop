@@ -15,9 +15,8 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
-  CONTROLS_HINT,
-  TALK_HINT,
-  controlsHintText,
+  controlsHintFor,
+  hintMode,
   createHud,
   createDebugOverlay,
   createMicIndicatorView,
@@ -206,14 +205,18 @@ const talkKey = actionKeyLabel("pushToTalk");
 element("#voice-mode-ptt-label", HTMLSpanElement).textContent =
   `Push to talk (${talkKey})`;
 
+/** Shows the controls the local player has now; only touches the page when they change. */
+function showControlsHint(session: Session | null): void {
+  const text = controlsHintFor(
+    session === null ? "foot" : hintMode(session.local),
+    settings.get().voice.mode === "pushToTalk",
+  );
+  if (controlsHint.textContent !== text) controlsHint.textContent = text;
+}
+
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
   voice.configure(current.voice);
-  controlsHint.textContent = controlsHintText(
-    current.voice.mode === "pushToTalk"
-      ? [...CONTROLS_HINT, TALK_HINT]
-      : CONTROLS_HINT,
-  );
 }
 applySettings(settings.get());
 app.defer(settings.subscribe(applySettings));
@@ -449,6 +452,7 @@ function frame(): void {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
+  showControlsHint(session);
   status.show(room.state(), transport.label);
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);

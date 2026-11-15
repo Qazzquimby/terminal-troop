@@ -3,12 +3,12 @@ import type { Point, TileMap } from "./map.js";
 import { isAreaFree, isSolid } from "./map.js";
 import type { Session } from "./session.js";
 
-export interface Body extends Point {
+export interface Kinetic extends Point {
   vx: number;
   vy: number;
 }
 
-export interface CollisionBody extends Body {
+export interface CollisionBody extends Kinetic {
   readonly radius: number;
 }
 
@@ -25,7 +25,7 @@ function cellRange(min: number, max: number, cell: number): [number, number] {
 
 /** Pushes `body` out of any wall it overlaps along `axis`, against its velocity. */
 function resolveAxis(
-  body: Body,
+  body: Kinetic,
   half: number,
   map: TileMap,
   bounce: number,
@@ -148,7 +148,7 @@ export function nearestFreePoint(
 }
 
 export function moveWithCollision(
-  body: Body,
+  body: Kinetic,
   half: number,
   dt: number,
   map: TileMap,
@@ -167,7 +167,7 @@ function pushBody(
   distance: number,
   map: TileMap,
 ): number {
-  const pushed: Body = {
+  const pushed: Kinetic = {
     x: body.x,
     y: body.y,
     vx: nx * distance,
@@ -181,7 +181,7 @@ function pushBody(
   return Math.max(0, moved);
 }
 
-function stopTowards(body: Body, nx: number, ny: number): void {
+function stopTowards(body: Kinetic, nx: number, ny: number): void {
   const speed = body.vx * nx + body.vy * ny;
   if (speed <= 0) return;
   body.vx -= speed * nx;

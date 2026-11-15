@@ -1,17 +1,19 @@
 import type { z } from "zod";
+import { bodyById } from "./bodies.js";
 import { moveWithCollision } from "./collision.js";
 import type { Entity } from "./entity.js";
 import { changedData } from "./entity-delta.js";
 import type { EntityChange, EntityDelta } from "./entity-delta.js";
-import { applyDamage, isDead } from "./entity.js";
-import { hurtPlayer } from "./health.js";
+import { isDead } from "./entity.js";
+import { dealDamage, pruneHurts, settleHurts } from "./hurts.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
-import { easeToTarget } from "./interpolation.js";
+import { glideTo, glideToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
+import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
@@ -36,10 +38,14 @@ export const INERT_TAG = "inert";
  */
 export const ITEM_TAG = "item";
 
-/** Damage an entity deals to `target`, a player or another world entity. */
+/**
+ * Damage an entity deals to `target`, any body. It is down to `by`, a body's id, or to no one for
+ * null; to the striking entity when left out.
+ */
 export interface Strike {
   readonly target: string;
   readonly amount: number;
+  readonly by?: string | null;
 }
 
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
@@ -59,6 +65,12 @@ export interface EntityDefinition<S> {
     entity: WorldEntity,
     data: S,
   ) => LightEmission | readonly LightEmission[] | null;
+  /**
+   * How it sees, given its state: the view cone it looks down and how far it sees all round, or
+   * null while it sees nothing. A kind without it is blind. A stunned entity sees nothing,
+   * whatever this says; `eyesOf` sees to that.
+   */
+  readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
   /** What makes it a vehicle a player can drive, if it is one. */
   readonly vehicle?: VehicleSpec;
   /** Steers the entity before it moves, and returns its next state. Runs only while hosting. */
@@ -97,6 +109,7 @@ export interface EntityType {
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
   light(entity: WorldEntity): readonly LightEmission[];
+  eyes(entity: WorldEntity, game: Session): Eyes | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
   dies(entity: WorldEntity, game: Session): void;
@@ -132,6 +145,11 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       if (!parsed.success) return [];
       const light = definition.light?.(entity, parsed.data) ?? [];
       return "range" in light ? [light] : light;
+    },
+    eyes(entity, game) {
+      const parsed = schema.safeParse(entity.data);
+      if (!parsed.success) return null;
+      return definition.eyes?.(entity, parsed.data, game) ?? null;
     },
     update(entity, dt, game) {
       const parsed = schema.safeParse(entity.data);
@@ -235,12 +253,12 @@ export function spawnEntity(
 function runKind(game: Session, entity: WorldEntity, dt: number): void {
   const type = game.entityTypes.get(entity.kind);
   type?.update(entity, dt, game);
+  settleHurts(game, entity.id);
   if (!game.entities.has(entity.id)) return;
-  type?.strikes(entity, game).forEach(({ target, amount }) => {
-    const player = game.players.get(target);
-    if (player !== undefined) hurtPlayer(game, player, amount);
-    const struck = game.entities.get(target);
-    if (struck !== undefined) applyDamage(struck, amount);
+  type?.strikes(entity, game).forEach(({ target, amount, by }) => {
+    const struck = bodyById(game, target);
+    if (struck !== null)
+      dealDamage(game, struck, amount, by === undefined ? entity.id : by);
   });
 }
 
@@ -253,6 +271,7 @@ function runKind(game: Session, entity: WorldEntity, dt: number): void {
 export function updateEntities(game: Session, dt: number): void {
   cullDeadEntities(game);
   pruneStatuses(game);
+  pruneHurts(game);
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
@@ -291,11 +310,10 @@ function cullDeadEntities(game: Session): void {
   }
 }
 
-/** Eases every entity no prediction holds towards the host's latest snapshot of it. */
+/** Moves every entity no prediction holds steadily on towards the host's latest snapshot of it. */
 export function followEntities(game: Session, dt: number): void {
-  const amount = 1 - Math.exp(-game.config.net.smoothing * dt);
   game.entities.forEach((entity) => {
-    if (!isHeld(game, entity)) easeToTarget(entity, amount);
+    if (!isHeld(game, entity)) glideToTarget(entity, dt);
   });
 }
 
@@ -333,8 +351,7 @@ function takeEntries(
 
     const known = game.entities.get(id);
     if (known?.kind === kind) {
-      known.tx = x;
-      known.ty = y;
+      glideTo(known, { x, y }, game.config.net.glide);
       hearHealth(game, known, Math.min(health, known.maxHealth));
       known.data = parsed.data;
     } else {

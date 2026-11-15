@@ -390,6 +390,7 @@ export function createRoom(deps: RoomDeps): Room {
     const hosting = view?.id === localId;
     const takingOver = hosting && !room.session.hosting;
     room.session.hosting = hosting;
+    room.session.hostKnown = view !== undefined;
     if (takingOver) takeOverPlayers(room.session);
     else if (!hosting && hostChanged) followNewHost(room.session);
     if (!hosting) {
@@ -687,6 +688,7 @@ export function createRoom(deps: RoomDeps): Room {
     );
     registerContent(session, deps.content);
     session.hosting = false;
+    session.hostKnown = false;
     const room: Link = {
       code,
       name,

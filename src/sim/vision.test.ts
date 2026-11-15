@@ -80,6 +80,7 @@ test("directional vision combines a cone with short omnidirectional sight", () =
       coneAngle: Math.PI / 2,
       rays: 64,
       surroundingsRadius: 40,
+      lookRange: Infinity,
     },
     100,
   );
@@ -100,6 +101,7 @@ test("surroundings never exceed the viewer's sight range", () => {
       coneAngle: Math.PI / 2,
       rays: 64,
       surroundingsRadius: 70,
+      lookRange: Infinity,
     },
     20,
   );
@@ -121,6 +123,7 @@ test("walls block the omnidirectional part of directional vision", () => {
     coneAngle: Math.PI / 2,
     rays: 64,
     surroundingsRadius: 150,
+    lookRange: Infinity,
   });
 
   expect(
@@ -397,6 +400,7 @@ function viewerFacingRight(map: TileMap, x: number, y: number) {
       coneAngle: Math.PI / 2,
       rays: 64,
       surroundingsRadius: SURROUNDINGS,
+      lookRange: Infinity,
     },
   });
   const viewer = { id: "me", x, y, aim: 0 };

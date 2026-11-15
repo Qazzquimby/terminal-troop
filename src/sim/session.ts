@@ -47,6 +47,8 @@ import {
   steerLocal,
 } from "./steering.js";
 import type { Corrections, Feed, Pilot, PlayerEntry } from "./steering.js";
+import { hearStatuses } from "./status.js";
+import type { StunnedConfig } from "./status.js";
 import type { ItemBehaviour } from "./use.js";
 import { useHeldItem } from "./use.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
@@ -57,11 +59,14 @@ import { followItemSounds } from "./item-sounds.js";
 
 /** How clients follow the host. */
 interface SyncConfig {
-  /**
-   * Rate, per second, at which bodies a client does not run ease towards where the host last put
-   * them, and remote players turn towards the facing they last reported.
-   */
+  /** Rate, per second, at which remote players turn towards the facing they last reported. */
   readonly smoothing: number;
+  /**
+   * Seconds a body a client does not run takes to move, at a steady speed, to each new position
+   * the host reports for it. A little longer than the time between reports keeps it moving
+   * between them, at the speed it really goes, that much behind the host.
+   */
+  readonly glide: number;
   /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
   readonly predictionHold: number;
 }
@@ -78,6 +83,7 @@ export interface SimConfig extends PlayerRules {
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
   readonly death: DeathConfig;
+  readonly stunned: StunnedConfig;
 }
 
 export interface Session {
@@ -100,6 +106,11 @@ export interface Session {
   nextEntityId: number;
   /** Whether this client runs the entities; otherwise they follow the host's snapshots. */
   hosting: boolean;
+  /**
+   * Whether this client knows who hosts, itself or another: until then, as it joins a room, its
+   * actions have no one to hear them, so it takes none.
+   */
+  hostKnown: boolean;
   /** Sim seconds stepped since the session began. */
   time: number;
   /** Steps run since the session began. */
@@ -239,6 +250,7 @@ export function createSession(
     kindIds: new Map(),
     nextEntityId: 1,
     hosting: true,
+    hostKnown: true,
     time: 0,
     step: 0,
     worldTime: 0,
@@ -334,6 +346,7 @@ export function updateSession(
 
   followHealth(game);
   followItemSounds(game);
+  hearStatuses(game);
 }
 
 /** Drops a remote player; false when there is none by that id. */

@@ -11,9 +11,16 @@ import {
   mulberry32,
   registerContent,
   spawnEntity,
+  stun,
   updateSession,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
+import { freshWitch, witch as witchContent } from "../witch/index.js";
+import {
+  freshZombie,
+  zombie as zombieContent,
+  ZombieState,
+} from "../zombie/index.js";
 import { freshIdol, idol as idolContent, IdolState } from "./index.js";
 import type { IdolConfig } from "./index.js";
 
@@ -56,7 +63,11 @@ function world(x: number, y: number, idol: IdolConfig = config): Session {
     testSfx(),
     testSimConfig,
   );
-  registerContent(game, [idolContent.create({ idol })]);
+  registerContent(game, [
+    idolContent.create({ idol }),
+    zombieContent.create(testEntitiesConfig),
+    witchContent.create(testEntitiesConfig),
+  ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   sent.set(game, []);
   return game;
@@ -155,6 +166,56 @@ test("once its hunt has run its time, it goes back to its round", () => {
   expect(idol.vx).toBeLessThan(0);
   run(game, 0.3);
   expect(stateOf(idol)).toMatchObject({ mode: "patrol", quarry: null });
+});
+
+test("a player looking at it from past their look range does not hold it", () => {
+  const far = 100 + testSimConfig.vision.lookRange + 100;
+  const game = world(100, 300, nearSighted);
+  const idol = idolAt(game, far, 300);
+  run(game, 0.5, { x: 2000, y: 300 });
+  expect(stateOf(idol).frozen).toBe(false);
+  expect(idol.x).not.toBe(far);
+});
+
+/** A zombie at (x, y), facing `facing`. */
+function zombieAt(
+  game: Session,
+  x: number,
+  y: number,
+  facing: number,
+): WorldEntity {
+  const fresh = freshZombie(1, game.worldTime, testEntitiesConfig.zombie);
+  return spawnEntity(game, "zombie", x, y, { ...fresh, facing });
+}
+
+test("a zombie looking at it holds it, as a player's gaze does", () => {
+  const game = world(100, 550, nearSighted);
+  const idol = idolAt(game, 650, 300);
+  const zombie = zombieAt(game, 500, 300, 0);
+  run(game, 0.5);
+  expect(stateOf(idol).frozen).toBe(true);
+  expect(idol.x).toBe(650);
+  expect(ZombieState.parse(zombie.data).facing).toBeCloseTo(0, 1);
+});
+
+test("a stunned zombie's gaze does not hold it", () => {
+  const game = world(100, 550, nearSighted);
+  const idol = idolAt(game, 650, 300);
+  const zombie = zombieAt(game, 500, 300, 0);
+  stun(game, zombie.id, 10);
+  run(game, 0.5);
+  expect(stateOf(idol).frozen).toBe(false);
+  expect(idol.x).not.toBe(650);
+});
+
+test("a body that sees it only all round, as a sleeping witch does, does not hold it", () => {
+  const game = world(100, 550, nearSighted);
+  const idol = idolAt(game, 650, 300);
+  const fresh = freshWitch(game.worldTime, testEntitiesConfig.witch);
+  spawnEntity(game, "witch", 620, 300, fresh);
+  run(game, 0.5);
+  expect(stateOf(idol).frozen).toBe(false);
+  expect(idol.x).not.toBe(650);
 });
 
 test("it cannot die", () => {

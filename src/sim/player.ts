@@ -7,7 +7,7 @@ import {
 import type { Ride } from "./driving.js";
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
-import { easeToTarget, lerpAngle } from "./interpolation.js";
+import { glideToTarget, lerpAngle } from "./interpolation.js";
 import type { Point, TileMap, WorldConfig } from "./map.js";
 import type { HeldSlot, Inventory } from "./inventory.js";
 import { createInventory } from "./inventory.js";
@@ -342,11 +342,10 @@ export function aimAt(from: Point, target: Point): number {
 }
 
 /**
- * Eases a player this client does not run towards where the host last put it, and its facing
- * towards the one it last reported; `rate` is per second.
+ * Moves a player this client does not run steadily on towards where the host last put it, and
+ * eases its facing towards the one it last reported; `rate` is per second.
  */
 export function smoothPlayer(player: Player, dt: number, rate: number): void {
-  const amount = 1 - Math.exp(-rate * dt);
-  easeToTarget(player, amount);
-  player.aim = lerpAngle(player.aim, player.taim, amount);
+  glideToTarget(player, dt);
+  player.aim = lerpAngle(player.aim, player.taim, 1 - Math.exp(-rate * dt));
 }

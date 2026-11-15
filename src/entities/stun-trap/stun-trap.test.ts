@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { reportedAt } from "../../integration/heard.js";
 import {
   testEntitiesConfig,
   testSfx,
@@ -13,7 +14,11 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
-import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
+import {
+  freshZombie,
+  zombie as zombieContent,
+  ZombieState,
+} from "../zombie/index.js";
 import { placeStunTrap, stunTrap, TrapState } from "./index.js";
 
 const DT = 1 / 60;
@@ -92,12 +97,23 @@ test("a trap arms once its arming time is up, and nothing sets it off before", (
   expect(game.entities.has(trap.id)).toBe(true);
 });
 
-test("an armed trap goes off under an entity, stunning those that see it within range", () => {
+/** Turns `zombie` to face `facing`, in radians. */
+function face(zombie: WorldEntity, facing: number): WorldEntity {
+  zombie.data = { ...ZombieState.parse(zombie.data), facing };
+  return zombie;
+}
+
+test("an armed trap goes off under an entity, stunning those whose eyes see it within range", () => {
   const game = world();
   const trap = trapAt(game, 400, 300);
   run(game, config.armSeconds + 0.1);
 
-  const near = zombieAt(game, 400 + config.stunRange - 20, 300);
+  // Facing the trap, down its cone.
+  const near = face(zombieAt(game, 400 + config.stunRange - 20, 300), Math.PI);
+  // Back turned, the trap well past the small circle it sees all round it.
+  const turned = face(zombieAt(game, 400, 300 - config.stunRange + 20), 0);
+  // Back turned, but the trap within that small circle.
+  const close = face(zombieAt(game, 400, 340), 0);
   // Behind the pillar at x 200-300, y 50-150.
   const hidden = zombieAt(game, 250, 30);
   const far = zombieAt(game, 400, 300 + config.stunRange + 40);
@@ -106,6 +122,8 @@ test("an armed trap goes off under an entity, stunning those that see it within 
 
   expect(isStunned(game, stepper.id)).toBe(true);
   expect(isStunned(game, near.id)).toBe(true);
+  expect(isStunned(game, close.id)).toBe(true);
+  expect(isStunned(game, turned.id)).toBe(false);
   expect(isStunned(game, hidden.id)).toBe(false);
   expect(isStunned(game, far.id)).toBe(false);
   expect(isStunned(game, trap.id)).toBe(false);
@@ -146,12 +164,64 @@ test("a stunned zombie stands still in sight of a player, and chases it once the
   expect(zombie.x).toBeGreaterThan(400);
 });
 
-test("a player sets off no trap", () => {
+test("a player sets off an armed trap, and its flash stuns players whose eyes see it as it does entities", () => {
   const game = world();
   const trap = trapAt(game, 400, 300);
   run(game, config.armSeconds + 0.1);
+  // Facing the trap, down its cone.
+  const near = reportedAt(
+    game,
+    "near",
+    { x: 400 + config.stunRange - 20, y: 300 },
+    Math.PI,
+  );
+  // Back turned, the trap well past the small circle it sees all round it.
+  const turned = reportedAt(
+    game,
+    "turned",
+    { x: 400, y: 300 + config.stunRange - 20 },
+    Math.PI / 2,
+  );
+  // Behind the pillar at x 200-300, y 50-150, facing the trap.
+  const hidden = reportedAt(
+    game,
+    "hidden",
+    { x: 250, y: 30 },
+    Math.atan2(270, 150),
+  );
+  const zombie = face(
+    zombieAt(game, 400, 300 - config.stunRange + 30),
+    Math.PI / 2,
+  );
+  // The player that steps on it sees it within the small circle all round it.
   Object.assign(game.local, { x: 400, y: 300, prevX: 400, prevY: 300 });
-  run(game, 0.5);
-  expect(TrapState.parse(trap.data).firedAt).toBeNull();
-  expect(game.entities.has(trap.id)).toBe(true);
+  run(game, DT * 2);
+
+  expect(TrapState.parse(trap.data).firedAt).not.toBeNull();
+  expect(isStunned(game, game.local.id)).toBe(true);
+  expect(isStunned(game, near.id)).toBe(true);
+  expect(isStunned(game, zombie.id)).toBe(true);
+  expect(isStunned(game, turned.id)).toBe(false);
+  expect(isStunned(game, hidden.id)).toBe(false);
+});
+
+test("a player stunned by a trap stands still whatever it steers, and walks again once the stun ends", () => {
+  const game = world();
+  trapAt(game, 400, 300);
+  run(game, config.armSeconds + 0.1);
+  Object.assign(game.local, { x: 400, y: 300, prevX: 400, prevY: 300 });
+  run(game, DT * 2);
+  expect(isStunned(game, game.local.id)).toBe(true);
+
+  const walk = { ...idle, move: { x: 0, y: 1 } };
+  const steps = (seconds: number) => {
+    for (let step = 0; step < Math.round(seconds / DT); step++)
+      updateSession(game, walk, DT);
+  };
+  steps(config.stunSeconds - 0.5);
+  expect(game.local.y).toBe(300);
+  steps(0.6);
+  expect(isStunned(game, game.local.id)).toBe(false);
+  steps(0.2);
+  expect(game.local.y).toBeGreaterThan(300);
 });

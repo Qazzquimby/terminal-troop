@@ -1,32 +1,34 @@
 import { z } from "zod";
 import { drawEmoji } from "../../render/index.js";
 import {
-  canSeeFrom,
+  bodiesIn,
   defineEntity,
   effect,
   hasKindTag,
   INERT_TAG,
   ITEM_TAG,
   isStunned,
+  livingBodies,
+  notices,
   removeFromWorld,
   rounded,
   spawn,
   stun,
 } from "../../sim/index.js";
-import type { Point, Session, WorldEntity } from "../../sim/index.js";
+import type { Body, Point, Session, WorldEntity } from "../../sim/index.js";
 // Its sounds, once their assets land; importing a missing file breaks the build.
 // import beepUrl from "./sfx/beep.mp3";
 // import flashUrl from "./sfx/flash.mp3";
 
 /**
- * A stun trap lying where a player put it down: it arms, then goes off when a world entity steps
- * on it, stunning every entity that sees its flash. Distances in pixels, times in sim seconds.
+ * A stun trap lying where a player put it down: it arms, then goes off when a body steps on it,
+ * stunning every body that sees its flash, players and world entities alike. Distances in pixels, times in sim seconds.
  */
 export interface StunTrapConfig {
   readonly radius: number;
   /** Seconds from being put down until it is armed. */
   readonly armSeconds: number;
-  /** How far its flash stuns an entity that has a clear line to it. */
+  /** How far its flash stuns a body that has a clear line to it. */
   readonly stunRange: number;
   /** How long its flash stuns for. */
   readonly stunSeconds: number;
@@ -78,42 +80,38 @@ export function placeStunTrap(game: Session, at: Point): void {
   spawn(game, NAME, { x: at.x, y: at.y }, state);
 }
 
-/** Whether `body` is a world entity the trap acts on: anything but itself and inert things. */
-const actsOn = (game: Session, trap: WorldEntity, body: WorldEntity) =>
+/**
+ * Whether the trap acts on `body`, a player or a world entity: anything but itself, inert things
+ * and items lying about.
+ */
+const actsOn = (game: Session, trap: WorldEntity, body: Body) =>
   body.id !== trap.id && !hasKindTag(game, body.id, [INERT_TAG, ITEM_TAG]);
 
-/** The first world entity standing on the trap, or null; players set it off by no means. */
-function steppedOn(game: Session, trap: WorldEntity): WorldEntity | null {
-  for (const body of game.entities.values()) {
-    if (!actsOn(game, trap, body)) continue;
-    if (
-      Math.hypot(body.x - trap.x, body.y - trap.y) <=
-      trap.radius + body.radius
-    )
-      return body;
-  }
-  return null;
+/** Whether a living body, a player or a world entity, stands on the trap. */
+function steppedOn(game: Session, trap: WorldEntity): boolean {
+  return bodiesIn(game, { center: trap, radius: trap.radius }, trap.id).some(
+    (body) => actsOn(game, trap, body),
+  );
 }
 
 /**
- * Stuns every world entity within the flash's range with a clear line to the trap; one already
- * stunned sees nothing, so this flash does not reach it.
+ * Stuns every living body, players and world entities alike, whose eyes see the trap, down their
+ * cone or all round, within the flash's range. A blind one is spared, and one already stunned sees
+ * nothing, so this flash does not reach it.
  */
 function flash(game: Session, trap: WorldEntity, config: StunTrapConfig): void {
-  const source = { range: config.stunRange };
-  for (const body of [...game.entities.values()]) {
+  for (const body of livingBodies(game)) {
     if (!actsOn(game, trap, body) || isStunned(game, body.id)) continue;
-    if (!canSeeFrom(game.world.map, { ...source, x: body.x, y: body.y }, trap))
-      continue;
+    if (!notices(game, body, trap, config.stunRange)) continue;
     stun(game, body.id, config.stunSeconds);
   }
 }
 
 /**
- * A stun trap: arms some seconds after it is put down, beeping once it has; then the first world
- * entity to step on it sets it off, with a flash that stuns every entity that sees it within
- * range and lights a wide circle for a moment, after which the trap is gone. Players neither set
- * it off nor are stunned by it, and hunters pay it no mind.
+ * A stun trap: arms some seconds after it is put down, beeping once it has; then the first body to
+ * step on it, a player or a world entity, sets it off, with a flash that stuns every body that
+ * sees it within range, players included, and lights a wide circle for a moment, after which the
+ * trap is gone. Hunters pay it no mind.
  */
 export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
   // const beep = sound({ url: beepUrl, volume: config.volume, range: config.sounds.beep });
@@ -145,7 +143,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
         );
         return { ...state, armed: true };
       }
-      if (steppedOn(game, entity) === null) return state;
+      if (!steppedOn(game, entity)) return state;
       effect(
         game,
         {
@@ -162,7 +160,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
     draw(ctx, entity, state, now) {
       drawEmoji(ctx, entity, TRAP_GLYPH, entity.radius * 2);
       if (state.firedAt !== null) return;
-      const lit = state.armed && now % BLINK < BLINK / 2;
+      const lit = state.armed && (now / 1000) % BLINK < BLINK / 2;
       if (state.armed && !lit) return;
       ctx.fillStyle = state.armed ? COLOURS.armed : COLOURS.arming;
       ctx.beginPath();

@@ -8,6 +8,7 @@ import {
 import { itemContent } from "../../items/index.js";
 import {
   createSession,
+  hurt,
   giveItem,
   itemInstances,
   itemIn,
@@ -95,13 +96,7 @@ function run(game: Session, seconds: number, look: Point = { x: 900, y: 600 }) {
 }
 
 function magpieAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(
-    game,
-    "magpie",
-    x,
-    y,
-    freshMagpie(game.worldTime, config.maxHealth),
-  );
+  return spawnEntity(game, "magpie", x, y, freshMagpie(game.worldTime));
 }
 
 const stateOf = (entity: WorldEntity): MagpieState =>
@@ -207,12 +202,12 @@ test("a player it sees near its nest sets it guarding; one close by away from th
   expect(sounded(away, "alarm.mp3")).toBe(true);
 });
 
-test("hurt, it drops what it carries and chases the nearest player a while, biting it", () => {
+test("hurt, it drops what it carries and chases whoever hurt it a while, biting it", () => {
   const game = world(450, 300);
   const bug = magpieAt(game, 300, 300);
   run(game, DT);
   bug.data = { ...stateOf(bug), carrying: "scrap" };
-  bug.health -= 15;
+  hurt(game, bug, 15, game.localId);
   run(game, DT);
   const state = stateOf(bug);
   expect(state.mode).toBe("spook");

@@ -108,7 +108,20 @@ export type { Corrections } from "./steering.js";
 export { Health, hurtPlayer } from "./health.js";
 export { isGhost, livingPlayers } from "./ghosts.js";
 export { CORPSE_ITEM, itemName, revive } from "./death.js";
-export { circleAhead, entitiesIn, playersIn } from "./reach.js";
+export { bodiesIn, circleAhead, playersIn } from "./reach.js";
+export { bodyById, isGone, livingBodies, livingBody } from "./bodies.js";
+export type { Body } from "./bodies.js";
+export {
+  eyesOf,
+  inView,
+  isLookedAt,
+  lookersAt,
+  looksAt,
+  notices,
+} from "./eyes.js";
+export type { Eyes } from "./eyes.js";
+export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
+export type { HurtRecord } from "./hurts.js";
 export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
@@ -162,6 +175,6 @@ export type {
   VisibilityPolygon,
   VisionSource,
 } from "./vision.js";
-export { isStunned, stun } from "./status.js";
+export { isStunned, stun, stunLeft } from "./status.js";
 export { ambientLightAt, ambientPolygons, isLit } from "./light.js";
 export type { AmbientLight } from "./light.js";
