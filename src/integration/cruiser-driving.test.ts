@@ -7,6 +7,7 @@ import {
   createSession,
   giveItem,
   itemIn,
+  lastHurtBy,
   registerContent,
   updateSession,
 } from "../sim/index.js";
@@ -290,7 +291,7 @@ test("at breakdown damage its driver gets out and its fuel is gone", () => {
   expect(game.local.ride).toBeNull();
 });
 
-test("driven into a zombie at speed, it hurts it once and shoves it clear of its side, and goes on past", () => {
+test("driven into a zombie at speed, it hurts it once, down to its driver, and shoves it clear of its side, and goes on past", () => {
   const game = world(1);
   const zombie = kindOf(game, "zombie");
   Object.assign(zombie, { x: 600, y: 310, tx: 600, ty: 310 });
@@ -298,6 +299,7 @@ test("driven into a zombie at speed, it hurts it once and shoves it clear of its
   for (let step = 0; step < 240 && zombie.health === zombie.maxHealth; step++)
     press(game, throttle);
   expect(zombie.health).toBe(zombie.maxHealth - config.ram.damage);
+  expect(lastHurtBy(game, zombie.id)).toBe(game.localId);
   expect(Math.abs(zombie.y - game.local.y)).toBeGreaterThanOrEqual(
     40 + zombie.radius,
   );

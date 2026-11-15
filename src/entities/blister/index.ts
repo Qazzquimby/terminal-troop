@@ -3,9 +3,12 @@ import {
   defineEntity,
   destroyWalls,
   effect,
+  bodyById,
   hurt,
+  hurtSinceLastStep,
   isAreaFree,
   isStunned,
+  livingBody,
   livingPlayers,
   rounded,
   sound,
@@ -100,8 +103,8 @@ export const BlisterState = z.object({
   straight: z.boolean(),
   /** When it bursts; null while its fuse is unlit. Everyone, to draw it swelling. */
   fuseAt: Time.nullable(),
-  /** Its health as of its last step, so it knows when it has been hurt. Host. */
-  health: z.number(),
+  /** The body that last hurt it, which it chases while that lives; null for none. Host. */
+  attacker: z.string().nullable(),
   /** Whether it bursts in this step. Host. */
   burst: z.boolean(),
   /** Radians, sent to a hundredth. Everyone. */
@@ -117,11 +120,7 @@ const NAME = "blister";
 const DEAF_TO = [NAME];
 
 /** A fresh blister's state at world time `now`, its random draws seeded by `seed`. */
-export function freshBlister(
-  seed: number,
-  now: number,
-  config: BlisterConfig,
-): BlisterState {
+export function freshBlister(seed: number, now: number): BlisterState {
   return {
     mode: "wander",
     seed: seed | 0,
@@ -130,7 +129,7 @@ export function freshBlister(
     goal: null,
     straight: false,
     fuseAt: null,
-    health: config.maxHealth,
+    attacker: null,
     burst: false,
     facing: 0,
   };
@@ -239,15 +238,19 @@ function players(game: Session): Point[] {
 }
 
 /**
- * The player it hunts: the nearest within its sense range, walls or no walls; once hurt, the
- * nearest anywhere. Null for none.
+ * What it hunts: whatever body hurt it, wherever it is, while it lives; otherwise the nearest
+ * player within its sense range, walls or no walls, or, just hurt by no one it can chase, the
+ * nearest player anywhere. Null for none.
  */
 function quarry(
+  state: BlisterState,
   self: Point,
   game: Session,
   hurt: boolean,
   config: BlisterConfig,
 ): Point | null {
+  const attacker = livingBody(game, state.attacker);
+  if (attacker !== null) return attacker;
   const found = nearest(self, players(game));
   if (found === null) return null;
   const distance = Math.hypot(found.x - self.x, found.y - self.y);
@@ -262,7 +265,7 @@ function think(
   hurt: boolean,
   config: BlisterConfig,
 ): BlisterState {
-  const prey = quarry(self, game, hurt, config);
+  const prey = quarry(state, self, game, hurt, config);
   if (prey !== null) return hunt(state, self, prey, game.world.map, config);
   if (state.mode === "chase" && state.route.length > 0) return state;
   if (state.mode === "chase")
@@ -356,11 +359,11 @@ function burst(
   const reach = (body: { readonly radius: number }) => radius + body.radius;
   for (const body of preyNear(game, entity, reach, [])) {
     const distance = Math.hypot(body.x - entity.x, body.y - entity.y);
-    const caught =
-      game.players.get(body.id) ?? game.entities.get(body.id) ?? null;
-    if (caught !== null) hurt(game, caught, blastDamage(distance, config));
+    const caught = bodyById(game, body.id);
+    if (caught !== null)
+      hurt(game, caught, blastDamage(distance, config), entity.id);
   }
-  hurt(game, entity, entity.health);
+  hurt(game, entity, entity.health, entity.id);
   return { ...state, burst: true };
 }
 
@@ -432,8 +435,11 @@ function definition(
     data: BlisterState,
     update(entity, state, dt, game) {
       if (state.burst) return state;
-      const hurt = entity.health < state.health;
-      const sensed = { ...state, health: entity.health };
+      const struck = hurtSinceLastStep(game, entity.id);
+      const hurt = struck !== null;
+      const by = struck?.by ?? null;
+      const sensed =
+        by === null || by === entity.id ? state : { ...state, attacker: by };
       const thought = think(sensed, entity, game, hurt, config);
       const lit = ignite(thought, entity, game, hurt, config);
       if (state.fuseAt === null && lit.fuseAt !== null)
@@ -472,8 +478,8 @@ function burstStunned(
  * wanders towards any noise, feels players through walls nearby and chases them down, by a route
  * where one is short enough, else straight at them. Near a player, hurt, or stopped by a wall in
  * its straight way, it lights a short fuse and keeps coming, then bursts, knocking the walls
- * round it down and hurting everything near, worst nearest. Once hurt, it goes for the nearest
- * player wherever it is.
+ * round it down and hurting everything near, worst nearest. Once hurt, it goes for whatever body
+ * hurt it, wherever it is, or with none to chase, for the nearest player.
  */
 export const blister = defineEntity(NAME, (config: BlisterConfig) => {
   const sounds: Sounds = {
@@ -486,7 +492,7 @@ export const blister = defineEntity(NAME, (config: BlisterConfig) => {
     config: config.spawning,
     scatter: config.spawn,
     fresh: (seed: number, game: Session) =>
-      freshBlister(Math.floor(seed * 2 ** 32), game.worldTime, config),
+      freshBlister(Math.floor(seed * 2 ** 32), game.worldTime),
   });
   return {
     ...definition(config, sounds),

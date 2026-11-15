@@ -7,10 +7,12 @@ import {
   directionalVision,
   effect,
   emittedLights,
+  hurtSinceLastStep,
   INERT_TAG,
   isAreaFree,
   isLit,
   itemInstances,
+  livingBody,
   livingPlayers,
   removeFromWorld,
   rounded,
@@ -19,6 +21,7 @@ import {
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
+  HurtRecord,
   ItemInstance,
   Player,
   Point,
@@ -129,8 +132,7 @@ const COLOURS = {
  * - revenge: hunts `quarry`, who took scrap from its nest, light or no light
  * `nest` is where its group settled, null until it first steps, and `nestId` the number its claims
  * carry. `seen` holds a bit for each of `points` visited; `goal` is the one it heads for.
- * `fetching` is the lying scrap it heads for, `carrying` the item it carries. `health` is its
- * health as last stepped, so a drop shows it was hurt.
+ * `fetching` is the lying scrap it heads for, `carrying` the item it carries.
  */
 export const MagpieState = z.object({
   mode: z.enum(["wander", "guard", "spook", "revenge"]),
@@ -148,7 +150,6 @@ export const MagpieState = z.object({
   attackAt: Time,
   attacking: z.boolean(),
   chitterAt: Time,
-  health: z.number(),
   facing: rounded(2),
 });
 
@@ -156,8 +157,8 @@ export type MagpieState = z.output<typeof MagpieState>;
 
 type Mode = MagpieState["mode"];
 
-/** A fresh magpie beetle's state at world time `now`, at full `health`, yet to settle a nest. */
-export function freshMagpie(now: number, health: number): MagpieState {
+/** A fresh magpie beetle's state at world time `now`, yet to settle a nest. */
+export function freshMagpie(now: number): MagpieState {
   return {
     mode: "wander",
     until: now,
@@ -174,7 +175,6 @@ export function freshMagpie(now: number, health: number): MagpieState {
     attackAt: now,
     attacking: false,
     chitterAt: now,
-    health,
     facing: 0,
   };
 }
@@ -263,17 +263,13 @@ function thief(game: Session, nestId: number): Player | null {
   return null;
 }
 
-/** The living player with id `id`; null when gone or dead. */
-const living = (game: Session, id: string | null): Player | null =>
-  livingPlayers(game).find((player) => player.id === id) ?? null;
-
 /** Whether its revenge on `quarry` holds: alive, and still near some of what it stole. */
 function revengeHolds(
   game: Session,
   state: MagpieState,
   config: MagpieConfig,
 ): boolean {
-  const quarry = living(game, state.quarry);
+  const quarry = livingBody(game, state.quarry);
   if (quarry === null) return false;
   return hoard(game, state.nestId).some(
     (instance) => distance(instance.at, quarry) < config.revengeRange,
@@ -344,8 +340,9 @@ function scrapInSight(
 
 /**
  * The mode it moves to. A thief of its nest's scrap draws its revenge, which holds until the
- * thief dies or gets far from what it stole. Hurt, it is spooked by the nearest player. A spook or
- * guard runs out back to foraging. Foraging or guarding, a player it sees near its nest sets it
+ * thief dies or gets far from what it stole. `hurt` since its last step, it is spooked by
+ * whatever body hurt it, or by the nearest player when it was no one's doing. A spook or guard
+ * runs out back to foraging. Foraging or guarding, a player it sees near its nest sets it
  * guarding; foraging away from its nest, a player it sees close by spooks it.
  */
 function think(
@@ -353,6 +350,7 @@ function think(
   self: WorldEntity,
   game: Session,
   config: MagpieConfig,
+  hurt: HurtRecord | null,
 ): MagpieState {
   const now = game.worldTime;
   if (state.mode === "revenge")
@@ -361,12 +359,16 @@ function think(
       : enter(state, "wander", now, now);
   const taker = thief(game, state.nestId);
   if (taker !== null) return enter(state, "revenge", now, now, taker.id);
-  if (self.health < state.health) {
-    const quarry = nearest(self, livingPlayers(game));
+  if (hurt !== null) {
+    const attacker = hurt.by === self.id ? null : livingBody(game, hurt.by);
+    const quarry = attacker ?? nearest(self, livingPlayers(game));
     return enter(state, "spook", now + config.spookSeconds, now, quarry?.id);
   }
   const over = state.mode !== "wander" && now >= state.until;
-  if (over || (state.mode === "spook" && living(game, state.quarry) === null))
+  if (
+    over ||
+    (state.mode === "spook" && livingBody(game, state.quarry) === null)
+  )
     return enter(state, "wander", now, now);
   if (state.mode === "spook") return state;
   const nest = nestOf(state);
@@ -559,7 +561,7 @@ function chase(
   config: MagpieConfig,
 ): MagpieState {
   const now = game.worldTime;
-  const quarry = living(game, state.quarry);
+  const quarry = livingBody(game, state.quarry);
   if (quarry === null || now < state.repathAt) return state;
   return {
     ...state,
@@ -630,7 +632,7 @@ function fumble(
   self: WorldEntity,
   game: Session,
 ): MagpieState {
-  if (state.carrying === null || self.health >= state.health) return state;
+  if (state.carrying === null) return state;
   lay(game, self, state.carrying, { x: self.x, y: self.y });
   return { ...state, carrying: null };
 }
@@ -668,12 +670,13 @@ function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
       const now = game.worldTime;
       const settled =
         state.nest === null ? settle(state, entity, game, config) : state;
-      const held = fumble(settled, entity, game);
-      const thought = think(held, entity, game, config);
+      const hurt = hurtSinceLastStep(game, entity.id);
+      const held = hurt === null ? settled : fumble(settled, entity, game);
+      const thought = think(held, entity, game, config, hurt);
       const acted = act(thought, entity, game, config, sounds);
       const next = chitter(
         strikeIf(
-          { ...acted, health: entity.health },
+          acted,
           now,
           inReach(game, entity, acted, config).length > 0,
           config.attackCooldown,
@@ -722,7 +725,6 @@ export const magpie = defineEntity(NAME, (config: MagpieConfig) => ({
     radius: config.radius,
     config: config.spawning,
     scatter: config.spawn,
-    fresh: (_seed: number, game: Session) =>
-      freshMagpie(game.worldTime, config.maxHealth),
+    fresh: (_seed: number, game: Session) => freshMagpie(game.worldTime),
   }),
 }));

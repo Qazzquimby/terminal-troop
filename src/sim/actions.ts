@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { asEntity, asPlayer } from "./bodies.js";
+import type { Body } from "./bodies.js";
 import { solidBodiesBut } from "./collision.js";
 import { contentEvent, registerEvents } from "./content-event.js";
 import type { ContentEvent } from "./content-event.js";
@@ -7,7 +9,7 @@ import { removeEntity, spawnEntity } from "./entities.js";
 import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
 import { isGhost } from "./ghosts.js";
-import { hurtPlayer } from "./health.js";
+import { dealDamage } from "./hurts.js";
 import {
   carriedIn,
   giveItem,
@@ -459,32 +461,24 @@ function mayChange(game: Session, entity: WorldEntity): boolean {
   }
 }
 
-/** Whichever of the session's players and world entities `body` is; null for neither. */
-function which(
-  game: Session,
-  body: Player | WorldEntity,
-): { player: Player } | { entity: WorldEntity } | null {
-  const player = game.players.get(body.id);
-  if (player === body) return { player };
-  const entity = game.entities.get(body.id);
-  if (entity === body) return { entity };
-  return null;
-}
-
 /**
- * Deals `amount` damage to `body`. A player's health is the host's to change, so only the host
- * hurts players; a world entity is hurt on the actor's client too, as predicted.
+ * Deals `amount` damage to `body`, down to `by`: the id of the body that dealt it, such as the
+ * actor in an action or the entity whose update it is, or null for no one. The host deals it for
+ * real and notes who did, as `lastHurt` reads. A player's health is the host's to change, so only
+ * the host hurts players; a world entity is hurt on the actor's client too, as predicted.
  */
 export function hurt(
   game: Session,
-  body: Player | WorldEntity,
+  body: Body,
   amount: number,
+  by: string | null,
 ): void {
-  const found = which(game, body);
-  if (found === null) return;
-  if ("player" in found) {
-    if (scope(game) === "world") hurtPlayer(game, found.player, amount);
-  } else if (mayChange(game, found.entity)) applyDamage(found.entity, amount);
+  if (scope(game) === "world") {
+    dealDamage(game, body, amount, by);
+    return;
+  }
+  const entity = asEntity(game, body);
+  if (entity !== null && mayChange(game, entity)) applyDamage(entity, amount);
 }
 
 /**
@@ -527,18 +521,17 @@ function knockPlayer(
  */
 export function push(
   game: Session,
-  body: Player | WorldEntity,
+  body: Body,
   from: Point,
   distance: number,
   blocked: Blocked = "stop",
 ): void {
-  const found = which(game, body);
-  if (found === null) return;
-  if ("player" in found) {
-    if (scope(game) === "world")
-      knockPlayer(game, found.player, from, distance);
-  } else if (mayChange(game, found.entity))
-    knockBack(found.entity, from, distance, game.world.map, blocked);
+  const player = asPlayer(game, body);
+  const entity = asEntity(game, body);
+  if (player !== null) {
+    if (scope(game) === "world") knockPlayer(game, player, from, distance);
+  } else if (entity !== null && mayChange(game, entity))
+    knockBack(entity, from, distance, game.world.map, blocked);
 }
 
 /** A dash an actor makes as it acts. Distances in pixels, times in sim seconds. */

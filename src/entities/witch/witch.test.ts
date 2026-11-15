@@ -7,6 +7,7 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  hurt,
   mulberry32,
   registerContent,
   registerEntityType,
@@ -135,15 +136,35 @@ test("light on her wakes her enraged, however far the players", () => {
   expect(stateOf(witch).mode).toBe("enraged");
 });
 
-test("hurt while dormant, she wakes and heads for whoever she can see", () => {
+test("hurt by a player while dormant, she wakes and runs them down", () => {
   const game = world(100, 300);
   const witch = witchAt(game, 700, 300);
   run(game, 0.1);
-  witch.health -= 15;
+  hurt(game, witch, 15, game.localId);
   run(game, 0.2);
   expect(stateOf(witch).mode).toBe("enraged");
+  expect(stateOf(witch).foe).toBe(game.localId);
   expect(stateOf(witch).target).toMatchObject({ x: 100, y: 300 });
   expect(witch.vx).toBeLessThan(0);
+});
+
+test("hurt by any body, she goes for it rather than the player she sees", () => {
+  const game = world(500, 300);
+  registerEntityType(game, "post", {
+    radius: 10,
+    maxHealth: 10,
+    data: z.object({}),
+    draw: () => undefined,
+  });
+  const witch = witchAt(game, 700, 300);
+  const post = spawnEntity(game, "post", 850, 450, {});
+  run(game, 0.1);
+  hurt(game, witch, 15, post.id);
+  run(game, 0.2);
+  expect(stateOf(witch).mode).toBe("enraged");
+  expect(stateOf(witch).foe).toBe(post.id);
+  expect(stateOf(witch).target).toMatchObject({ x: 850, y: 450 });
+  expect(witch.vx).toBeGreaterThan(0);
 });
 
 test("once her rage runs out she runs for a dark spot away from the players and sleeps there", () => {

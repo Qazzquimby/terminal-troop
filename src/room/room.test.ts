@@ -123,7 +123,7 @@ const poke = defineItem("poke", (cooldown: number) => ({
       const ahead = { x: x + Math.cos(aim) * 20, y: y + Math.sin(aim) * 20 };
       for (const entity of [...game.entities.values()]) {
         if (Math.hypot(entity.x - ahead.x, entity.y - ahead.y) <= 30)
-          hurt(game, entity, 4);
+          hurt(game, entity, 4, user.id);
       }
       effect(game, {
         at: { x, y },

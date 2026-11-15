@@ -60,7 +60,7 @@ const poke = defineAction("poke", {
   apply(game, poker, { target }) {
     const dummy = game.entities.get(target);
     if (dummy === undefined) return;
-    hurt(game, dummy, POKE.damage);
+    hurt(game, dummy, POKE.damage, poker.id);
     push(game, dummy, poker, POKE.shove);
     effect(game, {
       at: { x: dummy.x, y: dummy.y },

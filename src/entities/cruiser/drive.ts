@@ -14,6 +14,7 @@ import {
   rounded,
 } from "../../sim/index.js";
 import type {
+  Body,
   Handling,
   Impact,
   Player,
@@ -146,11 +147,7 @@ function crash(
 const rammed = new WeakMap<Session, Map<string, number>>();
 
 /** Every body the cruiser at `at` overlaps that it may ram: players but its driver, and living entities. */
-function struck(
-  game: Session,
-  entity: WorldEntity,
-  driver: Player,
-): (Player | WorldEntity)[] {
+function struck(game: Session, entity: WorldEntity, driver: Player): Body[] {
   const bodies = [
     ...livingPlayers(game),
     ...[...game.entities.values()].filter(
@@ -195,7 +192,7 @@ function ram(
       x: body.x - across.x * side,
       y: body.y - across.y * side,
     };
-    hurt(game, body, config.ram.damage);
+    hurt(game, body, config.ram.damage, driver.id);
     push(
       game,
       body,
