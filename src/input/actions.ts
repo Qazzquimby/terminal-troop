@@ -18,6 +18,7 @@ export const ACTIONS = {
   drop: { keys: ["KeyF"], contexts: ["play"] },
   toggleView: { keys: ["Space"], contexts: ["play"] },
   honk: { keys: ["Space"], contexts: ["play"] },
+  transmit: { keys: ["KeyT"], contexts: ["play"] },
   toggleSettings: { keys: ["Escape"], contexts: ["play", "menu"] },
   toggleDebug: { keys: ["F3"], contexts: ["play", "menu"] },
   pushToTalk: { keys: ["KeyV"], contexts: ["play", "menu"] },
@@ -309,5 +310,6 @@ export function toControls(frame: ActionFrame, aim: Point): Controls {
     holdingUse: frame.held.has("useItem"),
     toggleView: frame.pressed.has("toggleView"),
     honk: frame.pressed.has("honk"),
+    transmit: frame.held.has("transmit"),
   };
 }

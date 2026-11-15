@@ -106,6 +106,11 @@ export interface Controls {
   readonly honk?: boolean;
   /** What the player, inside a vehicle, asks of it from its cabin this step; nothing when left out. */
   readonly cabin?: CabinCommand | null;
+  /**
+   * Whether the transmit control is held down this step: for talking into a set the player sits
+   * at, such as a vehicle's on the walkie band; never when left out.
+   */
+  readonly transmit?: boolean;
 }
 
 /**

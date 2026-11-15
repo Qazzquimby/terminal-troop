@@ -26,9 +26,9 @@ test("at the wheel it shows driving controls", () => {
   );
 });
 
-test("in the cabin it shows how to take the wheel", () => {
+test("in the cabin it shows how to take the wheel and transmit", () => {
   expect(controlsHintFor("cabin", false)).toBe(
-    "E to take the wheel · Esc for settings",
+    "E to take the wheel · T (hold) to transmit · Esc for settings",
   );
 });
 

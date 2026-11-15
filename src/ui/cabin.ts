@@ -64,7 +64,7 @@ export interface CabinPanel {
 }
 
 /** Asks the vehicle the local player is in for `command`, in the game's next step. */
-type CabinSend = (command: CabinCommand) => void;
+export type CabinSend = (command: CabinCommand) => void;
 
 /** Degrees the drawn wheel turns at full lock. */
 const FULL_LOCK = 120;
@@ -72,7 +72,7 @@ const FULL_LOCK = 120;
 /** Milliseconds the honk's "HONK!" stays up. */
 const HONK_SHOWN_MS = 450;
 
-function make<K extends keyof HTMLElementTagNameMap>(
+export function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className: string,
   text = "",
@@ -87,7 +87,7 @@ function make<K extends keyof HTMLElementTagNameMap>(
  * A button that runs `click` and lets go of focus once clicked, so the keys go on reaching the
  * game: Space on a focused button would press it again.
  */
-function button(className: string, text: string, click: () => void) {
+export function button(className: string, text: string, click: () => void) {
   const element = make("button", className, text);
   element.type = "button";
   element.tabIndex = -1;

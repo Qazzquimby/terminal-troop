@@ -12,3 +12,7 @@ export { createSettingsMenu, menuPeers } from "./settings-menu.js";
 export { voiceDebugLines } from "./voice-diagnostics.js";
 export { createStatusView } from "./status.js";
 export { cabinView, createCabin } from "./cabin.js";
+export { shopPanel, storagePanel } from "./cabin-stock.js";
+export { minimapPanel, minimapTargets } from "./cabin-minimap.js";
+export type { MinimapConfig } from "./cabin-minimap.js";
+export { radioPanel, transmitPanel } from "./cabin-radio.js";

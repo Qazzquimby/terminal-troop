@@ -12,7 +12,8 @@ import { handledActions } from "./prediction.js";
 import type { Session } from "./session.js";
 import { bodyStatuses } from "./status.js";
 import { steeringEvents } from "./steering.js";
-import { heldSlot, inventories } from "./inventories.js";
+import { heldSlot, inventories, stores } from "./inventories.js";
+import { credit } from "./credit.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
 import { voiceNoise } from "./voice-noise.js";
@@ -40,8 +41,13 @@ interface BuiltIn {
  * under `core/`, a namespace content names cannot take.
  */
 const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
-  /** The slot each player holds, and every player's items as the host keeps them. */
-  "core/items": { player: heldSlot, world: { inventories } },
+  /**
+   * The slot each player holds, every player's items as the host keeps them, and the stores of
+   * items kept by anything else, such as a vehicle.
+   */
+  "core/items": { player: heldSlot, world: { inventories, stores } },
+  /** The team's credit, earned selling scrap and spent at a vehicle's shop. */
+  "core/team": { world: { credit } },
   /** How each player moves, which its footsteps follow. */
   "core/movement": { player: movement },
   /** How far each player's speech carries, which its voice noise follows. */

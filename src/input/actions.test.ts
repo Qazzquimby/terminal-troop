@@ -110,6 +110,7 @@ test("blur releases held actions and drops pending presses", () => {
     holdingUse: false,
     toggleView: false,
     honk: false,
+    transmit: false,
   });
 });
 

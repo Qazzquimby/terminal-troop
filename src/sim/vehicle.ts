@@ -1,14 +1,33 @@
 import { minBy } from "lodash-es";
 import { z } from "zod";
-import { defineAction } from "./actions.js";
+import {
+  changeWorld,
+  defineAction,
+  effect,
+  give,
+  stateAt,
+  take,
+  usesAt,
+} from "./actions.js";
 import { footprintOf } from "./bodies.js";
 import { nearestFreePoint } from "./collision.js";
+import { credit } from "./credit.js";
 import { driverOf, vehicleOf } from "./driving.js";
-import type { CabinCommand, Ride } from "./driving.js";
+import type {
+  CabinCommand,
+  Ride,
+  Storage,
+  VehicleShop,
+  Ware,
+} from "./driving.js";
 import type { WorldEntity } from "./entities.js";
+import { hasRoom, itemIn, storeOf, stores, storesWith } from "./inventories.js";
+import { carried, ItemId, usesLeft, withState } from "./inventory.js";
+import type { CarriedItem, Inventory } from "./inventory.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 import { gapTo, reachAlong } from "./shape.js";
+import type { Sound } from "./sound.js";
 import { alter } from "./steering.js";
 
 /** Least time between one player's getting in or out, or taking or leaving the wheel, in sim seconds. */
@@ -16,6 +35,9 @@ const COOLDOWN = 0.3;
 
 /** Least time between two honks of one player's, in sim seconds. */
 const HONK_COOLDOWN = 0.4;
+
+/** Least time between two turns of a vehicle's radio by one player, in sim seconds. */
+const TUNE_COOLDOWN = 0.3;
 
 /** Gap, in pixels, between a vehicle's body and a player getting out beside it. */
 const STEP_OUT = 4;
@@ -168,6 +190,186 @@ const honk = defineAction("honk", {
   },
 });
 
+/** Least time between one player's stowing, taking or buying, in sim seconds. */
+const STOCK_COOLDOWN = 0.15;
+
+const SlotIndex = z.number().int().min(0).max(63);
+
+/** The vehicle `player` is in and its storage, with what it holds; null without either. */
+function storageFor(
+  game: Session,
+  player: Player,
+): {
+  readonly id: string;
+  readonly spec: Storage;
+  readonly items: Inventory;
+} | null {
+  const found =
+    player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+  const spec = found?.spec.storage;
+  if (found === null || spec === undefined) return null;
+  const { id } = found.entity;
+  return { id, spec, items: storeOf(game, id, spec.slots) };
+}
+
+/** The shop of the vehicle `player` is in; null when it is in none, or one without a shop. */
+function shopFor(game: Session, player: Player): VehicleShop | null {
+  const found =
+    player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+  return found?.spec.shop ?? null;
+}
+
+/** `slot` of `items` if it is empty, or with `slot` left out, the first empty one; null for none. */
+function emptySlot(items: Inventory, slot?: number): number | null {
+  if (slot !== undefined) return items[slot] === null ? slot : null;
+  const index = items.indexOf(null);
+  return index === -1 ? null : index;
+}
+
+/** The item `id` as new, as this client knows it; null for one it does not know. */
+function fresh(game: Session, id: string): CarriedItem | null {
+  return game.itemDefinitions.get(id) ?? null;
+}
+
+/** Makes the sound and noise `made` makes, where `player` is, as part of its action. */
+function sounds(
+  game: Session,
+  player: Player,
+  made: { readonly sound?: Sound; readonly noise?: number },
+): void {
+  effect(game, {
+    at: { x: player.x, y: player.y },
+    ...(made.sound !== undefined && { sound: made.sound }),
+    ...(made.noise !== undefined && { noise: made.noise }),
+  });
+}
+
+/**
+ * A player inside a vehicle leaving the item in its own slot `slot` in the vehicle's storage: in
+ * the storage's slot `into` when it is empty, or its first empty slot. The item keeps its uses
+ * and state.
+ */
+const stow = defineAction("stow", {
+  input: z.object({ slot: SlotIndex, into: SlotIndex.optional() }),
+  cooldown: STOCK_COOLDOWN,
+  check(game, player, { slot, into }) {
+    const storage = storageFor(game, player);
+    return (
+      storage !== null &&
+      itemIn(game, player.id, slot) !== null &&
+      emptySlot(storage.items, into) !== null
+    );
+  },
+  apply(game, player, { slot, into }) {
+    const storage = storageFor(game, player);
+    const at = storage === null ? null : emptySlot(storage.items, into);
+    if (storage === null || at === null) return;
+    const left = usesAt(game, player, slot);
+    const state = stateAt(game, player, slot);
+    const id = take(game, player, slot);
+    const definition = id === null ? null : fresh(game, id);
+    if (definition === null) return;
+    const item = withState(carried(definition, left ?? undefined), state);
+    changeWorld(game, stores, () =>
+      storesWith(game, storage.id, storage.spec.slots, at, item),
+    );
+    sounds(game, player, storage.spec);
+  },
+});
+
+/** A player inside a vehicle taking the item in the storage's slot `slot`, if it has room for it. */
+const unstow = defineAction("unstow", {
+  input: z.object({ slot: SlotIndex }),
+  cooldown: STOCK_COOLDOWN,
+  check(game, player, { slot }) {
+    const storage = storageFor(game, player);
+    return (storage?.items[slot] ?? null) !== null && hasRoom(game, player.id);
+  },
+  apply(game, player, { slot }) {
+    const storage = storageFor(game, player);
+    const item = storage?.items[slot] ?? null;
+    if (storage === null || item === null) return;
+    const left = usesLeft(item) ?? undefined;
+    if (!give(game, player, item.id, left, item.state)) return;
+    changeWorld(game, stores, () =>
+      storesWith(game, storage.id, storage.spec.slots, slot, null),
+    );
+    sounds(game, player, storage.spec);
+  },
+});
+
+/**
+ * A player inside a vehicle buying the item `item` at its shop with the team's credit, if the
+ * team has enough: it goes in the buyer's items, or the vehicle's storage when they are full.
+ * Without room in either, it is not bought.
+ */
+const buy = defineAction("buy", {
+  input: z.object({ item: ItemId }),
+  cooldown: STOCK_COOLDOWN,
+  check(game, player, { item }) {
+    const ware = shopFor(game, player)?.wares.find(
+      (each) => each.item === item,
+    );
+    if (ware === undefined || fresh(game, item) === null) return false;
+    if (credit.get(game) < ware.price) return false;
+    const storage = storageFor(game, player);
+    return (
+      hasRoom(game, player.id) ||
+      (storage !== null && emptySlot(storage.items) !== null)
+    );
+  },
+  apply(game, player, { item }) {
+    const shop = shopFor(game, player);
+    const ware = shop?.wares.find((each) => each.item === item);
+    const bought = fresh(game, item);
+    if (shop === null || ware === undefined || bought === null) return;
+    if (credit.get(game) < ware.price) return;
+    if (!give(game, player, item)) {
+      const storage = storageFor(game, player);
+      const at = storage === null ? null : emptySlot(storage.items);
+      if (storage === null || at === null) return;
+      changeWorld(game, stores, () =>
+        storesWith(game, storage.id, storage.spec.slots, at, bought),
+      );
+    }
+    changeWorld(game, credit, (value) => value - ware.price);
+    sounds(game, player, shop);
+  },
+});
+
+/** What the vehicle `vehicle`'s storage holds, slot by slot; null for one without storage. */
+export function cabinStorage(game: Session, vehicle: string): Inventory | null {
+  const spec = vehicleOf(game, vehicle)?.spec.storage;
+  return spec === undefined ? null : storeOf(game, vehicle, spec.slots);
+}
+
+/** A vehicle's shop as its cabin shows it: what it sells, and the team's credit to buy with. */
+export interface CabinShop {
+  readonly wares: readonly Ware[];
+  readonly credit: number;
+}
+
+/** The vehicle `vehicle`'s shop; null for one without a shop. */
+export function cabinShop(game: Session, vehicle: string): CabinShop | null {
+  const shop = vehicleOf(game, vehicle)?.spec.shop;
+  return shop === undefined
+    ? null
+    : { wares: shop.wares, credit: credit.get(game) };
+}
+
+/** A player inside a vehicle turning its radio: to the next station, switching it on, or off. */
+const tune = defineAction("tune", {
+  input: z.object({ to: z.enum(["next", "off"]) }),
+  cooldown: TUNE_COOLDOWN,
+  check: (_game, player) => player.ride !== null,
+  apply(game, player, { to }) {
+    const found =
+      player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+    if (found === null) return;
+    found.spec.tune?.(game, found.entity, player, to);
+  },
+});
+
 /** Getting in and out of vehicles, and what is done inside, sent under the engine's own entry. */
 export const vehicleActions = [
   board,
@@ -175,6 +377,10 @@ export const vehicleActions = [
   leaveWheel,
   leave,
   honk,
+  stow,
+  unstow,
+  buy,
+  tune,
 ] as const;
 
 /**
@@ -229,6 +435,17 @@ export function useVehicle(game: Session): boolean {
 /** Does what the local player, inside a vehicle, asks of it from its cabin. */
 export function cabinCommand(game: Session, command: CabinCommand): void {
   if (game.local.ride === null) return;
+  if (typeof command === "object") {
+    if ("stow" in command)
+      stow.perform(game, {
+        slot: command.stow,
+        ...(command.into !== undefined && { into: command.into }),
+      });
+    else if ("unstow" in command)
+      unstow.perform(game, { slot: command.unstow });
+    else buy.perform(game, { item: command.buy });
+    return;
+  }
   switch (command) {
     case "drive":
       if (!game.local.ride.driving) takeWheel.perform(game, {});
@@ -238,6 +455,12 @@ export function cabinCommand(game: Session, command: CabinCommand): void {
       return;
     case "exit":
       leave.perform(game, {});
+      return;
+    case "radio":
+      tune.perform(game, { to: "next" });
+      return;
+    case "radioOff":
+      tune.perform(game, { to: "off" });
       return;
   }
 }

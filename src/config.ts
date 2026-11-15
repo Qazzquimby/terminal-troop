@@ -13,7 +13,7 @@ import type { SimClockConfig, SimConfig } from "./sim/index.js";
 import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
-import type { HudConfig, UiConfig } from "./ui/index.js";
+import type { HudConfig, MinimapConfig, UiConfig } from "./ui/index.js";
 import type { WheelConfig } from "./input/index.js";
 
 import type {
@@ -44,6 +44,7 @@ interface AppConfig extends SimConfig {
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
+  readonly minimap: MinimapConfig;
   readonly wheel: WheelConfig;
   readonly worldLog: WorldLogConfig;
 }
@@ -329,6 +330,29 @@ export const config = {
       escape: { delay: 20, volume: 0.8 },
       // A corpse carried within a cell of the cruiser's body brings its player back beside it.
       revive: { reach: CELL, volume: 0.8 },
+      // Its cabin stores 6 items, 2 rows of 3; an item going in or out clunks a cell off, inside
+      // its body, so only something pressed against it hears.
+      storage: { slots: 6, noiseRadius: CELL, volume: 0.7 },
+      // Sells for the team's credit, which a scrap's sale adds 1 to, so a price is that many scrap.
+      // The register rings 2 cells off.
+      shop: {
+        wares: [
+          { item: "walkie", price: 2 },
+          { item: "flashlight", price: 3 },
+          { item: "shovel", price: 3 },
+        ],
+        noiseRadius: CELL * 2,
+        volume: 0.8,
+      },
+      // Its radio plays as loud and as far as a radio carried about: heard, and a noise, 25 cells
+      // round every second while it plays. Its dial clicks 2 cells out.
+      radio: {
+        volume: 0.7,
+        range: CELL * 25,
+        noiseInterval: 1,
+        switchVolume: 0.6,
+        switchRange: CELL * 2,
+      },
     },
     // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it sets it
     // off: a bang heard 12 cells off, and a flash that stuns for 5s every body, players included,
@@ -796,6 +820,9 @@ export const config = {
   ui: { debugRefreshMs: 250 },
   // An item with up to 10 uses shows each as a segment of its bar.
   hud: { segmentsUpTo: 10 },
+  // The cabin's minimap shows 12 cells round the player it follows, about a screen's width
+  // across, in a 132px square, small enough for the cabin to fit a 720p window.
+  minimap: { radius: 12, size: 132 },
   // The world log is always on in development and under ?debug; `enabled` keeps it on in
   // production too, as playtests run on the deployed build. It is console-only and cheap.
   // It keeps the latest 2000 events; items dropped and picked up are kept but not printed.
