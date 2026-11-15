@@ -6,7 +6,6 @@ import {
   effect,
   emittedLights,
   hurtSinceLastStep,
-  INERT_TAG,
   inView,
   isAreaFree,
   isLit,
@@ -34,6 +33,7 @@ import type {
 import {
   between,
   nearest,
+  NEVER_PREY,
   preyNear,
   Route,
   strikeEach,
@@ -590,7 +590,7 @@ function inReach(
     game,
     self,
     (prey) => Math.max(config.attackRange, self.radius + prey.radius + 1),
-    [INERT_TAG, NAME],
+    [...NEVER_PREY, NAME],
   ).filter((prey) => prey.id === state.quarry);
 }
 

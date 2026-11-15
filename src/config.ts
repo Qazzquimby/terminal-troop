@@ -62,7 +62,7 @@ export const config = {
     seed: 1,
     wallBounce: 0,
     generation: {
-      road: { width: { min: 6, max: 12 }, step: 10, meander:10, margin: 18 },
+      road: { width: { min: 6, max: 12 }, step: 10, meander: 10, margin: 18 },
       yard: {
         depth: { min: 4, max: 10 },
         clutter: { near: 0.2, far: 0.9 },
@@ -318,7 +318,8 @@ export const config = {
     },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
     // player it picks, standing while there is none, at a fifth of a player's walk, kills
-    // whatever it touches, at most once a second, and replans its way every 2 seconds.
+    // whatever it touches, at most once a second, and replans its way every 2 seconds. No monster
+    // hunts or strikes it: its kind carries the unnoticed tag.
     snail: {
       spawning: {
         weight: 10,

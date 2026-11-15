@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
   defineEntity,
   effect,
-  INERT_TAG,
   isAreaFree,
   noisesHeardBy,
   rounded,
@@ -21,6 +20,7 @@ import {
   between,
   strikeEach,
   walk,
+  NEVER_PREY,
   preyNear,
   Route,
   Seed,
@@ -306,7 +306,7 @@ function think(
 function touching(self: Prey, game: Session, config: BlindDogConfig): Prey[] {
   return preyNear(game, self, (prey) => self.radius + prey.radius + 2, [
     ...config.ignores,
-    INERT_TAG,
+    ...NEVER_PREY,
   ]);
 }
 

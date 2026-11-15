@@ -1,28 +1,19 @@
-import {
-  eyesOf,
-  hasKindTag,
-  INERT_TAG,
-  ITEM_TAG,
-  inView,
-  livingBodies,
-} from "../sim/index.js";
+import { eyesOf, hasKindTag, inView, livingBodies } from "../sim/index.js";
 import type { Body, Point, Session, WorldEntity } from "../sim/index.js";
-import { preyNear } from "./hunt.js";
+import { NEVER_PREY, preyNear } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
 
 /*
  * Who a monster hunts. Players are bodies like any other: a monster hunts, notices, chases and
- * strikes any living body, player or world entity, but itself, inert things, items lying about,
- * and the kinds its config tells it to ignore, its own kind by default. A kind whose config names
- * `targets` hunts only bodies of those kind tags, though it still strikes whatever it touches.
+ * strikes any living body, player or world entity, but itself, what `NEVER_PREY` names (inert
+ * things, items lying about, unnoticed bodies such as the snail), and the kinds its config tells it
+ * to ignore, its own kind by default. A kind whose config names `targets` hunts only bodies of
+ * those kind tags, though it still strikes whatever it touches.
  */
-
-/** Kind tags no monster hunts, whatever its config says: inert things and items lying about. */
-const NEVER_PREY = [INERT_TAG, ITEM_TAG];
 
 /**
  * Every living body `self` may hunt, null for a hunter yet to arrive: players and world entities
- * alike, but itself, inert things, items lying about, those of the kind tags `hunting` ignores,
+ * alike, but itself, what `NEVER_PREY` names, those of the kind tags `hunting` ignores,
  * and, when `hunting` names targets, those of none of them.
  */
 export function preyFor(
@@ -114,7 +105,7 @@ export function nearestSeenBody(
 
 /**
  * Every body touching `self` that it may hunt: players and world entities alike, but itself,
- * inert things, items lying about, and those of the kind tags in `ignores`.
+ * what `NEVER_PREY` names, and those of the kind tags in `ignores`.
  */
 export function touching(
   game: Session,
