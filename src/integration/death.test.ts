@@ -139,6 +139,28 @@ test("a guest whose health runs out is a ghost everywhere: what it carried lands
   expect(itemIn(host, "b", 0)).toBe(null);
 });
 
+test("scrap a falling player carried clatters as it lands, a noise monsters hear", async () => {
+  const { room, run, step } = await crew("a", "b");
+  const host = sessionOf(room("a"));
+  expect(giveItem(host, "b", "scrap")).toBe(true);
+  run(300);
+  const fell = { ...playerOn(room("a"), "b") };
+  kill(room("a"), "b");
+  const clatters = [];
+  for (let at = 0; at < 1000; at += 1000 / 60) {
+    step();
+    clatters.push(
+      ...host.noises.filter(
+        (noise) => noise.radius === testItemsConfig.scrap.dropNoiseRadius,
+      ),
+    );
+  }
+  expect(clatters).toHaveLength(1);
+  expect(distance(clatters[0]?.at ?? fell, fell)).toBeLessThanOrEqual(
+    testSimConfig.death.scatter,
+  );
+});
+
 test("a ghost is not kicked, makes no noise as it moves, and acts not at all", async () => {
   const { room, run, step } = await crew("a", "b");
   kill(room("a"), "b");

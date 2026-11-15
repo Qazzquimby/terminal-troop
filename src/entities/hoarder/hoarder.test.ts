@@ -35,10 +35,14 @@ const DT = 1 / 60;
 const { hoarder: config } = testEntitiesConfig;
 const SLOTS = [0, 1, 2, 3];
 
+// Every noise made in the latest `run`, as the host sent it back.
+const made: Session["noises"][number][] = [];
+
 // Nest numbers, search points and patrol spots draw from Math.random; seeded so each run is the
 // same.
 beforeEach(() => {
   vi.spyOn(Math, "random").mockImplementation(mulberry32(5));
+  made.length = 0;
 });
 
 afterEach(() => {
@@ -100,6 +104,7 @@ function run(game: Session, seconds: number, look: Point = { x: 900, y: 600 }) {
       );
     for (const { event, payload, sender } of game.inbox.splice(0))
       event.receive(game, payload, sender);
+    made.push(...game.noises);
   }
 }
 
@@ -112,6 +117,13 @@ const stateOf = (entity: WorldEntity): HoarderState =>
 
 const sounded = (game: Session, file: string): boolean =>
   vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith(file));
+
+/** Whether a hoarder made the clatter of scrap dropping, as far as it carries. */
+const clattered = (): boolean =>
+  made.some(
+    ({ radius, tags }) =>
+      radius === testItemsConfig.scrap.dropNoiseRadius && tags[0] === "hoarder",
+  );
 
 const scrapLying = (game: Session) =>
   itemInstances(game, "scrap").filter(({ place }) => "lying" in place);
@@ -183,6 +195,7 @@ test("it carries scrap it sees home, held up to see, lays it by the nest as the 
     Math.hypot((laid?.at.x ?? 0) - 200, (laid?.at.y ?? 0) - 300),
   ).toBeLessThanOrEqual(config.dropRadius + 1);
   expect(sounded(game, "drop.mp3")).toBe(true);
+  expect(clattered()).toBe(true);
 
   // Guarding runs out back to foraging.
   run(game, config.guardSeconds);
@@ -223,6 +236,7 @@ test("hurt, it drops what it carries and chases whoever hurt it a while, biting 
   expect(state.until).toBeCloseTo(game.worldTime + config.spookSeconds, 1);
   expect(state.carrying).toBeNull();
   expect(scrapLying(game)).toHaveLength(1);
+  expect(clattered()).toBe(true);
   expect(Math.hypot(bug.vx, bug.vy)).toBeCloseTo(config.chaseSpeed);
 
   run(game, 2);
@@ -256,7 +270,7 @@ test("taking scrap its nest claimed draws the whole nest's revenge, until the th
   for (const bug of group) expect(stateOf(bug).mode).toBe("wander");
 });
 
-test("dying, it drops what it carries", () => {
+test("dying, it drops what it carries, with a clatter monsters hear", () => {
   const game = world(850, 575);
   const bug = hoarderAt(game, 300, 300);
   run(game, DT);
@@ -265,6 +279,7 @@ test("dying, it drops what it carries", () => {
   run(game, DT);
   expect(game.entities.has(bug.id)).toBe(false);
   expect(scrapLying(game)).toHaveLength(1);
+  expect(clattered()).toBe(true);
 });
 
 /** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
