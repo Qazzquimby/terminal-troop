@@ -60,7 +60,7 @@ export const config = {
     seed: 1,
     wallBounce: 0,
     generation: {
-      road: { width: { min: 8, max: 24 }, step: 16, meander: 8, margin: 18 },
+      road: { width: { min: 8, max: 18 }, step: 16, meander: 8, margin: 18 },
       yard: {
         depth: { min: 3, max: 7 },
         clutter: { near: 0.1, far: 0.9 },
@@ -77,7 +77,7 @@ export const config = {
       },
       // Half the rooms have a light fixture, and a third have power, so one room in six is lit.
       // The road and yards are always lit, by sunlight. Monsters never appear in light.
-      lights: { fixture: 0.5, powered: 1 / 3 },
+      lights: { fixture: 1.0, powered: 1 / 30 },
       // Monsters spawn, and loot is richer, up to 4x by distance from the road and 4x towards the
       // exit: 16x at the far right corner over the road at the start.
       danger: { road: 3, right: 3 },
@@ -144,14 +144,14 @@ export const config = {
     knockbackSeconds: 0.15,
     // Every pound carried slows a player evenly, to 20% slower at 100lb and no slower past it:
     // a shovel and a scrap (30lb) cost 6%.
-    load: { full: 100, slowdown: 0.2 },
+    load: { full: 100, slowdown: 0.66 },
   },
   stamina: {
     max: STAMINA_MAX,
-    // A full bar lasts 3s.
-    drain: STAMINA_MAX / 3,
-    // Empty to full in 4s.
-    regen: STAMINA_MAX / 4,
+    // A full bar lasts 6s.
+    drain: STAMINA_MAX / 6,
+    // Empty to full in 10s.
+    regen: STAMINA_MAX / 10,
     regenDelay: 0.6,
     recover: STAMINA_MAX * 0.3,
   },
@@ -173,7 +173,7 @@ export const config = {
     coneAngle: Math.PI / 2,
     rays: 360,
     surroundingsRadius: CELL * 1.4,
-    lookRange: CELL * 10,
+    lookRange: CELL * 7,
   },
   light: { range: CELL * 6 },
   // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
@@ -234,7 +234,7 @@ export const config = {
       maxHealth: 40,
       attackDamage: 35,
       wanderSpeed: 60,
-      chaseSpeed: 120,
+      chaseSpeed: PLAYER_SPEED * 0.8,
       sightRange: CELL * 5,
       wanderRange: CELL * 5,
       wanderPause: { min: 0.4, max: 1.5 },
@@ -326,11 +326,11 @@ export const config = {
       attackCooldown: 1,
       repathInterval: 2,
     },
-    // A blind hound three cells across, light or no light, never arriving within 30 cells of a
+    // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     lurcher: {
       spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
-      radius: CELL * 1.5 - 3,
+      radius: CELL - 3 , // Currently size 2 // 3-> Cell * 1.5 - 3,
       ignores: ["lurcher"],
       maxHealth: SHOVEL_DAMAGE * 5,
       contactDamage: 100,
@@ -510,7 +510,7 @@ export const config = {
     // first, one every 10s from then on. Each roll that brings something picks a kind by its
     // `spawning.weight`. A new world starts with 5 minutes of rolls at the starting chance:
     // about 15 spawns.
-    spawner: { period: 10, nothing: 0.5, certainAfter: 1200, headStart: 300 },
+    spawner: { period: 2, nothing: 0.7, certainAfter: 1200, headStart: 300 },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.
@@ -580,7 +580,7 @@ export const config = {
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
       volume: 0.8,
-      scatter: { count: 75, seed: 2, clearance: CELL * 3 },
+      scatter: { count: 50, seed: 2, clearance: CELL * 3 },
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
     // cells, past a player's own 6 cells of sight in the dark. Its click carries a cell.
@@ -647,9 +647,9 @@ export const config = {
       reach: 32,
       radius: 18,
       damage: 8,
-      knockback: 2.5,
+      knockback: 2.0,
       cooldown: 0.8,
-      stamina: STAMINA_MAX * 0.15,
+      stamina: STAMINA_MAX * 0.2,
       lunge: { lengths: 1, seconds: 0.08 },
       noiseRadius: CELL * 6,
     },
