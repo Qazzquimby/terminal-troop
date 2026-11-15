@@ -10,12 +10,36 @@ export interface Interpolated extends Point {
 export interface Tracked extends Point {
   tx: number;
   ty: number;
+  /** Seconds left until it reaches its target; at it, or snapped there, when 0 or left out. */
+  glide?: number;
 }
 
-/** Moves `body` the share `amount` (0..1) of the way to its target. */
-export function easeToTarget(body: Tracked, amount: number): void {
-  body.x += (body.tx - body.x) * amount;
-  body.y += (body.ty - body.y) * amount;
+/**
+ * Gives `body` a new target, the latest position the host reported, to reach in `seconds` at a
+ * steady speed from where it is now. A report of the target it already has changes nothing.
+ * Taking somewhat longer than reports take to arrive keeps it moving steadily between them: it is
+ * still on its way to one as the next arrives, rather than stopping and starting again.
+ */
+export function glideTo(body: Tracked, to: Point, seconds: number): void {
+  if (to.x === body.tx && to.y === body.ty) return;
+  body.tx = to.x;
+  body.ty = to.y;
+  body.glide = seconds;
+}
+
+/** Moves `body` a step of `dt` towards its target, at the speed that reaches it in time. */
+export function glideToTarget(body: Tracked, dt: number): void {
+  const left = body.glide ?? 0;
+  if (left <= dt) {
+    body.x = body.tx;
+    body.y = body.ty;
+    body.glide = 0;
+    return;
+  }
+  const share = dt / left;
+  body.x += (body.tx - body.x) * share;
+  body.y += (body.ty - body.y) * share;
+  body.glide = left - dt;
 }
 
 /** A body that also turns; its drawn facing blends along the shortest arc. */

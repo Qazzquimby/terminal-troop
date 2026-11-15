@@ -176,8 +176,10 @@ export const config = {
     lookRange: CELL * 10,
   },
   light: { range: CELL * 6 },
-  // A guest holds a hit it predicted for up to a second before the host confirms it.
-  net: { smoothing: 12, predictionHold: 1 },
+  // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
+  // follows take 0.15s, one and a half snapshots at 10 a second, to reach each reported position,
+  // so a late snapshot does not stop them.
+  net: { smoothing: 12, glide: 0.15, predictionHold: 1 },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
   // Each step is heard by anything within its radius: a sprint carries well past a zombie's
@@ -272,6 +274,9 @@ export const config = {
       },
       reach: CELL / 2,
       burn: 1,
+      // Under a quarter cell a second it stands, burning nothing: what it creeps at, throttled
+      // nose-first into a wall at an angle.
+      standing: CELL / 4,
       gauge: 30,
       // Its engine idles 3 cells off once a second, so a fuelled car is barely heard; driven, it
       // is heard 14 cells off twice a second, past a walk, short of a sprint.

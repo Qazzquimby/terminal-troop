@@ -1,6 +1,14 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import { lerp, lerpAngle, renderPosition, wrapAngle } from "./interpolation.js";
+import {
+  glideTo,
+  glideToTarget,
+  lerp,
+  lerpAngle,
+  renderPosition,
+  wrapAngle,
+} from "./interpolation.js";
+import type { Tracked } from "./interpolation.js";
 import { randomFreePosition } from "./map.js";
 import type { Player } from "./player.js";
 import { createPlayer } from "./player.js";
@@ -134,4 +142,46 @@ test("remote aim eases towards the network target across the wrap, storing the p
     updateSession(game, walkRight, FIXED_DT);
   }
   expect(remote.aim).toBeCloseTo(degrees(-170));
+});
+
+describe("a body following reports at a steady rate", () => {
+  /**
+   * Per-step distances of a body moving 3px right every 6 steps, reported as it goes, 10 times a
+   * second at 60 steps a second; the report due at `late` arrives 2 steps after.
+   */
+  function steps(late = -1): number[] {
+    const body: Tracked = { x: 0, y: 0, tx: 0, ty: 0 };
+    const moved: number[] = [];
+    for (let step = 0; step < 60; step++) {
+      const due = step === late + 2 ? late : step === late ? -1 : step;
+      if (due >= 0 && due % 6 === 0)
+        glideTo(body, { x: (due / 6 + 1) * 3, y: 0 }, testSimConfig.net.glide);
+      const from = body.x;
+      glideToTarget(body, FIXED_DT);
+      moved.push(body.x - from);
+    }
+    return moved;
+  }
+
+  test("moves the same distance every step, once under way", () => {
+    for (const moved of steps().slice(30)) expect(moved).toBeCloseTo(0.5, 2);
+  });
+
+  test("keeps moving through a late report, not stopping for it", () => {
+    for (const moved of steps(30).slice(6)) {
+      expect(moved).toBeGreaterThan(0.25);
+      expect(moved).toBeLessThan(0.75);
+    }
+  });
+
+  test("arrives where it was last reported, and a repeated report changes nothing", () => {
+    const body: Tracked = { x: 0, y: 0, tx: 0, ty: 0 };
+    glideTo(body, { x: 3, y: 4 }, 0.1);
+    for (let step = 0; step < 3; step++) glideToTarget(body, FIXED_DT);
+    const glide = body.glide;
+    glideTo(body, { x: 3, y: 4 }, 0.1);
+    expect(body.glide).toBe(glide);
+    for (let step = 0; step < 10; step++) glideToTarget(body, FIXED_DT);
+    expect(body).toMatchObject({ x: 3, y: 4, glide: 0 });
+  });
 });

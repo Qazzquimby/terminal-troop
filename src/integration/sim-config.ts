@@ -82,7 +82,7 @@ export const testSimConfig: SimConfig = {
     lookRange: 400,
   },
   light: { range: 200 },
-  net: { smoothing: 12, predictionHold: 0.5 },
+  net: { smoothing: 12, glide: 0.15, predictionHold: 0.5 },
   noise: { blur: 0.2 },
   footsteps: {
     walk: { interval: 0.5, radius: 150 },
@@ -192,6 +192,7 @@ export const testEntitiesConfig: EntitiesConfig = {
     },
     reach: 25,
     burn: 1,
+    standing: 12.5,
     gauge: 30,
     engine: {
       idle: { interval: 1, radius: 150 },

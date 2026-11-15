@@ -210,6 +210,23 @@ test("a guest's use control swings the held shovel at the step's sim time and se
   ]);
 });
 
+test("a guest that knows no host yet takes no action: its swing is refused, not spent and later refunded", () => {
+  const game = session();
+  game.hosting = false;
+  game.hostKnown = false;
+  wait(game, 0.5);
+  game.outbox.length = 0;
+  const before = game.local.inventory[0];
+  updateSession(game, swing, DT);
+  expect(game.local.use).toBeNull();
+  expect(game.local.inventory[0]).toEqual(before);
+  expect(game.outbox).toEqual([]);
+
+  game.hostKnown = true;
+  updateSession(game, swing, DT);
+  expect(game.local.use).toMatchObject({ item: "shovel" });
+});
+
 test("a swing waits out the cooldown in sim seconds", () => {
   const game = session();
   updateSession(game, swing, DT);

@@ -8,7 +8,12 @@ import type { Ride } from "./driving.js";
 import { isGhost } from "./ghosts.js";
 import { heldSlot, weightOf } from "./inventories.js";
 import { selectSlot } from "./inventory.js";
-import { lerpAngle, renderPosition, snapPrevious } from "./interpolation.js";
+import {
+  glideTo,
+  lerpAngle,
+  renderPosition,
+  snapPrevious,
+} from "./interpolation.js";
 import { isAreaFree } from "./map.js";
 import type { Point } from "./map.js";
 import { applyContentState, contentState } from "./player-data.js";
@@ -732,11 +737,10 @@ export function playerReport(game: Session): PlayerReport {
   };
 }
 
-/** Takes the host's entry for a player this client follows: it eases there. */
+/** Takes the host's entry for a player this client follows: it moves steadily there. */
 function followEntry(game: Session, player: Player, entry: PlayerEntry): void {
   player.name = entry.name;
-  player.tx = entry.x;
-  player.ty = entry.y;
+  glideTo(player, entry, game.config.net.glide);
   player.stamina = { ...entry.stamina };
   player.crouched = entry.crouched;
   player.ride = entry.ride;

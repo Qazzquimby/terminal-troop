@@ -183,7 +183,11 @@ test("throttle drives it the way it points, carrying the cruiser, burning fuel o
   expect(game.local.x).toBeGreaterThan(360);
   expect(game.local.y).toBeCloseTo(300, 5);
   expect(cruiser).toMatchObject({ x: game.local.x, y: game.local.y });
-  expect(stateOf(game).fuel).toBeCloseTo(9, 1);
+  // A second's fuel, less the moment it took to get up past standing speed.
+  expect(stateOf(game).fuel).toBeCloseTo(
+    9 + config.standing / config.handling.acceleration,
+    1,
+  );
 
   const at = { x: cruiser.x, y: cruiser.y };
   press(game, { interact: true });
@@ -280,6 +284,23 @@ test("bumping a wall slowly only stops it", () => {
   expect(map.solid[1 * map.cols + 5]).toBe(1);
   expect(stateOf(game).damage).toBe(0);
   expect(game.local.x).toBeCloseTo(300 + 40, 5);
+});
+
+test("throttling into a wall it stands against burns no fuel, head on or at an angle", () => {
+  for (const heading of [Math.PI, Math.PI - 0.65]) {
+    const game = world();
+    driving(game, { x: 370, y: 70 }, heading);
+    play(game, 2, throttle);
+    const { fuel } = stateOf(game);
+    const at = { x: game.local.x, y: game.local.y };
+    play(game, 2, throttle);
+    // Pinned at the pillar's right side, it creeps along it, if at all, slower than it stands.
+    expect(game.local.x).toBeCloseTo(at.x, 5);
+    expect(game.local.y - at.y).toBeLessThan(config.standing * 2);
+    expect(Math.abs(game.local.ride?.speed ?? 0)).toBeLessThan(config.standing);
+    expect(stateOf(game).fuel).toBe(fuel);
+    expect(stateOf(game).damage).toBe(0);
+  }
 });
 
 test("at breakdown damage its driver gets out and its fuel is gone", () => {

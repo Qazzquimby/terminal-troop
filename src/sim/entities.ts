@@ -7,7 +7,7 @@ import type { EntityChange, EntityDelta } from "./entity-delta.js";
 import { isDead } from "./entity.js";
 import { dealDamage, pruneHurts, settleHurts } from "./hurts.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
-import { easeToTarget } from "./interpolation.js";
+import { glideTo, glideToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
@@ -310,11 +310,10 @@ function cullDeadEntities(game: Session): void {
   }
 }
 
-/** Eases every entity no prediction holds towards the host's latest snapshot of it. */
+/** Moves every entity no prediction holds steadily on towards the host's latest snapshot of it. */
 export function followEntities(game: Session, dt: number): void {
-  const amount = 1 - Math.exp(-game.config.net.smoothing * dt);
   game.entities.forEach((entity) => {
-    if (!isHeld(game, entity)) easeToTarget(entity, amount);
+    if (!isHeld(game, entity)) glideToTarget(entity, dt);
   });
 }
 
@@ -352,8 +351,7 @@ function takeEntries(
 
     const known = game.entities.get(id);
     if (known?.kind === kind) {
-      known.tx = x;
-      known.ty = y;
+      glideTo(known, { x, y }, game.config.net.glide);
       hearHealth(game, known, Math.min(health, known.maxHealth));
       known.data = parsed.data;
     } else {
