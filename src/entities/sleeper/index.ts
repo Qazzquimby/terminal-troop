@@ -283,7 +283,7 @@ function think(
 ): SleeperState {
   const now = game.worldTime;
   const hurt = hurtSinceLastStep(game, self.id);
-  const by = avenged(game, self, hurt?.by ?? null);
+  const by = avenged(game, self, hurt?.by ?? null, config);
   const marked =
     by === null || state.mode === "retreat" ? state : { ...state, foe: by };
   return respond(marked, self, game, config, hurt !== null, now);

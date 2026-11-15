@@ -74,16 +74,21 @@ export const NEVER_PREY: readonly string[] = [
 
 /**
  * The body `self` turns on for hurting it, given who did, `by`: null when no one did, it hurt
- * itself, or the one that did is of a kind `NEVER_PREY` names, which no monster goes after even
- * when struck by it.
+ * itself, the one that did is of a kind `NEVER_PREY` names, which no monster goes after even
+ * when struck by it, or `hunting` names targets and it is of none of them. Null leaves the
+ * monster to its usual quarry.
  */
 export function avenged(
   game: Session,
   self: { readonly id: string },
   by: string | null,
+  hunting: Pick<Hunting, "targets">,
 ): string | null {
   if (by === null || by === self.id) return null;
-  return hasKindTag(game, by, NEVER_PREY) ? null : by;
+  if (hasKindTag(game, by, NEVER_PREY)) return null;
+  const { targets } = hunting;
+  if (targets !== undefined && !hasKindTag(game, by, targets)) return null;
+  return by;
 }
 
 /** Who a monster kind passes over, which its config says. */

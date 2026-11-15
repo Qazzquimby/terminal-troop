@@ -302,6 +302,7 @@ export const testEntitiesConfig = {
     spawning: { ...NEVER, unseenDistance: 700 },
     radius: 14,
     ignores: ["stalker"],
+    targets: ["player"],
     maxHealth: 75,
     speed: 264,
     damage: 100,

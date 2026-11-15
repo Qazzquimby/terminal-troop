@@ -372,7 +372,7 @@ function think(
   const taker = thief(game, state.nestId);
   if (taker !== null) return enter(state, "revenge", now, now, taker.id);
   if (hurt !== null) {
-    const attacker = livingBody(game, avenged(game, self, hurt.by));
+    const attacker = livingBody(game, avenged(game, self, hurt.by, config));
     const quarry = attacker ?? nearestPrey(game, self, config);
     return enter(state, "spook", now + config.spookSeconds, now, quarry?.id);
   }

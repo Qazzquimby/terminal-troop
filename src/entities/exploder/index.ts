@@ -458,7 +458,7 @@ function definition(
       // A hurt it shrugs off neither lights its fuse nor sends it after the nearest body.
       const hurt =
         struck !== null && lightsFuse(struck.by, state, entity, game, config);
-      const by = avenged(game, entity, struck?.by ?? null);
+      const by = avenged(game, entity, struck?.by ?? null, config);
       const sensed = by === null ? state : { ...state, attacker: by };
       const thought = think(sensed, entity, game, hurt, config);
       const lit = ignite(
