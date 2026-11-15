@@ -7,6 +7,7 @@ import {
 } from "../integration/sim-config.js";
 import {
   createSession,
+  hurt,
   hurtPlayer,
   lastHurtBy,
   registerContent,
@@ -17,18 +18,18 @@ import {
 } from "../sim/index.js";
 import type { Session, WorldContent, WorldEntity } from "../sim/index.js";
 import { blindDog, freshBlindDog } from "./blind-dog/index.js";
-import { exploder, freshExploder } from "./exploder/index.js";
+import { exploder, ExploderState, freshExploder } from "./exploder/index.js";
 import { freshHoarder, hoarder, HoarderState } from "./hoarder/index.js";
-import { freshSleeper, sleeper } from "./sleeper/index.js";
+import { freshSleeper, sleeper, SleeperState } from "./sleeper/index.js";
 import { freshSnail, snail } from "./snail/index.js";
-import { freshStalker, stalker } from "./stalker/index.js";
+import { freshStalker, stalker, StalkerState } from "./stalker/index.js";
 import { freshStatue, statue } from "./statue/index.js";
 import { freshZombie, zombie } from "./zombie/index.js";
 
 /*
- * Every monster leaves the snail be: none hunts, notices or strikes it. Each case sets a monster
- * beside a body it would go for; a post shows it does, and a snail, stunned so it strikes nothing
- * back, that it passes over it.
+ * Every monster leaves the snail and the statue be: none hunts, notices or strikes them, nor turns
+ * on them when they hurt it. Each case sets a monster beside a body it would go for; a post shows it
+ * does, and a snail or statue, stunned so it strikes nothing back, that it passes over it.
  */
 
 const DT = 1 / 60;
@@ -73,6 +74,13 @@ function snailAt(game: Session, x: number, y: number): WorldEntity {
   return body;
 }
 
+/** A statue at (x, y), stunned for good so it neither moves nor strikes. */
+function statueAt(game: Session, x: number, y: number): WorldEntity {
+  const body = spawnEntity(game, "statue", x, y, freshStatue(0));
+  stun(game, body.id, 1000);
+  return body;
+}
+
 interface Case {
   readonly name: string;
   readonly content: {
@@ -82,6 +90,8 @@ interface Case {
   readonly spawn: (game: Session) => WorldEntity;
   /** Long enough for it to go for, and strike, a body beside it. */
   readonly seconds: number;
+  /** For a kind that turns on what hurts it: the body it has turned on, if any. */
+  readonly grudge?: (monster: WorldEntity) => string | null;
 }
 
 const config = testEntitiesConfig;
@@ -107,6 +117,7 @@ const CASES: readonly Case[] = [
     spawn: (game) =>
       spawnEntity(game, "exploder", AT.x, AT.y, freshExploder(1, 0)),
     seconds: 6,
+    grudge: (monster) => ExploderState.parse(monster.data).attacker,
   },
   {
     name: "sleeper",
@@ -114,6 +125,7 @@ const CASES: readonly Case[] = [
     spawn: (game) =>
       spawnEntity(game, "sleeper", AT.x, AT.y, freshSleeper(0, config.sleeper)),
     seconds: config.sleeper.warnSeconds + 2,
+    grudge: (monster) => SleeperState.parse(monster.data).foe,
   },
   {
     name: "statue",
@@ -126,6 +138,7 @@ const CASES: readonly Case[] = [
     content: stalker,
     spawn: (game) => spawnEntity(game, "stalker", AT.x, AT.y, freshStalker(0)),
     seconds: 3,
+    grudge: (monster) => StalkerState.parse(monster.data).foe,
   },
   {
     name: "hoarder",
@@ -139,6 +152,7 @@ const CASES: readonly Case[] = [
       return bug;
     },
     seconds: 2,
+    grudge: (monster) => HoarderState.parse(monster.data).quarry,
   },
 ];
 
@@ -152,7 +166,11 @@ function world(content: Case["content"]): Session {
     testSfx(),
     testSimConfig,
   );
-  registerContent(game, [content.create(config), snail.create(config)]);
+  const bystanders = content === statue ? [snail] : [snail, statue];
+  registerContent(game, [
+    content.create(config),
+    ...bystanders.map((kind) => kind.create(config)),
+  ]);
   Object.assign(game.local, { x: 850, y: 575, prevX: 850, prevY: 575 });
   hurtPlayer(game, game.local, Infinity);
   return game;
@@ -180,4 +198,37 @@ describe.each(CASES)("the $name", (kind) => {
     const { game, body } = besideMonster(kind, snailAt);
     expect(lastHurtBy(game, body.id, Infinity)).toBeNull();
   });
+
+  test("passes over a statue beside it", () => {
+    const { game, body } = besideMonster(kind, statueAt);
+    expect(lastHurtBy(game, body.id, Infinity)).toBeNull();
+  });
 });
+
+/** Sets the monster down, has a body of `place`'s far off hurt it, and gives whom it turns on. */
+function grudgeAgainst(
+  { content, spawn, grudge }: Case,
+  place: (game: Session, x: number, y: number) => WorldEntity,
+): { grudge: string | null; by: WorldEntity } {
+  const game = world(content);
+  const monster = spawn(game);
+  const by = place(game, 100, 100);
+  hurt(game, monster, 1, by.id);
+  run(game, DT);
+  return { grudge: grudge?.(monster) ?? null, by };
+}
+
+describe.each(CASES.filter((kind) => kind.grudge !== undefined))(
+  "the $name, hurt",
+  (kind) => {
+    test("turns on a body that hurt it", () => {
+      const { grudge, by } = grudgeAgainst(kind, postAt);
+      expect(grudge).toBe(by.id);
+    });
+
+    test("does not turn on a statue that hurt it", () => {
+      const { grudge, by } = grudgeAgainst(kind, statueAt);
+      expect(grudge).not.toBe(by.id);
+    });
+  },
+);

@@ -30,6 +30,7 @@ import {
   Time,
   walk,
   Waypoint,
+  avenged,
 } from "../hunt.js";
 import { drawRing, nearestPrey, preyFor, touching } from "../bodies.js";
 import { avoidingWhere, planRoute } from "../route.js";
@@ -253,7 +254,7 @@ function think(
   const now = game.worldTime;
   const hurt = hurtSinceLastStep(game, self.id);
   if (hurt !== null) {
-    const foe = hurt.by === self.id ? null : hurt.by;
+    const foe = avenged(game, self, hurt.by);
     return enter(
       { ...state, foe },
       "enraged",

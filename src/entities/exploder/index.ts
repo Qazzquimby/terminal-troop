@@ -32,6 +32,7 @@ import {
   Waypoint,
   wanderLeg,
   withSeed,
+  avenged,
 } from "../hunt.js";
 import type { Hunting } from "../hunt.js";
 import { nearestPrey } from "../bodies.js";
@@ -457,9 +458,8 @@ function definition(
       // A hurt it shrugs off neither lights its fuse nor sends it after the nearest body.
       const hurt =
         struck !== null && lightsFuse(struck.by, state, entity, game, config);
-      const by = struck?.by ?? null;
-      const sensed =
-        by === null || by === entity.id ? state : { ...state, attacker: by };
+      const by = avenged(game, entity, struck?.by ?? null);
+      const sensed = by === null ? state : { ...state, attacker: by };
       const thought = think(sensed, entity, game, hurt, config);
       const lit = ignite(
         { ...thought, health: entity.health },
