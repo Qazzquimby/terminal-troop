@@ -104,12 +104,12 @@ export const config = {
     duration: 0.9,
     expand: 0.15,
     width: { sharp: 1.5, soft: 7 },
-    alpha: { sharp: 0.65, soft: 0.15 },
+    alpha: { sharp: 0.2, soft: 0.05 },
     colour: "#9fd3ff",
     edge: {
       radius: 90,
       inset: 12,
-      alpha: { sharp: 0.7, soft: 0.2 },
+      alpha: { sharp: 0.25, soft: 0.03 },
       colour: "#ffb070",
     },
   },
@@ -169,9 +169,9 @@ export const config = {
   // Each step is heard by anything within its radius: a sprint carries well past a zombie's
   // sight, a walk a few cells, a crouch barely past arm's length.
   footsteps: {
-    walk: { interval: 0.5, radius: CELL * 5 },
-    sprint: { interval: 0.3, radius: CELL * 16 },
-    crouch: { interval: 0.7, radius: CELL * 1.5 },
+    walk: { interval: 0.5, radius: CELL * 3 },
+    sprint: { interval: 0.3, radius: CELL * 7 },
+    crouch: { interval: 0.7, radius: 0 },
   },
   // Speech is judged by its loudest moment over the last 0.75s, so the gaps between words don't
   // silence it. The mic level runs from -60 dBFS (0) to full scale (1): a quiet room sits below
