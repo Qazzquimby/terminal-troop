@@ -197,6 +197,7 @@ export const testEntitiesConfig = {
     },
     crash: { speed: 150, damage: 50, breakdown: 250, noiseRadius: 1000 },
     ram: { speed: 100, damage: 20, cooldown: 0.5, noiseRadius: 500 },
+    horn: { noiseRadius: 900, volume: 1 },
     headlights: { range: 400, angle: Math.PI / 4, spread: 7 },
     escape: { delay: 20, volume: 1 },
     revive: { reach: 50, volume: 1 },

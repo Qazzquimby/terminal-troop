@@ -2,21 +2,21 @@ import { minBy } from "lodash-es";
 import { z } from "zod";
 import {
   axesOf,
-  livingPlayers,
   changeEntity,
   destroyWalls,
   driverOf,
   effect,
-  eject,
   footprintOf,
   gapTo,
   hasKindTag,
   hurt,
   INERT_TAG,
+  playersOutside,
   push,
   reachAlong,
   rounded,
   touches,
+  unseat,
 } from "../../sim/index.js";
 import type {
   Body,
@@ -36,6 +36,7 @@ import type {
 // import crashUrl from "./sfx/crash.mp3";
 // import ramUrl from "./sfx/ram.mp3";
 // import breakdownUrl from "./sfx/breakdown.mp3";
+// import hornUrl from "./sfx/horn.mp3";
 
 /** How often the engine is heard, and how far. Seconds, pixels. */
 interface EngineBeat {
@@ -65,7 +66,7 @@ export interface DrivingConfig {
     readonly speed: number;
     /** Damage the cruiser takes each crash. */
     readonly damage: number;
-    /** Damage at which it breaks down: its driver gets out and its fuel is gone. */
+    /** Damage at which it breaks down: its driver loses the wheel and its fuel is gone. */
     readonly breakdown: number;
     /** How far a crash is heard. */
     readonly noiseRadius: number;
@@ -79,6 +80,13 @@ export interface DrivingConfig {
     readonly cooldown: number;
     /** How far a hit is heard. */
     readonly noiseRadius: number;
+  };
+  /** Its horn, sounded by anyone inside it. */
+  readonly horn: {
+    /** How far it is heard, in pixels. */
+    readonly noiseRadius: number;
+    /** How loud it plays, 0..1. */
+    readonly volume: number;
   };
 }
 
@@ -108,20 +116,34 @@ function stateOf(vehicle: WorldEntity): CruiserState {
 /** Whether `vehicle` has fuel to run on. */
 const isPowered = (vehicle: WorldEntity): boolean => stateOf(vehicle).fuel > 0;
 
-/** What makes the cruiser a vehicle: it runs on fuel and knocks down the walls it crashes into. */
+/**
+ * What makes the cruiser a vehicle: anyone may get in, fuel or none, but it runs on fuel, knocks
+ * down the walls it crashes into, and has a horn.
+ */
 export function vehicle(config: DrivingConfig): VehicleSpec {
+  // const hornSound = sound({ url: hornUrl, volume: config.horn.volume, range: config.horn.noiseRadius });
   return {
     handling: config.handling,
     reach: config.reach,
     crashSpeed: config.crash.speed,
     heading: (entity) => stateOf(entity).heading,
-    canBoard: (_game, entity) => isPowered(entity),
     powered: isPowered,
     crash(game, entity, driver, impact) {
       crash(game, entity, driver, impact, config);
     },
+    honk(game, entity) {
+      effect(game, {
+        at: { x: entity.x, y: entity.y },
+        noise: config.horn.noiseRadius,
+        tags: [HORN_TAG],
+        // sound: hornSound,
+      });
+    },
   };
 }
+
+/** The tag the horn's noise carries, past its maker's kind. */
+const HORN_TAG = "horn";
 
 /**
  * A crash: the walls its body ran into come down, it takes its crash damage, and every client
@@ -167,8 +189,8 @@ function turnedTo(
 }
 
 /**
- * Every body the cruiser's footprint, `body`, overlaps that it may ram: players but its driver,
- * and living entities.
+ * Every body the cruiser's footprint, `body`, overlaps that it may ram: players out in the world,
+ * not those inside it or any other vehicle, and living entities.
  */
 function struck(
   game: Session,
@@ -177,7 +199,7 @@ function struck(
   driver: Player,
 ): Body[] {
   const bodies = [
-    ...livingPlayers(game),
+    ...playersOutside(game),
     ...[...game.entities.values()].filter(
       (other) =>
         other.collides &&
@@ -275,7 +297,7 @@ function runEngine(
 /**
  * The cruiser's step on the host: it goes where its driver has driven it, burning fuel as it
  * moves and ramming what it drives into, and runs its engine. Once its damage reaches breakdown,
- * its driver gets out and its fuel is gone. Returns its next state.
+ * its driver loses the wheel, staying inside, and its fuel is gone. Returns its next state.
  */
 export function stepCruiser(
   game: Session,
@@ -287,7 +309,7 @@ export function stepCruiser(
   entity.vx = 0;
   entity.vy = 0;
   if (state.damage >= config.crash.breakdown) {
-    eject(game, entity);
+    unseat(game, entity);
     effect(
       game,
       {

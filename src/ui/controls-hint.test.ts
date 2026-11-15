@@ -22,7 +22,13 @@ test("the hint matches the default bindings", () => {
 
 test("at the wheel it shows driving controls", () => {
   expect(controlsHintFor("driving", false)).toBe(
-    "WASD / ↑←↓→ to drive · E to get out · Esc for settings",
+    "WASD / ↑←↓→ to drive · Space to honk · E to let go of the wheel · Esc for settings",
+  );
+});
+
+test("in the cabin it shows how to take the wheel", () => {
+  expect(controlsHintFor("cabin", false)).toBe(
+    "E to take the wheel · Esc for settings",
   );
 });
 
@@ -41,9 +47,13 @@ test("push to talk adds the talk key", () => {
 
 test("the mode follows the local player", () => {
   expect(hintMode({ health: 3, ride: null })).toBe("foot");
-  expect(
-    hintMode({ health: 3, ride: { vehicle: "car", heading: 0, speed: 0 } }),
-  ).toBe("driving");
+  const ride = { vehicle: "car", heading: 0, speed: 0, turn: 0 };
+  expect(hintMode({ health: 3, ride: { ...ride, driving: true } })).toBe(
+    "driving",
+  );
+  expect(hintMode({ health: 3, ride: { ...ride, driving: false } })).toBe(
+    "cabin",
+  );
   expect(hintMode({ health: 0, ride: null })).toBe("ghost");
 });
 

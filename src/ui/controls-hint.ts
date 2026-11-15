@@ -10,7 +10,7 @@ export interface HintEntry {
 }
 
 /** What the local player is doing, which decides the controls it has. */
-export type HintMode = "foot" | "driving" | "ghost";
+export type HintMode = "foot" | "cabin" | "driving" | "ghost";
 
 const MOVE: readonly Action[] = ["moveUp", "moveLeft", "moveDown", "moveRight"];
 const SETTINGS: HintEntry = {
@@ -31,9 +31,11 @@ export const CONTROLS_HINT: Readonly<Record<HintMode, readonly HintEntry[]>> = {
     { actions: ["slotPrevious", "slotNext"], does: "to switch item" },
     SETTINGS,
   ],
+  cabin: [{ actions: ["interact"], does: "to take the wheel" }, SETTINGS],
   driving: [
     { actions: MOVE, does: "to drive" },
-    { actions: ["interact"], does: "to get out" },
+    { actions: ["honk"], does: "to honk" },
+    { actions: ["interact"], does: "to let go of the wheel" },
     SETTINGS,
   ],
   ghost: [
@@ -61,10 +63,14 @@ export function controlsHintText(
     .join(" · ");
 }
 
-/** The mode a player's controls are in: a ghost spectates, a driver drives, else on foot. */
+/**
+ * The mode a player's controls are in: a ghost spectates, a driver drives, one inside a vehicle
+ * off its wheel sits in its cabin, else on foot.
+ */
 export function hintMode(player: Pick<Player, "health" | "ride">): HintMode {
   if (isGhost(player)) return "ghost";
-  return player.ride === null ? "foot" : "driving";
+  if (player.ride === null) return "foot";
+  return player.ride.driving ? "driving" : "cabin";
 }
 
 /** The hint for `mode`, with the talk key when push to talk is on. */

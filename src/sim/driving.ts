@@ -11,26 +11,40 @@ import { updateStamina } from "./stamina.js";
 import type { WallArea } from "./walls.js";
 
 /**
- * A player at the wheel of a vehicle: which, the way it points, and how fast it goes along that
- * way. While it rides, the player is where the vehicle is: its steps drive the vehicle rather
- * than walk, on every client that runs it, and the host puts the vehicle where the player is.
+ * A player inside a vehicle: which, and whether it is at the wheel. Inside, the player is where
+ * the vehicle is, shut in it: nothing out in the world sees, targets, strikes or bumps into it,
+ * though what it says is still heard from there. Any number may be inside; one at a time drives.
+ * At the wheel, its steps drive the vehicle rather than walk, on every client that runs it, and
+ * the host puts the vehicle where the driver is; the others sit where the vehicle is.
  */
 export interface Ride {
   /** The vehicle's entity id. */
   readonly vehicle: string;
-  /** Radians, the way its front points. */
+  /** Whether it is at the wheel. */
+  readonly driving: boolean;
+  /** Radians, the way its front points, as its driver last drove it. */
   readonly heading: number;
-  /** Pixels per second along its heading; negative in reverse. */
+  /** Pixels per second along its heading; negative in reverse. 0 for one not at the wheel. */
   readonly speed: number;
+  /** How far its driver turns the wheel this step, -1 to 1, right positive. 0 off the wheel. */
+  readonly turn: number;
 }
 
 export const RideWire = z
   .object({
     vehicle: z.string().min(1).max(80),
+    driving: z.boolean(),
     heading: z.number(),
     speed: z.number(),
+    turn: z.number().min(-1).max(1),
   })
   .nullable();
+
+/**
+ * What a player inside a vehicle asks of it from its cabin: to take the wheel, sound the horn,
+ * or get out.
+ */
+export type CabinCommand = "drive" | "honk" | "exit";
 
 /** How a vehicle drives, like a car. Speeds in pixels per second, rates per second. */
 export interface Handling {
@@ -59,8 +73,8 @@ export interface Impact {
 }
 
 /**
- * What makes a kind of entity a vehicle a player can drive: get in with interact beside it while
- * no one else drives it, out again with interact. Only the driver rides it.
+ * What makes a kind of entity a vehicle players ride in: get in with interact beside it, any
+ * number at once; take the wheel while no one else has it; and get out again.
  */
 export interface VehicleSpec {
   readonly handling: Handling;
@@ -77,6 +91,8 @@ export interface VehicleSpec {
   canBoard?(game: Session, vehicle: WorldEntity): boolean;
   /** Whether its throttle does anything; always when left out. Without it, it only rolls to a stop. */
   powered?(vehicle: WorldEntity): boolean;
+  /** Its horn, sounded by `by` inside it, as part of an action: an `effect` to make. None when left out. */
+  honk?(game: Session, vehicle: WorldEntity, by: Player): void;
   /**
    * Runs on the host as its driver crashes it into a wall, once, as the host first runs that
    * step; its momentum is already spent.
@@ -106,8 +122,15 @@ export function vehicleOf(
 /** The player driving the vehicle `id`, as this client has it; null for none. */
 export function driverOf(game: Session, id: string): Player | null {
   for (const player of game.players.values())
-    if (player.ride?.vehicle === id) return player;
+    if (player.ride?.vehicle === id && player.ride.driving) return player;
   return null;
+}
+
+/** Every player inside the vehicle `id`, as this client has it, its driver among them. */
+export function occupantsOf(game: Session, id: string): Player[] {
+  return [...game.players.values()].filter(
+    (player) => player.ride?.vehicle === id,
+  );
 }
 
 /** `value` moved towards `target` by at most `step`. */
@@ -147,8 +170,9 @@ const TURN_NUDGE = 1;
 const UNSTICK = 0.25;
 
 /**
- * One step of `player` driving its vehicle on `move`: up throttles, down brakes and reverses, and
- * sideways turns it, the more the faster it goes. It stops at walls, sliding along one it only
+ * One step of `player` inside its vehicle: off the wheel, it sits where the vehicle is. At the
+ * wheel it drives on `move`: up throttles, down brakes and reverses, and sideways turns it, the
+ * more the faster it goes. It stops at walls, sliding along one it only
  * grazes, and a wall hit hard enough is a crash: it stops dead, and on a live run on the host the
  * vehicle's `crash` runs. `live` is false while a client runs again a step it has run before.
  * Without the vehicle here, the player holds still.
@@ -167,9 +191,13 @@ export function drive(
   player.stamina = updateStamina(player.stamina, false, dt, rules.stamina);
   movement.set(player, { mode: "walk", moving: false });
   const found = vehicleOf(game, ride.vehicle);
-  if (found === null || dt <= 0) {
+  if (found === null || dt <= 0 || !ride.driving) {
     player.vx = 0;
     player.vy = 0;
+    if (found !== null && !ride.driving) {
+      player.x = found.entity.x;
+      player.y = found.entity.y;
+    }
     return;
   }
   const { entity, spec } = found;
@@ -178,8 +206,8 @@ export function drive(
   const throttle = powered ? clamp(-move.y, 1) : 0;
   const speed = throttled(ride.speed, throttle, handling, dt);
   const grip = handling.grip > 0 ? clamp(speed / handling.grip, 1) : 1;
-  const turned =
-    ride.heading + clamp(move.x, 1) * handling.turnRate * grip * dt;
+  const turn = clamp(move.x, 1);
+  const turned = ride.heading + turn * handling.turnRate * grip * dt;
   const size = game.entityTypes.get(entity.kind)?.box(entity) ?? null;
   const step =
     size === null
@@ -194,7 +222,7 @@ export function drive(
   player.y = to.y;
   player.vx = (to.x - from.x) / dt;
   player.vy = (to.y - from.y) / dt;
-  player.ride = { ...ride, heading, speed: crashed ? 0 : moved };
+  player.ride = { ...ride, heading, speed: crashed ? 0 : moved, turn };
   if (!crashed || !live || !game.hosting) return;
   spec.crash?.(game, entity, player, {
     speed: lost,

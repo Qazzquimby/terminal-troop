@@ -19,6 +19,7 @@ import {
   emittedLights,
   footprintOf,
   heldItemOf,
+  isAboard,
   isGhost,
   isStunned,
   isBodyVisible,
@@ -759,7 +760,8 @@ function drawBodies(
     drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
   });
   game.players.forEach((player) => {
-    if (player === but || isGhost(player) || !inView(player, camera)) return;
+    if (player === but || isGhost(player) || isAboard(player)) return;
+    if (!inView(player, camera)) return;
     if (!shows(player)) return;
     drawPlayer(ctx, game, player, false, isAway(player.id));
     drawHealthBar(ctx, player, player.y - player.radius - 26);
@@ -1019,7 +1021,8 @@ export function draw(
   }
   applyCamera(ctx, camera, () => {
     drawRipples(ctx, ripples.config, rings, now, camera);
-    drawPlayer(ctx, game, viewer, viewer === game.local);
+    // Inside a vehicle, the viewer is out of sight in it, as every other occupant is.
+    if (!isAboard(viewer)) drawPlayer(ctx, game, viewer, viewer === game.local);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
     drawStamina(ctx, viewer, game.config.stamina.max);
     if (isStunned(game, viewer.id))

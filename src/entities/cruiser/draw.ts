@@ -1,7 +1,9 @@
+import { occupantsOf } from "../../sim/index.js";
 import type { BoxSize, Point, Session, WorldEntity } from "../../sim/index.js";
 import type { CruiserState } from "./drive.js";
 
 const COLOURS = {
+  names: "#eee",
   powered: "#3b6ea5",
   unpowered: "#4b5560",
   roof: "rgba(255, 255, 255, 0.12)",
@@ -23,7 +25,7 @@ function placed(
   state: CruiserState,
 ): { at: Point; heading: number } {
   const { ride } = game.local;
-  if (ride?.vehicle === entity.id)
+  if (ride?.vehicle === entity.id && ride.driving)
     return { at: game.local, heading: ride.heading };
   return { at: entity, heading: state.heading };
 }
@@ -41,6 +43,37 @@ function gauge(
   ctx.fillRect(at.x - width / 2 - 1, y - 1, width + 2, 5);
   ctx.fillStyle = colour;
   ctx.fillRect(at.x - width / 2, y, width * Math.min(1, share), 3);
+}
+
+/** The mark before the name of whoever is at the wheel. */
+const WHEEL_MARK = "🛞";
+
+/**
+ * Who is inside the cruiser, for everyone to see: their names in a row over it, bottom centred on
+ * `above`, the driver's marked with a wheel.
+ */
+function drawOccupants(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  entity: WorldEntity,
+  above: Point,
+): void {
+  const inside = occupantsOf(game, entity.id);
+  if (inside.length === 0) return;
+  const names = inside.map((player) =>
+    player.ride?.driving === true ? `${WHEEL_MARK}${player.name}` : player.name,
+  );
+  const text = `${String(inside.length)} in: ${names.join(", ")}`;
+  ctx.save();
+  ctx.font = "12px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const width = ctx.measureText(text).width;
+  ctx.fillStyle = COLOURS.gauge;
+  ctx.fillRect(above.x - width / 2 - 4, above.y - 15, width + 8, 16);
+  ctx.fillStyle = COLOURS.names;
+  ctx.fillText(text, above.x, above.y);
+  ctx.restore();
 }
 
 /**
@@ -82,6 +115,7 @@ export function drawCruiser(
     (Math.abs(Math.sin(heading)) * length +
       Math.abs(Math.cos(heading)) * width) /
     2;
+  drawOccupants(ctx, game, entity, { x: at.x, y: at.y - reach - 8 });
   const below = at.y + reach + 10;
   if (powered)
     gauge(

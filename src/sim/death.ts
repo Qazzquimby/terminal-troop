@@ -12,7 +12,7 @@ import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 import { alter } from "./steering.js";
-import { eject } from "./vehicle.js";
+import { putOut } from "./vehicle.js";
 import type { VoiceChannel } from "./voice-routes.js";
 import { worldData } from "./world-data.js";
 import { itemsCanLie, soundDrop, spawnWorldItem } from "./world-items.js";
@@ -91,10 +91,8 @@ const FALL_FLASH = 2.5;
  * its drop sound, and its corpse lies there, with the corpse's drop sound and a flash.
  */
 function fall(game: Session, player: Player): void {
-  // One who falls at the wheel is put out beside the vehicle first, and falls there.
-  const vehicle =
-    player.ride === null ? undefined : game.entities.get(player.ride.vehicle);
-  if (vehicle !== undefined) eject(game, vehicle);
+  // One who falls inside a vehicle is put out beside it first, and falls there.
+  putOut(game, player);
   const at = { x: player.x, y: player.y };
   const { radius } = game.config.worldItems;
   // A world with no items has nothing to drop, and no corpse to lie.

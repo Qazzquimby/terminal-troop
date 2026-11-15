@@ -18,7 +18,8 @@ import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
 import { layBodies } from "./death.js";
 import type { DeathConfig } from "./death.js";
-import { isGhost, livingPlayers } from "./ghosts.js";
+import { isAboard, playersOutside } from "./aboard.js";
+import { isGhost } from "./ghosts.js";
 import { followHealth } from "./health.js";
 import type { FootstepConfig } from "./footsteps.js";
 import { followInventories } from "./inventories.js";
@@ -51,6 +52,7 @@ import { hearStatuses } from "./status.js";
 import type { StunnedConfig } from "./status.js";
 import type { ItemBehaviour } from "./use.js";
 import { useHeldItem } from "./use.js";
+import { cabinCommand } from "./vehicle.js";
 import type { LightConfig, VisionConfig } from "./vision.js";
 import { dropHeld, interact } from "./world-items.js";
 import { followWalls } from "./walls.js";
@@ -303,13 +305,25 @@ function separateEntities(game: Session): void {
   const entities = [...game.entities.values()].filter(
     (entity) => entity.collides,
   );
-  const bodies = [...livingPlayers(game), ...entities];
+  const bodies = [...playersOutside(game), ...entities];
   separateBodies(bodies, game.world.map, new Set<CollisionBody>(entities));
   entities.forEach((entity) => {
     entity.tx = entity.x;
     entity.ty = entity.y;
   });
 }
+
+/**
+ * `controls` as a body inside a vehicle has them: its hands are in the cabin, so it uses, kicks
+ * with and drops nothing, whatever is pressed.
+ */
+const handsInside = (controls: Controls): Controls => ({
+  ...controls,
+  use: false,
+  secondary: false,
+  drop: false,
+  holdingUse: false,
+});
 
 export function updateSession(
   game: Session,
@@ -324,12 +338,17 @@ export function updateSession(
   movingBodies(game).forEach(storePrevious);
   followWalls(game);
   steerLocal(game, controls, dt);
+  const acting = isAboard(game.local) ? handsInside(controls) : controls;
   if (!isGhost(game.local)) {
-    if (controls.use) useHeldItem(game);
-    if (controls.interact) interact(game);
-    if (controls.drop) dropHeld(game);
+    if (acting.use) useHeldItem(game);
+    if (acting.interact) interact(game);
+    if (acting.drop) dropHeld(game);
+    if (acting.honk === true && game.local.ride?.driving === true)
+      cabinCommand(game, "honk");
+    if (acting.cabin !== undefined && acting.cabin !== null)
+      cabinCommand(game, acting.cabin);
   }
-  for (const content of game.contents) content.act?.(game, controls);
+  for (const content of game.contents) content.act?.(game, acting);
 
   applyEvents(game);
   moveRemotePlayers(game, dt);

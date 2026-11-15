@@ -50,8 +50,8 @@ interface HeadlightConfig {
 }
 
 /**
- * A car that starts at the world's rally point, its headlights always on, unfuelled; fuelled, a
- * player can drive it.
+ * A car that starts at the world's rally point, its headlights always on, unfuelled; players get
+ * in it, and fuelled, one of them can drive it.
  */
 export interface CruiserConfig extends DrivingConfig {
   /**
@@ -172,11 +172,13 @@ export const nearCruiser = (
 ): WorldEntity | null => cruiserNear(game, NAME, at, reach);
 
 /**
- * A car that starts where new players arrive, its two headlights always shining ahead. It starts without
- * fuel; once fuelled its engine runs, and a player beside it can take the wheel and drive it,
- * burning fuel as it moves, ramming what it drives into and knocking down the walls it crashes
- * into, until it breaks down. Others do not ride along, and walk through it. Once it reaches the
- * world's exit, it takes everyone there out after a delay.
+ * A car that starts where new players arrive, its two headlights always shining ahead. Anyone
+ * beside it may get in, any number at once, fuel or none: inside, nothing out in the world sees
+ * or strikes them, though they are heard from it, its horn too. It starts without fuel; once
+ * fuelled its engine runs, and one of those inside can take the wheel and drive it, burning fuel
+ * as it moves, ramming what it drives into and knocking down the walls it crashes into, until it
+ * breaks down. Those outside walk through it. Once it reaches the world's exit, it takes everyone
+ * there out after a delay.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   radius: config.length / 2,

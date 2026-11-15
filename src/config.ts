@@ -319,6 +319,9 @@ export const config = {
         cooldown: 0.5,
         noiseRadius: CELL * 10,
       },
+      // Its horn, sounded by anyone inside, is heard 18 cells off: past a driven engine's 14,
+      // short of a crash's 20.
+      horn: { noiseRadius: CELL * 18, volume: 0.9 },
       // Two headlights at its front, one each side 38px from its middle, by the lamps drawn on
       // it, each a 40 degree cone reaching 12 cells.
       headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 38 },

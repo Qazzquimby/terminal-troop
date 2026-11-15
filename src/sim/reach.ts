@@ -1,7 +1,7 @@
 import { livingBodies } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import type { WorldEntity } from "./entities.js";
-import { livingPlayers } from "./ghosts.js";
+import { playersOutside } from "./aboard.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -41,7 +41,7 @@ export function entitiesIn(game: Session, area: Circle): WorldEntity[] {
 /** Every living player that touches `area`, but the one with id `but`, if given. */
 export function playersIn(game: Session, area: Circle, but?: string): Player[] {
   const { center, radius } = area;
-  return livingPlayers(game).filter(
+  return playersOutside(game).filter(
     (player) =>
       player.id !== but &&
       Math.hypot(player.x - center.x, player.y - center.y) <=

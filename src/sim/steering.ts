@@ -275,13 +275,26 @@ function sameRide(a: Ride | null, b: Ride | null): boolean {
   if (a === null || b === null) return a === b;
   return (
     a.vehicle === b.vehicle &&
+    a.driving === b.driving &&
     near(a.heading, b.heading) &&
-    near(a.speed, b.speed)
+    near(a.speed, b.speed) &&
+    near(a.turn, b.turn)
   );
 }
 
-/** Whether two runs of a step left the player alike. */
+/**
+ * Whether two runs of a step left the player alike. Two that left it inside one vehicle, off the
+ * wheel, are alike wherever: it sits where the vehicle is, which each client has from the host.
+ */
 function sameMotion(a: Motion, b: Motion): boolean {
+  if (
+    a.ride !== null &&
+    b.ride !== null &&
+    !a.ride.driving &&
+    !b.ride.driving &&
+    a.ride.vehicle === b.ride.vehicle
+  )
+    return true;
   if (
     !near(a.x, b.x) ||
     !near(a.y, b.y) ||

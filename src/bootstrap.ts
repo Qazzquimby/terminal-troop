@@ -10,12 +10,14 @@ import {
   updateSession,
 } from "./sim/index.js";
 import { NetEvent, carries, createCountingTransport } from "./net/index.js";
-import type { Point, Session } from "./sim/index.js";
+import type { CabinCommand, Point, Session } from "./sim/index.js";
 import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
+  cabinView,
   controlsHintFor,
+  createCabin,
   hintMode,
   createHud,
   createDebugOverlay,
@@ -98,6 +100,11 @@ const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
 const controlsHint = element(".controls-hint", HTMLParagraphElement);
+/** What the cabin asked of the vehicle, each run in a step of its own, oldest first. */
+const cabinCommands: CabinCommand[] = [];
+const cabin = createCabin(element("#cabin", HTMLDivElement), (command) => {
+  cabinCommands.push(command);
+});
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -421,7 +428,10 @@ function frame(): void {
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
       speak(session, voice.speakingLevel());
-      const controls = input.getControls(until);
+      const controls = {
+        ...input.getControls(until),
+        cabin: cabinCommands.shift() ?? null,
+      };
       updateSession(session, controls, clock.dt);
       worldLog?.observe(session);
       stepSpectator(spectator, session, controls, clock.dt, config.spectate);
@@ -461,8 +471,11 @@ function frame(): void {
       escaped: hasEscaped(session, session.local),
       departingIn: departingIn(session, config.entities.cruiser.escape.delay),
     });
+    cabin.show(cabinView(session), session);
   } else {
     hud.show(null);
+    cabin.show(null, null);
+    cabinCommands.length = 0;
     voice.setKeyed(false);
     ctx.fillStyle = "#090b0e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);

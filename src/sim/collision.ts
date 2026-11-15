@@ -1,4 +1,4 @@
-import { livingPlayers } from "./ghosts.js";
+import { playersOutside } from "./aboard.js";
 import type { Point, TileMap } from "./map.js";
 import { isAreaFree, isSolid } from "./map.js";
 import type { Session } from "./session.js";
@@ -311,7 +311,7 @@ export function solidBodiesBut(
   body: CollisionBody,
 ): CollisionBody[] {
   return [
-    ...livingPlayers(game),
+    ...playersOutside(game),
     ...[...game.entities.values()].filter((entity) => entity.collides),
   ].filter((other) => other !== body);
 }

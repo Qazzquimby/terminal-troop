@@ -1,5 +1,6 @@
 import type { WorldEntity } from "./entities.js";
-import { isGhost, livingPlayers } from "./ghosts.js";
+import { isAboard, playersOutside } from "./aboard.js";
+import { isGhost } from "./ghosts.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 import type { Footprint } from "./shape.js";
@@ -40,13 +41,16 @@ export const isPlayer = (game: Session, body: Body): boolean =>
   asPlayer(game, body) !== null;
 
 /**
- * Every body in the world that is not dead: each living player, then each world entity with
- * health left, items lying about included. Ghosts are left out.
+ * Every body out in the world that is not dead: each living player, then each world entity with
+ * health left, items lying about included. Ghosts are left out, and so is every body inside a
+ * vehicle: nothing out in the world sees, strikes or targets it.
  */
 export function livingBodies(game: Session): Body[] {
   return [
-    ...livingPlayers(game),
-    ...[...game.entities.values()].filter((entity) => entity.health > 0),
+    ...playersOutside(game),
+    ...[...game.entities.values()].filter(
+      (entity) => entity.health > 0 && !isAboard(entity),
+    ),
   ];
 }
 
@@ -58,13 +62,16 @@ export function isGone(game: Session, id: string): boolean {
   return player === null ? body.health <= 0 : isGhost(player);
 }
 
-/** The body `id` while it is in the world and not dead or a ghost; null otherwise. */
+/**
+ * The body `id` while it is out in the world and not dead or a ghost; null otherwise, inside a
+ * vehicle too, so a monster after it loses it there.
+ */
 export function livingBody(
   game: Session,
   id: string | null | undefined,
 ): Body | null {
   const body = bodyById(game, id);
-  return body === null || isGone(game, body.id) ? null : body;
+  return body === null || isGone(game, body.id) || isAboard(body) ? null : body;
 }
 
 /**
