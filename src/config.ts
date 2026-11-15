@@ -21,6 +21,7 @@ import type {
   VoiceConnectionConfig,
   VoiceFalloff,
 } from "./voice/index.js";
+import type { WorldLogConfig } from "./world-log/index.js";
 
 /** Every tunable, grouped by concern; each group has the shape its module declares. */
 interface AppConfig extends SimConfig {
@@ -44,6 +45,7 @@ interface AppConfig extends SimConfig {
   readonly ui: UiConfig;
   readonly hud: HudConfig;
   readonly wheel: WheelConfig;
+  readonly worldLog: WorldLogConfig;
 }
 
 const CELL = 50;
@@ -785,4 +787,8 @@ export const config = {
   ui: { debugRefreshMs: 250 },
   // An item with up to 10 uses shows each as a segment of its bar.
   hud: { segmentsUpTo: 10 },
+  // The world log is always on in development and under ?debug; `enabled` keeps it on in
+  // production too, as playtests run on the deployed build. It is console-only and cheap.
+  // It keeps the latest 2000 events; items dropped and picked up are kept but not printed.
+  worldLog: { enabled: true, capacity: 2000, quiet: ["item"] },
 } as const satisfies AppConfig;

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { asPlayer, bodyById, isPlayer } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { applyDamage } from "./entity.js";
+import { noteFall } from "./fallen.js";
 import { isGhost } from "./ghosts.js";
 import { hurtPlayer } from "./health.js";
 import { rounded } from "./rounded.js";
@@ -75,6 +76,7 @@ export function dealDamage(
     applyDamage(body, amount);
   }
   record(game, body, by);
+  if (body.health <= 0) noteFall(game, body, by);
 }
 
 /** Who last hurt the body `id`, and when; null when nothing on record has. */
