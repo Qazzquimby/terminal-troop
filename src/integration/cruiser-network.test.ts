@@ -72,10 +72,14 @@ test("a guest takes the wheel at once; the host drives the cruiser where the gue
   run(500);
 
   step({ b: { ...idle, interact: true } });
-  expect(guest.local.ride?.vehicle).toBe(cruiser.id);
+  step({ b: { ...idle, interact: true } });
+  expect(guest.local.ride).toMatchObject({
+    vehicle: cruiser.id,
+    driving: true,
+  });
   run(500);
   const onHost = playerOn(room("a"), "b");
-  expect(onHost.ride?.vehicle).toBe(cruiser.id);
+  expect(onHost.ride).toMatchObject({ vehicle: cruiser.id, driving: true });
 
   run(1500, { b: throttle });
   run(300, { b: { ...throttle, move: { x: 1, y: -1 } } });
@@ -91,6 +95,8 @@ test("a guest takes the wheel at once; the host drives the cruiser where the gue
   expect(guest.local.ride?.heading).toBeCloseTo(onHost.ride?.heading ?? 0, 5);
 
   step({ b: { ...idle, interact: true } });
+  expect(guest.local.ride?.driving).toBe(false);
+  step({ b: { ...idle, cabin: "exit" } });
   expect(guest.local.ride).toBeNull();
   run(500);
   expect(onHost.ride).toBeNull();
@@ -104,6 +110,7 @@ test("a guest's crash knocks the wall down on every client", async () => {
   park(host, { x: 800, y: 100 }, Math.PI);
   run(500);
   step({ b: { ...idle, interact: true } });
+  step({ b: { ...idle, cabin: "drive" } });
   run(3000, { b: throttle });
   run(1000);
   for (const game of [host, guest]) {

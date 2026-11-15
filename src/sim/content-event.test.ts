@@ -93,7 +93,7 @@ describe("content events", () => {
     ).toEqual([
       ["core/steering", ["steer", "resume"]],
       ["core/world-items", ["pickUp", "drop"]],
-      ["core/vehicles", ["board", "leave"]],
+      ["core/vehicles", ["board", "wheel", "unwheel", "leave", "honk"]],
       ["core/actions", ["effects"]],
     ]);
   });

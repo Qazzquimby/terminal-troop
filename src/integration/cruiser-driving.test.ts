@@ -136,32 +136,47 @@ const press = (game: Session, controls: Partial<Controls>): void => {
 
 const throttle: Controls = { ...idle, move: { x: 0, y: -1 } };
 
-/** The cruiser fuelled at `at`, pointing `heading`, and the local player at its wheel. */
+/**
+ * The cruiser fuelled at `at`, pointing `heading`, and the local player at its wheel: in with
+ * interact, then interact again from the cabin to take the wheel.
+ */
 function driving(game: Session, at: Point, heading = 0): WorldEntity {
   const cruiser = park(game, at, { fuel: 10, heading });
   stand(game, { x: at.x, y: at.y + 50 });
   press(game, { interact: true });
-  expect(game.local.ride?.vehicle).toBe(cruiser.id);
+  expect(game.local.ride).toMatchObject({
+    vehicle: cruiser.id,
+    driving: false,
+  });
+  press(game, { interact: true });
+  expect(game.local.ride).toMatchObject({ vehicle: cruiser.id, driving: true });
   return cruiser;
 }
 
-test("an unfuelled cruiser can't be entered; fuel used beside it is poured in, and then it can", () => {
+test("an unfuelled cruiser can be entered, into its cabin; fuel used beside it is poured in", () => {
   const game = world();
   const cruiser = park(game, { x: 450, y: 300 });
   stand(game, { x: 450, y: 360 });
   press(game, { interact: true });
+  expect(game.local.ride).toMatchObject({
+    vehicle: cruiser.id,
+    driving: false,
+  });
+  expect(game.local).toMatchObject({ x: cruiser.x, y: cruiser.y });
+  // Unfuelled, its wheel is taken, but its throttle does nothing.
+  press(game, { cabin: "drive" });
+  expect(game.local.ride?.driving).toBe(true);
+  play(game, 1, throttle);
+  expect(cruiser).toMatchObject({ x: 450, y: 300 });
+  press(game, { cabin: "exit" });
   expect(game.local.ride).toBeNull();
 
+  stand(game, { x: 450, y: 360 });
   expect(giveItem(game, "me", "fuel", 1)).toBe(true);
   play(game, 0.5);
   press(game, { select: 1, use: true });
   expect(itemIn(game, "me", 1)).toBeNull();
   expect(stateOf(game).fuel).toBe(items.fuel.seconds);
-
-  play(game, 0.5);
-  press(game, { interact: true });
-  expect(game.local.ride?.vehicle).toBe(cruiser.id);
-  expect(game.local).toMatchObject({ x: cruiser.x, y: cruiser.y });
 });
 
 test("fuel poured into a crashed cruiser mends it, its crash damage gone, at full health", () => {
@@ -190,7 +205,7 @@ test("fuel used away from the cruiser stays in hand", () => {
   expect(stateOf(game).fuel).toBe(0);
 });
 
-test("throttle drives it the way it points, carrying the cruiser, burning fuel only while it moves; interact gets out beside it", () => {
+test("throttle drives it the way it points, carrying the cruiser, burning fuel only while it moves; interact lets go of the wheel, and the exit gets out beside it", () => {
   const game = world();
   const cruiser = driving(game, { x: 300, y: 300 });
   play(game, 1);
@@ -206,8 +221,13 @@ test("throttle drives it the way it points, carrying the cruiser, burning fuel o
     1,
   );
 
-  const at = { x: cruiser.x, y: cruiser.y };
   press(game, { interact: true });
+  expect(game.local.ride?.driving).toBe(false);
+  // Off the wheel, it stops where it is, and the player sits in it.
+  play(game, 0.5);
+  const at = { x: cruiser.x, y: cruiser.y };
+  expect(game.local).toMatchObject(at);
+  press(game, { cabin: "exit" });
   expect(game.local.ride).toBeNull();
   // Out on its left, which is up while it points right.
   expect(game.local.y).toBeLessThan(at.y - 48 / 2);
@@ -263,7 +283,8 @@ test("its engine idles quietly as it stands fuelled, ignored by zombies, and is 
     }),
   );
   made.step({ a: { ...idle, interact: true } });
-  expect(game.local.ride).not.toBeNull();
+  made.step({ a: { ...idle, interact: true } });
+  expect(game.local.ride?.driving).toBe(true);
   expect(heard(1.5, throttle)).toContainEqual(
     expect.objectContaining({
       radius: config.engine.drive.radius,
@@ -320,13 +341,14 @@ test("throttling into a wall it stands against burns no fuel, head on or at an a
   }
 });
 
-test("at breakdown damage its driver gets out and its fuel is gone", () => {
+test("at breakdown damage its driver loses the wheel, staying inside, and its fuel is gone", () => {
   const game = world();
-  crash(game, config.crash.breakdown - config.crash.damage);
-  expect(game.local.ride).toBeNull();
+  const cruiser = crash(game, config.crash.breakdown - config.crash.damage);
+  expect(game.local.ride).toMatchObject({
+    vehicle: cruiser.id,
+    driving: false,
+  });
   expect(stateOf(game)).toMatchObject({ fuel: 0, damage: 0 });
-  press(game, { interact: true });
-  expect(game.local.ride).toBeNull();
 });
 
 test("driven into a zombie at speed, it hurts it once, down to its driver, and shoves it clear of its side, and goes on past", () => {
@@ -425,7 +447,7 @@ test("a player gets in within reach of its drawn box, not the disc round it", ()
   press(game, { interact: true });
   expect(game.local.ride?.vehicle).toBe(cruiser.id);
   // Off its nose, its reach is as far past the box's front.
-  press(game, { interact: true });
+  press(game, { cabin: "exit" });
   play(game, 0.5);
   stand(game, { x: 450 + SIZE.length / 2 + radius + config.reach - 1, y: 300 });
   press(game, { interact: true });

@@ -386,3 +386,193 @@ canvas {
 .hud-departure:empty {
   display: none;
 }
+
+/*
+ * The cruiser's cabin: ugly and awkward on purpose. Clashing colours, a lopsided frame, a font
+ * nobody would choose, and everything a little too close together.
+ */
+.cabin {
+  position: absolute;
+  top: 5%;
+  left: 7%;
+  width: 83%;
+  height: 68%;
+  box-sizing: border-box;
+  padding: 6px 9px 4px 14px;
+  overflow: auto;
+  background: repeating-linear-gradient(
+    -45deg,
+    #c400b8 0 14px,
+    #b100a6 14px 28px
+  );
+  color: #c8ff00;
+  border-style: dashed double groove ridge;
+  border-width: 7px 3px 11px 5px;
+  border-color: #ff7a00 #00e5ff #8a5a00 #39ff14;
+  border-radius: 2px 22px 0 9px;
+  box-shadow:
+    9px 11px 0 #3a00ff,
+    -3px -2px 0 #ffea00;
+  font:
+    bold 13px/1.1 "Comic Sans MS",
+    "Comic Sans",
+    "Chalkboard SE",
+    cursive;
+  transform: rotate(-0.6deg);
+}
+.cabin[hidden] {
+  display: none;
+}
+.cabin-header {
+  margin: 0 0 3px 31px;
+  color: #ffea00;
+  font-size: 19px;
+  letter-spacing: 5px;
+  text-shadow:
+    2px 2px 0 #00a2ff,
+    -1px 0 0 #ff0000;
+}
+.cabin-panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 11px;
+  align-items: flex-start;
+}
+.cabin-panel {
+  padding: 3px 5px;
+  background: #4d6b00;
+  border: 3px outset #ff9cf0;
+}
+.cabin-panel:nth-child(even) {
+  background: #006b5b;
+  border: 2px dotted #ff3300;
+  transform: rotate(1.2deg);
+}
+.cabin-title {
+  margin: 0;
+  color: #ff3366;
+  font-size: 11px;
+  text-decoration: underline wavy #00ffcc;
+}
+.cabin-caption {
+  margin: 0;
+  color: #fff200;
+  font-size: 10px;
+}
+.cabin-wheel-svg {
+  display: block;
+  width: 118px;
+  height: 118px;
+  margin: 2px 0 0 17px;
+  transition: transform 0.12s linear;
+}
+.cabin-wheel-rim {
+  fill: none;
+  stroke: #ff6a00;
+  stroke-width: 9;
+}
+.cabin-wheel-spoke {
+  stroke: #7c00ff;
+  stroke-width: 7;
+}
+.cabin-wheel-hub {
+  fill: #00ff9d;
+  stroke: #ff00cc;
+  stroke-width: 3;
+}
+.cabin-wheel-mark {
+  fill: #ffff00;
+}
+.cabin-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 92px;
+}
+.cabin-drive {
+  padding: 12px 2px;
+  background: #00ff2a;
+  color: #ff00d4;
+  border: 4px ridge #ffd000;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.cabin-drive:disabled {
+  background: #6b6b4d;
+  color: #2b2b2b;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+.cabin-honk {
+  width: 61px;
+  padding: 1px;
+  margin-left: 23px;
+  background: #ff0040;
+  color: #00ffee;
+  border: 1px solid #001aff;
+  border-radius: 50% 10% 50% 10%;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.cabin-honked {
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+  text-shadow: 0 0 4px #ff0;
+  animation: cabin-honk 0.45s steps(3) both;
+}
+@keyframes cabin-honk {
+  from {
+    transform: scale(0.6) rotate(-12deg);
+  }
+  to {
+    transform: scale(1.3) rotate(8deg);
+  }
+}
+.cabin-occupants {
+  min-width: 128px;
+  max-width: 190px;
+}
+.cabin-occupant-list {
+  margin: 1px 0 0;
+  padding-left: 13px;
+  color: #e0ffff;
+  font-size: 12px;
+}
+.cabin-exit-panel {
+  align-self: flex-end;
+  margin-left: auto;
+  padding: 0;
+  background: none;
+  border: none;
+}
+.cabin-panel.cabin-exit-panel {
+  background: none;
+  border: none;
+}
+.cabin-exit {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px 14px 8px 10px;
+  background: #0b8f2a;
+  color: #fff;
+  border: 4px solid #fff;
+  border-radius: 12px;
+  outline: 3px solid #06401a;
+  box-shadow: 4px 5px 0 #000;
+  font:
+    900 26px/1 "Impact",
+    "Arial Black",
+    sans-serif;
+  cursor: pointer;
+  transform: rotate(-7deg);
+}
+.cabin-exit:hover {
+  transform: rotate(4deg) scale(1.08);
+}
+.cabin-exit-runner {
+  transform: scaleX(-1);
+}

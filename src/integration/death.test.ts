@@ -249,7 +249,13 @@ test("a player who dies at the wheel is put out of the cruiser, and falls beside
     Object.assign(taken, {
       x: cruiser.x,
       y: cruiser.y,
-      ride: { vehicle: cruiser.id, heading: 0, speed: 0 },
+      ride: {
+        vehicle: cruiser.id,
+        driving: true,
+        heading: 0,
+        speed: 0,
+        turn: 0,
+      },
     });
   });
   expect(driverOf(host, cruiser.id)).toBe(driver);

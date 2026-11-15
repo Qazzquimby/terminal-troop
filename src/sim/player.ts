@@ -4,7 +4,7 @@ import {
   lastFreePointAlong,
   moveWithCollision,
 } from "./collision.js";
-import type { Ride } from "./driving.js";
+import type { CabinCommand, Ride } from "./driving.js";
 import type { Entity } from "./entity.js";
 import type { Facing, Interpolated, Tracked } from "./interpolation.js";
 import { glideToTarget, lerpAngle } from "./interpolation.js";
@@ -102,6 +102,10 @@ export interface Controls {
    * never when left out. Its client's view alone, never sent.
    */
   readonly toggleView?: boolean;
+  /** Whether to sound the horn of the vehicle the player drives this step; never when left out. */
+  readonly honk?: boolean;
+  /** What the player, inside a vehicle, asks of it from its cabin this step; nothing when left out. */
+  readonly cabin?: CabinCommand | null;
 }
 
 /**
@@ -159,7 +163,7 @@ export interface Player extends Entity, Interpolated, Facing, Tracked {
   crouched: boolean;
   /** The dash under way, if any: its own lunge, or a knockback. */
   dash: Dash | null;
-  /** The vehicle it drives, if any: it is where the vehicle is, and its steps drive it. */
+  /** The vehicle it is inside, if any: it is where the vehicle is, and at its wheel its steps drive it. */
   ride: Ride | null;
 }
 
