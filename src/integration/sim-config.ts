@@ -70,7 +70,12 @@ export const testSimConfig: SimConfig = {
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
   death: { scatter: 40, reviveHealth: 50 },
-  vision: { coneAngle: Math.PI / 2, rays: 64, surroundingsRadius: 70 },
+  vision: {
+    coneAngle: Math.PI / 2,
+    rays: 64,
+    surroundingsRadius: 70,
+    lookRange: 400,
+  },
   light: { range: 200 },
   net: { smoothing: 12, predictionHold: 0.5 },
   noise: { blur: 0.2 },

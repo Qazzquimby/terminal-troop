@@ -4,16 +4,16 @@ import attackUrl from "./sfx/attack.mp3";
 import barkUrl from "./sfx/bark.mp3";
 import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
-  canSeeFrom,
   defineEntity,
-  directionalVision,
   effect,
   INERT_TAG,
+  inView,
   rounded,
   sound,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
+  Eyes,
   Heard,
   Point,
   Rng,
@@ -175,22 +175,33 @@ function preyNear(
   return preyAround(game, hunter, reach, IGNORES);
 }
 
+/**
+ * A zombie's eyes, facing `facing`: a player's view cone and surroundings, both out to its sight
+ * range.
+ */
+function zombieEyes(facing: number, game: Session, config: ZombieConfig): Eyes {
+  const { coneAngle, surroundingsRadius } = game.config.vision;
+  const range = config.sightRange;
+  return {
+    cone: { direction: facing, angle: coneAngle, range },
+    around: Math.min(surroundingsRadius, range),
+  };
+}
+
 /** The nearest prey a zombie sees within its cone or surroundings, or null. */
 function sighting(
   game: Session,
   self: Prey,
-  range: number,
   facing: number,
+  config: ZombieConfig,
 ): Point | null {
-  const sources = directionalVision(self, facing, game.config.vision, range);
+  const sight = { x: self.x, y: self.y, ...zombieEyes(facing, game, config) };
+  const range = config.sightRange;
   let nearest: Point | null = null;
   let nearestDistance = Infinity;
   for (const prey of preyNear(game, self, () => range)) {
     const distance = Math.hypot(prey.x - self.x, prey.y - self.y);
-    if (
-      distance < nearestDistance &&
-      sources.some((source) => canSeeFrom(game.world.map, source, prey))
-    ) {
+    if (distance < nearestDistance && inView(game, sight, prey)) {
       nearest = { x: prey.x, y: prey.y };
       nearestDistance = distance;
     }
@@ -341,7 +352,7 @@ function think(
   config: ZombieConfig,
 ): ZombieState {
   const { map } = game.world;
-  const seen = sighting(game, self, config.sightRange, state.facing);
+  const seen = sighting(game, self, state.facing, config);
   if (seen !== null) return pursue(state, self, seen, map, config);
   if (state.mode === "wander") return wander(state, self, game, config);
   return state.route.length > 0 ? state : giveUp(state, game, config);
@@ -425,6 +436,7 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
     radius: config.radius,
     maxHealth: config.maxHealth,
     data: ZombieState,
+    eyes: (_entity, state, game) => zombieEyes(state.facing, game, config),
     update(entity, state, dt, game) {
       const thought = think(state, entity, game, config);
       const next = bark(attack(thought, entity, game, config), game, config);

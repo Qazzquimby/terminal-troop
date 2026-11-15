@@ -325,6 +325,15 @@ function definition(config: SkulkerConfig): EntityDefinition<SkulkerState> {
     radius: config.radius,
     maxHealth: config.maxHealth,
     data: SkulkerState,
+    // It needs no eyes to know where players are, but it has them: it sees as a player does,
+    // down its facing.
+    eyes: (_entity, state, game) => {
+      const { coneAngle, lookRange, surroundingsRadius } = game.config.vision;
+      return {
+        cone: { direction: state.facing, angle: coneAngle, range: lookRange },
+        around: surroundingsRadius,
+      };
+    },
     update(entity, state, dt, game) {
       const settled =
         state.home === null

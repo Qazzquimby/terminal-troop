@@ -13,6 +13,7 @@ import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
+import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
@@ -64,6 +65,12 @@ export interface EntityDefinition<S> {
     entity: WorldEntity,
     data: S,
   ) => LightEmission | readonly LightEmission[] | null;
+  /**
+   * How it sees, given its state: the view cone it looks down and how far it sees all round, or
+   * null while it sees nothing. A kind without it is blind. A stunned entity sees nothing,
+   * whatever this says; `eyesOf` sees to that.
+   */
+  readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
   /** What makes it a vehicle a player can drive, if it is one. */
   readonly vehicle?: VehicleSpec;
   /** Steers the entity before it moves, and returns its next state. Runs only while hosting. */
@@ -102,6 +109,7 @@ export interface EntityType {
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
   light(entity: WorldEntity): readonly LightEmission[];
+  eyes(entity: WorldEntity, game: Session): Eyes | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
   dies(entity: WorldEntity, game: Session): void;
@@ -137,6 +145,11 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       if (!parsed.success) return [];
       const light = definition.light?.(entity, parsed.data) ?? [];
       return "range" in light ? [light] : light;
+    },
+    eyes(entity, game) {
+      const parsed = schema.safeParse(entity.data);
+      if (!parsed.success) return null;
+      return definition.eyes?.(entity, parsed.data, game) ?? null;
     },
     update(entity, dt, game) {
       const parsed = schema.safeParse(entity.data);

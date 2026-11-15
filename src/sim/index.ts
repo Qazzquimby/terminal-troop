@@ -111,6 +111,15 @@ export { CORPSE_ITEM, itemName, revive } from "./death.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export { bodyById, isGone, livingBodies, livingBody } from "./bodies.js";
 export type { Body } from "./bodies.js";
+export {
+  eyesOf,
+  inView,
+  isLookedAt,
+  lookersAt,
+  looksAt,
+  notices,
+} from "./eyes.js";
+export type { Eyes } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
 export { fan, shoot } from "./shot.js";

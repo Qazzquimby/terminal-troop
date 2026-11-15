@@ -11,6 +11,11 @@ export interface VisionConfig {
   readonly rays: number;
   /** Radius of the circle around the player that is always seen and lit, behind them too. */
   readonly surroundingsRadius: number;
+  /**
+   * How far down the view cone a player looks at something, light or no light, as what is held
+   * while looked at asks. What it sees drawn is down to light, not this.
+   */
+  readonly lookRange: number;
 }
 
 /** The light a player carries. */

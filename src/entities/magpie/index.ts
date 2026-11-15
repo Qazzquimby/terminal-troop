@@ -2,13 +2,12 @@ import { z } from "zod";
 import { drawEmoji, drawHeldItem } from "../../render/index.js";
 import {
   ambientLightAt,
-  canSeeFrom,
   defineEntity,
-  directionalVision,
   effect,
   emittedLights,
   hurtSinceLastStep,
   INERT_TAG,
+  inView,
   isAreaFree,
   isLit,
   itemInstances,
@@ -21,6 +20,7 @@ import {
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
+  Eyes,
   HurtRecord,
   ItemInstance,
   Player,
@@ -276,6 +276,20 @@ function revengeHolds(
   );
 }
 
+/** Its eyes: a player's view cone and surroundings, along its facing, out to its sight range. */
+function magpieEyes(
+  state: MagpieState,
+  game: Session,
+  config: MagpieConfig,
+): Eyes {
+  const { coneAngle, surroundingsRadius } = game.config.vision;
+  const range = config.sightRange;
+  return {
+    cone: { direction: state.facing, angle: coneAngle, range },
+    around: Math.min(surroundingsRadius, range),
+  };
+}
+
 /** Whether it sees `at`, within its cone or surroundings. */
 function seer(
   game: Session,
@@ -283,14 +297,8 @@ function seer(
   state: MagpieState,
   config: MagpieConfig,
 ): (at: Point) => boolean {
-  const sources = directionalVision(
-    self,
-    state.facing,
-    game.config.vision,
-    config.sightRange,
-  );
-  return (at) =>
-    sources.some((source) => canSeeFrom(game.world.map, source, at));
+  const sight = { x: self.x, y: self.y, ...magpieEyes(state, game, config) };
+  return (at) => inView(game, sight, at);
 }
 
 /** `state` in `mode` until `until`, after `quarry`, its route planned anew at once. */
@@ -666,6 +674,7 @@ function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
     radius: config.radius,
     maxHealth: config.maxHealth,
     data: MagpieState,
+    eyes: (_entity, state, game) => magpieEyes(state, game, config),
     update(entity, state, dt, game) {
       const now = game.worldTime;
       const settled =
