@@ -35,6 +35,7 @@ export {
   dash,
   defineAction,
   effect,
+  heal,
   hurt,
   push,
   removeFromWorld,
@@ -107,8 +108,9 @@ export type { Corrections } from "./steering.js";
 
 export { Health, hurtPlayer } from "./health.js";
 export { isGhost, livingPlayers } from "./ghosts.js";
-export { CORPSE_ITEM, itemName, revive } from "./death.js";
+export { CORPSE_ITEM, isRevivable, itemName, revive } from "./death.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
+export type { Circle } from "./reach.js";
 export { bodyById, isGone, livingBodies, livingBody } from "./bodies.js";
 export type { Body } from "./bodies.js";
 export {

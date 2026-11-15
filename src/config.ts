@@ -645,6 +645,22 @@ export const config = {
       volume: 0.6,
       placeNoiseRadius: CELL,
     },
+    // One use, light, and as common as a walkie. Wrapped on whoever is within a shovel's reach in
+    // front, or on its user: three quarters of a body's full health back, or a corpse up on a
+    // quarter of its own. Its rip carries a cell and a half.
+    bandage: {
+      weight: 1,
+      uses: 1,
+      loot: { weight: 12, rarity: "common" },
+      heal: 0.75,
+      revive: 0.25,
+      reach: 45,
+      radius: 20,
+      cooldown: 1,
+      duration: 0.4,
+      volume: 0.7,
+      noiseRadius: CELL * 1.5,
+    },
     // A new world lays 40 items, each picked by loot weight, at spots favouring danger as much as
     // monsters do, so loot lies where they spawn. At the most dangerous spot there is an even
     // chance of a second, an uncommon item is twice as likely, a rare one four times. On top of
