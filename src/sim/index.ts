@@ -113,6 +113,7 @@ export { bodyById, isGone, livingBodies, livingBody } from "./bodies.js";
 export type { Body } from "./bodies.js";
 export {
   eyesOf,
+  inCone,
   inView,
   isLookedAt,
   lookersAt,

@@ -570,8 +570,8 @@ describe("hearing", () => {
 
 describe("prey", () => {
   /** The world with a living kind, "deer", one tagged inert, "mine", and a lying item, "loot". */
-  function wild(): Session {
-    const game = world();
+  function wild(zombie: ZombieConfig = config): Session {
+    const game = world(zombie);
     const body = { radius: 10, data: z.object({}), draw: () => undefined };
     registerEntityType(game, "deer", { ...body, maxHealth: 100 });
     registerEntityType(game, "mine", {
@@ -683,5 +683,16 @@ describe("prey", () => {
       target: null,
     });
     expect(stateOf(zombie).restUntil).toBeLessThanOrEqual(game.worldTime);
+  });
+
+  test("passes over the kinds its config tells it to ignore, players among them", () => {
+    const game = wild({ ...config, ignores: ["zombie", "deer", "player"] });
+    const deer = spawnEntity(game, "deer", 300, 400, {});
+    standAt(game, 250, 400);
+    const zombie = zombieAt(game, 200, 400);
+    run(game, 1);
+    expect(stateOf(zombie).mode).toBe("wander");
+    expect(deer.health).toBe(deer.maxHealth);
+    expect(game.local.health).toBe(game.local.maxHealth);
   });
 });

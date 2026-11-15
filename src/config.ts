@@ -228,6 +228,9 @@ export const config = {
         group: { min: 1, max: 5, spread: CELL * 2 },
       },
       radius: 15,
+      // It hunts any living body but its own kind and blisters: a zombie that bit a blister would
+      // set it off, and a crowd of them would level the buildings before any player came.
+      ignores: ["zombie", "blister"],
       maxHealth: 40,
       attackDamage: 35,
       wanderSpeed: 60,
@@ -306,9 +309,9 @@ export const config = {
       sounds: { beep: CELL * 8, flash: CELL * 12 },
       volume: 0.8,
     },
-    // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps at a
-    // fifth of a player's walk, kills whatever it touches, at most once a second, and replans its
-    // way every 2 seconds.
+    // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
+    // body it picks, any but another snail, at a fifth of a player's walk, kills whatever it
+    // touches, at most once a second, and replans its way every 2 seconds.
     snail: {
       spawning: {
         weight: 30,
@@ -317,6 +320,7 @@ export const config = {
         unseenDistance: CELL * 14,
       },
       radius: 12,
+      ignores: ["snail"],
       speedShare: 0.2,
       damage: 500,
       attackCooldown: 1,
@@ -327,6 +331,7 @@ export const config = {
     lurcher: {
       spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
       radius: CELL * 1.5 - 3,
+      ignores: ["lurcher"],
       maxHealth: SHOVEL_DAMAGE * 5,
       contactDamage: 100,
       contactCooldown: 1,
@@ -351,6 +356,9 @@ export const config = {
     blister: {
       spawning: { weight: 70, tries: 24, unseenDistance: CELL * 14 },
       radius: 16,
+      // It passes over the crowds, zombies and magpie beetles, or it would spend itself and the
+      // walls round it on the first it felt; players and the rarer monsters it hunts.
+      ignores: ["blister", "zombie", "magpie"],
       maxHealth: SHOVEL_DAMAGE * 3,
       wanderSpeed: PLAYER_SPEED * 0.8,
       chaseSpeed: PLAYER_SPEED * 1.1,
@@ -361,22 +369,26 @@ export const config = {
       // A route more than twice as long as the straight line, plus 2 cells, is too long: it
       // heads straight at its prey instead, and sets itself off at the wall in the way.
       detour: { factor: 2, slack: CELL * 2 },
-      // Within 2 cells of a player it lights a 1s fuse, and keeps coming.
+      // Within 2 cells of a body it hunts it lights a 1s fuse, and keeps coming. Any hurt lights it
+      // too, but another blister's burst, so one burst does not set off every blister near it.
       fuseRange: CELL * 2,
+      fuseOnHurt: { minDamage: 0, except: ["blister"] },
       fuse: 1,
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
       blast: { radius: CELL * 3, centre: 100, edge: 30 },
       sounds: { fuse: CELL * 6, blast: CELL * 40 },
     },
-    // She arrives in the dark, never within 14 cells of a player. Five shovel hits fell her. She sees 8 cells all round her,
-    // wakes to a player she sees within 5 cells if they are still there after her 1s growl, and
+    // She arrives in the dark, never within 14 cells of a player. Five shovel hits fell her. She
+    // sees 8 cells all round her, wakes to any body she sees within 5 cells if it is still there
+    // after her 1s growl, and
     // rages 10s; she runs at a player's sprint. Enraged, she hits as hard as the shovel does
     // thrice, once a second, and wanders 8 cells at a time. She sleeps again 10 to 20 cells off,
-    // at least 12 from every player. Her bark carries 8 cells every 3 to 6s while dormant; enraged,
-    // every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16.
+    // at least 12 from every body she hunts. Her bark carries 8 cells every 3 to 6s while dormant;
+    // enraged, every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16.
     witch: {
       spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
+      ignores: ["witch"],
       radius: 15,
       maxHealth: SHOVEL_DAMAGE * 5,
       sightRange: CELL * 8,
@@ -417,6 +429,7 @@ export const config = {
         tries: 24,
         unseenDistance: CELL * 14,
       },
+      ignores: ["idol"],
       radius: 16,
       sightRange: CELL * 16,
       patrol: { distance: CELL * 30, spread: CELL * 5, tries: 16, retry: 2 },
@@ -428,11 +441,12 @@ export const config = {
       strikeRange: CELL * 8,
     },
     // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
-    // player. Five shovel hits fell it; it moves
-    // at 1.2 times a walk, and touching it costs 100 health, once a second. A player sees it down
-    // their view cone as far as a flashlight reaches, 14 cells. Seen, it backs off for 25s,
-    // keeping 12 cells from every player where it can; hurt, it rages for 10s. It replans twice a
-    // second. Its hiss as it backs off carries 6 cells, its shriek of rage 16, its strike 8.
+    // player. Five shovel hits fell it; it moves at 1.2 times a walk, and touching it costs 100
+    // health, once a second. Any body but another skulker sees it down its view cone as far as that
+    // body looks, a player 10 cells, but never past 14, as far as a flashlight reaches. Seen, it
+    // backs off for 25s, keeping 12 cells from every body it hunts where it can; hurt, it rages for
+    // 10s. It replans twice a second. Its hiss as it backs off carries 6 cells, its shriek of rage
+    // 16, its strike 8.
     skulker: {
       spawning: {
         weight: 30,
@@ -440,6 +454,7 @@ export const config = {
         tries: 24,
         unseenDistance: CELL * 30,
       },
+      ignores: ["skulker"],
       radius: 14,
       maxHealth: SHOVEL_DAMAGE * 5,
       speed: PLAYER_SPEED * 1.2,
@@ -454,7 +469,7 @@ export const config = {
     },
     // Groups of 3 to 5 sharing a nest, never arriving within 14 cells of a player. Three shovel hits fell one. It forages at 0.8 times a walk and chases at 1.1, sees 6 cells,
     // and searches 16 spots up to 15 cells from its nest. It guards 4 cells round the nest for 15s,
-    // is spooked by a player within 8 cells for 5s, and bites its quarry for 10 once a second. A
+    // is spooked by any body within 8 cells for 5s, and bites its quarry for 10 once a second. A
     // nest's revenge lasts until the thief is 5 cells from what it stole. Its chitter carries 4
     // cells every 5 to 10s, its alarm 10, its pick-up 3, its bite 5.
     magpie: {
@@ -464,6 +479,8 @@ export const config = {
         unseenDistance: CELL * 14,
         group: { min: 3, max: 5, spread: CELL * 2 },
       },
+      // It leaves blisters be, or its bite would set them off by its nest.
+      ignores: ["magpie", "blister"],
       radius: 13,
       maxHealth: SHOVEL_DAMAGE * 3,
       wanderSpeed: PLAYER_SPEED * 0.8,

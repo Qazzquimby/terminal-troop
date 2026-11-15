@@ -59,7 +59,7 @@ export function eyesOf(game: Session, body: Body): Sight | null {
 }
 
 /** Whether `sight` sees `at` down its cone, within `range`, along a clear line. */
-function inCone(
+export function inCone(
   game: Session,
   sight: Sight | null,
   at: Point,

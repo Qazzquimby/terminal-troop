@@ -4,9 +4,8 @@ import {
   defineEntity,
   effect,
   hasKindTag,
-  INERT_TAG,
   isAreaFree,
-  isGone,
+  livingBody,
   isLookedAt,
   isLit,
   sound,
@@ -19,8 +18,9 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { drawRing, nearestSeenPlayer, touching } from "../bodies.js";
-import { Route, strikeEach, Time, Waypoint } from "../hunt.js";
+import { drawRing, nearestSeenBody, touching } from "../bodies.js";
+import { Route, strikeEach, strikeIf, Time, Waypoint } from "../hunt.js";
+import type { Hunting } from "../hunt.js";
 import { avoidingLight, planRoute, steer } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -30,11 +30,11 @@ const stepUrl = new URL("./sfx/step.mp3", import.meta.url).href;
 const strikeUrl = new URL("./sfx/strike.mp3", import.meta.url).href;
 
 /**
- * The idol: a stone figure that walks its round in the dark and hunts whoever it sees, but cannot
+ * The idol: a stone figure that walks its round in the dark and hunts any body it sees, but cannot
  * move while anyone looks at it. Distances in pixels, times in sim seconds; it moves at a player's
  * sprint.
  */
-export interface IdolConfig {
+export interface IdolConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   /** How far it sees, all round it, along a clear line. */
@@ -89,9 +89,6 @@ export const IdolState = z.object({
 export type IdolState = z.output<typeof IdolState>;
 
 const NAME = "idol";
-
-/** What it pays no mind: other idols, and inert things. */
-const IGNORES = [NAME, INERT_TAG];
 
 const IDOL_GLYPH = "🗿";
 
@@ -216,12 +213,8 @@ function hunt(
   config: IdolConfig,
 ): IdolState {
   const now = game.worldTime;
-  const quarry =
-    state.quarry === null || isGone(game, state.quarry)
-      ? undefined
-      : game.players.get(state.quarry);
-  if (quarry === undefined || now >= state.huntUntil)
-    return giveUp(state, game);
+  const quarry = livingBody(game, state.quarry);
+  if (quarry === null || now >= state.huntUntil) return giveUp(state, game);
   if (now < state.repathAt) return state;
   const route = planRoute(game.world.map, self.radius, self, quarry) ?? [
     { x: quarry.x, y: quarry.y },
@@ -229,7 +222,7 @@ function hunt(
   return { ...state, route, repathAt: now + config.repathInterval };
 }
 
-/** The state it moves to: a player it sees on its round starts a hunt. */
+/** The state it moves to: a body it sees on its round, player or monster, starts a hunt. */
 function think(
   state: IdolState,
   self: WorldEntity,
@@ -238,7 +231,7 @@ function think(
 ): IdolState {
   const now = game.worldTime;
   if (state.mode === "patrol") {
-    const seen = nearestSeenPlayer(game, self);
+    const seen = nearestSeenBody(game, self, config.ignores);
     if (seen !== null)
       return hunt(
         {
@@ -264,15 +257,12 @@ function attack(
   game: Session,
   config: IdolConfig,
 ): IdolState {
-  const attacking =
-    game.worldTime >= state.attackAt &&
-    touching(game, self, IGNORES).length > 0;
-  if (!attacking) return { ...state, attacking };
-  return {
-    ...state,
-    attacking,
-    attackAt: game.worldTime + config.attackCooldown,
-  };
+  return strikeIf(
+    state,
+    game.worldTime,
+    touching(game, self, config.ignores).length > 0,
+    config.attackCooldown,
+  );
 }
 
 /** Its sounds, each heard, and making noise, out to its range. */
@@ -283,7 +273,7 @@ interface Sounds {
 
 /**
  * Frozen under someone's eyes: it stands still, strikes nothing and its hunt's clock stops, but it
- * still sees, so a player it catches sight of is hunted the moment no one looks.
+ * still sees, so a body it catches sight of is hunted the moment no one looks.
  */
 function freeze(
   state: IdolState,
@@ -297,7 +287,9 @@ function freeze(
   const huntUntil =
     state.mode === "hunt" ? state.huntUntil + dt : state.huntUntil;
   const noticed =
-    state.mode === "patrol" ? nearestSeenPlayer(game, self) : null;
+    state.mode === "patrol"
+      ? nearestSeenBody(game, self, config.ignores)
+      : null;
   const now = game.worldTime;
   return {
     ...state,
@@ -362,7 +354,7 @@ function definition(config: IdolConfig): EntityDefinition<IdolState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      return strikeEach(touching(game, entity, IGNORES), config.damage);
+      return strikeEach(touching(game, entity, config.ignores), config.damage);
     },
     draw(ctx, entity, state) {
       // Held, a pale stone ring stands out on a dark floor, so whoever holds it can tell.
@@ -374,14 +366,14 @@ function definition(config: IdolConfig): EntityDefinition<IdolState> {
 }
 
 /**
- * The idol: a stone figure that cannot die. It walks back and forth between where it arrived and
- * a dark point about thirty cells off, never setting foot on lit ground, its tread heard far off.
- * Once it sees a player all round it, it hunts them for a while: it always knows where they are
- * and goes straight for them at a sprint, and whatever it touches takes a heavy blow. While any
- * living body but another idol looks at it, down its view cone and within its reach, along a
- * clear line, a player or a zombie alike, it cannot move, strike, nor run down its hunt's clock;
- * being near one, within the small circle it sees all round it, does not hold it. It arrives
- * rarely, out of the world's start, the light and every player's sight.
+ * The idol: a stone figure that cannot die. It walks back and forth between where it arrived and a
+ * dark point about thirty cells off, never setting foot on lit ground, its tread heard far off.
+ * Once it sees a body all round it, a player or a monster it does not ignore, it hunts it for a
+ * while: it always knows where it is and goes straight for it at a sprint, and whatever it touches
+ * takes a heavy blow. While any living body but another idol looks at it, down its view cone and
+ * within its reach, along a clear line, a player or a zombie alike, it cannot move, strike, nor run
+ * down its hunt's clock; being near one, within the small circle it sees all round it, does not
+ * hold it. It arrives rarely, out of the world's start, the light and every player's sight.
  */
 export const idol = defineEntity(NAME, (config: IdolConfig) => ({
   ...definition(config),

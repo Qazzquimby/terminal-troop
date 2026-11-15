@@ -4,12 +4,12 @@ import {
   destroyWalls,
   effect,
   bodyById,
+  hasKindTag,
   hurt,
   hurtSinceLastStep,
   isAreaFree,
   isStunned,
   livingBody,
-  livingPlayers,
   rounded,
   sound,
 } from "../../sim/index.js";
@@ -25,7 +25,6 @@ import {
   between,
   clearestNoise,
   walk,
-  nearest,
   preyNear,
   Route,
   Seed,
@@ -34,6 +33,8 @@ import {
   wanderLeg,
   withSeed,
 } from "../hunt.js";
+import type { Hunting } from "../hunt.js";
+import { nearestPrey } from "../bodies.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -46,13 +47,13 @@ const blastUrl = new URL("./sfx/blast.mp3", import.meta.url).href;
  * How a blister roams, hunts and bursts, and how often they come. Distances are in pixels, speeds
  * in pixels per second, times in seconds.
  */
-export interface BlisterConfig {
+export interface BlisterConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
   readonly wanderSpeed: number;
   readonly chaseSpeed: number;
-  /** How far it feels players, walls or no walls. */
+  /** How far it feels the bodies it hunts, walls or no walls. */
   readonly senseRange: number;
   /** Furthest a wander leg heads from where it starts, as the crow flies. */
   readonly wanderRange: number;
@@ -65,8 +66,16 @@ export interface BlisterConfig {
    * Past that it heads straight at its prey and sets itself off at the wall in the way.
    */
   readonly detour: { readonly factor: number; readonly slack: number };
-  /** How near a player, walls or no walls, lights its fuse. */
+  /** How near a body it hunts, walls or no walls, lights its fuse. */
   readonly fuseRange: number;
+  /**
+   * Which hurts light its fuse: those taking at least `minDamage` in one step, 0 for any, and not
+   * dealt by a body of the kind tags in `except`, such as another blister's burst.
+   */
+  readonly fuseOnHurt: {
+    readonly minDamage: number;
+    readonly except: readonly string[];
+  };
   /** Seconds from lighting its fuse to bursting. */
   readonly fuse: number;
   /** How far its burst reaches, and the damage it deals where it stands and at the edge. */
@@ -107,6 +116,8 @@ export const BlisterState = z.object({
   burst: z.boolean(),
   /** Radians, sent to a hundredth. Everyone. */
   facing: rounded(2),
+  /** Its health as of its last step, to tell how hard it was hurt since; null before it. Host. */
+  health: rounded(1).nullable(),
 });
 
 export type BlisterState = z.output<typeof BlisterState>;
@@ -130,6 +141,7 @@ export function freshBlister(seed: number, now: number): BlisterState {
     attacker: null,
     burst: false,
     facing: 0,
+    health: null,
   };
 }
 
@@ -230,35 +242,28 @@ function wander(
   };
 }
 
-/** The players, the only bodies it hunts. */
-function players(game: Session): Point[] {
-  return [...livingPlayers(game)];
-}
-
 /**
  * What it hunts: whatever body hurt it, wherever it is, while it lives; otherwise the nearest
- * player within its sense range, walls or no walls, or, just hurt by no one it can chase, the
- * nearest player anywhere. Null for none.
+ * body it hunts within its sense range, walls or no walls, or, just hurt by no one it can chase,
+ * the nearest anywhere. Null for none.
  */
 function quarry(
   state: BlisterState,
-  self: Point,
+  self: WorldEntity,
   game: Session,
   hurt: boolean,
   config: BlisterConfig,
 ): Point | null {
   const attacker = livingBody(game, state.attacker);
   if (attacker !== null) return attacker;
-  const found = nearest(self, players(game));
-  if (found === null) return null;
-  const distance = Math.hypot(found.x - self.x, found.y - self.y);
-  return hurt || distance <= config.senseRange ? found : null;
+  const range = hurt ? Infinity : config.senseRange;
+  return nearestPrey(game, self, config.ignores, range);
 }
 
-/** What it does next: hunts a player it feels, keeps on after one it lost, or wanders. */
+/** What it does next: hunts a body it feels, keeps on after one it lost, or wanders. */
 function think(
   state: BlisterState,
-  self: Point,
+  self: WorldEntity,
   game: Session,
   hurt: boolean,
   config: BlisterConfig,
@@ -296,21 +301,19 @@ function walledOff(
 }
 
 /**
- * Lights its fuse, if it is not lit, once it is hurt, a player is near enough, or a wall stands
- * in its straight way to its prey.
+ * Lights its fuse, if it is not lit, once it is hurt hard enough by what may light it, a body it
+ * hunts is near enough, or a wall stands in its straight way to its prey.
  */
 function ignite(
   state: BlisterState,
-  self: Point,
+  self: WorldEntity,
   game: Session,
   hurt: boolean,
   config: BlisterConfig,
 ): BlisterState {
   if (state.fuseAt !== null) return state;
-  const closest = nearest(self, players(game));
   const close =
-    closest !== null &&
-    Math.hypot(closest.x - self.x, closest.y - self.y) <= config.fuseRange;
+    nearestPrey(game, self, config.ignores, config.fuseRange) !== null;
   const blocked =
     state.mode === "chase" &&
     state.straight &&
@@ -318,6 +321,24 @@ function ignite(
     walledOff(game.world.map, config.radius, self, state.goal);
   if (!hurt && !close && !blocked) return state;
   return { ...state, fuseAt: game.worldTime + config.fuse };
+}
+
+/**
+ * Whether a hurt dealt by `by` since its last step lights its fuse: one not dealt by a kind it
+ * shrugs off, taking at least the least damage that does.
+ */
+function lightsFuse(
+  by: string | null,
+  state: BlisterState,
+  self: WorldEntity,
+  game: Session,
+  config: BlisterConfig,
+): boolean {
+  const { minDamage, except } = config.fuseOnHurt;
+  if (by !== null && by !== self.id && hasKindTag(game, by, except))
+    return false;
+  const taken = (state.health ?? self.health) - self.health;
+  return minDamage <= 0 || taken >= minDamage;
 }
 
 /** The damage its burst deals to a body `distance` from it, its middle to theirs. */
@@ -434,12 +455,20 @@ function definition(
     update(entity, state, dt, game) {
       if (state.burst) return state;
       const struck = hurtSinceLastStep(game, entity.id);
-      const hurt = struck !== null;
+      // A hurt it shrugs off neither lights its fuse nor sends it after the nearest body.
+      const hurt =
+        struck !== null && lightsFuse(struck.by, state, entity, game, config);
       const by = struck?.by ?? null;
       const sensed =
         by === null || by === entity.id ? state : { ...state, attacker: by };
       const thought = think(sensed, entity, game, hurt, config);
-      const lit = ignite(thought, entity, game, hurt, config);
+      const lit = ignite(
+        { ...thought, health: entity.health },
+        entity,
+        game,
+        hurt,
+        config,
+      );
       if (state.fuseAt === null && lit.fuseAt !== null)
         effect(game, { at: entity, sound: sounds.fuse }, entity);
       if (due(lit, game)) return burst(entity, lit, game, config, sounds);
@@ -473,11 +502,11 @@ function burstStunned(
 
 /**
  * A blister: comes alone, out of the dark, and makes no sound but its fuse and its burst. It
- * wanders towards any noise, feels players through walls nearby and chases them down, by a route
- * where one is short enough, else straight at them. Near a player, hurt, or stopped by a wall in
- * its straight way, it lights a short fuse and keeps coming, then bursts, knocking the walls
- * round it down and hurting everything near, worst nearest. Once hurt, it goes for whatever body
- * hurt it, wherever it is, or with none to chase, for the nearest player.
+ * wanders towards any noise, feels bodies through walls nearby, players and monsters alike, and
+ * chases them down, by a route where one is short enough, else straight at them. Near one, hurt, or
+ * stopped by a wall in its straight way, it lights a short fuse and keeps coming, then bursts,
+ * knocking the walls round it down and hurting everything near, worst nearest. Once hurt, it goes
+ * for whatever body hurt it, wherever it is, or with none to chase, for the nearest body.
  */
 export const blister = defineEntity(NAME, (config: BlisterConfig) => {
   const sounds: Sounds = {

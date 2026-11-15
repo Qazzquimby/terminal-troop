@@ -29,7 +29,7 @@ import {
   wanderLeg,
   withSeed,
 } from "../hunt.js";
-import type { Prey } from "../hunt.js";
+import type { Hunting, Prey } from "../hunt.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -43,7 +43,7 @@ const biteUrl = new URL("./sfx/bite.mp3", import.meta.url).href;
  * How a lurcher roams, listens and charges, and how often they come. Distances are in pixels,
  * speeds in pixels per second, times in seconds.
  */
-export interface LurcherConfig {
+export interface LurcherConfig extends Hunting {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -115,9 +115,6 @@ const NAME = "lurcher";
 
 /** It pays no mind to its own kind's noise. */
 const DEAF_TO = [NAME];
-
-/** What it does not bite: its own kind, and what is not alive. */
-const SPARES = [NAME, INERT_TAG];
 
 /** A fresh lurcher's state at world time `now`, its random draws seeded by `seed`. */
 export function freshLurcher(seed: number, now: number): LurcherState {
@@ -305,9 +302,12 @@ function think(
   return settle(listened, game, config);
 }
 
-/** The bodies it touches. */
-function touching(self: Prey, game: Session): Prey[] {
-  return preyNear(game, self, (prey) => self.radius + prey.radius + 2, SPARES);
+/** The bodies it touches and bites: any but the kinds it ignores, and what is not alive. */
+function touching(self: Prey, game: Session, config: LurcherConfig): Prey[] {
+  return preyNear(game, self, (prey) => self.radius + prey.radius + 2, [
+    ...config.ignores,
+    INERT_TAG,
+  ]);
 }
 
 /** Bites once its cooldown is over, when it touches anything it bites. */
@@ -318,7 +318,7 @@ function bite(
   config: LurcherConfig,
 ): LurcherState {
   const now = game.worldTime;
-  const biting = now >= state.biteAt && touching(self, game).length > 0;
+  const biting = now >= state.biteAt && touching(self, game, config).length > 0;
   return biting
     ? { ...state, biting, biteAt: now + config.contactCooldown }
     : { ...state, biting };
@@ -442,7 +442,7 @@ function definition(config: LurcherConfig): EntityDefinition<LurcherState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.biting) return [];
-      return strikeEach(touching(entity, game), config.contactDamage);
+      return strikeEach(touching(entity, game, config), config.contactDamage);
     },
     draw(ctx, entity, state) {
       drawLurcher(ctx, entity, state);

@@ -41,7 +41,8 @@ import {
   walk,
   Waypoint,
 } from "../hunt.js";
-import { drawRing } from "../bodies.js";
+import { drawRing, nearestPrey, seenPrey } from "../bodies.js";
+import type { Hunting } from "../hunt.js";
 import { avoidingLight, planRoute } from "../route.js";
 import type { Avoid } from "../route.js";
 import { arrivals } from "../spawning.js";
@@ -57,16 +58,16 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
  * How magpie beetles nest, forage for scrap and defend their hoard. Distances in pixels, times in
  * sim seconds.
  */
-export interface MagpieConfig {
+export interface MagpieConfig extends Hunting {
   /** How the world's spawner brings groups; each group shares one nest. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
   /** Its speed foraging and guarding, in pixels a second. */
   readonly wanderSpeed: number;
-  /** Its speed chasing a player, in pixels a second. */
+  /** Its speed chasing a body, in pixels a second. */
   readonly chaseSpeed: number;
-  /** How far it sees players and scrap within its cone or surroundings. */
+  /** How far it sees bodies and scrap within its cone or surroundings. */
   readonly sightRange: number;
   /** The points it searches round its nest: how many, how far out, and spots tried for them. */
   readonly search: {
@@ -78,7 +79,7 @@ export interface MagpieConfig {
   readonly nestRadius: number;
   /** How far from the nest's middle it lays the scrap it brings. */
   readonly dropRadius: number;
-  /** How near a player it sees, away from its nest, must be to spook it. */
+  /** How near a body it sees, away from its nest, must be to spook it. */
   readonly spookRange: number;
   readonly spookSeconds: number;
   readonly guardSeconds: number;
@@ -251,7 +252,10 @@ const claimedBy = (instance: ItemInstance, nestId: number) =>
 const hoard = (game: Session, nestId: number) =>
   itemInstances(game).filter((instance) => claimedBy(instance, nestId));
 
-/** A living player carrying an item claimed by the nest `nestId`; null for none. */
+/**
+ * A living player carrying an item claimed by the nest `nestId`; null for none. Only players pick
+ * scrap up yet; a monster that could would count too.
+ */
 function thief(game: Session, nestId: number): Player | null {
   for (const instance of hoard(game, nestId)) {
     const { place } = instance;
@@ -347,9 +351,9 @@ function scrapInSight(
 /**
  * The mode it moves to. A thief of its nest's scrap draws its revenge, which holds until the
  * thief dies or gets far from what it stole. `hurt` since its last step, it is spooked by
- * whatever body hurt it, or by the nearest player when it was no one's doing. A spook or guard
- * runs out back to foraging. Foraging or guarding, a player it sees near its nest sets it
- * guarding; foraging away from its nest, a player it sees close by spooks it.
+ * whatever body hurt it, or by the nearest body it hunts when it was no one's doing. A spook or
+ * guard runs out back to foraging. Foraging or guarding, a body it sees near its nest, a player or
+ * a monster, sets it guarding; foraging away from its nest, one it sees close by spooks it.
  */
 function think(
   state: MagpieState,
@@ -367,7 +371,7 @@ function think(
   if (taker !== null) return enter(state, "revenge", now, now, taker.id);
   if (hurt !== null) {
     const attacker = hurt.by === self.id ? null : livingBody(game, hurt.by);
-    const quarry = attacker ?? nearest(self, livingPlayers(game));
+    const quarry = attacker ?? nearestPrey(game, self, config.ignores);
     return enter(state, "spook", now + config.spookSeconds, now, quarry?.id);
   }
   const over = state.mode !== "wander" && now >= state.until;
@@ -379,16 +383,14 @@ function think(
   if (state.mode === "spook") return state;
   const nest = nestOf(state);
   const sees = seer(game, self, state, config);
-  const seen = livingPlayers(game).filter((player) => sees(player));
-  if (seen.some((player) => distance(player, nest) <= config.nestRadius)) {
+  const seen = seenPrey(game, self, config.ignores);
+  if (seen.some((body) => distance(body, nest) <= config.nestRadius)) {
     const until = now + config.guardSeconds;
     return state.mode === "guard"
       ? { ...state, until }
       : enter(state, "guard", until, now);
   }
-  const close = seen.find(
-    (player) => distance(player, self) <= config.spookRange,
-  );
+  const close = seen.find((body) => distance(body, self) <= config.spookRange);
   if (
     state.mode === "wander" &&
     close !== undefined &&
@@ -719,11 +721,12 @@ function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
 /**
  * The magpie beetle: arrives in groups of a few, in the dark, out of sight, and settles a nest
  * where it lands. Each roams a ring of spots round the nest, and any scrap it sees it carries home,
- * held up for all to see, and lays by the nest as the nest's own; then it guards a while. A player
- * it sees near the nest sets it guarding; one that comes close while it is away spooks it into a
- * short chase, as does being hurt, which also makes it drop what it carries. A player who picks up
- * scrap the nest claimed draws the whole nest's revenge: they hunt that player, light or no light,
- * until the player dies or leaves the stolen scrap behind. It keeps out of light otherwise.
+ * held up for all to see, and lays by the nest as the nest's own; then it guards a while. Any body
+ * it sees near the nest, a player or a monster, sets it guarding; one that comes close while it is
+ * away spooks it into a short chase, as does being hurt, which also makes it drop what it carries.
+ * A player who picks up scrap the nest claimed draws the whole nest's revenge: they hunt that
+ * player, light or no light, until the player dies or leaves the stolen scrap behind. It keeps out
+ * of light otherwise.
  */
 export const magpie = defineEntity(NAME, (config: MagpieConfig) => ({
   ...definition(config),

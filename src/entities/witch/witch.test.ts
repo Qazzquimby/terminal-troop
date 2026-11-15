@@ -8,6 +8,7 @@ import {
 import {
   createSession,
   hurt,
+  hurtPlayer,
   mulberry32,
   registerContent,
   registerEntityType,
@@ -194,4 +195,50 @@ test("once she kills, she retreats at once", () => {
   run(game, config.warnSeconds + 1.5);
   expect(game.local.health).toBe(0);
   expect(["retreat", "dormant"]).toContain(stateOf(witch).mode);
+});
+
+/** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
+function postAt(game: Session, x: number, y: number): WorldEntity {
+  if (!game.kindIds.has("post"))
+    registerEntityType(game, "post", {
+      radius: 10,
+      maxHealth: 1000,
+      data: z.object({}),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "post", x, y, {});
+}
+
+test("any body close by wakes her as a player does, and she runs it down", () => {
+  const game = world(100, 300);
+  hurtPlayer(game, game.local, Infinity);
+  const witch = witchAt(game, 650, 300);
+  const post = postAt(game, 500, 300);
+  run(game, 0.1);
+  expect(stateOf(witch).mode).toBe("warning");
+  run(game, config.warnSeconds);
+  expect(stateOf(witch).mode).toBe("enraged");
+  run(game, 1);
+  expect(post.health).toBeLessThan(1000);
+});
+
+test("a kind she ignores does not wake her", () => {
+  const game = world(100, 300, { ...config, ignores: ["witch", "post"] });
+  hurtPlayer(game, game.local, Infinity);
+  const witch = witchAt(game, 650, 300);
+  postAt(game, 500, 300);
+  run(game, config.warnSeconds + 0.5);
+  expect(stateOf(witch).mode).toBe("dormant");
+});
+
+test("she sleeps again away from every body she hunts, not just the players", () => {
+  const game = world(100, 550);
+  const witch = witchAt(game, 450, 300);
+  const post = postAt(game, 450, 450);
+  witch.data = { ...stateOf(witch), mode: "enraged", until: game.worldTime };
+  run(game, 4);
+  expect(stateOf(witch).mode).toBe("dormant");
+  expect(Math.hypot(witch.x - post.x, witch.y - post.y)).toBeGreaterThan(
+    config.retreat.clearance - witch.radius,
+  );
 });
