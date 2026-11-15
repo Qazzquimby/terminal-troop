@@ -66,6 +66,12 @@ export interface Sfx {
     options?: StreamOptions,
   ) => SoundHandle;
   stop: (id: string, fadeTime?: number) => void;
+  /**
+   * Hears every positioned sound still playing from `listener` now, as sounds started from here
+   * on do: a long sound fades and pans as the listener moves off from where it was made, rather
+   * than keeping the mix it started with. Null hears them unpositioned.
+   */
+  listen: (listener: Point | null) => void;
   stopAll: (fadeTime?: number) => void;
   /** Scales every sound; 0..1. */
   setMasterVolume: (value: number) => void;
@@ -109,6 +115,18 @@ export function rangedFalloff(
   return { ...falloff, full: Math.min(falloff.full, silent / 2), silent };
 }
 
+/** Where a sound plays from, for whom and how loud, on its way out. */
+interface Placed {
+  readonly gain: GainNode;
+  setVolume: (value: number) => void;
+  setPosition: (origin: Point | null, listener: Point | null) => void;
+  /** Mixes it anew for `listener`, from where it was last placed. */
+  listen: (listener: Point | null) => void;
+  /** Leaves its mix as it is from now on, as it fades out. */
+  release: () => void;
+  disconnect: () => void;
+}
+
 /** A handle to a sound that never played: there is nothing to stop, fade or move. */
 const silentHandle: SoundHandle = {
   stop: () => undefined,
@@ -139,6 +157,8 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
   const activeLoops = new Map<string, SoundHandle>();
   const pendingLoops = new Map<string, symbol>();
   const streams = new Set<SoundHandle>();
+  /** Every positioned sound playing and not fading out, mixed anew as the listener moves. */
+  const positioned = new Set<Placed>();
 
   function getAudioContext(): AudioContext {
     audioContext ??= new AudioContext();
@@ -214,6 +234,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
       stop(fadeTime = 0.1) {
         if (stopped) return;
         stopped = true;
+        out.release();
 
         const now = context.currentTime;
         gain.gain.cancelScheduledValues(now);
@@ -239,7 +260,8 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
 
   /**
    * A gain and a panner, into the master, that place a sound at `volume` from `origin` for
-   * `listener`, fading by `fades`; sound goes in at the gain.
+   * `listener`, fading by `fades`; sound goes in at the gain. While it has an origin, `listen`
+   * mixes it anew for wherever the listener goes.
    */
   function placed(
     context: AudioContext,
@@ -247,31 +269,53 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     origin: Point | null,
     listener: Point | null,
     volume: number,
-  ) {
-    let mix = spatialMix(origin, listener, fades);
+  ): Placed {
+    // Copied: the origin is where the sound was made, not whatever the caller's point does next.
+    const copy = (point: Point | null) =>
+      point === null ? null : { x: point.x, y: point.y };
+    let from = copy(origin);
+    let mix = spatialMix(from, listener, fades);
     let baseVolume = volume;
+    let released = false;
     const gain = context.createGain();
     const panner = context.createStereoPanner();
     gain.gain.value = mix.volume * baseVolume;
     panner.pan.value = mix.pan;
     gain.connect(panner);
     panner.connect(getMaster(context));
-    return {
+    const out: Placed = {
       gain,
       setVolume(value: number): void {
         baseVolume = value;
         gain.gain.value = mix.volume * baseVolume;
       },
       setPosition(newOrigin: Point | null, newListener: Point | null): void {
-        mix = spatialMix(newOrigin, newListener, fades);
+        from = copy(newOrigin);
+        mix = spatialMix(from, newListener, fades);
         gain.gain.value = mix.volume * baseVolume;
         panner.pan.value = mix.pan;
+        if (from === null || released) positioned.delete(out);
+        else positioned.add(out);
+      },
+      listen(newListener: Point | null): void {
+        out.setPosition(from, newListener);
+      },
+      release(): void {
+        released = true;
+        positioned.delete(out);
       },
       disconnect(): void {
+        out.release();
         gain.disconnect();
         panner.disconnect();
       },
     };
+    if (from !== null) positioned.add(out);
+    return out;
+  }
+
+  function listen(listener: Point | null): void {
+    for (const out of positioned) out.listen(listener);
   }
 
   /** Resolves to null if a newer playLoop/stop for the same id superseded this one. */
@@ -347,6 +391,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
       stop(fadeTime = 0.1) {
         if (stopped) return;
         stopped = true;
+        out.release();
         streams.delete(handle);
         const fade = Math.max(fadeTime, 0);
         const now = context.currentTime;
@@ -388,6 +433,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     playLoop,
     stream,
     stop,
+    listen,
     stopAll,
     setMasterVolume,
     audioContext: getAudioContext,

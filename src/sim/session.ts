@@ -346,6 +346,8 @@ export function updateSession(
 
   followHealth(game);
   followItemSounds(game);
+  // Sounds still playing are heard from where the local player is now, a ghost's view included.
+  game.sfx.listen(game.local);
   hearStatuses(game);
 }
 
