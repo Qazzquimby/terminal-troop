@@ -20,18 +20,18 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Player, Point, Session, WorldEntity } from "../../sim/index.js";
-import type { SkulkerConfig } from "./index.js";
+import type { StalkerConfig } from "./index.js";
 import {
-  freshSkulker,
-  skulker as skulkerContent,
-  SkulkerState,
+  freshStalker,
+  stalker as stalkerContent,
+  StalkerState,
 } from "./index.js";
 
 const DT = 1 / 60;
-const { skulker: config } = testEntitiesConfig;
+const { stalker: config } = testEntitiesConfig;
 
 /** The dev square, 18x12 cells of 50px, all dark; the local player stands at (x, y). */
-function world(x: number, y: number, skulker: SkulkerConfig = config): Session {
+function world(x: number, y: number, stalker: StalkerConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
@@ -45,7 +45,7 @@ function world(x: number, y: number, skulker: SkulkerConfig = config): Session {
     setVolume: () => undefined,
     setPosition: () => undefined,
   });
-  registerContent(game, [skulkerContent.create({ skulker })]);
+  registerContent(game, [stalkerContent.create({ stalker })]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   return game;
 }
@@ -78,12 +78,12 @@ function run(game: Session, seconds: number, look: Point): void {
   }
 }
 
-function skulkerAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(game, "skulker", x, y, freshSkulker(game.worldTime));
+function stalkerAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(game, "stalker", x, y, freshStalker(game.worldTime));
 }
 
-const stateOf = (entity: WorldEntity): SkulkerState =>
-  SkulkerState.parse(entity.data);
+const stateOf = (entity: WorldEntity): StalkerState =>
+  StalkerState.parse(entity.data);
 
 const sounded = (game: Session, file: string): boolean =>
   vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith(file));
@@ -106,11 +106,11 @@ function watches(
 
 test("it creeps up behind a player faster than a walk and kills it at a touch", () => {
   const game = world(700, 300);
-  const skulker = skulkerAt(game, 150, 300);
+  const stalker = stalkerAt(game, 150, 300);
   run(game, 0.5, { x: 900, y: 300 });
 
-  expect(stateOf(skulker).mode).toBe("hunt");
-  expect(skulker.vx).toBeCloseTo(config.speed);
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stalker.vx).toBeCloseTo(config.speed);
   expect(config.speed).toBeCloseTo(testSimConfig.player.speed * 1.2);
 
   run(game, 2.5, { x: 900, y: 300 });
@@ -120,36 +120,36 @@ test("it creeps up behind a player faster than a walk and kills it at a touch", 
 
 test("caught in a player's gaze, it hisses and backs off home for the retreat's length, then hunts again", () => {
   const game = world(700, 300);
-  const skulker = skulkerAt(game, 200, 300);
+  const stalker = stalkerAt(game, 200, 300);
   run(game, 0.5, { x: 900, y: 300 });
-  const home = stateOf(skulker).home;
+  const home = stateOf(stalker).home;
   expect(home).toEqual({ x: 200, y: 300 });
-  const before = skulker.x;
+  const before = stalker.x;
   expect(before).toBeGreaterThan(200);
 
   run(game, DT, { x: 0, y: 300 });
-  expect(stateOf(skulker).mode).toBe("retreat");
+  expect(stateOf(stalker).mode).toBe("retreat");
   expect(sounded(game, "retreat.mp3")).toBe(true);
   run(game, 1, { x: 0, y: 300 });
-  expect(skulker.x).toBeLessThan(before);
+  expect(stalker.x).toBeLessThan(before);
   expect(game.local.health).toBe(game.local.maxHealth);
 
   // Looked away from, it keeps retreating until the time is up, then hunts.
   run(game, config.retreatSeconds - 1.5, { x: 900, y: 300 });
-  expect(stateOf(skulker).mode).toBe("retreat");
+  expect(stateOf(stalker).mode).toBe("retreat");
   run(game, 1, { x: 900, y: 300 });
-  expect(stateOf(skulker).mode).toBe("hunt");
+  expect(stateOf(stalker).mode).toBe("hunt");
 });
 
 test("a retreat keeps its distance from a player where it can", () => {
   const game = world(700, 300);
-  const skulker = skulkerAt(game, 300, 300);
+  const stalker = stalkerAt(game, 300, 300);
   run(game, DT, { x: 0, y: 300 });
-  expect(stateOf(skulker).mode).toBe("retreat");
-  const start = Math.hypot(skulker.x - 700, skulker.y - 300);
+  expect(stateOf(stalker).mode).toBe("retreat");
+  const start = Math.hypot(stalker.x - 700, stalker.y - 300);
   for (let i = 0; i < 60; i++) {
     run(game, DT, { x: 0, y: 300 });
-    expect(Math.hypot(skulker.x - 700, skulker.y - 300)).toBeGreaterThanOrEqual(
+    expect(Math.hypot(stalker.x - 700, stalker.y - 300)).toBeGreaterThanOrEqual(
       start - 1,
     );
   }
@@ -169,33 +169,33 @@ test("its hunt goes round another player's gaze, never stepping into it", () => 
   watcher.aim = (Math.PI * 3) / 4;
   watcher.taim = (Math.PI * 3) / 4;
   game.players.set(watcher.id, watcher);
-  const skulker = skulkerAt(game, 60, 300);
+  const stalker = stalkerAt(game, 60, 300);
   const crossing = { x: 400, y: 404 };
   expect(watches(game, watcher, crossing, range)).toBe(true);
 
   for (let i = 0; i < 240 && game.local.health > 0; i++) {
     run(game, DT, { x: 900, y: 560 });
-    expect(stateOf(skulker).mode).toBe("hunt");
-    expect(watches(game, watcher, skulker, range)).toBe(false);
+    expect(stateOf(stalker).mode).toBe("hunt");
+    expect(watches(game, watcher, stalker, range)).toBe(false);
   }
   expect(game.local.health).toBe(0);
 });
 
 test("hurt, it shrieks and rages at the nearest living thing, watched or not, then hunts again", () => {
   const game = world(700, 300);
-  const skulker = skulkerAt(game, 400, 300);
+  const stalker = stalkerAt(game, 400, 300);
   run(game, DT, { x: 0, y: 300 });
-  expect(stateOf(skulker).mode).toBe("retreat");
+  expect(stateOf(stalker).mode).toBe("retreat");
 
-  hurt(game, skulker, 15, game.localId);
+  hurt(game, stalker, 15, game.localId);
   run(game, DT, { x: 0, y: 300 });
-  expect(stateOf(skulker).mode).toBe("enraged");
+  expect(stateOf(stalker).mode).toBe("enraged");
   expect(sounded(game, "enraged.mp3")).toBe(true);
   run(game, 1.5, { x: 0, y: 300 });
   expect(game.local.health).toBe(0);
 
   run(game, config.enragedSeconds, { x: 0, y: 300 });
-  expect(stateOf(skulker).mode).toBe("hunt");
+  expect(stateOf(stalker).mode).toBe("hunt");
 });
 
 test("hurt by another body, it rages at that body rather than the player nearer it", () => {
@@ -206,21 +206,21 @@ test("hurt by another body, it rages at that body rather than the player nearer 
     data: z.object({}),
     draw: () => undefined,
   });
-  const skulker = skulkerAt(game, 400, 300);
+  const stalker = stalkerAt(game, 400, 300);
   const post = spawnEntity(game, "post", 100, 300, {});
-  hurt(game, skulker, 15, post.id);
+  hurt(game, stalker, 15, post.id);
   run(game, DT, { x: 900, y: 300 });
-  expect(stateOf(skulker).mode).toBe("enraged");
-  expect(stateOf(skulker).foe).toBe(post.id);
-  expect(skulker.vx).toBeLessThan(0);
+  expect(stateOf(stalker).mode).toBe("enraged");
+  expect(stateOf(stalker).foe).toBe(post.id);
+  expect(stalker.vx).toBeLessThan(0);
   run(game, 1.5, { x: 900, y: 300 });
   expect(post.health).toBeLessThan(post.maxHealth);
-  expect(lastHurtBy(game, post.id)).toBe(skulker.id);
+  expect(lastHurtBy(game, post.id)).toBe(stalker.id);
 });
 
 /**
  * A body with eyes but no will at (x, y), looking left down a player's cone out to `range`, or
- * blind for 0, which a skulker hunts like any other.
+ * blind for 0, which a stalker hunts like any other.
  */
 function lookoutAt(
   game: Session,
@@ -245,11 +245,11 @@ function lookoutAt(
 test("with no player about, it creeps up on the nearest body and strikes it", () => {
   const game = world(100, 550);
   hurtPlayer(game, game.local, Infinity);
-  const skulker = skulkerAt(game, 650, 300);
+  const stalker = stalkerAt(game, 650, 300);
   const prey = lookoutAt(game, 200, 300, 0);
   run(game, 0.5, { x: 900, y: 300 });
-  expect(stateOf(skulker).mode).toBe("hunt");
-  expect(skulker.vx).toBeLessThan(0);
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stalker.vx).toBeLessThan(0);
   run(game, 2.5, { x: 900, y: 300 });
   expect(prey.health).toBeLessThan(1000);
 });
@@ -257,8 +257,8 @@ test("with no player about, it creeps up on the nearest body and strikes it", ()
 test("any body's gaze sends it back, as far as that body looks", () => {
   const game = world(100, 550);
   hurtPlayer(game, game.local, Infinity);
-  const near = skulkerAt(game, 500, 300);
-  const far = skulkerAt(game, 300, 100);
+  const near = stalkerAt(game, 500, 300);
+  const far = stalkerAt(game, 300, 100);
   lookoutAt(game, 700, 300, 300);
   lookoutAt(game, 700, 100, 300);
   run(game, DT, { x: 900, y: 300 });
@@ -269,9 +269,9 @@ test("any body's gaze sends it back, as far as that body looks", () => {
 test("its own kind's gaze does not send it back", () => {
   const game = world(100, 550);
   hurtPlayer(game, game.local, Infinity);
-  const skulker = skulkerAt(game, 400, 300);
-  const other = skulkerAt(game, 600, 300);
+  const stalker = stalkerAt(game, 400, 300);
+  const other = stalkerAt(game, 600, 300);
   other.data = { ...stateOf(other), facing: Math.PI };
   run(game, DT, { x: 900, y: 300 });
-  expect(stateOf(skulker).mode).toBe("hunt");
+  expect(stateOf(stalker).mode).toBe("hunt");
 });

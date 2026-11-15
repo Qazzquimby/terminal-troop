@@ -55,10 +55,10 @@ const pickUpUrl = new URL("./sfx/pick-up.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 
 /**
- * How magpie beetles nest, forage for scrap and defend their hoard. Distances in pixels, times in
+ * How hoarders nest, forage for scrap and defend their hoard. Distances in pixels, times in
  * sim seconds.
  */
-export interface MagpieConfig extends Hunting {
+export interface HoarderConfig extends Hunting {
   /** How the world's spawner brings groups; each group shares one nest. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -102,7 +102,7 @@ export interface MagpieConfig extends Hunting {
   };
 }
 
-const NAME = "magpie";
+const NAME = "hoarder";
 
 const GLYPH = "🪲";
 
@@ -133,7 +133,7 @@ const COLOURS = {
  * carry. `seen` holds a bit for each of `points` visited; `goal` is the one it heads for.
  * `fetching` is the lying scrap it heads for, `carrying` the item it carries.
  */
-export const MagpieState = z.object({
+export const HoarderState = z.object({
   mode: z.enum(["wander", "guard", "spook", "revenge"]),
   until: Time,
   nest: Waypoint.nullable(),
@@ -152,12 +152,12 @@ export const MagpieState = z.object({
   facing: rounded(2),
 });
 
-export type MagpieState = z.output<typeof MagpieState>;
+export type HoarderState = z.output<typeof HoarderState>;
 
-type Mode = MagpieState["mode"];
+type Mode = HoarderState["mode"];
 
-/** A fresh magpie beetle's state at world time `now`, yet to settle a nest. */
-export function freshMagpie(now: number): MagpieState {
+/** A fresh hoarder's state at world time `now`, yet to settle a nest. */
+export function freshHoarder(now: number): HoarderState {
   return {
     mode: "wander",
     until: now,
@@ -179,7 +179,7 @@ export function freshMagpie(now: number): MagpieState {
 }
 
 /** Its nest, which it settles before it first steps. */
-function nestOf(state: MagpieState): Point {
+function nestOf(state: HoarderState): Point {
   return state.nest ?? { x: 0, y: 0 };
 }
 
@@ -199,7 +199,7 @@ function pointNear(at: Point, range: number): Point {
 function searchPoints(
   game: Session,
   nest: Point,
-  config: MagpieConfig,
+  config: HoarderConfig,
 ): Point[] {
   const { world } = game;
   const points: Point[] = [];
@@ -218,17 +218,17 @@ function searchPoints(
  * that one: so a group that arrives together shares one nest. Then lays its search points.
  */
 function settle(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-  config: MagpieConfig,
-): MagpieState {
+  config: HoarderConfig,
+): HoarderState {
   const kind = game.kindIds.get(NAME);
   let nest: Point = { x: self.x, y: self.y };
   let nestId = 1 + Math.floor(Math.random() * (2 ** 31 - 2));
   for (const other of game.entities.values()) {
     if (other.kind !== kind || other.id === self.id) continue;
-    const parsed = MagpieState.safeParse(other.data);
+    const parsed = HoarderState.safeParse(other.data);
     const theirs = parsed.success ? parsed.data.nest : null;
     if (theirs === null || !parsed.success) continue;
     if (distance(theirs, self) > config.nestRadius) continue;
@@ -268,8 +268,8 @@ function thief(game: Session, nestId: number): Player | null {
 /** Whether its revenge on `quarry` holds: alive, and still near some of what it stole. */
 function revengeHolds(
   game: Session,
-  state: MagpieState,
-  config: MagpieConfig,
+  state: HoarderState,
+  config: HoarderConfig,
 ): boolean {
   const quarry = livingBody(game, state.quarry);
   if (quarry === null) return false;
@@ -279,10 +279,10 @@ function revengeHolds(
 }
 
 /** Its eyes: a player's view cone and surroundings, along its facing, out to its sight range. */
-function magpieEyes(
-  state: MagpieState,
+function hoarderEyes(
+  state: HoarderState,
   game: Session,
-  config: MagpieConfig,
+  config: HoarderConfig,
 ): Eyes {
   const { coneAngle, surroundingsRadius } = game.config.vision;
   const range = config.sightRange;
@@ -296,21 +296,21 @@ function magpieEyes(
 function seer(
   game: Session,
   self: WorldEntity,
-  state: MagpieState,
-  config: MagpieConfig,
+  state: HoarderState,
+  config: HoarderConfig,
 ): (at: Point) => boolean {
-  const sight = { x: self.x, y: self.y, ...magpieEyes(state, game, config) };
+  const sight = { x: self.x, y: self.y, ...hoarderEyes(state, game, config) };
   return (at) => inView(game, sight, at);
 }
 
 /** `state` in `mode` until `until`, after `quarry`, its route planned anew at once. */
 function enter(
-  state: MagpieState,
+  state: HoarderState,
   mode: Mode,
   until: number,
   now: number,
   quarry: string | null = null,
-): MagpieState {
+): HoarderState {
   return {
     ...state,
     mode,
@@ -330,7 +330,7 @@ function enter(
 function scrapInSight(
   game: Session,
   self: WorldEntity,
-  state: MagpieState,
+  state: HoarderState,
   sees: (at: Point) => boolean,
 ): WorldEntity | null {
   const lying = itemInstances(game, SCRAP).flatMap((instance) =>
@@ -356,12 +356,12 @@ function scrapInSight(
  * a monster, sets it guarding; foraging away from its nest, one it sees close by spooks it.
  */
 function think(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-  config: MagpieConfig,
+  config: HoarderConfig,
   hurt: HurtRecord | null,
-): MagpieState {
+): HoarderState {
   const now = game.worldTime;
   if (state.mode === "revenge")
     return revengeHolds(game, state, config)
@@ -417,7 +417,7 @@ function routing(game: Session, mode: Mode): Avoid | undefined {
 function routeTo(
   game: Session,
   self: WorldEntity,
-  state: MagpieState,
+  state: HoarderState,
   to: Point,
 ): Point[] {
   return (
@@ -432,7 +432,7 @@ function routeTo(
 }
 
 /** The index of an unseen search point near it, drawn among the nearest few; null for none. */
-function nextGoal(self: Point, state: MagpieState): number | null {
+function nextGoal(self: Point, state: HoarderState): number | null {
   const unseen = state.points
     .map((point, index) => ({ point, index }))
     .filter(({ index }) => (state.seen & (1 << index)) === 0)
@@ -443,10 +443,10 @@ function nextGoal(self: Point, state: MagpieState): number | null {
 
 /** Visits its search points: at each it marks it seen, and heads for another unseen one near. */
 function search(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-): MagpieState {
+): HoarderState {
   if (state.route.length > 0) return state;
   const all = (1 << state.points.length) - 1;
   const marked =
@@ -464,7 +464,7 @@ function search(
 }
 
 /** A free spot within the drop radius of its nest, or the nest itself when none is found. */
-function dropSpot(game: Session, nest: Point, config: MagpieConfig): Point {
+function dropSpot(game: Session, nest: Point, config: HoarderConfig): Point {
   for (let attempt = 0; attempt < 8; attempt++) {
     const at = pointNear(nest, config.dropRadius);
     if (isAreaFree(game.world.map, at.x, at.y, game.config.worldItems.radius))
@@ -497,12 +497,12 @@ function lay(
  * heads for it and picks it up; otherwise searches.
  */
 function forage(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-  config: MagpieConfig,
+  config: HoarderConfig,
   sounds: Sounds,
-): MagpieState {
+): HoarderState {
   const now = game.worldTime;
   const nest = nestOf(state);
   if (state.carrying !== null) {
@@ -550,11 +550,11 @@ function forage(
 
 /** Patrols round its nest: a new spot within the nest's radius each time it gets to one. */
 function patrol(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-  config: MagpieConfig,
-): MagpieState {
+  config: HoarderConfig,
+): HoarderState {
   if (state.route.length > 0) return state;
   const to = pointNear(nestOf(state), config.nestRadius);
   if (!isAreaFree(game.world.map, to.x, to.y, self.radius)) return state;
@@ -563,11 +563,11 @@ function patrol(
 
 /** Chases its quarry, replanning when due. */
 function chase(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-  config: MagpieConfig,
-): MagpieState {
+  config: HoarderConfig,
+): HoarderState {
   const now = game.worldTime;
   const quarry = livingBody(game, state.quarry);
   if (quarry === null || now < state.repathAt) return state;
@@ -582,8 +582,8 @@ function chase(
 function inReach(
   game: Session,
   self: WorldEntity,
-  state: MagpieState,
-  config: MagpieConfig,
+  state: HoarderState,
+  config: HoarderConfig,
 ) {
   if (state.mode !== "spook" && state.mode !== "revenge") return [];
   return preyNear(
@@ -607,8 +607,8 @@ interface Sounds {
  */
 function cue(
   self: WorldEntity,
-  previous: MagpieState,
-  next: MagpieState,
+  previous: HoarderState,
+  next: HoarderState,
   game: Session,
   sounds: Sounds,
 ): void {
@@ -625,10 +625,10 @@ function cue(
 
 /** Chitters once its time comes, while foraging or guarding. */
 function chitter(
-  state: MagpieState,
+  state: HoarderState,
   now: number,
-  config: MagpieConfig,
-): MagpieState {
+  config: HoarderConfig,
+): HoarderState {
   if (now < state.chitterAt) return state;
   if (state.mode === "spook" || state.mode === "revenge") return state;
   return { ...state, chitterAt: now + between(Math.random, config.chitterGap) };
@@ -636,22 +636,22 @@ function chitter(
 
 /** Drops what it carries where it stands, unclaimed, when hurt. */
 function fumble(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-): MagpieState {
+): HoarderState {
   if (state.carrying === null) return state;
   lay(game, self, state.carrying, { x: self.x, y: self.y });
   return { ...state, carrying: null };
 }
 
 function act(
-  state: MagpieState,
+  state: HoarderState,
   self: WorldEntity,
   game: Session,
-  config: MagpieConfig,
+  config: HoarderConfig,
   sounds: Sounds,
-): MagpieState {
+): HoarderState {
   switch (state.mode) {
     case "wander":
       return forage(state, self, game, config, sounds);
@@ -663,7 +663,7 @@ function act(
   }
 }
 
-function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
+function definition(config: HoarderConfig): EntityDefinition<HoarderState> {
   const sounds: Sounds = {
     chitter: sound({ url: chitterUrl, range: config.sounds.chitter }),
     alarm: sound({ url: alarmUrl, range: config.sounds.alarm }),
@@ -673,8 +673,8 @@ function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
-    data: MagpieState,
-    eyes: (_entity, state, game) => magpieEyes(state, game, config),
+    data: HoarderState,
+    eyes: (_entity, state, game) => hoarderEyes(state, game, config),
     update(entity, state, dt, game) {
       const now = game.worldTime;
       const settled =
@@ -719,7 +719,7 @@ function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
 }
 
 /**
- * The magpie beetle: arrives in groups of a few, in the dark, out of sight, and settles a nest
+ * The hoarder: arrives in groups of a few, in the dark, out of sight, and settles a nest
  * where it lands. Each roams a ring of spots round the nest, and any scrap it sees it carries home,
  * held up for all to see, and lays by the nest as the nest's own; then it guards a while. Any body
  * it sees near the nest, a player or a monster, sets it guarding; one that comes close while it is
@@ -728,12 +728,12 @@ function definition(config: MagpieConfig): EntityDefinition<MagpieState> {
  * player, light or no light, until the player dies or leaves the stolen scrap behind. It keeps out
  * of light otherwise.
  */
-export const magpie = defineEntity(NAME, (config: MagpieConfig) => ({
+export const hoarder = defineEntity(NAME, (config: HoarderConfig) => ({
   ...definition(config),
   ...arrivals({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    fresh: (_seed: number, game: Session) => freshMagpie(game.worldTime),
+    fresh: (_seed: number, game: Session) => freshHoarder(game.worldTime),
   }),
 }));

@@ -23,7 +23,7 @@ import {
 
 /*
  * Monsters hunt any body, each other included, so a world left to them thins itself out. With
- * the test config's `ignores` and blister `fuseOnHurt`, which mirror the shipped defaults, it
+ * the test config's `ignores` and exploder `fuseOnHurt`, which mirror the shipped defaults, it
  * should do so slowly: a standard world with no living player keeps most of the monsters it began
  * with for half a minute, and its walls stand. With every kind ignoring only its own, this seed
  * fails both.
@@ -86,12 +86,12 @@ const entities: EntitiesConfig = {
     100,
   ),
   snail: weighed(testEntitiesConfig.snail, 30, 240),
-  lurcher: weighed(testEntitiesConfig.lurcher, 30),
-  blister: weighed(testEntitiesConfig.blister, 70),
-  witch: weighed(testEntitiesConfig.witch, 50),
-  idol: weighed(testEntitiesConfig.idol, 10, 180),
-  skulker: weighed(testEntitiesConfig.skulker, 30, 240),
-  magpie: weighed(testEntitiesConfig.magpie, 50),
+  blindDog: weighed(testEntitiesConfig.blindDog, 30),
+  exploder: weighed(testEntitiesConfig.exploder, 70),
+  sleeper: weighed(testEntitiesConfig.sleeper, 50),
+  statue: weighed(testEntitiesConfig.statue, 10, 180),
+  stalker: weighed(testEntitiesConfig.stalker, 30, 240),
+  hoarder: weighed(testEntitiesConfig.hoarder, 50),
 };
 
 /** A standard test world, populated by the spawner's head start, its one player a ghost. */

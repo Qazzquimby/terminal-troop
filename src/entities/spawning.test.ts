@@ -74,7 +74,7 @@ afterEach(() => {
 interface Tuning {
   readonly spawner?: SpawnerConfig;
   readonly zombie?: SpawningConfig;
-  readonly blister?: SpawningConfig;
+  readonly exploder?: SpawningConfig;
   readonly sim?: SimConfig;
   readonly kind?: WorldKind;
 }
@@ -89,10 +89,10 @@ function world(tuning: Tuning = {}): Session {
     ...testEntitiesConfig,
     spawner: tuning.spawner ?? CERTAIN,
     zombie: { ...zombie, sightRange: 0, spawning: tuning.zombie ?? ZOMBIES },
-    blister: {
-      ...testEntitiesConfig.blister,
+    exploder: {
+      ...testEntitiesConfig.exploder,
       senseRange: 0,
-      ...(tuning.blister !== undefined && { spawning: tuning.blister }),
+      ...(tuning.exploder !== undefined && { spawning: tuning.exploder }),
     },
   };
   const game = createSession(
@@ -120,7 +120,7 @@ function kindName(game: Session, id: number): string {
   return "?";
 }
 
-/** Runs `seconds` standing still, returning each zombie or blister that spawned meanwhile. */
+/** Runs `seconds` standing still, returning each zombie or exploder that spawned meanwhile. */
 function play(game: Session, seconds: number): Spawned[] {
   const known = new Set(game.entities.keys());
   const spawned: Spawned[] = [];
@@ -130,7 +130,7 @@ function play(game: Session, seconds: number): Spawned[] {
       if (known.has(entity.id)) continue;
       known.add(entity.id);
       const kind = kindName(game, entity.kind);
-      if (kind !== "zombie" && kind !== "blister") continue;
+      if (kind !== "zombie" && kind !== "exploder") continue;
       const distances = [...game.players.values()].map((player) =>
         Math.hypot(player.x - entity.x, player.y - entity.y),
       );
@@ -186,25 +186,25 @@ test("kinds come in proportion to their weights", () => {
   const game = world({
     spawner: { ...CERTAIN, period: 1, headStart: 200 },
     zombie: { ...ZOMBIES, weight: 3 },
-    blister: { ...ZOMBIES, weight: 1 },
+    exploder: { ...ZOMBIES, weight: 1 },
   });
   const zombies = count(game, "zombie");
-  const blisters = count(game, "blister");
-  expect(zombies + blisters).toBeGreaterThan(150);
-  expect(zombies / blisters).toBeGreaterThan(2);
-  expect(zombies / blisters).toBeLessThan(4.5);
+  const exploders = count(game, "exploder");
+  expect(zombies + exploders).toBeGreaterThan(150);
+  expect(zombies / exploders).toBeGreaterThan(2);
+  expect(zombies / exploders).toBeLessThan(4.5);
 });
 
 test("a kind whose time has not come is left out of the picks", () => {
   const game = world({
     zombie: { ...ZOMBIES, weight: 1 },
-    blister: { ...ZOMBIES, weight: 1000, after: 30 },
+    exploder: { ...ZOMBIES, weight: 1000, after: 30 },
   });
   const early = play(game, 29);
   expect(early.length).toBeGreaterThan(3);
   expect(early.every(({ kind }) => kind === "zombie")).toBe(true);
   const late = play(game, 30);
-  expect(late.filter(({ kind }) => kind === "blister").length).toBeGreaterThan(
+  expect(late.filter(({ kind }) => kind === "exploder").length).toBeGreaterThan(
     3,
   );
 });
@@ -212,11 +212,11 @@ test("a kind whose time has not come is left out of the picks", () => {
 test("a kind with nowhere to appear gives way to another", () => {
   const game = world({
     zombie: { ...ZOMBIES, weight: 1000, unseenDistance: 1_000_000 },
-    blister: { ...ZOMBIES, weight: 1 },
+    exploder: { ...ZOMBIES, weight: 1 },
   });
   const spawned = play(game, CERTAIN.period * 5 + 0.1);
   expect(spawned).toHaveLength(5);
-  expect(spawned.every(({ kind }) => kind === "blister")).toBe(true);
+  expect(spawned.every(({ kind }) => kind === "exploder")).toBe(true);
 });
 
 test("a new world starts with its head start of rolls, each at the chance it begins with", () => {

@@ -16,14 +16,14 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
-import { freshWitch, witch as witchContent } from "../witch/index.js";
+import { freshSleeper, sleeper as sleeperContent } from "../sleeper/index.js";
 import {
   freshZombie,
   zombie as zombieContent,
   ZombieState,
 } from "../zombie/index.js";
-import { freshIdol, idol as idolContent, IdolState } from "./index.js";
-import type { IdolConfig } from "./index.js";
+import { freshStatue, statue as statueContent, StatueState } from "./index.js";
+import type { StatueConfig } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -39,7 +39,7 @@ const idle = {
   interact: false,
   drop: false,
 };
-const { idol: config } = testEntitiesConfig;
+const { statue: config } = testEntitiesConfig;
 const SPRINT =
   testSimConfig.player.speed * testSimConfig.player.sprintMultiplier;
 
@@ -55,20 +55,20 @@ afterEach(() => {
 /** The sounds each session's host has sent, by the last part of their urls. */
 const sent = new WeakMap<Session, string[]>();
 
-/** The dev square, all of it dark, with the idol; the player stands at (x, y). */
-function world(x: number, y: number, idol: IdolConfig = config): Session {
+/** The dev square, all of it dark, with the statue; the player stands at (x, y). */
+function world(x: number, y: number, statue: StatueConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
-    "IDOL",
+    "STATUE",
     "dev",
     testSfx(),
     testSimConfig,
   );
   registerContent(game, [
-    idolContent.create({ idol }),
+    statueContent.create({ statue }),
     zombieContent.create(testEntitiesConfig),
-    witchContent.create(testEntitiesConfig),
+    sleeperContent.create(testEntitiesConfig),
   ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   sent.set(game, []);
@@ -92,20 +92,20 @@ function run(game: Session, seconds: number, aim: Point = idle.aim): void {
   }
 }
 
-function idolAt(game: Session, x: number, y: number): WorldEntity {
-  return spawnEntity(game, "idol", x, y, freshIdol(game.worldTime));
+function statueAt(game: Session, x: number, y: number): WorldEntity {
+  return spawnEntity(game, "statue", x, y, freshStatue(game.worldTime));
 }
 
-const stateOf = (idol: WorldEntity) => IdolState.parse(idol.data);
+const stateOf = (statue: WorldEntity) => StatueState.parse(statue.data);
 
-/** An idol that sees only right round it, so it keeps to its round. */
-const nearSighted: IdolConfig = { ...config, sightRange: 50 };
+/** A statue that sees only right round it, so it keeps to its round. */
+const nearSighted: StatueConfig = { ...config, sightRange: 50 };
 
 test("unseen and seeing no one, it walks its round at a sprint, its tread heard", () => {
   const game = world(100, 550, nearSighted);
-  const idol = idolAt(game, 700, 300);
+  const statue = statueAt(game, 700, 300);
   run(game, 0.5);
-  const { mode, far, home } = stateOf(idol);
+  const { mode, far, home } = stateOf(statue);
   expect(mode).toBe("patrol");
   expect(far).not.toBeNull();
   expect(home).toEqual({ x: 700, y: 300 });
@@ -116,67 +116,67 @@ test("unseen and seeing no one, it walks its round at a sprint, its tread heard"
   expect(reach).toBeLessThanOrEqual(
     config.patrol.distance + config.patrol.spread,
   );
-  expect(Math.hypot(idol.vx, idol.vy)).toBeCloseTo(SPRINT);
+  expect(Math.hypot(statue.vx, statue.vy)).toBeCloseTo(SPRINT);
   expect(played(game)).toContain("step.mp3");
 });
 
 test("looked at, it cannot move nor strike, and its hunt's clock stops; looked away from, it runs the player down", () => {
   const game = world(300, 300);
-  const idol = idolAt(game, 500, 300);
+  const statue = statueAt(game, 500, 300);
   run(game, 0.5, { x: 500, y: 300 });
-  expect(stateOf(idol)).toMatchObject({ mode: "hunt", frozen: true });
-  expect(idol.x).toBe(500);
-  const left = stateOf(idol).huntUntil - game.worldTime;
+  expect(stateOf(statue)).toMatchObject({ mode: "hunt", frozen: true });
+  expect(statue.x).toBe(500);
+  const left = stateOf(statue).huntUntil - game.worldTime;
   run(game, 1, { x: 500, y: 300 });
-  expect(idol.x).toBe(500);
-  expect(stateOf(idol).huntUntil - game.worldTime).toBeCloseTo(left, 1);
+  expect(statue.x).toBe(500);
+  expect(stateOf(statue).huntUntil - game.worldTime).toBeCloseTo(left, 1);
 
   run(game, 1, { x: 0, y: 300 });
-  expect(stateOf(idol).frozen).toBe(false);
+  expect(stateOf(statue).frozen).toBe(false);
   expect(game.local.health).toBe(game.local.maxHealth - config.damage);
   expect(played(game)).toContain("strike.mp3");
 });
 
 test("being close, within the circle a player sees all round them, does not hold it", () => {
   const game = world(300, 300);
-  const idol = idolAt(game, 330, 300);
+  const statue = statueAt(game, 330, 300);
   run(game, 0.2, { x: 0, y: 300 });
-  expect(stateOf(idol).frozen).toBe(false);
+  expect(stateOf(statue).frozen).toBe(false);
   expect(game.local.health).toBeLessThan(game.local.maxHealth);
 });
 
 test("a dead player's eyes do not hold it", () => {
   const game = world(300, 300);
-  const idol = idolAt(game, 600, 300);
+  const statue = statueAt(game, 600, 300);
   hurtPlayer(game, game.local, game.local.maxHealth);
   run(game, 0.5, { x: 600, y: 300 });
-  expect(stateOf(idol).frozen).toBe(false);
-  expect(idol.x).not.toBe(600);
+  expect(stateOf(statue).frozen).toBe(false);
+  expect(statue.x).not.toBe(600);
 });
 
 test("once its hunt has run its time, it goes back to its round", () => {
   const game = world(100, 550, nearSighted);
-  const idol = idolAt(game, 700, 300);
-  idol.data = {
-    ...stateOf(idol),
+  const statue = statueAt(game, 700, 300);
+  statue.data = {
+    ...stateOf(statue),
     mode: "hunt",
     quarry: "me",
     huntUntil: game.worldTime + 0.5,
   };
   run(game, 0.3);
-  expect(stateOf(idol).mode).toBe("hunt");
-  expect(idol.vx).toBeLessThan(0);
+  expect(stateOf(statue).mode).toBe("hunt");
+  expect(statue.vx).toBeLessThan(0);
   run(game, 0.3);
-  expect(stateOf(idol)).toMatchObject({ mode: "patrol", quarry: null });
+  expect(stateOf(statue)).toMatchObject({ mode: "patrol", quarry: null });
 });
 
 test("a player looking at it from past their look range does not hold it", () => {
   const far = 100 + testSimConfig.vision.lookRange + 100;
   const game = world(100, 300, nearSighted);
-  const idol = idolAt(game, far, 300);
+  const statue = statueAt(game, far, 300);
   run(game, 0.5, { x: 2000, y: 300 });
-  expect(stateOf(idol).frozen).toBe(false);
-  expect(idol.x).not.toBe(far);
+  expect(stateOf(statue).frozen).toBe(false);
+  expect(statue.x).not.toBe(far);
 });
 
 /** A zombie at (x, y), facing `facing`. */
@@ -192,40 +192,40 @@ function zombieAt(
 
 test("a zombie looking at it holds it, as a player's gaze does", () => {
   const game = world(100, 550, nearSighted);
-  const idol = idolAt(game, 650, 300);
+  const statue = statueAt(game, 650, 300);
   const zombie = zombieAt(game, 500, 300, 0);
   run(game, 0.5);
-  expect(stateOf(idol).frozen).toBe(true);
-  expect(idol.x).toBe(650);
+  expect(stateOf(statue).frozen).toBe(true);
+  expect(statue.x).toBe(650);
   expect(ZombieState.parse(zombie.data).facing).toBeCloseTo(0, 1);
 });
 
 test("a stunned zombie's gaze does not hold it", () => {
   const game = world(100, 550, nearSighted);
-  const idol = idolAt(game, 650, 300);
+  const statue = statueAt(game, 650, 300);
   const zombie = zombieAt(game, 500, 300, 0);
   stun(game, zombie.id, 10);
   run(game, 0.5);
-  expect(stateOf(idol).frozen).toBe(false);
-  expect(idol.x).not.toBe(650);
+  expect(stateOf(statue).frozen).toBe(false);
+  expect(statue.x).not.toBe(650);
 });
 
-test("a body that sees it only all round, as a sleeping witch does, does not hold it", () => {
+test("a body that sees it only all round, as a sleeping sleeper does, does not hold it", () => {
   const game = world(100, 550, nearSighted);
-  const idol = idolAt(game, 650, 300);
-  const fresh = freshWitch(game.worldTime, testEntitiesConfig.witch);
-  spawnEntity(game, "witch", 620, 300, fresh);
+  const statue = statueAt(game, 650, 300);
+  const fresh = freshSleeper(game.worldTime, testEntitiesConfig.sleeper);
+  spawnEntity(game, "sleeper", 620, 300, fresh);
   run(game, 0.5);
-  expect(stateOf(idol).frozen).toBe(false);
-  expect(idol.x).not.toBe(650);
+  expect(stateOf(statue).frozen).toBe(false);
+  expect(statue.x).not.toBe(650);
 });
 
 test("it cannot die", () => {
   const game = world(100, 550, nearSighted);
-  const idol = idolAt(game, 700, 300);
-  idol.health -= 1e9;
+  const statue = statueAt(game, 700, 300);
+  statue.health -= 1e9;
   run(game, 0.1);
-  expect(game.entities.has(idol.id)).toBe(true);
+  expect(game.entities.has(statue.id)).toBe(true);
 });
 
 /** A post at (x, y): a body with no eyes nor will of its own, neither player nor monster. */
@@ -243,20 +243,20 @@ function postAt(game: Session, x: number, y: number): WorldEntity {
 test("it hunts any body it sees, not just players, and strikes it", () => {
   const game = world(100, 550);
   hurtPlayer(game, game.local, Infinity);
-  const idol = idolAt(game, 650, 300);
+  const statue = statueAt(game, 650, 300);
   const post = postAt(game, 400, 300);
   run(game, 0.1);
-  expect(stateOf(idol)).toMatchObject({ mode: "hunt", quarry: post.id });
+  expect(stateOf(statue)).toMatchObject({ mode: "hunt", quarry: post.id });
   run(game, 1);
   expect(post.health).toBe(1000 - config.damage);
 });
 
 test("a kind it ignores it neither hunts nor strikes", () => {
-  const game = world(100, 550, { ...config, ignores: ["idol", "post"] });
+  const game = world(100, 550, { ...config, ignores: ["statue", "post"] });
   hurtPlayer(game, game.local, Infinity);
-  const idol = idolAt(game, 650, 300);
+  const statue = statueAt(game, 650, 300);
   const post = postAt(game, 630, 300);
   run(game, 1);
-  expect(stateOf(idol).mode).toBe("patrol");
+  expect(stateOf(statue).mode).toBe("patrol");
   expect(post.health).toBe(1000);
 });

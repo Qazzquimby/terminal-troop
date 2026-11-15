@@ -16,13 +16,13 @@ import {
   stun,
 } from "../sim/index.js";
 import type { Session, WorldEntity } from "../sim/index.js";
-import { freshBlister } from "./blister/index.js";
+import { freshExploder } from "./exploder/index.js";
 import { entityContent } from "./index.js";
-import { freshIdol } from "./idol/index.js";
-import { freshLurcher } from "./lurcher/index.js";
-import { freshMagpie } from "./magpie/index.js";
-import { freshSkulker } from "./skulker/index.js";
-import { freshWitch } from "./witch/index.js";
+import { freshStatue } from "./statue/index.js";
+import { freshBlindDog } from "./blind-dog/index.js";
+import { freshHoarder } from "./hoarder/index.js";
+import { freshStalker } from "./stalker/index.js";
+import { freshSleeper } from "./sleeper/index.js";
 import { freshZombie } from "./zombie/index.js";
 
 const { vision } = testSimConfig;
@@ -62,7 +62,7 @@ test("a ghost sees nothing", () => {
   expect(eyesOf(game, game.local)).toBeNull();
 });
 
-test("each kind's eyes: zombie and magpie look down their facing, idol and witch see only all round, and the lurcher and blister are blind", () => {
+test("each kind's eyes: zombie and hoarder look down their facing, statue and sleeper see only all round, and the blind dog and exploder are blind", () => {
   const game = world();
   const now = game.worldTime;
   const zombie = at(game, "zombie", {
@@ -77,23 +77,23 @@ test("each kind's eyes: zombie and magpie look down their facing, idol and witch
     },
     around: Math.min(vision.surroundingsRadius, entities.zombie.sightRange),
   });
-  const magpie = at(game, "magpie", { ...freshMagpie(now), facing: 2 });
-  expect(eyesOf(game, magpie)).toMatchObject({
-    cone: { direction: 2, range: entities.magpie.sightRange },
+  const hoarder = at(game, "hoarder", { ...freshHoarder(now), facing: 2 });
+  expect(eyesOf(game, hoarder)).toMatchObject({
+    cone: { direction: 2, range: entities.hoarder.sightRange },
   });
-  const skulker = at(game, "skulker", { ...freshSkulker(now), facing: 3 });
-  expect(eyesOf(game, skulker)).toMatchObject({
+  const stalker = at(game, "stalker", { ...freshStalker(now), facing: 3 });
+  expect(eyesOf(game, stalker)).toMatchObject({
     cone: { direction: 3, range: vision.lookRange },
   });
-  expect(eyesOf(game, at(game, "idol", freshIdol(now)))).toMatchObject({
+  expect(eyesOf(game, at(game, "statue", freshStatue(now)))).toMatchObject({
     cone: null,
-    around: entities.idol.sightRange,
+    around: entities.statue.sightRange,
   });
   expect(
-    eyesOf(game, at(game, "witch", freshWitch(now, entities.witch))),
-  ).toMatchObject({ cone: null, around: entities.witch.sightRange });
-  expect(eyesOf(game, at(game, "lurcher", freshLurcher(1, now)))).toBeNull();
-  expect(eyesOf(game, at(game, "blister", freshBlister(1, now)))).toBeNull();
+    eyesOf(game, at(game, "sleeper", freshSleeper(now, entities.sleeper))),
+  ).toMatchObject({ cone: null, around: entities.sleeper.sightRange });
+  expect(eyesOf(game, at(game, "blindDog", freshBlindDog(1, now)))).toBeNull();
+  expect(eyesOf(game, at(game, "exploder", freshExploder(1, now)))).toBeNull();
 });
 
 test("a stunned entity sees nothing", () => {
