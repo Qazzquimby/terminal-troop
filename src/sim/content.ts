@@ -9,6 +9,7 @@ import { livingPlayers } from "./ghosts.js";
 import { placeItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
 import {
+  dangerWeight,
   isAreaFree,
   mulberry32,
   randomFreePosition,
@@ -160,6 +161,12 @@ export interface Scatter {
    * right. Anywhere at random when left out.
    */
   readonly spread?: "x";
+  /**
+   * How strongly the spots favour danger, where monsters spawn more: each is drawn in proportion
+   * to its danger weight, the one monsters spawn by, raised to this. 1 favours danger as much as
+   * monsters do; 0 or left out, not at all. A spread scatter keeps to its bands regardless.
+   */
+  readonly danger?: number;
 }
 
 /**
@@ -304,9 +311,22 @@ function scatterCount(game: Session, count: SpawnCount): number {
 }
 
 /**
+ * `weight` times each spot's danger weight, the one monsters spawn by, raised to `danger`;
+ * `weight` as it is when `danger` is 0.
+ */
+function withDanger(
+  weight: SpotWeight | undefined,
+  danger: number,
+): SpotWeight | undefined {
+  if (danger === 0) return weight;
+  return (game, at) =>
+    (weight?.(game, at) ?? 1) * dangerWeight(game.world, at) ** danger;
+}
+
+/**
  * Calls `place` at each spot `scatter` picks for bodies of `radius`, with the generator the spots
- * are drawn from, seeded by the room and the scatter's own seed; by `weight` among those clear of
- * the players, if it has one.
+ * are drawn from, seeded by the room and the scatter's own seed; by `weight` and its danger among
+ * those clear of the players, if it has either.
  */
 export function scatterEach(
   game: Session,
@@ -316,8 +336,9 @@ export function scatterEach(
 ): void {
   const rng = mulberry32(game.seed ^ scatter.seed);
   const count = scatterCount(game, scatter.count);
+  const weight = withDanger(scatter.weight, scatter.danger ?? 0);
   for (let i = 0; i < count; i++) {
-    const { clearance, weight } = scatter;
+    const { clearance } = scatter;
     let at: Point;
     if (scatter.spread === "x")
       at = bandPoint(game, rng, radius, clearance, xBand(game, i, count));

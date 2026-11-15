@@ -10,6 +10,7 @@ import { shovel } from "./shovel/index.js";
 import { stunTrap } from "./stun-trap/index.js";
 import { walkie } from "./walkie/index.js";
 import { corpse } from "./corpse/index.js";
+import { bandage } from "./bandage/index.js";
 
 export { credit } from "./scrap/index.js";
 
@@ -28,6 +29,7 @@ const ITEMS = [
   fuel,
   stunTrap,
   corpse,
+  bandage,
 ] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */

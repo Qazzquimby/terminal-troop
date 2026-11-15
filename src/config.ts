@@ -583,7 +583,8 @@ export const config = {
       volume: 0.8,
     },
     // Sells within 3 cells of the cruiser, a scrap every quarter second, from any slot. Dropped, by a
-    // player or a hoarder, it clatters 8 cells round, which monsters hear.
+    // player or a hoarder, it clatters 8 cells round, which monsters hear. A new world lays 50,
+    // favouring danger as much as monsters do, so it lies where they spawn.
     scrap: {
       weight: 15,
       value: 1,
@@ -591,7 +592,7 @@ export const config = {
       sellInterval: 0.25,
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
-      scatter: { count: 50, seed: 2, clearance: CELL * 3 },
+      scatter: { count: 50, seed: 2, clearance: CELL * 3, danger: 1 },
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
     // cells, past a player's own 6 cells of sight in the dark. Its click carries a cell.
@@ -608,10 +609,12 @@ export const config = {
     },
     // 8 minutes of battery switched on, a use a second, so the toolbar counts it down in seconds.
     // Its switch clicks 2 cells out; the click of keying it barely past arm's length, making no
-    // noise. A walkie playing speech is heard 80% as far as the speech itself carries.
+    // noise. A walkie playing speech is heard 80% as far as the speech itself carries. Weightless,
+    // so carrying one never slows anyone.
+    // A fallen player's body: 50lb, as the ticket says, slowing its carrier by a tenth.
     corpse: { weight: 50, volume: 0.8 },
     walkie: {
-      weight: 2,
+      weight: 0,
       uses: 480,
       loot: { weight: 12, rarity: "common" },
       drain: 1,
@@ -642,13 +645,29 @@ export const config = {
       volume: 0.6,
       placeNoiseRadius: CELL,
     },
-    // A new world lays 20 items, a fifth as many as its scrap, each picked by loot weight. At the
-    // most dangerous spot there is an even chance of a second, an uncommon item is twice as
-    // likely, a rare one four times. On top of those it always lays 15 cans of fuel, one in each
-    // fifteenth of its width from start to exit, so the cruiser can always be driven out; fuel
-    // may still be picked as loot besides.
+    // One use, light, and as common as a walkie. Wrapped on whoever is within a shovel's reach in
+    // front, or on its user: three quarters of a body's full health back, or a corpse up on a
+    // quarter of its own. Its rip carries a cell and a half.
+    bandage: {
+      weight: 1,
+      uses: 1,
+      loot: { weight: 12, rarity: "common" },
+      heal: 0.75,
+      revive: 0.25,
+      reach: 45,
+      radius: 20,
+      cooldown: 1,
+      duration: 0.4,
+      volume: 0.7,
+      noiseRadius: CELL * 1.5,
+    },
+    // A new world lays 40 items, each picked by loot weight, at spots favouring danger as much as
+    // monsters do, so loot lies where they spawn. At the most dangerous spot there is an even
+    // chance of a second, an uncommon item is twice as likely, a rare one four times. On top of
+    // those it always lays 15 cans of fuel, one in each fifteenth of its width from start to exit,
+    // so the cruiser can always be driven out; fuel may still be picked as loot besides.
     loot: {
-      scatter: { count: 20, seed: 4, clearance: CELL * 3 },
+      scatter: { count: 40, seed: 4, clearance: CELL * 3, danger: 1 },
       guaranteed: [
         {
           item: "fuel",
