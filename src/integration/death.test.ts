@@ -262,6 +262,7 @@ test("a zombie pays a ghost no mind, though it chases the living", async () => {
     barkAt: host.worldTime + 60,
     attackAt: 0,
     attacking: false,
+    restUntil: 0,
     facing: 0,
   });
   run(1000);

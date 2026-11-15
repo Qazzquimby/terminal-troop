@@ -100,6 +100,8 @@ function drawTerrain(
     Math.floor((camera.y + viewHeight(camera)) / map.cell),
   );
 
+  // Its translucent exit fill must not outlast it: an emoji takes its alpha from the fill style.
+  ctx.save();
   ctx.fillStyle = "#181818";
   ctx.fillRect(0, 0, world.W, world.H);
   ctx.fillStyle = TERRAIN.road;
@@ -130,6 +132,7 @@ function drawTerrain(
 
   ctx.strokeStyle = "#69727b";
   ctx.strokeRect(0, 0, world.W, world.H);
+  ctx.restore();
 }
 
 /** How opaque an away player is drawn. */
@@ -179,14 +182,33 @@ export function drawFacing(
   ctx.stroke();
 }
 
-/** Draws `glyph` centred on `at`, about `size` pixels tall. */
+/**
+ * The fill an emoji is drawn with. A colour emoji keeps its own colours but takes the fill style's
+ * alpha, so whatever translucent fill was set last would leave it faint.
+ */
+const EMOJI_FILL = "#fff";
+
+/** What drawing a glyph needs of a context. */
+type TextContext = Pick<
+  CanvasRenderingContext2D,
+  | "save"
+  | "restore"
+  | "fillStyle"
+  | "font"
+  | "textAlign"
+  | "textBaseline"
+  | "fillText"
+>;
+
+/** Draws `glyph` centred on `at`, about `size` pixels tall, as opaque as the context's alpha. */
 export function drawEmoji(
-  ctx: CanvasRenderingContext2D,
+  ctx: TextContext,
   at: Point,
   glyph: string,
   size: number,
 ): void {
   ctx.save();
+  ctx.fillStyle = EMOJI_FILL;
   ctx.font = `${String(size)}px system-ui`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -306,13 +328,14 @@ export function drawHealthBar(
  * it, at `facing` (radians); not a world body.
  */
 export function drawHeldItem(
-  ctx: CanvasRenderingContext2D,
+  ctx: TextContext,
   holder: Point & { readonly radius: number },
   facing: number,
   emoji: string,
 ): void {
   const distance = holder.radius + 4;
   ctx.save();
+  ctx.fillStyle = EMOJI_FILL;
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -686,6 +709,8 @@ function drawBodies(
     if (definition === undefined) return;
     if (!inView(entity, camera) || !shows(entity)) return;
     ctx.save();
+    // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
+    ctx.fillStyle = EMOJI_FILL;
     definition.draw(ctx, entity, now, game);
     ctx.restore();
     if (isStunned(game, entity.id))

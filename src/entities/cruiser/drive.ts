@@ -310,7 +310,10 @@ export function cruiserNear(
   return minBy(near, distance) ?? null;
 }
 
-/** Pours `seconds` of driving into `cruiser`'s fuel, which only the host does. */
+/**
+ * Pours `seconds` of driving into `cruiser`'s fuel and mends it, its crash damage cleared, which
+ * only the host does. Its health needs no mending: it has no end, so nothing wears it down.
+ */
 export function refuel(
   game: Session,
   cruiser: WorldEntity,
@@ -318,6 +321,6 @@ export function refuel(
 ): void {
   changeEntity(game, cruiser, (data) => {
     const state = CruiserState.parse(data);
-    return { ...state, fuel: state.fuel + seconds };
+    return { ...state, fuel: state.fuel + seconds, damage: 0 };
   });
 }

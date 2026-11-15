@@ -28,8 +28,10 @@ import { createMapMemory } from "./map-memory.js";
 import type { MapMemory } from "./map-memory.js";
 import {
   blindness,
+  drawEmoji,
   drawFlashes,
   drawHealthBar,
+  drawHeldItem,
   drawLitWalls,
   drawRemembered,
   interpolatedView,
@@ -348,4 +350,36 @@ test("a stunned viewer's view goes dark while the stun lasts, clearing over its 
   expect(blindness(game, game.local)).toBeCloseTo(darkness / 2);
   game.worldTime += fadeOut;
   expect(blindness(game, game.local)).toBe(0);
+});
+
+test("emojis are drawn opaque whatever translucent fill was set before them", () => {
+  // The terrain's exit is filled translucent; a colour emoji would take that alpha.
+  const before = "rgba(90, 220, 140, 0.12)";
+  const align: CanvasTextAlign = "start";
+  const baseline: CanvasTextBaseline = "alphabetic";
+  const saved: string[] = [];
+  const drawn: { text: string; fill: string }[] = [];
+  const ctx = {
+    fillStyle: before,
+    font: "",
+    textAlign: align,
+    textBaseline: baseline,
+    save() {
+      saved.push(ctx.fillStyle);
+    },
+    restore() {
+      ctx.fillStyle = saved.pop() ?? ctx.fillStyle;
+    },
+    fillText(text: string) {
+      drawn.push({ text, fill: ctx.fillStyle });
+    },
+  };
+  drawEmoji(ctx, origin, "🧟", 30);
+  drawHeldItem(ctx, { ...origin, radius: 10 }, 0, "🔦");
+
+  expect(drawn).toEqual([
+    { text: "🧟", fill: "#fff" },
+    { text: "🔦", fill: "#fff" },
+  ]);
+  expect(ctx.fillStyle).toBe(before);
 });
