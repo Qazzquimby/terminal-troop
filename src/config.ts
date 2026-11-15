@@ -129,11 +129,14 @@ export const config = {
     },
   },
   // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
+  // It fades like ink soaking away: blots about 3 cells across go from 4s after last seen, the
+  // last at 10s, each darkening faster as its time comes. Terrain in sight is renewed 4x a second.
   mapMemory: {
     saveInterval: 5,
     maxRooms: 50,
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
+    fade: { seconds: 10, spread: 0.6, blot: 3, detail: 4, refresh: 0.25 },
   },
   // Where the player stands, saved every 2s while it moves, so a reload puts it back there.
   positionMemory: { saveInterval: 2, maxRooms: 50 },

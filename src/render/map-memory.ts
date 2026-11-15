@@ -1,3 +1,4 @@
+import type { AgeGrid, InkFadeConfig } from "./ink.js";
 import { z } from "zod";
 import type {
   Point,
@@ -24,6 +25,11 @@ export interface MapMemoryConfig {
     readonly edge: string;
     readonly alpha: number;
   };
+  /**
+   * How remembered terrain fades out of sight, and how often, in seconds, terrain still in sight
+   * has the time it was last seen renewed.
+   */
+  readonly fade: InkFadeConfig & { readonly refresh: number };
 }
 
 /** Where remembered terrain is kept between visits, by key. Either method may throw. */
@@ -64,10 +70,12 @@ export interface Area extends Point {
 
 /** A remembered stretch of terrain, ready to draw. */
 export interface RememberedTerrain {
-  /** Floor cells, as their top-left corners. */
+  /** Floor cells not yet faded, as their top-left corners. */
   readonly floor: readonly Point[];
-  /** Faces of remembered walls that look onto remembered floor. */
+  /** Faces of remembered walls not yet faded that look onto remembered floor. */
   readonly walls: VisibilityPolygon["walls"];
+  /** How long ago each cell over the view was last seen, to fade it by. */
+  readonly ages: AgeGrid;
 }
 
 /** The terrain the local player has seen in the current world, kept on this client alone. */
@@ -78,10 +86,13 @@ export interface MapMemory {
    * what was saved for it, or from nothing.
    */
   enter(place: MapPlace, map: TileMap): void;
-  /** Remembers the floor and wall cells `sight` reaches within `view`. */
-  see(sight: Sight, view: Area): void;
-  /** The remembered terrain within `view`. */
-  within(view: Area): RememberedTerrain;
+  /**
+   * Remembers the floor and wall cells `sight` reaches within `view` as seen at `now` (ms). Floor
+   * remembered already has its time renewed at most once a `fade.refresh`.
+   */
+  see(sight: Sight, view: Area, now: number): void;
+  /** The remembered terrain within `view`, as of `now` (ms): what has faded is left out. */
+  within(view: Area, now: number): RememberedTerrain;
   /** Saves what is newly remembered, unless it was saved under `saveInterval` before `now` (ms). */
   save(now: number): void;
   /** Saves what is newly remembered now, as when the page closes. */
@@ -100,6 +111,11 @@ export function mapMemoryKey(place: MapPlace, map: TileMap): string {
 class Grid {
   readonly bits: Uint8Array;
   readonly stride: number;
+  /**
+   * When each cell was last seen, in ms; -Infinity for one never seen this visit, as a cell
+   * remembered from storage is: long faded, unless remembered terrain never fades.
+   */
+  readonly seenAt: Float64Array;
 
   constructor(
     readonly map: TileMap,
@@ -107,6 +123,9 @@ class Grid {
   ) {
     this.stride = map.cols + 2;
     this.bits = bits ?? new Uint8Array(Grid.bytes(map));
+    this.seenAt = new Float64Array(this.stride * (map.rows + 2)).fill(
+      -Infinity,
+    );
   }
 
   static bytes(map: TileMap): number {
@@ -121,10 +140,11 @@ class Grid {
     return ((this.bits[key >> 3] ?? 0) & (1 << (key & 7))) !== 0;
   }
 
-  /** Whether `key` was newly marked. */
-  mark(key: number): boolean {
-    if (key < 0 || key >= this.stride * (this.map.rows + 2) || this.has(key))
-      return false;
+  /** Marks `key` as seen at `now`; whether it was newly marked. */
+  mark(key: number, now: number): boolean {
+    if (key < 0 || key >= this.stride * (this.map.rows + 2)) return false;
+    this.seenAt[key] = now;
+    if (this.has(key)) return false;
     this.bits[key >> 3] = (this.bits[key >> 3] ?? 0) | (1 << (key & 7));
     return true;
   }
@@ -239,6 +259,15 @@ const SAMPLES = [
 ] as const;
 
 /** The four sides of a cell, as the step to the neighbour across each. */
+/** The ages of nothing remembered: an empty box. */
+const NO_AGES: AgeGrid = {
+  col: 0,
+  row: 0,
+  cols: 0,
+  rows: 0,
+  ages: new Float32Array(0),
+};
+
 const SIDES = [
   { x: -1, y: 0 },
   { x: 1, y: 0 },
@@ -258,6 +287,7 @@ export function createMapMemory(
   let key = "";
   let dirty = false;
   let nextSaveAt = 0;
+  let nextRenewAt = -Infinity;
 
   function write(): void {
     if (grid === null || !dirty) return;
@@ -315,11 +345,14 @@ export function createMapMemory(
       grid = new Grid(map, read(map));
       dirty = false;
       nextSaveAt = 0;
+      nextRenewAt = -Infinity;
     },
-    see({ seen, lit, walls }, view) {
+    see({ seen, lit, walls }, view, now) {
       if (grid === null) return;
       const memory = grid;
-      for (const wall of walls.keys()) dirty = memory.mark(wall) || dirty;
+      for (const wall of walls.keys()) dirty = memory.mark(wall, now) || dirty;
+      const renew = now >= nextRenewAt;
+      if (renew) nextRenewAt = now + config.fade.refresh * 1000;
 
       const outline = ({ points }: VisibilityPolygon) => new Outline(points);
       const seenShapes = seen.map(outline);
@@ -331,7 +364,8 @@ export function createMapMemory(
         for (let row = minRow; row <= maxRow; row++) {
           for (let col = minCol; col <= maxCol; col++) {
             const cellKey = memory.key(col, row);
-            if (memory.solid(col, row) || memory.has(cellKey)) continue;
+            if (memory.solid(col, row)) continue;
+            if (!renew && memory.has(cellKey)) continue;
             const visible = SAMPLES.some(([fx, fy]) => {
               const point = { x: (col + fx) * cell, y: (row + fy) * cell };
               return (
@@ -339,22 +373,31 @@ export function createMapMemory(
                 seenShapes.some((shape) => shape.contains(point))
               );
             });
-            if (visible) dirty = memory.mark(cellKey) || dirty;
+            if (visible) dirty = memory.mark(cellKey, now) || dirty;
           }
         }
       }
     },
-    within(view) {
+    within(view, now) {
       const floor: Point[] = [];
       const walls = new Map<number, Face[]>();
-      if (grid === null) return { floor, walls };
+      if (grid === null) return { floor, walls, ages: NO_AGES };
       const memory = grid;
       const { cell } = memory.map;
       const { minCol, maxCol, minRow, maxRow } = memory.span(view);
+      const cols = maxCol - minCol + 1;
+      const ages = new Float32Array(
+        Math.max(0, cols * (maxRow - minRow + 1)),
+      ).fill(Infinity);
+      const { seconds } = config.fade;
       for (let row = minRow; row <= maxRow; row++) {
         for (let col = minCol; col <= maxCol; col++) {
           const cellKey = memory.key(col, row);
           if (!memory.has(cellKey)) continue;
+          const age = (now - (memory.seenAt[cellKey] ?? -Infinity)) / 1000;
+          const faded = seconds > 0 && age >= seconds;
+          if (faded) continue;
+          ages[(row - minRow) * cols + (col - minCol)] = seconds > 0 ? age : 0;
           if (!memory.solid(col, row)) {
             floor.push({ x: col * cell, y: row * cell });
             continue;
@@ -367,7 +410,17 @@ export function createMapMemory(
           if (faces.length > 0) walls.set(cellKey, faces);
         }
       }
-      return { floor, walls };
+      return {
+        floor,
+        walls,
+        ages: {
+          col: minCol,
+          row: minRow,
+          cols,
+          rows: maxRow - minRow + 1,
+          ages,
+        },
+      };
     },
     save(now) {
       if (!dirty || now < nextSaveAt) return;

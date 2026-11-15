@@ -14,6 +14,7 @@ import {
 import type {
   Area,
   MapMemory,
+  MapMemoryConfig,
   MapMemoryStorage,
   MapPlace,
   Sight,
@@ -67,12 +68,21 @@ const cellAt = (col: number, row: number): Point => ({
 
 function remembers(memory: MapMemory, col: number, row: number): boolean {
   return memory
-    .within(everywhere)
+    .within(everywhere, 0)
     .floor.some(({ x, y }) => x === col * CELL && y === row * CELL);
 }
 
-function entered(storage: MapMemoryStorage = memoryStorage()): MapMemory {
-  const memory = createMapMemory(config, storage);
+/** The test config with remembered terrain that never fades. */
+const lasting: MapMemoryConfig = {
+  ...config,
+  fade: { ...config.fade, seconds: 0 },
+};
+
+function entered(
+  storage: MapMemoryStorage = memoryStorage(),
+  tuning: MapMemoryConfig = config,
+): MapMemory {
+  const memory = createMapMemory(tuning, storage);
   memory.enter(here, map);
   return memory;
 }
@@ -80,7 +90,7 @@ function entered(storage: MapMemoryStorage = memoryStorage()): MapMemory {
 describe("marking", () => {
   test("remembers the floor a source sees and lights, not what a wall hides", () => {
     const memory = entered();
-    memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
 
     expect(remembers(memory, 2, 1)).toBe(true);
     expect(remembers(memory, 3, 1)).toBe(true);
@@ -93,19 +103,27 @@ describe("marking", () => {
     const memory = entered();
     const near = sightFrom({ x: 125, y: 375 }, 60);
     const far = sightFrom({ x: 625, y: 375 }, 60);
-    memory.see({ seen: near.seen, lit: far.lit, walls: new Map() }, everywhere);
+    memory.see(
+      { seen: near.seen, lit: far.lit, walls: new Map() },
+      everywhere,
+      0,
+    );
 
-    expect(memory.within(everywhere).floor).toEqual([]);
+    expect(memory.within(everywhere, 0).floor).toEqual([]);
   });
 
   test("only floor within the view is marked", () => {
     const memory = entered();
-    memory.see(sightFrom({ x: 125, y: 375 }), {
-      x: 0,
-      y: 0,
-      width: 200,
-      height: 600,
-    });
+    memory.see(
+      sightFrom({ x: 125, y: 375 }),
+      {
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 600,
+      },
+      0,
+    );
 
     expect(remembers(memory, 3, 7)).toBe(true);
     expect(remembers(memory, 5, 7)).toBe(false);
@@ -113,9 +131,9 @@ describe("marking", () => {
 
   test("a remembered wall shows the faces looking onto remembered floor", () => {
     const memory = entered();
-    memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
 
-    const { walls } = memory.within(everywhere);
+    const { walls } = memory.within(everywhere, 0);
     const pillar = [...walls.values()].flat();
 
     expect(pillar).toContainEqual({
@@ -130,21 +148,82 @@ describe("marking", () => {
 
   test("nothing is remembered before entering a world", () => {
     const memory = createMapMemory(config, memoryStorage());
-    memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
-    expect(memory.within(everywhere)).toEqual({ floor: [], walls: new Map() });
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
+    const { floor, walls } = memory.within(everywhere, 0);
+    expect({ floor, walls }).toEqual({ floor: [], walls: new Map() });
+  });
+});
+
+describe("fading", () => {
+  const { seconds, spread } = config.fade;
+  const seenFloor = (memory: MapMemory, now: number) =>
+    memory.within(everywhere, now).floor.length;
+
+  test("terrain out of sight is all there until the first of it fades, and gone after `seconds`", () => {
+    const memory = entered();
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
+    const all = seenFloor(memory, 0);
+
+    expect(all).toBeGreaterThan(10);
+    expect(seenFloor(memory, seconds * (1 - spread) * 1000 - 1)).toBe(all);
+    expect(seenFloor(memory, seconds * 1000 - 1)).toBe(all);
+    expect(seenFloor(memory, seconds * 1000)).toBe(0);
+    expect(memory.within(everywhere, seconds * 1000).walls.size).toBe(0);
+  });
+
+  test("each cell's age over the view is how long since it was seen, Infinity where never", () => {
+    const memory = entered();
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 1000);
+    const { ages } = memory.within(everywhere, 3500);
+    const at = (col: number, row: number) =>
+      ages.ages[(row - ages.row) * ages.cols + (col - ages.col)];
+
+    expect(at(3, 1)).toBeCloseTo(2.5);
+    expect(at(7, 1)).toBe(Infinity);
+  });
+
+  test("terrain still in sight is renewed, at most once a refresh", () => {
+    const memory = entered();
+    const sight = sightFrom({ x: 125, y: 75 });
+    const refresh = config.fade.refresh * 1000;
+    memory.see(sight, everywhere, 0);
+    memory.see(sight, everywhere, refresh / 2);
+    memory.see(sight, everywhere, refresh);
+
+    // Renewed at `refresh`, not at half of it.
+    expect(seenFloor(memory, seconds * 1000 + refresh / 2)).toBeGreaterThan(0);
+    const { ages } = memory.within(everywhere, refresh);
+    expect(Math.min(...ages.ages)).toBe(0);
+    expect(seenFloor(memory, seconds * 1000 + refresh)).toBe(0);
+  });
+
+  test("with `seconds` 0, remembered terrain never fades", () => {
+    const memory = entered(memoryStorage(), lasting);
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
+    expect(seenFloor(memory, 1e9)).toBe(seenFloor(memory, 0));
+  });
+
+  test("terrain saved on a past visit comes back already faded", () => {
+    const storage = memoryStorage();
+    const first = entered(storage);
+    first.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
+    first.flush();
+
+    expect(seenFloor(entered(storage), 0)).toBe(0);
+    expect(seenFloor(entered(storage, lasting), 0)).toBeGreaterThan(10);
   });
 });
 
 describe("persistence", () => {
   test("what was saved for a world comes back on entering it again", () => {
     const storage = memoryStorage();
-    const first = entered(storage);
-    first.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    const first = entered(storage, lasting);
+    first.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
     first.flush();
 
-    const again = entered(storage);
+    const again = entered(storage, lasting);
 
-    expect(again.within(everywhere)).toEqual(first.within(everywhere));
+    expect(again.within(everywhere, 0)).toEqual(first.within(everywhere, 0));
     expect(remembers(again, 3, 1)).toBe(true);
     expect(storage.saved.has(mapMemoryKey(here, map))).toBe(true);
   });
@@ -155,11 +234,11 @@ describe("persistence", () => {
     ["seed", { ...here, seed: 2 }],
   ])("entering a world with another %s starts from nothing", (_, other) => {
     const storage = memoryStorage();
-    const memory = entered(storage);
-    memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    const memory = entered(storage, lasting);
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
 
     memory.enter(other, map);
-    expect(memory.within(everywhere).floor).toEqual([]);
+    expect(memory.within(everywhere, 0).floor).toEqual([]);
 
     memory.enter(here, map);
     expect(remembers(memory, 3, 1)).toBe(true);
@@ -172,9 +251,9 @@ describe("persistence", () => {
     memory.save(0);
     expect(storage.writes).toBe(0);
 
-    memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
     memory.save(100);
-    memory.see(sightFrom({ x: 625, y: 375 }), everywhere);
+    memory.see(sightFrom({ x: 625, y: 375 }), everywhere, 0);
     memory.save(900);
     expect(storage.writes).toBe(1);
 
@@ -187,7 +266,7 @@ describe("persistence", () => {
   test("a save that doesn't fit the map is ignored", () => {
     const storage = memoryStorage();
     storage.saved.set(mapMemoryKey(here, map), btoa("short"));
-    expect(entered(storage).within(everywhere).floor).toEqual([]);
+    expect(entered(storage).within(everywhere, 0).floor).toEqual([]);
   });
 
   test("failing storage leaves memory working for the visit", () => {
@@ -203,7 +282,7 @@ describe("persistence", () => {
       },
     };
     const memory = entered(broken);
-    memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+    memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
 
     expect(() => {
       memory.save(10_000);
@@ -222,7 +301,7 @@ describe("keeping only recent worlds", () => {
   function visit(memory: MapMemory, rooms: readonly number[]): void {
     for (const n of rooms) {
       memory.enter(room(n), map);
-      memory.see(sightFrom({ x: 125, y: 75 }), everywhere);
+      memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
     }
     memory.flush();
   }

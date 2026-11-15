@@ -129,6 +129,7 @@ export const testMapMemoryConfig: MapMemoryConfig = {
   maxRooms: 3,
   floor: { fill: "#111", grid: "#222", alpha: 0.5 },
   wall: { fill: "#333", edge: "#444", alpha: 0.5 },
+  fade: { seconds: 10, spread: 0.6, blot: 3, detail: 4, refresh: 0.25 },
 };
 
 /** A kind the spawner never picks: it has no weight. */

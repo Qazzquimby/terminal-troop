@@ -221,7 +221,7 @@ function look(game: Session, memory: MapMemory, aim: number): boolean {
     visibilityPolygon(map, source, 64, 900);
   const seen = sources.map(trace);
   const lit = lights.map(trace);
-  memory.see({ seen, lit, walls: litWalls(seen, lit) }, everywhere);
+  memory.see({ seen, lit, walls: litWalls(seen, lit) }, everywhere, 0);
   const [thing] = game.entities.values();
   return thing !== undefined && isVisible(map, sources, lights, thing);
 }
@@ -275,7 +275,7 @@ test("terrain seen before is drawn out of sight, and nothing that stood on it", 
       rects.push(args);
     },
   };
-  drawRemembered(ctx, memory.within(everywhere), testMapMemoryConfig, 50);
+  drawRemembered(ctx, memory.within(everywhere, 0), testMapMemoryConfig, 50);
 
   expect(rects).toContainEqual([300, 300, 50, 50]);
 });
