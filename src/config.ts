@@ -787,7 +787,8 @@ export const config = {
   ui: { debugRefreshMs: 250 },
   // An item with up to 10 uses shows each as a segment of its bar.
   hud: { segmentsUpTo: 10 },
-  // The world log is on in development and under ?debug; `enabled` turns it on in production too.
+  // The world log is always on in development and under ?debug; `enabled` keeps it on in
+  // production too, as playtests run on the deployed build. It is console-only and cheap.
   // It keeps the latest 2000 events; items dropped and picked up are kept but not printed.
-  worldLog: { enabled: false, capacity: 2000, quiet: ["item"] },
+  worldLog: { enabled: true, capacity: 2000, quiet: ["item"] },
 } as const satisfies AppConfig;
