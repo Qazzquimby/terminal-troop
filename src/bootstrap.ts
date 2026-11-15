@@ -62,6 +62,7 @@ import { createScope } from "./lib/scope/index.js";
 import { departingIn, entityContent, hasEscaped } from "./entities/index.js";
 import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
+import { createWorldLog, logsWorld } from "./world-log/index.js";
 
 /** Owns everything that lives as long as the page. */
 const app = createScope();
@@ -269,6 +270,14 @@ if (debug)
     mapMemory,
     positions,
   });
+/**
+ * What happens in the world, printed to the console and read from it as `window.log`: on in
+ * development and under `?debug`, and in production when the config says so.
+ */
+const worldLog = logsWorld(config.worldLog, import.meta.env.DEV, debug)
+  ? createWorldLog(config.worldLog)
+  : null;
+if (worldLog !== null) Object.assign(window, { log: worldLog });
 
 /** The session being played, or null outside a room. */
 function joinedSession(state: RoomState): Session | null {
@@ -414,6 +423,7 @@ function frame(): void {
       speak(session, voice.speakingLevel());
       const controls = input.getControls(until);
       updateSession(session, controls, clock.dt);
+      worldLog?.observe(session);
       stepSpectator(spectator, session, controls, clock.dt, config.spectate);
       // Talking into a walkie talkie sends the mic out whatever the voice settings.
       voice.setKeyed(onAir.get(session.local));

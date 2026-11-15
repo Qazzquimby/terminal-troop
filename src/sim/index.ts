@@ -134,6 +134,8 @@ export {
 export type { Eyes } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
+export { entityWho, falls, who } from "./fallen.js";
+export type { Fall, Who } from "./fallen.js";
 export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
@@ -188,6 +190,6 @@ export type {
   VisibilityPolygon,
   VisionSource,
 } from "./vision.js";
-export { isStunned, stun, stunLeft } from "./status.js";
+export { isStunned, stun, stunLeft, stunnedIds } from "./status.js";
 export { ambientLightAt, ambientPolygons, isLit } from "./light.js";
 export type { AmbientLight } from "./light.js";

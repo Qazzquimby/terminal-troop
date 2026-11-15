@@ -76,6 +76,14 @@ export function stunLeft(game: Session, id: string): number | null {
   return ends === null ? null : ends - game.worldTime;
 }
 
+/** The ids of every body under a stun now, players and world entities alike. */
+export function stunnedIds(game: Session): string[] {
+  const now = game.worldTime;
+  return Object.entries(bodyStatuses.get(game))
+    .filter(([, ends]) => ends.stunned !== undefined && now < ends.stunned)
+    .map(([id]) => id);
+}
+
 /**
  * Stuns the body `id`, a player or a world entity, for `seconds`, or for longer if it already is;
  * only the host does. Returns whether it did.
