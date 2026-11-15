@@ -173,14 +173,14 @@ export const config = {
     sprint: { interval: 0.3, radius: CELL * 7 },
     crouch: { interval: 0.7, radius: 0 },
   },
-  // Speech is judged by its loudest moment over the last 0.75s, so the gaps between words don't
+  // Speech is judged by its loudest moment over the last 0.3, so the gaps between words don't
   // silence it. The mic level runs from -60 dBFS (0) to full scale (1): a quiet room sits below
   // 0.35 (-39 dBFS), talking at about 0.5 (-30 dBFS) carries 4 cells, under a walk's 5, and a
   // shout at 0.85 (-9 dBFS) or more carries 10, past a walk but short of a sprint's 16. Rounded to
   // whole cells, so a player reports a new radius only as its loudness steps; a speaker ripples
   // every 0.5s, a walking step's pace.
   voiceNoise: {
-    window: 0.75,
+    window: 0.3,
     threshold: 0.35,
     full: 0.85,
     radius: { quiet: CELL * 2, loud: CELL * 10 },
@@ -205,17 +205,11 @@ export const config = {
   greeting: { replayMs: 10_000 },
   entities: {
     zombie: {
-      // Groups of one to five, three on average, so a third as many groups as there were zombies
-      // when they came one at a time; at least one.
       spawn: {
         count: { density: 0.4, min: 1 },
         seed: 1,
         clearance: CELL * 10,
       },
-      // A group every 36 seconds as a world begins, the gap falling evenly to one every 3 seconds
-      // over its first five minutes, so as many arrive on average as when they came one at a time;
-      // never within 14 cells of a player, nor past 120 alive. A group stands within 2 cells of its
-      // first.
       spawning: {
         firstGap: 36,
         lastGap: 3,
@@ -237,11 +231,9 @@ export const config = {
       barkGap: { min: 6, max: 12 },
       attackRange: 30,
       attackCooldown: 2,
-      // How far each of its sounds is heard, and so how far its noise carries: a bark past its
-      // sight, the cry as it starts a chase further, its bite only nearby.
       sounds: { bark: CELL * 8, alert: CELL * 10, attack: CELL * 5 },
     },
-    // Four cells across. It drives like a heavy car: up to 6 cells a second, 2s to get there,
+    // Four cells across. It drives like a heavy car: up to 6 cells a second, 2s to accelerate,
     // turning a full circle in about 5s once past 3 cells a second, slower below. A can of fuel
     // drives it 15s, about 90 cells at speed; the gauge shows two cans. A player within half a
     // cell of its body can get in.
@@ -277,7 +269,7 @@ export const config = {
       // it aside, once a half second each.
       ram: {
         speed: CELL * 2,
-        damage: 40,
+        damage: 50,
         cooldown: 0.5,
         noiseRadius: CELL * 10,
       },
@@ -289,7 +281,7 @@ export const config = {
       // A corpse carried within a cell of the cruiser's body brings its player back beside it.
       revive: { reach: CELL, volume: 0.8 },
     },
-    // Arms 3s after it is put down, then beeps, heard 2 cells off. Whatever steps on it sets it
+    // Arms 3s after it is put down, then beeps, heard  cells off. Whatever steps on it sets it
     // off: a bang heard 12 cells off, and a flash that stuns for 5s every entity with a clear line
     // to it within 5 cells, lighting 8 cells round it for half a second.
     stunTrap: {
@@ -298,7 +290,7 @@ export const config = {
       stunRange: CELL * 5,
       stunSeconds: 5,
       light: { range: CELL * 8, seconds: 0.5 },
-      sounds: { beep: CELL * 2, flash: CELL * 12 },
+      sounds: { beep: CELL * 8, flash: CELL * 12 },
       volume: 0.8,
     },
     // At most one alive, the first 4 minutes into a world, never within 14 cells of a player, then
@@ -649,7 +641,7 @@ export const config = {
       range: CELL * 25,
       noiseInterval: 1,
     },
-    // One use: put down where its holder stands. As likely as a handgun, and light.
+    // One use: put down where its entitholder stands. As likely as a handgun, and light.
     stunTrap: {
       weight: 4,
       uses: 1,
@@ -677,7 +669,7 @@ export const config = {
       cooldown: 0.8,
       stamina: STAMINA_MAX * 0.15,
       lunge: { lengths: 1, seconds: 0.08 },
-      noiseRadius: CELL * 12,
+      noiseRadius: CELL * 6,
     },
   },
   sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
