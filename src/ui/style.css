@@ -580,3 +580,88 @@ canvas {
 .cabin-exit-runner {
   transform: scaleX(-1);
 }
+/* The exit sign stays the last panel, and sticky (above), whatever panels are added after it. */
+.cabin-panel.cabin-exit-panel {
+  order: 99;
+}
+.cabin-panel[hidden] {
+  display: none;
+}
+.cabin-storage {
+  min-width: 110px;
+}
+.cabin-storage-grid {
+  display: grid;
+  gap: 2px 5px;
+  margin: 2px 0 3px 6px;
+}
+.cabin-slot {
+  height: 26px;
+  padding: 0;
+  background: #ffe100;
+  color: #000;
+  border: 3px inset #6a00ff;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.cabin-slot:nth-child(odd) {
+  border-color: #00ff6a;
+  border-style: outset;
+}
+.cabin-slot-empty {
+  background: #8f6f00;
+  color: #c400b8;
+}
+.cabin-slot:disabled,
+.cabin-pocket:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.cabin-pockets {
+  display: flex;
+  gap: 1px;
+}
+.cabin-pocket {
+  width: 27px;
+  height: 22px;
+  padding: 0;
+  background: #00e5ff;
+  border: 1px dashed #ff0000;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cabin-pocket-held {
+  outline: 2px solid #ffffff;
+}
+.cabin-shop {
+  max-width: 180px;
+}
+.cabin-wares {
+  margin: 1px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cabin-ware:nth-child(even) {
+  margin-left: 9px;
+}
+.cabin-buy {
+  width: 100%;
+  margin: 1px 0;
+  padding: 2px 4px;
+  background: #00ff2a;
+  color: #7c00ff;
+  border: 2px ridge #ff6a00;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cabin-buy:disabled {
+  background: #777766;
+  color: #3a3a3a;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}

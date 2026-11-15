@@ -170,6 +170,8 @@ test("the host sends its world state in full every fullSnapshotMs", async () => 
       1,
       { a: [null, null, null, null], b: [null, null, null, null] },
     ],
+    "core/items.stores": [0, {}],
+    "core/team.credit": [0, 0],
     "core/health.players": [0, {}],
     "core/hurts.last": [0, {}],
     "core/hurts.fallen": [0, []],

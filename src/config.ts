@@ -329,6 +329,20 @@ export const config = {
       escape: { delay: 20, volume: 0.8 },
       // A corpse carried within a cell of the cruiser's body brings its player back beside it.
       revive: { reach: CELL, volume: 0.8 },
+      // Its cabin stores 6 items, 2 rows of 3; an item going in or out clunks a cell off, inside
+      // its body, so only something pressed against it hears.
+      storage: { slots: 6, noiseRadius: CELL, volume: 0.7 },
+      // Sells for the team's credit, which a scrap's sale adds 1 to, so a price is that many scrap.
+      // The register rings 2 cells off.
+      shop: {
+        wares: [
+          { item: "walkie", price: 2 },
+          { item: "flashlight", price: 3 },
+          { item: "shovel", price: 3 },
+        ],
+        noiseRadius: CELL * 2,
+        volume: 0.8,
+      },
     },
     // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it sets it
     // off: a bang heard 12 cells off, and a flash that stuns for 5s every body, players included,

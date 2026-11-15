@@ -7,6 +7,7 @@ import type { Player, PlayerRules } from "./player.js";
 import type { Session } from "./session.js";
 import { moveBox, nudgeBoxFree, turnBox } from "./shape.js";
 import type { BoxSize } from "./shape.js";
+import type { Sound } from "./sound.js";
 import { updateStamina } from "./stamina.js";
 import type { WallArea } from "./walls.js";
 
@@ -42,9 +43,42 @@ export const RideWire = z
 
 /**
  * What a player inside a vehicle asks of it from its cabin: to take the wheel, sound the horn,
- * or get out.
+ * or get out; to stow the item in its own slot `stow` in the vehicle's storage, in its slot
+ * `into` or the first empty one; to take the item in the storage's slot `unstow`; or to buy the
+ * item `buy` at the vehicle's shop.
  */
-export type CabinCommand = "drive" | "honk" | "exit";
+export type CabinCommand =
+  | "drive"
+  | "honk"
+  | "exit"
+  | { readonly stow: number; readonly into?: number }
+  | { readonly unstow: number }
+  | { readonly buy: string };
+
+/** A vehicle's storage: items anyone inside may leave in it, or take out. */
+export interface Storage {
+  /** How many items it holds, one a slot. */
+  readonly slots: number;
+  /** What every client near it hears as an item goes in or out, if anything. */
+  readonly sound?: Sound;
+  /** How far, in pixels, the noise of an item going in or out carries; as far as its sound when left out. */
+  readonly noise?: number;
+}
+
+/** One item a shop sells, and what it costs of the team's credit. */
+export interface Ware {
+  readonly item: string;
+  readonly price: number;
+}
+
+/** A vehicle's shop: items anyone inside may buy with the team's credit. */
+export interface VehicleShop {
+  readonly wares: readonly Ware[];
+  /** What every client near it hears on a purchase, if anything. */
+  readonly sound?: Sound;
+  /** How far, in pixels, a purchase's noise carries; as far as its sound when left out. */
+  readonly noise?: number;
+}
 
 /** How a vehicle drives, like a car. Speeds in pixels per second, rates per second. */
 export interface Handling {
@@ -91,6 +125,10 @@ export interface VehicleSpec {
   canBoard?(game: Session, vehicle: WorldEntity): boolean;
   /** Whether its throttle does anything; always when left out. Without it, it only rolls to a stop. */
   powered?(vehicle: WorldEntity): boolean;
+  /** Its storage, which those inside share; none when left out. */
+  readonly storage?: Storage;
+  /** Its shop, where those inside buy with the team's credit; none when left out. */
+  readonly shop?: VehicleShop;
   /** Its horn, sounded by `by` inside it, as part of an action: an `effect` to make. None when left out. */
   honk?(game: Session, vehicle: WorldEntity, by: Player): void;
   /**

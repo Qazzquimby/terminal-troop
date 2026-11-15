@@ -21,8 +21,16 @@ export { rounded } from "./rounded.js";
 export { soundDrop, spawnWorldItem } from "./world-items.js";
 export { driverOf, occupantsOf, vehicleOf } from "./driving.js";
 export { isAboard, playersOutside } from "./aboard.js";
-export type { Handling, Impact, VehicleSpec } from "./driving.js";
-export { unseat } from "./vehicle.js";
+export type {
+  Handling,
+  Impact,
+  Storage,
+  VehicleShop,
+  VehicleSpec,
+  Ware,
+} from "./driving.js";
+export { cabinShop, cabinStorage, unseat } from "./vehicle.js";
+export { credit } from "./credit.js";
 export type { CabinCommand } from "./driving.js";
 export { destroyWalls } from "./walls.js";
 export {

@@ -1,6 +1,6 @@
-import { z } from "zod";
 import {
   changeWorld,
+  credit,
   defineItem,
   effect,
   footprintOf,
@@ -10,7 +10,6 @@ import {
   itemsOf,
   sound,
   take,
-  worldData,
 } from "../../sim/index.js";
 import type {
   ItemTraits,
@@ -45,11 +44,7 @@ const ITEM = "scrap";
 /** The kind of entity scrap sells at. */
 const CRUISER = "cruiser";
 
-/** The team's credit: what its scrap has sold for. */
-export const credit = worldData({
-  schema: z.number().min(0),
-  initial: 0,
-});
+export { credit };
 
 /** Whether `at` is near enough a cruiser to sell at it. */
 function nearCruiser(game: Session, at: Point, radius: number): boolean {
@@ -97,7 +92,6 @@ export const scrap = defineItem("scrap", (config: ScrapConfig) => {
     }),
     traits: config,
     scatter: config.scatter,
-    world: { credit },
     step(game) {
       const due = nextSale.get(game) ?? new Map<string, number>();
       nextSale.set(game, due);

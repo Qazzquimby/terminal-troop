@@ -58,6 +58,44 @@ export const inventories = worldData({
   initial: {},
 });
 
+/**
+ * Stores of items kept by something other than a player, such as a vehicle's storage, by its id:
+ * an item by slot, null for an empty slot. The host owns them, as it does players' items, and
+ * every client holds them. Items in them keep their uses left and state.
+ */
+export const stores = worldData({
+  schema: z.record(z.string(), Slots),
+  initial: {},
+});
+
+/** Store `id`'s items, `size` slots of them, as the host keeps them; all empty until it has any. */
+export function storeOf(game: Session, id: string, size: number): Inventory {
+  const slots = stores.get(game)[id] ?? [];
+  return Array.from({ length: size }, (_, slot) =>
+    carriedFrom(game, slots[slot] ?? null),
+  );
+}
+
+/**
+ * Every store, with store `id`, `size` slots of it, holding `item` in `slot`; null empties the
+ * slot. What the host sets `stores` to.
+ */
+export function storesWith(
+  game: Session,
+  id: string,
+  size: number,
+  slot: number,
+  item: CarriedItem | null,
+): Record<string, Slots> {
+  const held = stores.get(game);
+  const slots = Array.from(
+    { length: size },
+    (_, index) => held[id]?.[index] ?? null,
+  );
+  slots[slot] = item === null ? null : slotOf(item);
+  return { ...held, [id]: slots };
+}
+
 /** What the local player's client predicted of its own items, held until the host settles it. */
 export interface InventoryHold {
   /** The latest local action predicted; the host's record takes over once it has handled it. */
