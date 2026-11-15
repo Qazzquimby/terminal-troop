@@ -4,6 +4,7 @@ export {
   applyEntitySnapshot,
   INERT_TAG,
   ITEM_TAG,
+  UNNOTICED_TAG,
   entitySnapshot,
   registerEntityType,
   removeEntity,

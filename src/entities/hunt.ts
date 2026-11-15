@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
   hasKindTag,
+  INERT_TAG,
   ITEM_TAG,
+  UNNOTICED_TAG,
   livingBodies,
   isAreaFree,
   mulberry32Next,
@@ -60,11 +62,21 @@ export function between(
   return range.min + (range.max - range.min) * rng();
 }
 
+/**
+ * Kind tags no monster hunts, notices as prey or strikes, whatever its config says: inert things,
+ * items lying about, and bodies every hunter leaves be, such as the snail.
+ */
+export const NEVER_PREY: readonly string[] = [
+  INERT_TAG,
+  ITEM_TAG,
+  UNNOTICED_TAG,
+];
+
 /** Who a monster kind passes over, which its config says. */
 export interface Hunting {
   /**
    * Kind tags it neither hunts nor strikes, its own kind as a rule; "player" spares players. No
-   * monster hunts inert things or items lying about, whatever this says.
+   * monster hunts what `NEVER_PREY` names, whatever this says.
    */
   readonly ignores: readonly string[];
   /**

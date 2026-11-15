@@ -39,6 +39,13 @@ export const INERT_TAG = "inert";
 export const ITEM_TAG = "item";
 
 /**
+ * A kind tag for living bodies every hunter leaves be, as if they were not there: none hunts,
+ * chases, notices as prey or strikes them; the snail is one. Unlike `INERT_TAG` it says nothing of
+ * what the body is, so it still sets off traps, takes hurts and strikes what it touches.
+ */
+export const UNNOTICED_TAG = "unnoticed";
+
+/**
  * Damage an entity deals to `target`, any body. It is down to `by`, a body's id, or to no one for
  * null; to the striking entity when left out.
  */

@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { drawEmoji } from "../../render/index.js";
-import { defineEntity, livingBody, rounded } from "../../sim/index.js";
+import {
+  defineEntity,
+  livingBody,
+  rounded,
+  UNNOTICED_TAG,
+} from "../../sim/index.js";
 import type {
   EntityDefinition,
   Point,
@@ -146,6 +151,8 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
     radius: config.radius,
     // It cannot die, whatever it takes.
     maxHealth: Infinity,
+    // No monster hunts, chases or strikes it.
+    tags: [UNNOTICED_TAG],
     data: SnailState,
     update(entity, state, dt, game) {
       const next = attack(
@@ -180,7 +187,8 @@ function definition(config: SnailConfig): EntityDefinition<SnailState> {
  * creeps after it at a fraction of a player's pace, round the walls, for as long as it lives or
  * stays, then picks another; with none to pick it stands. Its quarry's name shows under it on
  * every screen. Whatever it touches, player or monster, takes damage enough to kill it, and
- * nothing kills it. It makes no sound, pays light no mind, and a stun holds it like anything else.
+ * nothing kills it. No monster hunts, notices or strikes it. It makes no sound, pays light no
+ * mind, and a stun holds it like anything else.
  */
 export const snail = defineEntity(NAME, (config: SnailConfig) => ({
   ...definition(config),

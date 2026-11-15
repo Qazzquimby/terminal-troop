@@ -29,6 +29,7 @@ import {
   clearestNoise,
   strikeEach,
   walk,
+  NEVER_PREY,
   preyNear as preyAround,
   Route,
   Seed,
@@ -189,7 +190,7 @@ function preyNear(
   reach: (prey: Prey) => number,
   config: ZombieConfig,
 ): Prey[] {
-  return preyAround(game, hunter, reach, [...config.ignores, INERT_TAG]);
+  return preyAround(game, hunter, reach, [...config.ignores, ...NEVER_PREY]);
 }
 
 /**
