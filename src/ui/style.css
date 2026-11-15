@@ -541,7 +541,11 @@ canvas {
   color: #e0ffff;
   font-size: 12px;
 }
+/* Stuck to the bottom of the cabin's scroll view, so the way out shows on any screen size. */
 .cabin-exit-panel {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   align-self: flex-end;
   margin-left: auto;
   padding: 0;
