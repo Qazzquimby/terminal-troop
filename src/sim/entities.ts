@@ -15,6 +15,7 @@ import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
 import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
+import type { BoxPose, BoxSize } from "./shape.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
@@ -86,6 +87,14 @@ export interface EntityDefinition<S> {
   readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
   /** What makes it a vehicle a player can drive, if it is one. */
   readonly vehicle?: VehicleSpec;
+  /**
+   * Its body as a box rather than the disc of `radius`, such as a car's: `length` along the way
+   * it points, which `heading` gives from its state, and `width` across. Walls stop it as it
+   * drives, it touches bodies and it is seen by that box. Its `radius` should be half its length.
+   */
+  readonly box?: BoxSize & {
+    heading(entity: WorldEntity, data: S): number;
+  };
   /** Steers the entity before it moves, and returns its next state. Runs only while hosting. */
   readonly update?: (
     entity: WorldEntity,
@@ -123,6 +132,8 @@ export interface EntityType {
   readonly tags: readonly string[];
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
+  /** Its body's box, turned the way it points now; null for a kind whose body is its disc. */
+  box(entity: WorldEntity): BoxPose | null;
   light(entity: WorldEntity): readonly LightEmission[];
   eyes(entity: WorldEntity, game: Session): Eyes | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
@@ -156,6 +167,14 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     tags: definition.tags ?? [],
     data: schema,
     vehicle: definition.vehicle ?? null,
+    box(entity) {
+      const { box } = definition;
+      if (box === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      if (!parsed.success) return null;
+      const { length, width } = box;
+      return { length, width, heading: box.heading(entity, parsed.data) };
+    },
     light(entity) {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return [];

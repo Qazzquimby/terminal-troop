@@ -112,7 +112,15 @@ export { isGhost, livingPlayers } from "./ghosts.js";
 export { CORPSE_ITEM, isRevivable, itemName, revive } from "./death.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
-export { bodyById, isGone, livingBodies, livingBody } from "./bodies.js";
+export {
+  bodyById,
+  footprintOf,
+  isGone,
+  livingBodies,
+  livingBody,
+} from "./bodies.js";
+export { axesOf, gapTo, isBoxFree, reachAlong, touches } from "./shape.js";
+export type { BoxSize, Footprint } from "./shape.js";
 export type { Body } from "./bodies.js";
 export {
   eyesOf,

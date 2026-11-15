@@ -3,6 +3,8 @@ import {
   changeWorld,
   defineItem,
   effect,
+  footprintOf,
+  gapTo,
   heldSlot,
   itemIn,
   itemsOf,
@@ -54,8 +56,7 @@ function nearCruiser(game: Session, at: Point, radius: number): boolean {
   const kind = game.kindIds.get(CRUISER);
   for (const entity of game.entities.values()) {
     if (entity.kind !== kind) continue;
-    if (Math.hypot(entity.x - at.x, entity.y - at.y) <= radius + entity.radius)
-      return true;
+    if (gapTo(footprintOf(game, entity), at) <= radius) return true;
   }
   return false;
 }

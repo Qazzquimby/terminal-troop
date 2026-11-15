@@ -266,12 +266,14 @@ export const config = {
       chase: { limit: 15, rest: 5 },
       sounds: { bark: CELL * 8, alert: CELL * 10, attack: CELL * 5 },
     },
-    // Four cells across. It drives like a heavy car: up to 6 cells a second, 2s to accelerate,
-    // turning a full circle in about 5s once past 3 cells a second, slower below. A can of fuel
+    // Four cells long and 2.4 across, the box it is drawn, meets walls, rams and is seen as. It
+    // drives like a heavy car: up to 6 cells a second, 2s to accelerate, turning a full circle in
+    // about 5s once past 3 cells a second, slower below. A can of fuel
     // drives it 15s, about 90 cells at speed; the gauge shows two cans. A player within half a
     // cell of its body can get in.
     cruiser: {
-      radius: CELL * 2,
+      length: CELL * 4,
+      width: CELL * 2.4,
       handling: {
         speed: CELL * 6,
         reverse: CELL * 2,

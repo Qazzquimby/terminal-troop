@@ -173,7 +173,8 @@ export const testEntitiesConfig = {
     sounds: { bark: 400, alert: 500, attack: 250 },
   },
   cruiser: {
-    radius: 10,
+    length: 20,
+    width: 12,
     handling: {
       speed: 300,
       reverse: 100,

@@ -1,11 +1,13 @@
 import { minBy } from "lodash-es";
 import { z } from "zod";
 import { defineAction } from "./actions.js";
+import { footprintOf } from "./bodies.js";
 import { nearestFreePoint } from "./collision.js";
 import { driverOf, vehicleOf } from "./driving.js";
 import type { WorldEntity } from "./entities.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
+import { gapTo, reachAlong } from "./shape.js";
 import { alter } from "./steering.js";
 
 /** Least time between one player's getting in or out, in sim seconds. */
@@ -19,9 +21,8 @@ function mayBoard(game: Session, player: Player, id: string): boolean {
   const found = vehicleOf(game, id);
   if (found === null || player.ride !== null) return false;
   const { entity, spec } = found;
-  const reach = entity.radius + player.radius + spec.reach;
-  if (Math.hypot(entity.x - player.x, entity.y - player.y) > reach)
-    return false;
+  const gap = gapTo(footprintOf(game, entity), player);
+  if (gap > player.radius + spec.reach) return false;
   if (driverOf(game, id) !== null) return false;
   return spec.canBoard?.(game, entity) ?? true;
 }
@@ -62,8 +63,15 @@ function stepOut(game: Session, player: Player): { x: number; y: number } {
     player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
   if (found === null || player.ride === null)
     return { x: player.x, y: player.y };
-  const side = player.ride.heading - Math.PI / 2;
-  const gap = found.entity.radius + player.radius + STEP_OUT;
+  const { heading } = player.ride;
+  const side = heading - Math.PI / 2;
+  const { box, ...disc } = footprintOf(game, found.entity);
+  const body =
+    box === null || box === undefined
+      ? disc
+      : { ...disc, box: { ...box, heading } };
+  const out = { x: Math.cos(side), y: Math.sin(side) };
+  const gap = reachAlong(body, out) + player.radius + STEP_OUT;
   return nearestFreePoint(game.world.map, player.radius, {
     x: player.x + Math.cos(side) * gap,
     y: player.y + Math.sin(side) * gap,

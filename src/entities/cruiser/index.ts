@@ -54,8 +54,12 @@ interface HeadlightConfig {
  * player can drive it.
  */
 export interface CruiserConfig extends DrivingConfig {
-  /** Half its size, in pixels: its body is a square this far from its centre each way. */
-  readonly radius: number;
+  /**
+   * Its body, in pixels: a box `length` from back to front and `width` across, turned the way it
+   * points. It is drawn, meets walls, rams bodies and is seen as that box.
+   */
+  readonly length: number;
+  readonly width: number;
   readonly headlights: HeadlightConfig;
   readonly escape: EscapeConfig;
   readonly revive: ReviveConfig;
@@ -64,20 +68,20 @@ export interface CruiserConfig extends DrivingConfig {
 const NAME = "cruiser";
 
 /**
- * Its headlights, front left and front right at the front of its body of `radius`, both shining
- * the way it points, `heading`.
+ * Its headlights, front left and front right at the front of its body, `ahead` of its middle,
+ * both shining the way it points, `heading`.
  */
 function headlights(
   config: HeadlightConfig,
-  radius: number,
+  ahead: number,
   heading: number,
 ): LightEmission[] {
-  const ahead = { x: Math.cos(heading), y: Math.sin(heading) };
-  const side = { x: -ahead.y, y: ahead.x };
+  const forward = { x: Math.cos(heading), y: Math.sin(heading) };
+  const side = { x: -forward.y, y: forward.x };
   return [-1, 1].map((hand) => ({
     from: {
-      x: ahead.x * radius + side.x * config.spread * hand,
-      y: ahead.y * radius + side.y * config.spread * hand,
+      x: forward.x * ahead + side.x * config.spread * hand,
+      y: forward.y * ahead + side.y * config.spread * hand,
     },
     range: config.range,
     shape: { kind: "cone", direction: heading, angle: config.angle },
@@ -175,7 +179,12 @@ export const nearCruiser = (
  * world's exit, it takes everyone there out after a delay.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
-  radius: config.radius,
+  radius: config.length / 2,
+  box: {
+    length: config.length,
+    width: config.width,
+    heading: (_entity, state) => state.heading,
+  },
   maxHealth: Infinity,
   // Immovable: a kick, a swing or another cruiser's ram thuds off it.
   mass: Infinity,
@@ -183,12 +192,12 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   tags: [INERT_TAG],
   data: CruiserState,
   light: (_entity, state) =>
-    headlights(config.headlights, config.radius, state.heading),
+    headlights(config.headlights, config.length / 2, state.heading),
   vehicle: vehicle(config),
   update: (entity, state, dt, game) =>
     stepCruiser(game, entity, state, dt, config),
   draw(ctx, entity, state, _now, game) {
-    drawCruiser(ctx, entity, state, game, {
+    drawCruiser(ctx, entity, state, game, config, {
       fullTank: config.gauge,
       breakdown: config.crash.breakdown,
     });

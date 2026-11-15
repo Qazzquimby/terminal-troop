@@ -7,7 +7,9 @@ import {
   createSession,
   giveItem,
   itemIn,
+  isBoxFree,
   lastHurtBy,
+  stun,
   registerContent,
   updateSession,
 } from "../sim/index.js";
@@ -32,7 +34,7 @@ function entitiesWith(zombies: number): EntitiesConfig {
       ...testEntitiesConfig.zombie,
       spawn: { ...testEntitiesConfig.zombie.spawn, count: zombies },
     },
-    cruiser: { ...testEntitiesConfig.cruiser, radius: 40 },
+    cruiser: { ...testEntitiesConfig.cruiser, length: 80, width: 48 },
   };
 }
 
@@ -208,7 +210,7 @@ test("throttle drives it the way it points, carrying the cruiser, burning fuel o
   press(game, { interact: true });
   expect(game.local.ride).toBeNull();
   // Out on its left, which is up while it points right.
-  expect(game.local.y).toBeLessThan(at.y - config.radius);
+  expect(game.local.y).toBeLessThan(at.y - 48 / 2);
   play(game, 1);
   expect(cruiser).toMatchObject(at);
 });
@@ -337,7 +339,7 @@ test("driven into a zombie at speed, it hurts it once, down to its driver, and s
   expect(zombie.health).toBe(zombie.maxHealth - config.ram.damage);
   expect(lastHurtBy(game, zombie.id)).toBe(game.localId);
   expect(Math.abs(zombie.y - game.local.y)).toBeGreaterThanOrEqual(
-    40 + zombie.radius,
+    48 / 2 + zombie.radius,
   );
   expect(Math.abs(game.local.ride?.speed ?? 0)).toBeGreaterThan(
     config.ram.speed,
@@ -351,4 +353,81 @@ test("driven into a zombie slowly, it does not hurt it", () => {
   driving(game, { x: 200, y: 300 });
   play(game, 0.3, throttle);
   expect(zombie.health).toBe(zombie.maxHealth);
+});
+
+/** The test cruiser's drawn size: 80px long, 48 across. */
+const SIZE = { length: 80, width: 48 };
+
+test("it drives along a wall at its drawn half-width without catching on it", () => {
+  const game = world();
+  // The top edge of the world is a wall; its side is a hair clear of it.
+  const y = SIZE.width / 2 + 0.5;
+  driving(game, { x: 350, y });
+  play(game, 1.5, throttle);
+  expect(game.local.y).toBeCloseTo(y, 5);
+  expect(game.local.x).toBeGreaterThan(350 + 100);
+  expect(game.local.ride?.speed).toBeGreaterThan(config.ram.speed);
+});
+
+test("turning beside a wall never swings its corners into it", () => {
+  for (const steer of [-1, 1]) {
+    const game = world();
+    driving(game, { x: 350, y: SIZE.width / 2 + 0.5 });
+    play(game, 0.5, throttle);
+    for (let step = 0; step < 90; step++) {
+      press(game, { ...idle, move: { x: steer, y: -0.4 } });
+      const { ride } = game.local;
+      if (ride === null) throw new Error("got out");
+      expect(
+        isBoxFree(game.world.map, {
+          ...SIZE,
+          x: game.local.x,
+          y: game.local.y,
+          heading: ride.heading,
+        }),
+      ).toBe(true);
+    }
+    // It did turn, away from the wall where it could, and is never in it.
+    expect(game.local.ride?.heading).not.toBe(0);
+  }
+});
+
+test("it rams a body its side runs into, and passes one just clear of its side", () => {
+  for (const [gap, hit] of [
+    [-3, true],
+    [5, false],
+  ] as const) {
+    const game = world(1);
+    const zombie = kindOf(game, "zombie");
+    const y = 300 + SIZE.width / 2 + zombie.radius + gap;
+    Object.assign(zombie, { x: 500, y, tx: 500, ty: y });
+    stun(game, zombie.id, 10);
+    driving(game, { x: 150, y: 300 });
+    for (let step = 0; step < 240 && game.local.x < 600; step++)
+      press(game, throttle);
+    expect(game.local.x).toBeGreaterThanOrEqual(600);
+    expect(zombie.health < zombie.maxHealth).toBe(hit);
+  }
+});
+
+test("a player gets in within reach of its drawn box, not the disc round it", () => {
+  const game = world();
+  const cruiser = park(game, { x: 450, y: 300 }, { fuel: 10 });
+  const { radius } = game.local;
+  const side = SIZE.width / 2 + radius + config.reach;
+  // Beside its side, just out of reach of the box, though within reach of the disc round it.
+  stand(game, { x: 450, y: 300 + side + 5 });
+  press(game, { interact: true });
+  expect(game.local.ride).toBeNull();
+  // Beside its side, just within reach.
+  play(game, 0.5);
+  stand(game, { x: 450, y: 300 + side - 1 });
+  press(game, { interact: true });
+  expect(game.local.ride?.vehicle).toBe(cruiser.id);
+  // Off its nose, its reach is as far past the box's front.
+  press(game, { interact: true });
+  play(game, 0.5);
+  stand(game, { x: 450 + SIZE.length / 2 + radius + config.reach - 1, y: 300 });
+  press(game, { interact: true });
+  expect(game.local.ride?.vehicle).toBe(cruiser.id);
 });

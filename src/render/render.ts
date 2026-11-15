@@ -1,6 +1,7 @@
 import type {
   AmbientLight,
   Entity,
+  Footprint,
   Interpolated,
   Player,
   Point,
@@ -16,6 +17,7 @@ import {
   ambientLightAt,
   ambientPolygons,
   emittedLights,
+  footprintOf,
   heldItemOf,
   isGhost,
   isStunned,
@@ -703,12 +705,12 @@ function drawBodies(
   now: number,
   isAway: (id: string) => boolean,
   but: Player | null,
-  shows: (body: Circle) => boolean,
+  shows: (body: Footprint) => boolean,
 ): void {
   game.entities.forEach((entity) => {
     const definition = game.entityTypes.get(entity.kind);
     if (definition === undefined) return;
-    if (!inView(entity, camera) || !shows(entity)) return;
+    if (!inView(entity, camera) || !shows(footprintOf(game, entity))) return;
     ctx.save();
     // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
     ctx.fillStyle = EMOJI_FILL;
