@@ -202,6 +202,40 @@ test("it carries scrap it sees home, held up to see, lays it by the nest as the 
   expect(stateOf(bug).mode).toBe("wander");
 });
 
+test("a nest adds nothing to the world: what piles up there is scrap that already lay about, fetched home", () => {
+  const game = world(850, 575);
+  const lying = [
+    { x: 380, y: 300 },
+    { x: 200, y: 450 },
+    { x: 100, y: 150 },
+  ].map((at) => spawnWorldItem(game, at, "scrap"));
+  const before = itemInstances(game).length;
+  const first = hoarderAt(game, 200, 300);
+  const group = [first, hoarderAt(game, 230, 300)];
+  // A new nest starts empty: settling one lays nothing.
+  run(game, DT);
+  const { nestId } = stateOf(first);
+  const claimed = () =>
+    scrapLying(game).filter(({ state }) => state?.nest === nestId);
+  expect(claimed()).toEqual([]);
+  expect(itemInstances(game)).toHaveLength(before);
+
+  for (let second = 0; second < 30; second++) {
+    run(game, 1);
+    // Carried or lying, the world holds the same items throughout.
+    const carried = group.filter(
+      (bug) => stateOf(bug).carrying !== null,
+    ).length;
+    expect(itemInstances(game).length + carried).toBe(before);
+  }
+  // The scrap that lay about now lies at the nest, claimed, and no more than that.
+  expect(claimed()).toHaveLength(lying.length);
+  for (const { at } of claimed())
+    expect(Math.hypot(at.x - 200, at.y - 300)).toBeLessThanOrEqual(
+      config.dropRadius + 1,
+    );
+});
+
 test("a player it sees near its nest sets it guarding; one close by away from the nest spooks it", () => {
   const game = world(850, 575);
   const bug = hoarderAt(game, 300, 300);
