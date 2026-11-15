@@ -154,20 +154,36 @@ function takeCorpses(game: Session, id: string): void {
   }
 }
 
+/** The ghost whose corpse keeps `state`; null when it is nobody's, or not a ghost in the session. */
+function ghostOf(game: Session, state: ItemState | undefined): Player | null {
+  const id = corpseOwner(game, state);
+  const player = id === null ? undefined : game.players.get(id);
+  return player !== undefined && isGhost(player) ? player : null;
+}
+
+/**
+ * Whether the corpse that keeps `state` can be brought back to life: its player is a ghost in the
+ * session. Every client holds what this reads, so a client may ask it as it predicts.
+ */
+export const isRevivable = (
+  game: Session,
+  state: ItemState | undefined,
+): boolean => ghostOf(game, state) !== null;
+
 /**
  * As the host, brings the ghost of the player whose corpse keeps `state` back to life by `at`:
- * its corpse is gone, wherever it was, and the player stands near `at` with the configured health.
- * Returns the player revived; null when the corpse is nobody's, or its player is not in the
- * session or not a ghost.
+ * its corpse is gone, wherever it was, and the player stands near `at` with `health(player)`
+ * health, or the configured revive health when left out. Returns the player revived; null when
+ * the corpse is nobody's, or its player is not in the session or not a ghost.
  */
 export function revive(
   game: Session,
   state: ItemState | undefined,
   at: Point,
+  health?: (player: Player) => number,
 ): Player | null {
-  const id = corpseOwner(game, state);
-  const player = id === null ? undefined : game.players.get(id);
-  if (!game.hosting || player === undefined || !isGhost(player)) return null;
+  const player = ghostOf(game, state);
+  if (!game.hosting || player === null) return null;
   takeCorpses(game, player.id);
   const held = bodies.get(game);
   bodies.set(game, {
@@ -176,7 +192,11 @@ export function revive(
       Object.entries(held.of).filter(([owner]) => owner !== player.id),
     ),
   });
-  setPlayerHealth(game, player, game.config.death.reviveHealth);
+  setPlayerHealth(
+    game,
+    player,
+    health?.(player) ?? game.config.death.reviveHealth,
+  );
   const spot = arrivalPoint(
     game.world,
     at,

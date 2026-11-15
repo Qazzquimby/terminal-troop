@@ -10,6 +10,7 @@ import { applyDamage } from "./entity.js";
 import { showFlash } from "./flashes.js";
 import { isGhost } from "./ghosts.js";
 import { isStunned } from "./status.js";
+import { healPlayer } from "./health.js";
 import { dealDamage } from "./hurts.js";
 import {
   carriedIn,
@@ -481,6 +482,23 @@ export function hurt(
   }
   const entity = asEntity(game, body);
   if (entity !== null && mayChange(game, entity)) applyDamage(entity, amount);
+}
+
+/**
+ * Gives `body` `amount` health back, at most its full; a dead body, a ghost, or one whose full
+ * health has no end takes none. A player's health is the host's to change, so only the host heals
+ * players; a world entity is healed on the actor's client too, as predicted.
+ */
+export function heal(game: Session, body: Body, amount: number): void {
+  if (!(amount > 0) || !Number.isFinite(body.maxHealth)) return;
+  const player = asPlayer(game, body);
+  if (player !== null) {
+    if (scope(game) === "world") healPlayer(game, player, amount);
+    return;
+  }
+  const entity = asEntity(game, body);
+  if (entity === null || entity.health <= 0 || !mayChange(game, entity)) return;
+  entity.health = Math.min(entity.maxHealth, entity.health + amount);
 }
 
 /**

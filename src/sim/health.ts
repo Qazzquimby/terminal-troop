@@ -82,3 +82,24 @@ export function setPlayerHealth(
   player.health = set;
   return true;
 }
+
+/**
+ * As the host, gives `player` `amount` health back on the record, at most its full. Does nothing
+ * on a client not hosting, for a player not in the session, for a ghost (bringing one back is
+ * `revive`'s), or for no amount. Returns the health the player has on the record.
+ */
+export function healPlayer(
+  game: Session,
+  player: Player,
+  amount: number,
+): number {
+  if (
+    !game.hosting ||
+    game.players.get(player.id) !== player ||
+    isGhost(player) ||
+    !(amount > 0)
+  )
+    return player.health;
+  setPlayerHealth(game, player, recordedHealth(game, player) + amount);
+  return player.health;
+}

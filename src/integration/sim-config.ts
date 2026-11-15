@@ -401,6 +401,18 @@ export const testItemsConfig: ItemsConfig = {
     clickNoiseRadius: 50,
   },
   corpse: { weight: 50, volume: 1 },
+  bandage: {
+    weight: 0,
+    uses: 1,
+    heal: 0.75,
+    revive: 0.25,
+    reach: 40,
+    radius: 20,
+    cooldown: 0.5,
+    duration: 0.4,
+    volume: 1,
+    noiseRadius: 75,
+  },
   walkie: {
     weight: 0,
     uses: 10,
