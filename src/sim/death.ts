@@ -15,7 +15,7 @@ import { alter } from "./steering.js";
 import { eject } from "./vehicle.js";
 import type { VoiceChannel } from "./voice-routes.js";
 import { worldData } from "./world-data.js";
-import { itemsCanLie, spawnWorldItem } from "./world-items.js";
+import { itemsCanLie, soundDrop, spawnWorldItem } from "./world-items.js";
 
 /*
  * A player whose health runs out drops everything it carried round where it stood, and its body
@@ -87,8 +87,8 @@ export function itemName(
 const FALL_FLASH = 2.5;
 
 /**
- * As the host, lays `player`'s body: everything it carried lands round where it stood, and its
- * corpse lies there, with the corpse's drop sound and a flash.
+ * As the host, lays `player`'s body: everything it carried lands round where it stood, each with
+ * its drop sound, and its corpse lies there, with the corpse's drop sound and a flash.
  */
 function fall(game: Session, player: Player): void {
   // One who falls at the wheel is put out beside the vehicle first, and falls there.
@@ -109,7 +109,8 @@ function fall(game: Session, player: Player): void {
       game.config.death.scatter,
       Math.random,
     );
-    spawnWorldItem(game, spot, item.id, item.left, item.state);
+    const lying = spawnWorldItem(game, spot, item.id, item.left, item.state);
+    soundDrop(game, item.id, spot, lying);
   });
   const held = bodies.get(game);
   bodies.set(game, {

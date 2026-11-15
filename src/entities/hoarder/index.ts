@@ -16,6 +16,7 @@ import {
   removeFromWorld,
   rounded,
   sound,
+  soundDrop,
   spawnWorldItem,
 } from "../../sim/index.js";
 import type {
@@ -488,8 +489,7 @@ function lay(
     undefined,
     nestId === undefined ? undefined : { [CLAIM]: nestId },
   );
-  const drop = game.itemDefinitions.get(item)?.drop;
-  if (drop !== undefined) effect(game, { at, sound: drop }, self);
+  soundDrop(game, item, at, self);
 }
 
 /**
@@ -703,7 +703,8 @@ function definition(config: HoarderConfig): EntityDefinition<HoarderState> {
       return strikeEach(inReach(game, entity, state, config), config.damage);
     },
     dies(entity, state, game) {
-      if (state.carrying !== null) spawnWorldItem(game, entity, state.carrying);
+      if (state.carrying !== null)
+        lay(game, entity, state.carrying, { x: entity.x, y: entity.y });
     },
     draw(ctx, entity, state, _now, game) {
       drawEmoji(ctx, entity, GLYPH, entity.radius * 2);

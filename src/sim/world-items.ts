@@ -118,6 +118,22 @@ export function spawnWorldItem(
 }
 
 /**
+ * Sounds `item` landing at `at`, dropped by `by`, with its drop sound, if it has one: every client
+ * near hears it, and one with a range makes a noise out to it. However an item comes to be
+ * dropped, by a player letting go, a body falling or a monster laying it down, it sounds the same.
+ * `by` may be left out only within an action, whose actor it is.
+ */
+export function soundDrop(
+  game: Session,
+  item: string,
+  at: Point,
+  by?: { readonly id: string },
+): void {
+  const sound = game.itemDefinitions.get(item)?.drop;
+  if (sound !== undefined) effect(game, { at, sound }, by);
+}
+
+/**
  * The item `entity` is, the uses it has left and its own state, if it is an item lying in the
  * world.
  */
@@ -192,8 +208,7 @@ export const drop = defineAction("drop", {
     if (item === null) return;
     const at = { x: player.x, y: player.y };
     spawn(game, WORLD_ITEM, at, lyingData(item, left, state));
-    const sound = game.itemDefinitions.get(item)?.drop;
-    if (sound !== undefined) effect(game, { at, sound });
+    soundDrop(game, item, at);
   },
 });
 

@@ -17,7 +17,7 @@ export type {
 } from "./entities.js";
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
-export { spawnWorldItem } from "./world-items.js";
+export { soundDrop, spawnWorldItem } from "./world-items.js";
 export { driverOf } from "./driving.js";
 export type { Handling, Impact, VehicleSpec } from "./driving.js";
 export { eject } from "./vehicle.js";
@@ -145,6 +145,7 @@ export {
   heldItemOf,
   heldSlot,
   itemIn,
+  itemsOf,
   takeItem,
 } from "./inventories.js";
 export type { ItemUse } from "./use.js";

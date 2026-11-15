@@ -216,18 +216,16 @@ test("sold scrap is gone from the host's record: a client that keeps showing it 
   expect(scrapRecorded(get("a"), b)).toBe(0);
 });
 
-test("held scrap sells one at a time; scrap not held stays", async () => {
+test("all the scrap a player carries sells by the cruiser, held or not", async () => {
   const { get, exchange } = await crew("a", "b");
   const b = get("b");
   stock(get("a"), b, 3);
   place(b, byCruiser(b, 60));
   exchange(1);
-  expect(credit.get(sessionOf(get("a")))).toBe(scrap.value);
-  expect(scrapCarried(b)).toBe(2);
-  sessionOf(b).local.held = 2;
-  exchange(1);
-  expect(credit.get(sessionOf(b))).toBe(scrap.value * 2);
-  expect(scrapCarried(b)).toBe(1);
+  expect(credit.get(sessionOf(get("a")))).toBe(scrap.value * 3);
+  expect(credit.get(sessionOf(b))).toBe(scrap.value * 3);
+  expect(scrapCarried(b)).toBe(0);
+  expect(scrapRecorded(get("a"), b)).toBe(0);
 });
 
 test("the host sells its own scrap the same way", async () => {
@@ -265,7 +263,7 @@ test("a late joiner sees the team's credit", async () => {
 test("the team's credit survives the host leaving, and the new host sells on from it", async () => {
   const { get, exchange, clock } = await crew("a", "b", "c");
   const b = get("b");
-  stock(get("a"), b, 2);
+  stock(get("a"), b, 1);
   place(b, byCruiser(b, 60));
   exchange();
   exchange();
@@ -275,7 +273,7 @@ test("the team's credit survives the host leaving, and the new host sells on fro
   clock.advance(clock.now() + 3000);
   expect(b.hostId()).toBe("b");
   expect(credit.get(sessionOf(b))).toBe(scrap.value);
-  sessionOf(b).local.held = 2;
+  stock(b, b, 1);
   exchange(1);
   expect(credit.get(sessionOf(b))).toBe(scrap.value * 2);
   expect(credit.get(sessionOf(get("c")))).toBe(scrap.value * 2);

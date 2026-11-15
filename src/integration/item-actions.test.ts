@@ -57,6 +57,8 @@ const SPOTS: Readonly<Record<string, Point>> = {
 const TARGET = { x: ACTOR.x + shovel.reach, y: ACTOR.y };
 const CRUISER = { x: 250, y: 200 };
 const BETWEEN = { x: 150, y: 320 };
+/** A spot out of the cruiser's selling reach. */
+const AWAY = { x: 750, y: 500 };
 
 /** A still dummy with plenty of health, in the acting guest's swing. */
 const dummies: WorldContent = {
@@ -172,6 +174,10 @@ async function room() {
         (noise) => noise.radius === shovel.hitNoiseRadius,
       ).length;
       if (swung > 0) heard.noise = (heard.noise ?? 0) + swung;
+      const clattered = game.noises.filter(
+        (noise) => noise.radius === scrap.dropNoiseRadius,
+      ).length;
+      if (clattered > 0) heard.clatter = (heard.clatter ?? 0) + clattered;
       joined.frame(clock.now());
       net.stamp(clock.now());
     }
@@ -323,8 +329,12 @@ test("a guest reaching for an item another player has already taken gets nothing
   expect(client("b").game().entities.has(item.id)).toBe(false);
 });
 
-test("a guest's drop shows at once and clinks on its own client, then lands once on every client, which each clink once", async () => {
-  const { client, step, run, carried, recorded, lying, stock } = await room();
+test("a guest's drop shows at once and clinks on its own client, then lands once on every client, which each clink once, with one noise each", async () => {
+  const { client, step, run, carried, recorded, lying, stock, games } =
+    await room();
+  // Away from the cruiser, so the scrap stays to be dropped.
+  teleport(games(), "b", AWAY);
+  run(1);
   stock("b", 2);
   step({ b: { ...idle, drop: true, select: 2 } });
   expect(carried("b")).toEqual(["shovel", null, null, null]);
@@ -334,7 +344,7 @@ test("a guest's drop shows at once and clinks on its own client, then lands once
   expect(recorded("b")).toEqual(["shovel", null, null, null]);
   for (const id of ["a", "b", "c"]) {
     expect([id, lying(id, "scrap")]).toEqual([id, 1]);
-    expect([id, client(id).heard]).toEqual([id, { "drop.mp3": 1 }]);
+    expect([id, client(id).heard]).toEqual([id, { "drop.mp3": 1, clatter: 1 }]);
   }
 });
 
@@ -350,13 +360,10 @@ test("a drop from a slot the host's record has empty lays nothing and sounds now
   expect(recorded("b")).toEqual(["shovel", null, null, null]);
 });
 
-test("a guest holding scrap by the cruiser sells it on the host: the scrap leaves its items and the credit rises on every client", async () => {
-  const { client, step, run, carried, recorded, stock } = await room();
-  stock("b", 1);
-  expect(carried("b")).toEqual(["shovel", "scrap", null, null]);
-  step({ b: { ...idle, select: 1 } });
-  // Nothing is predicted: the scrap goes once the host's record says so.
-  expect(carried("b")).toEqual(["shovel", "scrap", null, null]);
+test("a guest carrying scrap by the cruiser sells it on the host, held or not: the scrap leaves its items and the credit rises on every client", async () => {
+  const { client, run, carried, recorded } = await room();
+  // `b` holds its shovel; the scrap is in another slot.
+  expect(giveItem(client("a").game(), "b", "scrap", 1)).toBe(true);
   run(1);
   expect(recorded("b")).toEqual(["shovel", null, null, null]);
   expect(carried("b")).toEqual(["shovel", null, null, null]);
@@ -374,40 +381,36 @@ test("the seller's own client rings once for its sale", async () => {
   expect(client("b").heard).toEqual({ "cashout.mp3": 1 });
 });
 
-test("scrap not held, or held away from the cruiser, does not sell", async () => {
+test("scrap carried away from the cruiser, held or not, does not sell", async () => {
   const { client, step, run, recorded, stock, games } = await room();
-  stock("b", 1);
-  stock("c", 1);
-  // `b` holds its shovel by the cruiser; `c` holds its scrap far from it.
-  teleport(games(), "c", { x: 750, y: 500 });
+  teleport(games(), "c", AWAY);
   run(1);
+  stock("c", 1);
+  stock("c", 2);
   step({ c: { ...idle, select: 1 } });
   run(1);
-  expect(recorded("b")).toEqual(["shovel", "scrap", null, null]);
-  expect(recorded("c")).toEqual(["shovel", "scrap", null, null]);
+  expect(recorded("c")).toEqual(["shovel", "scrap", "scrap", null]);
   for (const id of ["a", "b", "c"]) {
     expect([id, credit.get(client(id).game())]).toEqual([id, 0]);
     expect([id, client(id).heard]).toEqual([id, {}]);
   }
 });
 
-test("held scrap by the cruiser sells one at a time, once each sell interval", async () => {
-  const { client, step, run, recorded, stock } = await room();
-  stock("b", 1);
-  stock("b", 2);
-  stock("b", 3);
-  step({ b: { ...idle, select: 1 } });
-  run(1);
-  // One sold; the rest are not held.
-  expect(recorded("b")).toEqual(["shovel", null, "scrap", "scrap"]);
-  // The second sells at once; the third, held for less than an interval after it, does not.
-  step({ b: { ...idle, select: 2 } });
-  run(0.1);
+test("every scrap carried by the cruiser sells, in any slot, one each sell interval, the held one first", async () => {
+  const { client, step, run, recorded } = await room();
+  // `b` holds its last slot, as the host knows, before it has any scrap.
   step({ b: { ...idle, select: 3 } });
-  run(0.1);
-  step({ b: { ...idle, select: 0 } });
   run(1);
-  expect(scrap.sellInterval).toBeGreaterThan(0.2);
-  expect(recorded("b")).toEqual(["shovel", null, null, "scrap"]);
-  expect(credit.get(client("a").game())).toBe(scrap.value * 2);
+  for (const slot of [1, 2, 3])
+    expect(giveItem(client("a").game(), "b", "scrap", slot)).toBe(true);
+  run(0.1);
+  // The held one sold first; the next waits out the interval.
+  expect(scrap.sellInterval).toBeGreaterThan(0.1);
+  expect(recorded("b")).toEqual(["shovel", "scrap", "scrap", null]);
+  expect(credit.get(client("a").game())).toBe(scrap.value);
+  run(1);
+  expect(recorded("b")).toEqual(["shovel", null, null, null]);
+  for (const id of ["a", "b", "c"])
+    expect([id, credit.get(client(id).game())]).toEqual([id, scrap.value * 3]);
+  expect(client("c").heard).toEqual({ "cashout.mp3": 3 });
 });

@@ -582,12 +582,15 @@ export const config = {
       cooldown: 0.5,
       volume: 0.8,
     },
+    // Sells within 3 cells of the cruiser, a scrap every quarter second, from any slot. Dropped, by a
+    // player or a hoarder, it clatters 8 cells round, which monsters hear.
     scrap: {
       weight: 15,
       value: 1,
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
       volume: 0.8,
+      dropNoiseRadius: CELL * 8,
       scatter: { count: 50, seed: 2, clearance: CELL * 3 },
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
