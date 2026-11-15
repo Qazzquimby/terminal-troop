@@ -27,6 +27,7 @@ import {
   Time,
   Waypoint,
   wanderLeg,
+  avenged,
 } from "../hunt.js";
 import { avoidingLight, planRoute, steer } from "../route.js";
 import { arrivals } from "../spawning.js";
@@ -282,11 +283,9 @@ function think(
 ): SleeperState {
   const now = game.worldTime;
   const hurt = hurtSinceLastStep(game, self.id);
-  const by = hurt?.by ?? null;
+  const by = avenged(game, self, hurt?.by ?? null);
   const marked =
-    by === null || by === self.id || state.mode === "retreat"
-      ? state
-      : { ...state, foe: by };
+    by === null || state.mode === "retreat" ? state : { ...state, foe: by };
   return respond(marked, self, game, config, hurt !== null, now);
 }
 

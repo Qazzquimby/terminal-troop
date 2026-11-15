@@ -9,6 +9,7 @@ import {
   isLookedAt,
   isLit,
   sound,
+  UNNOTICED_TAG,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -327,6 +328,8 @@ function definition(config: StatueConfig): EntityDefinition<StatueState> {
     radius: config.radius,
     // It cannot die, whatever it takes.
     maxHealth: Infinity,
+    // Stone that cannot die: no monster hunts, strikes or turns on it, even when it strikes them.
+    tags: [UNNOTICED_TAG],
     data: StatueState,
     // It sees all round it, but looks at nothing: its eyes never hold another statue.
     eyes: () => ({ cone: null, around: config.sightRange }),
