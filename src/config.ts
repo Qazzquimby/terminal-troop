@@ -221,6 +221,10 @@ export const config = {
   // A player who falls drops what it carried within a cell of where it fell. Revived, it comes
   // back on half its health, near whatever revived it.
   death: { scatter: CELL, reviveHealth: 50 },
+  // World entities act on one another, hunting, striking, setting off or catching, only while
+  // both are within 15 cells of a living player: about a screen and a half across, so a fight a
+  // player could see or hear plays out, and none wipes the world out off-screen (#360).
+  engagement: { range: CELL * 15 },
   // A stunned player sees next to nothing, its view clearing over the last second of the stun,
   // its ears ringing at half volume until then, the ring fading out over a second.
   stunned: {

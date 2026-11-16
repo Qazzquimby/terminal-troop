@@ -85,7 +85,7 @@ function steppedOn(game: Session, trap: WorldEntity): boolean {
  * nothing, so this flash does not reach it.
  */
 function flash(game: Session, trap: WorldEntity, config: StunTrapConfig): void {
-  for (const body of livingBodies(game)) {
+  for (const body of livingBodies(game, trap.id)) {
     if (!actsOn(game, trap, body) || isStunned(game, body.id)) continue;
     if (!notices(game, body, trap, config.stunRange)) continue;
     stun(game, body.id, config.stunSeconds);

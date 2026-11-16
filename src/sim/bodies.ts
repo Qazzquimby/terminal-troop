@@ -1,6 +1,7 @@
 import type { WorldEntity } from "./entities.js";
 import { isAboard, playersOutside } from "./aboard.js";
-import { isGhost } from "./ghosts.js";
+import { isGhost, livingPlayers } from "./ghosts.js";
+import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
 import type { Footprint } from "./shape.js";
@@ -65,20 +66,84 @@ export function perceives(
   return by !== null && type.perceiver(entity) === by;
 }
 
+/*
+ * World entities only act on one another where a player could see it happen (#360): two world
+ * entities engage, one hunting, striking, hurting, trapping, setting off or catching the other,
+ * only while both are in play, within the engagement range of some living player. Farther off
+ * they still move and go about their business but pass each other by, so the world does not thin
+ * itself out off-screen. A player is always in play, so nothing a world entity does to a player,
+ * or a player to it, is held back. What picks the bodies a world entity acts on goes through
+ * `livingBodies` with that entity as `by`, and `dealDamage` holds back any hurt between two world
+ * entities that do not engage, whatever picked it.
+ */
+
+/** How near world entities must be to a player to act on one another. */
+export interface EngagementConfig {
+  /**
+   * How near a living player, in pixels, a world entity must be to be in play. Infinity puts
+   * every world entity in play wherever it is, players or none.
+   */
+  readonly range: number;
+}
+
+/**
+ * Whether a world entity at `at` is in play: within the engagement range of a living player, not
+ * a ghost, but one in a vehicle too.
+ */
+function inPlayAt(game: Session, at: Point): boolean {
+  const { range } = game.config.engagement;
+  return (
+    range === Infinity ||
+    livingPlayers(game).some(
+      (player) => Math.hypot(player.x - at.x, player.y - at.y) <= range,
+    )
+  );
+}
+
+/**
+ * Whether `body` is in play: a player, or a world entity within the engagement range of a living
+ * player.
+ */
+function inPlay(game: Session, body: Body): boolean {
+  return isPlayer(game, body) || inPlayAt(game, body);
+}
+
+/**
+ * Whether the body `by`, by id, may act on `body`: always when either is a player, `body` is `by`
+ * itself, or `by` is no world entity, such as no body at all; between two world entities, only
+ * while both are in play.
+ */
+export function engages(game: Session, by: string | null, body: Body): boolean {
+  const actor = by === null ? undefined : game.entities.get(by);
+  if (actor === undefined || actor === body || isPlayer(game, body))
+    return true;
+  return inPlay(game, actor) && inPlay(game, body);
+}
+
 /**
  * Every body out in the world that is not dead: each living player, then each world entity with
  * health left, items lying about included. Ghosts are left out, and so is every body inside a
  * vehicle: nothing out in the world sees, strikes or targets it. So is every body that only some
  * other body than `by`, by id, perceives, and with `by` left out, every body only one perceives.
+ * When `by` is a world entity, so is every other world entity it does not engage, as `engages`
+ * has it; it keeps itself.
  */
 export function livingBodies(game: Session, by: string | null = null): Body[] {
+  const actor = by === null ? undefined : game.entities.get(by);
+  const engaged =
+    actor === undefined
+      ? () => true
+      : inPlayAt(game, actor)
+        ? (entity: WorldEntity) => entity === actor || inPlayAt(game, entity)
+        : (entity: WorldEntity) => entity === actor;
   return [
     ...playersOutside(game),
     ...[...game.entities.values()].filter(
       (entity) =>
         entity.health > 0 &&
         !isAboard(entity) &&
-        perceives(game, by, entity.id),
+        perceives(game, by, entity.id) &&
+        engaged(entity),
     ),
   ];
 }
