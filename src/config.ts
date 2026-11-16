@@ -669,6 +669,60 @@ export const config = {
         attack: CELL * 5,
       },
     },
+    // Arms 3s after it is laid, beeping 4 cells round, then beeps every 4s, heard 3 cells off. Any
+    // body within 2 cells of it, but another mine or a mine layer, sets it off: a beep heard 6
+    // cells off, and 0.3s later a burst 2 cells round, 120 damage where it lies and 60 at the edge,
+    // heard 40 cells off as the exploder's is. It leaves the walls standing.
+    landMine: {
+      radius: 8,
+      armSeconds: 3,
+      beepGap: 4,
+      triggerRange: CELL * 2,
+      ignores: ["landMine", "mineLayer"],
+      fuse: 0.3,
+      blast: { radius: CELL * 2, centre: 120, edge: 60 },
+      breaksWalls: false,
+      sounds: {
+        arm: CELL * 4,
+        beep: CELL * 3,
+        trigger: CELL * 6,
+        blast: CELL * 40,
+      },
+    },
+    // Alone, in light or dark, none in the first 2 minutes of a world, never within 14 cells of a
+    // player; as rare as the stalker. One shovel hit fells it; it moves at a player's walk and sees
+    // 8 cells all round it. It leaves golden scrap where it arrives and circles it, from 2 cells out
+    // to 24, each lap 3 cells further out and then back in, 2 cells a leg, laying a mine every 10s,
+    // never within a cell of another. Seeing any body but its own kind, it flees 4 spots off at a
+    // time, the best of 12, a cell of distance from home costing half a cell of distance from what
+    // it fears, replanning twice a second and laying a mine every 3s, until it has seen none for
+    // 10s. Laying a mine clicks 3 cells off.
+    mineLayer: {
+      spawning: {
+        weight: 10,
+        after: 120,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      ignores: ["mineLayer"],
+      radius: 12,
+      maxHealth: SHOVEL_DAMAGE,
+      speed: PLAYER_SPEED,
+      sightRange: CELL * 8,
+      treasure: "goldenScrap",
+      orbit: {
+        min: CELL * 2,
+        max: CELL * 24,
+        step: CELL * 3,
+        leg: CELL * 2,
+        tries: 12,
+      },
+      layGap: { wander: 10, flee: 3 },
+      mineSpacing: CELL,
+      calmSeconds: 10,
+      flee: { leg: CELL * 4, tries: 12, homePull: 0.5, repathInterval: 0.5 },
+      sounds: { lay: CELL * 3 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its
