@@ -83,3 +83,39 @@ export function noteFall(game: Session, victim: Body, by: string | null): void {
   };
   falls.set(game, [...held, fall].slice(-FALLS_KEPT));
 }
+
+/**
+ * One fallen body brought back to life:
+ * - n: counts the risings since the world began, so a client tells the new from those it has seen
+ * - body: what rose, named as it was then
+ * - by: what brought it back, named as it was then; null for no one
+ * - at: when, on the world's clock
+ */
+const Rise = z.object({
+  n: z.number().int().min(0),
+  body: Who,
+  by: Who.nullable(),
+  at: rounded(2),
+});
+export type Rise = z.infer<typeof Rise>;
+
+/**
+ * The latest bodies brought back to life, oldest first, kept as the falls are, so every client
+ * can tell what brought each back.
+ */
+export const rises = worldData({
+  schema: z.array(Rise).max(FALLS_KEPT),
+  initial: [],
+});
+
+/** As the host, notes that `body` has just been brought back to life by `by`. */
+export function noteRise(game: Session, body: Body, by: string | null): void {
+  const held = rises.get(game);
+  const rise: Rise = {
+    n: (held.at(-1)?.n ?? -1) + 1,
+    body: who(game, body.id),
+    by: by === null ? null : who(game, by),
+    at: game.worldTime,
+  };
+  rises.set(game, [...held, rise].slice(-FALLS_KEPT));
+}

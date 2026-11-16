@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { effect } from "./actions.js";
+import { noteRise } from "./fallen.js";
 import { arrivalPoint } from "./arrival.js";
 import { removeEntity } from "./entities.js";
 import { isGhost } from "./ghosts.js";
@@ -169,15 +170,17 @@ export const isRevivable = (
 ): boolean => ghostOf(game, state) !== null;
 
 /**
- * As the host, brings the ghost of the player whose corpse keeps `state` back to life by `at`:
- * its corpse is gone, wherever it was, and the player stands near `at` with `health(player)`
- * health, or the configured revive health when left out. Returns the player revived; null when
+ * As the host, brings the ghost of the player whose corpse keeps `state` back to life by `at`,
+ * the work of body `by` (null for no one): its corpse is gone, wherever it was, and the player
+ * stands near `at` with `health(player)` health, or the configured revive health when left out.
+ * Returns the player revived; null when
  * the corpse is nobody's, or its player is not in the session or not a ghost.
  */
 export function revive(
   game: Session,
   state: ItemState | undefined,
   at: Point,
+  by: string | null,
   health?: (player: Player) => number,
 ): Player | null {
   const player = ghostOf(game, state);
@@ -212,6 +215,7 @@ export function revive(
   snapPrevious(player);
   player.tx = player.x;
   player.ty = player.y;
+  noteRise(game, player, by);
   return player;
 }
 

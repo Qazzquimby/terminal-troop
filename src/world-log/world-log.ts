@@ -5,11 +5,13 @@ import {
   falls,
   isGhost,
   ITEM_TAG,
+  PLAYER_TAG,
+  rises,
   stunLeft,
   stunnedIds,
   who,
 } from "../sim/index.js";
-import type { Fall, Session, Who, WorldEntity } from "../sim/index.js";
+import type { Fall, Rise, Session, Who, WorldEntity } from "../sim/index.js";
 
 /** What an item lying in the world keeps of which item it is. */
 const Lying = z.object({ item: z.string() });
@@ -63,6 +65,19 @@ interface WorldEvent {
   readonly by?: Who | null;
   /** The line it prints as, after its time. */
   readonly text: string;
+  /** Whether it prints to stand out: a player's death, revival or escape. */
+  readonly loud?: boolean;
+}
+
+/** What befell a player, as `players()` lists it. */
+interface PlayerRow {
+  /** When, on the world's clock, and as mm:ss. */
+  readonly at: number;
+  readonly time: string;
+  readonly player: string;
+  readonly what: "died" | "revived" | "escaped";
+  /** What caused it, by label; null for no one, or nothing known. */
+  readonly by: string | null;
 }
 
 /** How the world log keeps and shows what it logs. */
@@ -76,6 +91,11 @@ export interface WorldLogConfig {
   readonly capacity: number;
   /** Categories kept and tallied but not printed to the console, as too noisy to follow. */
   readonly quiet: readonly Category[];
+  /**
+   * Prints deaths no player took part in, neither dying nor killing, such as monsters killing
+   * monsters. Kept and tallied either way.
+   */
+  readonly monsterDeaths: boolean;
 }
 
 /** What killed one kind, and how often. */
@@ -105,6 +125,17 @@ export interface WorldLog {
   kills(victim?: string): KillRow[];
   /** Per kind, how many have spawned, died and are in the world now. */
   counts(): Record<string, KindCount>;
+  /** Every player death, revival and escape this world, oldest first, with what caused each. */
+  players(): PlayerRow[];
+}
+
+/** How a loud line stands out in the console. */
+const LOUD_STYLE = "font-weight: bold; color: #ff6b6b";
+
+/** Prints `line` to the console, a loud one as a styled warning. */
+function printToConsole(line: string, loud: boolean): void {
+  if (loud) console.warn(`%c${line}`, LOUD_STYLE);
+  else console.info(line);
 }
 
 /** "Nothing" kills what no body killed, such as a fall the world itself dealt. */
@@ -134,6 +165,12 @@ interface Watch {
   nextFall: number;
   /** Entities logged as fallen, so their going is not logged again. */
   readonly fallen: Set<string>;
+  /** The number of the next rising to log. */
+  nextRise: number;
+  /** Players logged as risen whose coming back to life is not yet seen, so it is not told twice. */
+  readonly risen: Set<string>;
+  /** What befell each player, oldest first; never dropped. */
+  readonly befell: PlayerRow[];
   /** Kills by victim kind, then by killer kind. */
   readonly kills: Map<string, Map<string, number>>;
   readonly spawned: Map<string, number>;
@@ -148,6 +185,9 @@ const watching = (game: Session): Watch => ({
   stunned: new Set(),
   nextFall: 0,
   fallen: new Set(),
+  nextRise: 0,
+  risen: new Set(),
+  befell: [],
   kills: new Map(),
   spawned: new Map(),
   died: new Map(),
@@ -166,13 +206,13 @@ export const logsWorld = (
 
 /**
  * A world log, printing each event with `print` as `[world mm:ss] <text>` unless its category is
- * quiet. It keeps at most `config.capacity` events, and starts afresh with each new session.
+ * quiet, or it is a death no player took part in and `config.monsterDeaths` is off. A player's
+ * death, revival or escape prints loud. It keeps at most `config.capacity` events, and starts
+ * afresh with each new session.
  */
 export function createWorldLog(
   config: WorldLogConfig,
-  print: (line: string) => void = (line) => {
-    console.info(line);
-  },
+  print: (line: string, loud: boolean) => void = printToConsole,
 ): WorldLog {
   let kept: WorldEvent[] = [];
   let watch: Watch | null = null;
@@ -181,12 +221,30 @@ export function createWorldLog(
     game: Session,
     event: Omit<WorldEvent, "at">,
     at = game.worldTime,
+    hushed = false,
   ): void {
     const full = { ...event, at };
     kept.push(full);
     if (kept.length > config.capacity) kept = kept.slice(-config.capacity);
-    if (!config.quiet.includes(event.category))
-      print(`[world ${clockTime(at)}] ${event.text}`);
+    if (!hushed && !config.quiet.includes(event.category))
+      print(`[world ${clockTime(at)}] ${event.text}`, event.loud === true);
+  }
+
+  /** Notes what befell player `named`, caused by `by`, for `players()`. */
+  function befall(
+    w: Watch,
+    named: Who,
+    what: PlayerRow["what"],
+    by: Who | null,
+    at: number,
+  ): void {
+    w.befell.push({
+      at,
+      time: clockTime(at),
+      player: named.label,
+      what,
+      by: by?.label ?? null,
+    });
   }
 
   function logFall(w: Watch, fall: Fall): void {
@@ -199,7 +257,10 @@ export function createWorldLog(
       w.kills.set(victim.kind, (tally = new Map<string, number>()));
     bump(tally, killer);
     bump(w.died, victim.kind);
-    if (victim.kind !== "player") w.fallen.add(victim.id);
+    const player = victim.kind === PLAYER_TAG;
+    if (player) befall(w, victim, "died", by, fall.at);
+    else w.fallen.add(victim.id);
+    const hushed = !config.monsterDeaths && !player && by?.kind !== PLAYER_TAG;
     log(
       w.game,
       {
@@ -207,8 +268,27 @@ export function createWorldLog(
         subject: victim,
         by,
         text: `${victim.label} killed by ${byText}`,
+        loud: player,
       },
       fall.at,
+      hushed,
+    );
+  }
+
+  function logRise(w: Watch, rise: Rise): void {
+    const { body, by } = rise;
+    w.risen.add(body.id);
+    befall(w, body, "revived", by, rise.at);
+    log(
+      w.game,
+      {
+        category: "player",
+        subject: body,
+        by,
+        text: `${body.label} revived by ${by === null ? NOTHING : by.label}`,
+        loud: true,
+      },
+      rise.at,
     );
   }
 
@@ -278,16 +358,26 @@ export function createWorldLog(
       const seen = w.players.get(player.id);
       const named = who(game, player.id);
       w.players.set(player.id, { named, ghost, escaped });
-      const say = (text: string) => {
+      const say = (text: string, loud = false) => {
         log(game, {
           category: "player",
           subject: named,
           text: `${named.label} ${text}`,
+          loud,
         });
       };
       if (seen === undefined) say(ghost ? "joined, dead" : "joined");
-      else if (seen.ghost && !ghost) say("revived");
-      if (escaped && seen?.escaped !== true) say("escaped");
+      // One brought back by a body was told as its rising was; any other way back is told here.
+      else if (seen.ghost && !ghost && !w.risen.delete(player.id)) {
+        befall(w, named, "revived", null, game.worldTime);
+        say("revived", true);
+      }
+      // Seen alive, any rising told is done with, so a later way back is not mistaken for it.
+      if (!ghost) w.risen.delete(player.id);
+      if (escaped && seen?.escaped !== true) {
+        befall(w, named, "escaped", null, game.worldTime);
+        say("escaped", true);
+      }
     }
     for (const [id, { named }] of w.players) {
       if (game.players.has(id)) continue;
@@ -330,6 +420,12 @@ export function createWorldLog(
           logFall(w, fall);
           w.nextFall = fall.n + 1;
         }
+      // Risings before players: one told as risen is not told again as it comes back.
+      for (const rise of rises.get(game))
+        if (rise.n >= w.nextRise) {
+          logRise(w, rise);
+          w.nextRise = rise.n + 1;
+        }
       observeEntities(w);
       observePlayers(w);
       observeStuns(w);
@@ -351,6 +447,9 @@ export function createWorldLog(
       return rows
         .filter((row) => victim === undefined || row.victim === victim)
         .sort((a, b) => b.count - a.count);
+    },
+    players() {
+      return [...(watch?.befell ?? [])];
     },
     counts() {
       if (watch === null) return {};

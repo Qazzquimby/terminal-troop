@@ -4,7 +4,7 @@
  * and the edge between what is left and what is gone is ragged.
  */
 export interface InkFadeConfig {
-  /** Seconds after it was last seen that the last of remembered terrain is gone; 0 never fades. */
+  /** Seconds of fading after which the last of remembered terrain is gone; 0 never fades. */
   readonly seconds: number;
   /** 0..1: how much sooner than `seconds` the first spots go, as a share of it. */
   readonly spread: number;
@@ -49,7 +49,7 @@ export function inkNoise(x: number, y: number, blot: number): number {
 }
 
 /**
- * How much of remembered terrain is left, 0..1, `age` seconds after it was last seen, at a spot
+ * How much of remembered terrain is left, 0..1, after `age` seconds of fading, at a spot
  * whose noise is `noise`. It lasts `seconds` less `spread` of it by its noise, and darkens faster
  * the nearer it is to going: then it is gone at once, which leaves the ragged edge.
  */
@@ -65,7 +65,10 @@ export function inkLeft(
   return 1 - t * t;
 }
 
-/** Remembered terrain's age at each cell of a box of the world: seconds since last seen. */
+/**
+ * Remembered terrain's age at each cell of a box of the world: seconds of fading, which need not
+ * be seconds since last seen, as map memory fades far terrain faster than near.
+ */
 export interface AgeGrid {
   /** The box's top-left cell, and how many cells it spans. */
   readonly col: number;

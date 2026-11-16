@@ -3,7 +3,7 @@ import type { Action } from "./actions.js";
 import { registerEvents } from "./content-event.js";
 import type { ContentEvents } from "./content-event.js";
 import { playerHealth } from "./health.js";
-import { falls } from "./fallen.js";
+import { falls, rises } from "./fallen.js";
 import { lastHurts } from "./hurts.js";
 import { movement } from "./movement.js";
 import { registerPlayerData } from "./player-data.js";
@@ -63,8 +63,11 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
    * to fall, and to what.
    */
   "core/hurts": { world: { last: lastHurts, fallen: falls } },
-  /** Every fallen player's body, lying as a corpse; and how ghosts hear each other. */
-  "core/death": { world: { bodies }, voice: ghostVoices },
+  /**
+   * Every fallen player's body, lying as a corpse; the latest bodies brought back, and by what;
+   * and how ghosts hear each other.
+   */
+  "core/death": { world: { bodies, risen: rises }, voice: ghostVoices },
   /** What each player steers with, sent to the host as it changes. */
   "core/steering": { events: steeringEvents },
   /** Items lying in the world, picked up and dropped. */

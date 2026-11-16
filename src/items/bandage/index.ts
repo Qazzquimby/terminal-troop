@@ -140,6 +140,7 @@ export const bandage = defineItem(ITEM, (config: BandageConfig) => {
             game,
             corpse.state,
             lying,
+            user.id,
             (player) => player.maxHealth * config.revive,
           );
           show(game, lying);

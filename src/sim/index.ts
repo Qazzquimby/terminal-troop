@@ -151,8 +151,8 @@ export {
 export type { Eyes } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
-export { entityWho, falls, who } from "./fallen.js";
-export type { Fall, Who } from "./fallen.js";
+export { entityWho, falls, rises, who } from "./fallen.js";
+export type { Fall, Rise, Who } from "./fallen.js";
 export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";

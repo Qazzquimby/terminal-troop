@@ -27,9 +27,19 @@ export interface MapMemoryConfig {
   };
   /**
    * How remembered terrain fades out of sight, and how often, in seconds, terrain still in sight
-   * has the time it was last seen renewed.
+   * is renewed. It fades from far to near: out of sight, a cell's ink soaks away faster the
+   * farther it is from the viewer, as the inkspots' `seconds` say for a cell `reach` cells away.
    */
-  readonly fade: InkFadeConfig & { readonly refresh: number };
+  readonly fade: InkFadeConfig & {
+    readonly refresh: number;
+    /**
+     * Cells from the viewer at which remembered terrain fades in `seconds`: twice as far fades in
+     * half the time, half as far in twice the time. 0 fades every cell alike, by time out of sight.
+     */
+    readonly reach: number;
+    /** Nearest, in cells, that distance counts as, so terrain by the viewer still fades, slowly. */
+    readonly nearest: number;
+  };
 }
 
 /** Where remembered terrain is kept between visits, by key. Either method may throw. */
@@ -74,7 +84,7 @@ export interface RememberedTerrain {
   readonly floor: readonly Point[];
   /** Faces of remembered walls not yet faded that look onto remembered floor. */
   readonly walls: VisibilityPolygon["walls"];
-  /** How long ago each cell over the view was last seen, to fade it by. */
+  /** How far each cell over the view has faded, to fade it by (see `Grid.faded`). */
   readonly ages: AgeGrid;
 }
 
@@ -91,8 +101,13 @@ export interface MapMemory {
    * remembered already has its time renewed at most once a `fade.refresh`.
    */
   see(sight: Sight, view: Area, now: number): void;
-  /** The remembered terrain within `view`, as of `now` (ms): what has faded is left out. */
-  within(view: Area, now: number): RememberedTerrain;
+  /**
+   * The remembered terrain within `view`, as of `now` (ms), seen from `from`: what has faded is
+   * left out. Each cell's fading is brought up to `now` at the rate its distance from `from` sets,
+   * so terrain fades from far to near; terrain out of the view is brought up to date as it comes
+   * back into it.
+   */
+  within(view: Area, now: number, from: Point): RememberedTerrain;
   /** Saves what is newly remembered, unless it was saved under `saveInterval` before `now` (ms). */
   save(now: number): void;
   /** Saves what is newly remembered now, as when the page closes. */
@@ -112,10 +127,15 @@ class Grid {
   readonly bits: Uint8Array;
   readonly stride: number;
   /**
-   * When each cell was last seen, in ms; -Infinity for one never seen this visit, as a cell
-   * remembered from storage is: long faded, unless remembered terrain never fades.
+   * How far each cell has faded: seconds out of sight, each counted faster the farther the cell
+   * was from the viewer then, so a cell `reach` away is gone once this reaches the fade's
+   * `seconds`. 0 as it is seen; Infinity for one never seen this visit, as a cell remembered from
+   * storage is: long faded, unless remembered terrain never fades. It only ever grows out of
+   * sight, so ink that has soaked away never comes back as the viewer nears it.
    */
-  readonly seenAt: Float64Array;
+  readonly faded: Float32Array;
+  /** When, in ms, each cell's `faded` was last brought up to date. */
+  readonly fadedAt: Float64Array;
 
   constructor(
     readonly map: TileMap,
@@ -123,9 +143,23 @@ class Grid {
   ) {
     this.stride = map.cols + 2;
     this.bits = bits ?? new Uint8Array(Grid.bytes(map));
-    this.seenAt = new Float64Array(this.stride * (map.rows + 2)).fill(
-      -Infinity,
-    );
+    const cells = this.stride * (map.rows + 2);
+    this.faded = new Float32Array(cells).fill(Infinity);
+    this.fadedAt = new Float64Array(cells);
+  }
+
+  /**
+   * Brings how far `key` has faded up to `now` (ms), fading at `rate` times real time since it
+   * was last brought up to date; how far it has faded.
+   */
+  fade(key: number, now: number, rate: number): number {
+    const was = this.faded[key] ?? Infinity;
+    const since = now - (this.fadedAt[key] ?? now);
+    if (was === Infinity || since <= 0) return was;
+    const faded = was + (since / 1000) * rate;
+    this.faded[key] = faded;
+    this.fadedAt[key] = now;
+    return faded;
   }
 
   static bytes(map: TileMap): number {
@@ -143,7 +177,8 @@ class Grid {
   /** Marks `key` as seen at `now`; whether it was newly marked. */
   mark(key: number, now: number): boolean {
     if (key < 0 || key >= this.stride * (this.map.rows + 2)) return false;
-    this.seenAt[key] = now;
+    this.faded[key] = 0;
+    this.fadedAt[key] = now;
     if (this.has(key)) return false;
     this.bits[key >> 3] = (this.bits[key >> 3] ?? 0) | (1 << (key & 7));
     return true;
@@ -378,7 +413,7 @@ export function createMapMemory(
         }
       }
     },
-    within(view, now) {
+    within(view, now, from) {
       const floor: Point[] = [];
       const walls = new Map<number, Face[]>();
       if (grid === null) return { floor, walls, ages: NO_AGES };
@@ -389,15 +424,24 @@ export function createMapMemory(
       const ages = new Float32Array(
         Math.max(0, cols * (maxRow - minRow + 1)),
       ).fill(Infinity);
-      const { seconds } = config.fade;
+      const { seconds, reach, nearest } = config.fade;
+      // Where the viewer stands, in cells, to measure each cell's centre from.
+      const fromCol = from.x / cell - 0.5;
+      const fromRow = from.y / cell - 0.5;
+      const rate = (col: number, row: number): number =>
+        reach > 0
+          ? Math.max(nearest, Math.hypot(col - fromCol, row - fromRow)) / reach
+          : 1;
       for (let row = minRow; row <= maxRow; row++) {
         for (let col = minCol; col <= maxCol; col++) {
           const cellKey = memory.key(col, row);
           if (!memory.has(cellKey)) continue;
-          const age = (now - (memory.seenAt[cellKey] ?? -Infinity)) / 1000;
-          const faded = seconds > 0 && age >= seconds;
-          if (faded) continue;
-          ages[(row - minRow) * cols + (col - minCol)] = seconds > 0 ? age : 0;
+          let faded = 0;
+          if (seconds > 0) {
+            faded = memory.fade(cellKey, now, rate(col, row));
+            if (faded >= seconds) continue;
+          }
+          ages[(row - minRow) * cols + (col - minCol)] = faded;
           if (!memory.solid(col, row)) {
             floor.push({ x: col * cell, y: row * cell });
             continue;

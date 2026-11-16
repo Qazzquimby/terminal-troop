@@ -130,14 +130,24 @@ export const config = {
     },
   },
   // Terrain seen before and out of sight now: grey, the floor barely there, walls easier to read.
-  // It fades like ink soaking away: blots about 3 cells across go from 4s after last seen, the
-  // last at 10s, each darkening faster as its time comes. Terrain in sight is renewed 4x a second.
+  // It fades like ink soaking away, from far to near: out of sight, terrain 6 cells from the
+  // viewer (about the screen's edge) goes in 7 to 10s, in blots about 3 cells across, each
+  // darkening faster as its time comes; 12 cells away twice as fast, 3 cells away half as fast,
+  // so the ragged edge creeps inward toward the viewer. Terrain in sight is renewed 4x a second.
   mapMemory: {
     saveInterval: 5,
     maxRooms: 50,
     floor: { fill: "#181818", grid: "#2a2a2a", alpha: 0.4 },
     wall: { fill: "#5a5a5a", edge: "#6a6a6a", alpha: 0.5 },
-    fade: { seconds: 10, spread: 0.6, blot: 3, detail: 4, refresh: 0.25 },
+    fade: {
+      seconds: 10,
+      spread: 0.3,
+      blot: 3,
+      detail: 4,
+      refresh: 0.25,
+      reach: 6,
+      nearest: 1,
+    },
   },
   // Where the player stands, saved every 2s while it moves, so a reload puts it back there.
   positionMemory: { saveInterval: 2, maxRooms: 50 },
@@ -845,5 +855,11 @@ export const config = {
   // The world log is always on in development and under ?debug; `enabled` keeps it on in
   // production too, as playtests run on the deployed build. It is console-only and cheap.
   // It keeps the latest 2000 events; items dropped and picked up are kept but not printed.
-  worldLog: { enabled: true, capacity: 2000, quiet: ["item"] },
+  worldLog: {
+    enabled: true,
+    capacity: 2000,
+    quiet: ["item"],
+    // Monsters killing monsters bury the deaths that matter; `log.kills()` still counts them.
+    monsterDeaths: false,
+  },
 } as const satisfies AppConfig;

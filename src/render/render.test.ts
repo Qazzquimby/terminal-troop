@@ -210,6 +210,7 @@ test("the view's local aim points from the interpolated position to the mouse", 
 });
 
 const everywhere = { x: 0, y: 0, width: 900, height: 600 };
+const standing = { x: 450, y: 300 };
 
 /** Traces what the local player sees and lights facing `aim`, as `draw` does, and remembers it. */
 function look(game: Session, memory: MapMemory, aim: number): boolean {
@@ -275,7 +276,12 @@ test("terrain seen before is drawn out of sight, and nothing that stood on it", 
       rects.push(args);
     },
   };
-  drawRemembered(ctx, memory.within(everywhere, 0), testMapMemoryConfig, 50);
+  drawRemembered(
+    ctx,
+    memory.within(everywhere, 0, standing),
+    testMapMemoryConfig,
+    50,
+  );
 
   expect(rects).toContainEqual([300, 300, 50, 50]);
 });

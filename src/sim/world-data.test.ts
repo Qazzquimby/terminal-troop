@@ -66,6 +66,7 @@ test("a full send carries every entry, one never set at version 0; a delta only 
     "core/hurts.last": [0, {}],
     "core/hurts.fallen": [0, []],
     "core/death.bodies": [0, { next: 0, of: {} }],
+    "core/death.risen": [0, []],
     "core/predictions.handled": [0, {}],
     "core/walls.destroyed": [0, []],
     "core/statuses.bodies": [0, {}],
