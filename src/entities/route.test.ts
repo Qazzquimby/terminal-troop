@@ -95,7 +95,74 @@ describe("planRoute", () => {
       ).toBeNull();
     });
   });
+
+  describe("a body that breaks walls", () => {
+    /** Two cells by two, as a giant snail is. */
+    const BIG = 47;
+
+    /** 16x12 cells of 50px, a wall across row 6 but for a gap three cells wide at columns 12 to 14. */
+    function gapped(): TileMap {
+      const map = { cell: 50, cols: 16, rows: 12, solid: new Uint8Array(192) };
+      for (let col = 0; col < 12; col++) map.solid[6 * 16 + col] = 1;
+      return map;
+    }
+
+    const from = { x: 175, y: 150 };
+    const to = { x: 175, y: 450 };
+
+    test("goes through a wall where breaking it is quicker than going round", () => {
+      const map = gapped();
+      const route = planRoute(map, BIG, from, to, undefined, 4) ?? [];
+      expect(route.at(-1)).toEqual(to);
+      expect(route.every(({ x }) => x < 400)).toBe(true);
+      expect(fitsAll(map, BIG, from, route)).toBe(false);
+    });
+
+    test("goes round where that is quicker than breaking through", () => {
+      const map = gapped();
+      const route = planRoute(map, BIG, from, to, undefined, 40) ?? [];
+      expect(route.at(-1)).toEqual(to);
+      expect(route.some(({ x }) => x > 600)).toBe(true);
+      expect(fitsAll(map, BIG, from, route)).toBe(true);
+    });
+
+    test("pays for a thick wall by its thickness", () => {
+      const map = gapped();
+      // Three rows thick: three breaks of 7 cells each cost more than the walk round; one would not.
+      for (let col = 0; col < 12; col++) {
+        map.solid[5 * 16 + col] = 1;
+        map.solid[7 * 16 + col] = 1;
+      }
+      const above = { x: 175, y: 100 };
+      const below = { x: 175, y: 500 };
+      const route = planRoute(map, BIG, above, below, undefined, 7) ?? [];
+      expect(route.some(({ x }) => x > 600)).toBe(true);
+      for (const row of [5, 7])
+        for (let col = 0; col < 12; col++) map.solid[row * 16 + col] = 0;
+      const through = planRoute(map, BIG, above, below, undefined, 7) ?? [];
+      expect(through.every(({ x }) => x < 400)).toBe(true);
+    });
+
+    test("finds a way through walls that shut the goal off altogether", () => {
+      const map = gapped();
+      for (let col = 12; col <= 15; col++) map.solid[6 * 16 + col] = 1;
+      expect(planRoute(map, BIG, from, to)).toBeNull();
+      expect(planRoute(map, BIG, from, to, undefined, 40)?.at(-1)).toEqual(to);
+    });
+  });
 });
+
+/** Every leg of `route` from `from` fits a body of half-size `half`. */
+function fitsAll(
+  map: TileMap,
+  half: number,
+  from: Point,
+  route: readonly Point[],
+): boolean {
+  return route.every((to, i) =>
+    isSweepFree(map, half, route[i - 1] ?? from, to),
+  );
+}
 
 describe("avoidingWhere", () => {
   test("judges each cell by its middle, once a plan however often asked", () => {

@@ -170,7 +170,8 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * nest, spooked within 400px, avenging a theft until the thief is 250px from it. No mine layer
  * appears unless a test spawns one: one at the test player's walk, felled by a test shovel hit,
  * seeing 400px all round; its land mines arm in 3s and go off within 100px, bursting 100px round
- * from 120 damage to 60.
+ * from 120 damage to 60. No giant snail appears unless a test spawns one: 94px across, at 0.3
+ * times the test player's walk, breaking a wall it presses for 5s.
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
@@ -272,12 +273,27 @@ export const testEntitiesConfig = {
   snail: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,
-    ignores: ["snail"],
+    ignores: ["snail", "giantSnail"],
     targets: ["player"],
     speedShare: 0.2,
     damage: 500,
     attackCooldown: 1,
     repathInterval: 1,
+  },
+  giantSnail: {
+    spawning: { ...NEVER, unseenDistance: 1100 },
+    radius: 47,
+    ignores: ["snail", "giantSnail"],
+    targets: ["player"],
+    speedShare: 0.3,
+    damage: 500,
+    attackCooldown: 1,
+    repathInterval: 1,
+    breaksWalls: {
+      seconds: 5,
+      grindGap: 1,
+      sounds: { grind: 400, crumble: 800 },
+    },
   },
   blindDog: {
     spawning: { ...NEVER, unseenDistance: 1100 },

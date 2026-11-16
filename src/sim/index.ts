@@ -39,7 +39,8 @@ export { cabinShop, cabinStorage, unseat } from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
 export type { Playing } from "./item-sounds.js";
-export { destroyedWalls, destroyWalls } from "./walls.js";
+export { destroyedWalls, destroyWalls, wallCellsIn } from "./walls.js";
+export type { WallArea } from "./walls.js";
 export {
   defineEntity,
   defineItem,
