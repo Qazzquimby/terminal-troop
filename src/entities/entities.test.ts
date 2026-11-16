@@ -7,7 +7,7 @@ import {
 import { createSession } from "../sim/index.js";
 import { entityContent } from "./index.js";
 
-test("the content list numbers the zombie 1, the cruiser 2, the stun trap 3, the snail 4, the blind dog 5, the exploder 6, the sleeper 7, the statue 8, the stalker 9, the hoarder 10, the land mine 11, the mine layer 12, the turret 13, the teleporter 14, the giant snail 15, the living wall 16 and the gloom 17, and a new world starts with zombies and a cruiser at the rally point", () => {
+test("the content list numbers the zombie 1, the cruiser 2, the stun trap 3, the snail 4, the blind dog 5, the exploder 6, the sleeper 7, the statue 8, the stalker 9, the hoarder 10, the land mine 11, the mine layer 12, the turret 13, the teleporter 14, the giant snail 15, the living wall 16, the gloom 17 and the recall 18, and a new world starts with zombies and a cruiser at the rally point", () => {
   const game = createSession(
     "me",
     "ME",
@@ -39,6 +39,7 @@ test("the content list numbers the zombie 1, the cruiser 2, the stun trap 3, the
     ["giantSnail", 15],
     ["livingWall", 16],
     ["gloom", 17],
+    ["recall", 18],
   ]);
   const entities = [...game.entities.values()];
   expect(entities.map(({ kind }) => kind)).toEqual([1, 1, 2]);

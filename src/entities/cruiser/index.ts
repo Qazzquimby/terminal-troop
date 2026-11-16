@@ -28,6 +28,7 @@ import type { ReviveConfig } from "./revive.js";
 import { stock } from "./stock.js";
 import type { StockConfig } from "./stock.js";
 import { playRadio, radioPlaying, stationOf, tuner } from "./radio.js";
+import { recalling, startRecall } from "../recall/index.js";
 import type { CruiserRadioConfig } from "./radio.js";
 
 export { refuel } from "./drive.js";
@@ -186,7 +187,8 @@ export const nearCruiser = (
  * Those outside walk through it. Once it reaches the world's exit, it takes everyone there out
  * after a delay. It carries a set on the walkie band, which those inside hear every transmission
  * on and transmit from, and a radio anyone inside tunes, which plays its station from the car and
- * draws whatever hears it.
+ * draws whatever hears it. Its teleporter, worked from the cabin, sends for a body out in the
+ * world, one at a time, and a recall brings it beside the car, as the recall kind has it.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   radius: config.length / 2,
@@ -209,6 +211,12 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
     transceiver: true,
     tune: tuner(config.radio),
     station: stationOf,
+    teleporter: {
+      sending: (game, entity) => recalling(game, entity.id),
+      send: (game, entity, _by, target) => {
+        startRecall(game, entity, target);
+      },
+    },
   },
   plays: (_entity, state) => radioPlaying(state, config.radio),
   update(entity, state, dt, game) {

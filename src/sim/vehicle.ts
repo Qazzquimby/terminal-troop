@@ -9,7 +9,8 @@ import {
   take,
   usesAt,
 } from "./actions.js";
-import { footprintOf } from "./bodies.js";
+import { footprintOf, livingBody } from "./bodies.js";
+import type { Body } from "./bodies.js";
 import { nearestFreePoint } from "./collision.js";
 import { credit } from "./credit.js";
 import { driverOf, vehicleOf } from "./driving.js";
@@ -18,6 +19,7 @@ import type {
   Ride,
   Storage,
   VehicleShop,
+  VehicleTeleporter,
   Ware,
 } from "./driving.js";
 import type { WorldEntity } from "./entities.js";
@@ -370,6 +372,66 @@ const tune = defineAction("tune", {
   },
 });
 
+/** Least time between two of one player's sending for a body with a vehicle's teleporter, in sim seconds. */
+const TELEPORT_COOLDOWN = 0.5;
+
+/**
+ * The vehicle `player` is in, its teleporter, and `target` to send for with it: a living body out
+ * in the world, not the vehicle itself, while the teleporter is free. Null when any of that fails.
+ */
+function teleportFor(
+  game: Session,
+  player: Player,
+  target: string,
+): {
+  readonly entity: WorldEntity;
+  readonly teleporter: VehicleTeleporter;
+  readonly body: Body;
+} | null {
+  const found =
+    player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+  const teleporter = found?.spec.teleporter;
+  if (found === null || teleporter === undefined) return null;
+  const body = livingBody(game, target);
+  if (body === null || body.id === found.entity.id) return null;
+  if (teleporter.sending(game, found.entity) !== null) return null;
+  return { entity: found.entity, teleporter, body };
+}
+
+/**
+ * A player inside a vehicle sending for the body `target` with the vehicle's teleporter, which
+ * brings it there: any living body out in the world, while the teleporter is bringing no other.
+ */
+const teleport = defineAction("teleport", {
+  input: z.object({ target: z.string().min(1).max(80) }),
+  cooldown: TELEPORT_COOLDOWN,
+  check: (game, player, { target }) =>
+    teleportFor(game, player, target) !== null,
+  apply(game, player, { target }) {
+    const found = teleportFor(game, player, target);
+    found?.teleporter.send(game, found.entity, player, found.body);
+  },
+});
+
+/**
+ * A vehicle's teleporter as its cabin shows it: the id of the body it is bringing now, null while
+ * it is free.
+ */
+export interface CabinTeleporter {
+  readonly sending: string | null;
+}
+
+/** The vehicle `vehicle`'s teleporter; null for one without a teleporter. */
+export function cabinTeleporter(
+  game: Session,
+  vehicle: string,
+): CabinTeleporter | null {
+  const found = vehicleOf(game, vehicle);
+  const teleporter = found?.spec.teleporter;
+  if (found === null || teleporter === undefined) return null;
+  return { sending: teleporter.sending(game, found.entity) };
+}
+
 /** Getting in and out of vehicles, and what is done inside, sent under the engine's own entry. */
 export const vehicleActions = [
   board,
@@ -381,6 +443,7 @@ export const vehicleActions = [
   unstow,
   buy,
   tune,
+  teleport,
 ] as const;
 
 /**
@@ -443,6 +506,8 @@ export function cabinCommand(game: Session, command: CabinCommand): void {
       });
     else if ("unstow" in command)
       unstow.perform(game, { slot: command.unstow });
+    else if ("teleport" in command)
+      teleport.perform(game, { target: command.teleport });
     else buy.perform(game, { item: command.buy });
     return;
   }

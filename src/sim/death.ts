@@ -83,6 +83,28 @@ export function itemName(
   return body === undefined ? item.name : `${body.name}'s corpse`;
 }
 
+/**
+ * As the host, drops everything body `id` carries round `at`, as far as the configured scatter,
+ * each with its drop sound: a falling player's items, or a teleported body's, left where it
+ * stood. Does nothing on any other client, or in a world where items cannot lie.
+ */
+export function dropAll(game: Session, id: string, at: Point): void {
+  if (!game.hosting || !itemsCanLie(game)) return;
+  const { radius } = game.config.worldItems;
+  itemsOf(game, id).forEach((item, slot) => {
+    if (item === null || !takeItem(game, id, slot, item.id)) return;
+    const spot = arrivalPoint(
+      game.world,
+      at,
+      radius,
+      game.config.death.scatter,
+      Math.random,
+    );
+    const lying = spawnWorldItem(game, spot, item.id, item.left, item.state);
+    soundDrop(game, item.id, spot, lying);
+  });
+}
+
 /** How wide the flash where a player falls is, in its own radii. */
 const FALL_FLASH = 2.5;
 
@@ -94,22 +116,9 @@ function fall(game: Session, player: Player): void {
   // One who falls inside a vehicle is put out beside it first, and falls there.
   putOut(game, player);
   const at = { x: player.x, y: player.y };
-  const { radius } = game.config.worldItems;
   // A world with no items has nothing to drop, and no corpse to lie.
   const lies = itemsCanLie(game);
-  itemsOf(game, player.id).forEach((item, slot) => {
-    if (!lies || item === null || !takeItem(game, player.id, slot, item.id))
-      return;
-    const spot = arrivalPoint(
-      game.world,
-      at,
-      radius,
-      game.config.death.scatter,
-      Math.random,
-    );
-    const lying = spawnWorldItem(game, spot, item.id, item.left, item.state);
-    soundDrop(game, item.id, spot, lying);
-  });
+  dropAll(game, player.id, at);
   const held = bodies.get(game);
   bodies.set(game, {
     next: held.next + 1,

@@ -115,7 +115,7 @@ cabin.addPanel(storagePanel(sendCabin));
 cabin.addPanel(shopPanel(sendCabin));
 /** Whether the cabin's transmit button is held down with the mouse. */
 let cabinTransmit = false;
-cabin.addPanel(minimapPanel(config.minimap));
+cabin.addPanel(minimapPanel(config.minimap, sendCabin));
 cabin.addPanel(
   transmitPanel((held) => {
     cabinTransmit = held;
