@@ -16,6 +16,7 @@ import {
   randomFreePosition,
   registerContent,
   remoteness,
+  spawnEntity,
   updateSession,
 } from "../sim/index.js";
 import type {
@@ -27,8 +28,10 @@ import type {
 } from "../sim/index.js";
 import type { EntitiesConfig } from "./index.js";
 import { entityContent } from "./index.js";
+import { freshSnail } from "./snail/index.js";
 import { spawnAllowed } from "./spawn-rules.js";
 import {
+  apartShare,
   groupRange,
   groupSize,
   nothingChance,
@@ -222,6 +225,48 @@ test("a kind with nowhere to appear gives way to another", () => {
   const spawned = play(game, CERTAIN.period * 5 + 0.1);
   expect(spawned).toHaveLength(5);
   expect(spawned.every(({ kind }) => kind === "exploder")).toBe(true);
+});
+
+test("a spot's share kept apart is its distance to the nearest body of the kinds, past touching, over the distance", () => {
+  const game = world();
+  const apart = { from: ["snail"], distance: 400 };
+  const at = { x: 1000, y: 1000 };
+  expect(apartShare(game, at, apart)).toBe(1);
+  expect(apartShare(game, at, undefined)).toBe(1);
+  const snail = spawnEntity(game, "snail", 1200, 1000, freshSnail(null, 0));
+  expect(apartShare(game, at, apart)).toBeCloseTo((200 - snail.radius) / 400);
+  expect(apartShare(game, snail, apart)).toBe(0);
+  // Bodies of kinds it does not keep from count for nothing.
+  expect(apartShare(game, at, { ...apart, from: ["exploder"] })).toBe(1);
+});
+
+/** The mean distance from each of `game`'s zombies to its nearest other. */
+function meanSpacing(game: Session): number {
+  const kind = game.kindIds.get("zombie");
+  const zombies = [...game.entities.values()].filter((e) => e.kind === kind);
+  return mean(
+    zombies.map((zombie) =>
+      Math.min(
+        ...zombies
+          .filter((other) => other !== zombie)
+          .map((other) => Math.hypot(other.x - zombie.x, other.y - zombie.y)),
+      ),
+    ),
+  );
+}
+
+test("a kind kept apart from its own kind arrives farther from the rest of it", () => {
+  const spawner = { ...CERTAIN, period: 1, headStart: 20 };
+  const near = world({ spawner });
+  const apart = world({
+    spawner,
+    zombie: {
+      ...ZOMBIES,
+      apart: { from: ["zombie"], distance: testSimConfig.world.cell * 40 },
+    },
+  });
+  expect(count(apart, "zombie")).toBe(20);
+  expect(meanSpacing(apart)).toBeGreaterThan(meanSpacing(near) * 1.2);
 });
 
 test("a new world starts with its head start of rolls, each at the chance it begins with", () => {

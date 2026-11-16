@@ -13,6 +13,7 @@ import {
   spawnWorldItem,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Eyes,
   Point,
@@ -50,7 +51,7 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
  * How a doppelganger passes for a player, hunts and speaks. Distances in pixels, speeds in pixels
  * a second, times in sim seconds.
  */
-export interface DoppelgangerConfig extends Watching {
+export interface DoppelgangerConfig extends Watching, Dormancy {
   /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   /** A player's, so it stands and is drawn as one. */
@@ -409,6 +410,7 @@ function definition(
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
     // A player's bar, where a player's shows, is drawn with it.
     healthBar: false,
     data: DoppelgangerState,

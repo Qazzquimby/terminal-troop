@@ -17,6 +17,7 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type {
+  Dormancy,
   EntityDefinition,
   EntitySnapshot,
   Strike,

@@ -66,6 +66,14 @@ const SPRINT = 1.8;
 const END_GAME = 20 * 60;
 /** Cells out from the exit that are dark by day and most dangerous. */
 const EXIT_REACH = 20;
+/**
+ * How near a living player must be for a monster that keeps to its own patch to stir: 50 cells,
+ * past any sight, hearing or noise that reaches a player. Farther off, it lies dormant, standing as
+ * if stunned, so a big world's far monsters cost the host nothing. Kinds that roam the whole world
+ * (the stalker, statue and snails), move with no player near (the sleeper as she relocates, the
+ * ghost girl) or are placed rather than living (mines, turrets) never lie dormant.
+ */
+const DORMANT_BEYOND = CELL * 50;
 
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
@@ -286,6 +294,7 @@ export const config = {
   greeting: { replayMs: 10_000 },
   entities: {
     zombie: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 100,
         tries: 24,
@@ -491,13 +500,16 @@ export const config = {
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
     // player it picks, standing while there is none, at a fifth of a player's walk, kills
     // whatever it touches, at most once a second, and replans its way every 2 seconds. No monster
-    // hunts or strikes it: its kind carries the unnoticed tag.
+    // hunts or strikes it: its kind carries the unnoticed tag. It would rather arrive far from
+    // any snail, giant or not: a spot within 40 cells of one, over a quarter of the world's width,
+    // is that much less likely, falling to never touching one.
     snail: {
       spawning: {
         weight: 10,
         after: 240,
         tries: 24,
         unseenDistance: CELL * 14,
+        apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
       },
       radius: 12,
       ignores: ["snail", "giantSnail"],
@@ -511,13 +523,14 @@ export const config = {
     // by two, as the blind dog is, and at 0.3 of a player's walk somewhat faster. Where breaking
     // a wall is quicker than going round it presses into the wall, and after 5 seconds of it the
     // wall comes down. Its grind, once a second as it presses, carries 8 cells; the crumble 16,
-    // short of the noise that wakes a sleeper.
+    // short of the noise that wakes a sleeper. It keeps apart from other snails as the snail does.
     giantSnail: {
       spawning: {
         weight: 5,
         after: 480,
         tries: 24,
         unseenDistance: CELL * 14,
+        apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
       },
       radius: CELL - 3,
       ignores: ["snail", "giantSnail"],
@@ -584,6 +597,7 @@ export const config = {
     // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     blindDog: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         tries: 24,
@@ -646,6 +660,7 @@ export const config = {
     // begins, in groups of 2 to 4, 3 on average, by its end game, up to 3 cells apart. It feels
     // prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
     exploder: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 70,
         tries: 24,
@@ -794,6 +809,7 @@ export const config = {
     // nest's revenge lasts until the thief is 5 cells from what it stole. Its chitter carries 4
     // cells every 5 to 10s, its alarm 10, its pick-up 3, its bite 5.
     hoarder: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 50,
         tries: 24,
@@ -855,6 +871,7 @@ export const config = {
     // it fears, replanning twice a second and laying a mine every 3s, until it has seen none for
     // 10s. Laying a mine clicks 3 cells off.
     mineLayer: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 120,
@@ -888,6 +905,7 @@ export const config = {
     // for 3s, 6 cells a leg, the best of 12. It replans twice a second. Its blow carries 8 cells,
     // its grinding flight 10, its crumbling death 10.
     livingWall: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 120,
@@ -917,6 +935,7 @@ export const config = {
     // drifts up to 8 cells a leg, hanging 1 to 3s between legs. Its hum carries 6 cells, at 0.6;
     // its breath as it takes someone up 6, its sigh as it breaks 8.
     gloom: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 180,
@@ -946,6 +965,7 @@ export const config = {
     // off, as far as talking carries. Three in ten arrive holding a shovel, a bandage, a walkie or
     // scrap.
     doppelganger: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 180,
@@ -1175,13 +1195,22 @@ export const config = {
     // monsters do, so loot lies where they spawn. At the most dangerous spot there is an even
     // chance of a second, an uncommon item is twice as likely, a rare one four times. On top of
     // those it always lays 15 cans of fuel, one in each fifteenth of its width from start to exit,
-    // so the cruiser can always be driven out; fuel may still be picked as loot besides.
+    // so the cruiser can always be driven out; fuel may still be picked as loot besides. Within
+    // its band each can lies by danger weight squared, as a rare item favours danger, so it is
+    // found off the road where monsters spawn. The bands keep the exit, the most dangerous place,
+    // from drawing more than its own band's can.
     loot: {
       scatter: { count: 40, seed: 4, clearance: CELL * 3, danger: 1 },
       guaranteed: [
         {
           item: "fuel",
-          scatter: { count: 15, seed: 5, clearance: CELL * 3, spread: "x" },
+          scatter: {
+            count: 15,
+            seed: 5,
+            clearance: CELL * 3,
+            spread: "x",
+            danger: 2,
+          },
         },
       ],
       danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },

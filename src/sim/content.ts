@@ -164,7 +164,8 @@ export interface Scatter {
   /**
    * How strongly the spots favour danger, where monsters spawn more: each is drawn in proportion
    * to its danger weight, the one monsters spawn by, raised to this. 1 favours danger as much as
-   * monsters do; 0 or left out, not at all. A spread scatter keeps to its bands regardless.
+   * monsters do; 0 or left out, not at all. A spread scatter still keeps one spot to each band,
+   * drawing it within its band by danger the same way.
    */
   readonly danger?: number;
 }
@@ -282,8 +283,9 @@ function bandPoint(
 const WEIGHED_SPOTS = 24;
 
 /**
- * A spot drawn among `WEIGHED_SPOTS` free spots clear of the players, each in proportion to its
- * weight; as an unweighted scatter draws one when none is clear of them or has weight.
+ * A spot drawn among `WEIGHED_SPOTS` free spots clear of the players, within `band` when given,
+ * each in proportion to its weight; as an unweighted scatter draws one, in the band if there is
+ * one, when none is clear of them or has weight.
  */
 function weighedPoint(
   game: Session,
@@ -291,17 +293,25 @@ function weighedPoint(
   radius: number,
   clearance: number,
   weight: SpotWeight,
+  band?: Rect,
 ): Point {
   let chosen: Point | null = null;
   let total = 0;
   for (let attempt = 0; attempt < WEIGHED_SPOTS; attempt++) {
-    const point = randomFreePosition(game.world, radius, rng);
+    const point =
+      band === undefined
+        ? randomFreePosition(game.world, radius, rng)
+        : randomFreePositionIn(game.world, band, radius, rng);
+    if (point === null) break;
     if (distanceToPlayers(game, point) < clearance) continue;
     const share = Math.max(0, weight(game, point));
     total += share;
     if (share > 0 && rng() * total < share) chosen = point;
   }
-  return chosen ?? scatterPoint(game, rng, radius, clearance);
+  if (chosen !== null) return chosen;
+  return band === undefined
+    ? scatterPoint(game, rng, radius, clearance)
+    : bandPoint(game, rng, radius, clearance, band);
 }
 
 function scatterCount(game: Session, count: SpawnCount): number {
@@ -340,11 +350,17 @@ export function scatterEach(
   for (let i = 0; i < count; i++) {
     const { clearance } = scatter;
     let at: Point;
-    if (scatter.spread === "x")
-      at = bandPoint(game, rng, radius, clearance, xBand(game, i, count));
-    else if (weight === undefined)
+    if (scatter.spread === "x") {
+      const band = xBand(game, i, count);
+      at =
+        weight === undefined
+          ? bandPoint(game, rng, radius, clearance, band)
+          : weighedPoint(game, rng, radius, clearance, weight, band);
+    } else if (weight === undefined) {
       at = scatterPoint(game, rng, radius, clearance);
-    else at = weighedPoint(game, rng, radius, clearance, weight);
+    } else {
+      at = weighedPoint(game, rng, radius, clearance, weight);
+    }
     place(at, rng);
   }
 }

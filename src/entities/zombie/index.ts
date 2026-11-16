@@ -12,6 +12,7 @@ import {
   sound,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Eyes,
   Heard,
@@ -48,7 +49,7 @@ import type { SpawningConfig } from "../spawning.js";
  * How a zombie moves and hunts, and how it arrives. Distances are in pixels, speeds in pixels per
  * second.
  */
-export interface ZombieConfig extends Hunting {
+export interface ZombieConfig extends Hunting, Dormancy {
   /**
    * A fixed number a new world scatters, past what the spawner brings; none when left out. Tests
    * use it to start with a known crowd.
@@ -466,6 +467,7 @@ function definition(config: ZombieConfig): EntityDefinition<ZombieState> {
     radius: config.radius,
     mass: config.mass,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
     data: ZombieState,
     eyes: (_entity, state, game) => zombieEyes(state.facing, game, config),
     update(entity, state, dt, game) {

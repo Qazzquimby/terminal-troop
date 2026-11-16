@@ -9,6 +9,7 @@ import {
   spawnWorldItem,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Point,
   Session,
@@ -30,7 +31,7 @@ const layUrl = new URL("./sfx/lay.mp3", import.meta.url).href;
  * How a mine layer circles its home, flees what it sees and lays its mines. Distances in pixels,
  * speeds in pixels per second, times in sim seconds.
  */
-export interface MineLayerConfig extends Hunting {
+export interface MineLayerConfig extends Hunting, Dormancy {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -266,6 +267,7 @@ function definition(
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
     data: MineLayerState,
     // It sees all round it, but looks down no cone.
     eyes: () => ({ cone: null, around: config.sightRange }),
