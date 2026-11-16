@@ -75,6 +75,9 @@ export const testSimConfig: SimConfig = {
   stamina: { max: 90, drain: 30, regen: 22.5, regenDelay: 0.6, recover: 27 },
   arrival: { spread: 100 },
   death: { scatter: 40, reviveHealth: 50 },
+  // Every world entity in play wherever it is, players or none, so a kind's tests may set monsters
+  // on one another with no living player by; what tests the engagement range sets its own.
+  engagement: { range: Infinity },
   stunned: {
     darkness: 0.95,
     fadeOut: 1,

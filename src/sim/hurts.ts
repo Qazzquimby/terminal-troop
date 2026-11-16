@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { asPlayer, bodyById, isPlayer } from "./bodies.js";
+import { asPlayer, bodyById, engages, isPlayer } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { applyDamage } from "./entity.js";
 import { noteFall } from "./fallen.js";
@@ -56,8 +56,8 @@ function record(game: Session, victim: Body, by: string | null): void {
 /**
  * Deals `amount` damage to `body` for real, as the host, and notes that `by`, a body's id or null
  * for no one, dealt it. A player's health comes off the host's record; a world entity's off the
- * entity. Does nothing on a client not hosting, to a body not in the world, to a ghost, or for no
- * damage. Content hurts through `hurt` in the actions framework, which calls this on the host.
+ * entity. Does nothing on a client not hosting, to a body not in the world, to a ghost, for no
+ * damage, or between two world entities that do not engage, away from every player (`engages`). Content hurts through `hurt` in the actions framework, which calls this on the host.
  */
 export function dealDamage(
   game: Session,
@@ -67,6 +67,7 @@ export function dealDamage(
 ): void {
   if (!game.hosting || !(amount > 0) || bodyById(game, body.id) !== body)
     return;
+  if (!engages(game, by, body)) return;
   const player = asPlayer(game, body);
   if (player !== null) {
     if (isGhost(player)) return;

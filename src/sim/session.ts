@@ -19,6 +19,7 @@ import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
 import { layBodies } from "./death.js";
+import type { EngagementConfig } from "./bodies.js";
 import type { DeathConfig } from "./death.js";
 import { isAboard, playersOutside } from "./aboard.js";
 import { isGhost } from "./ghosts.js";
@@ -97,6 +98,8 @@ export interface SimConfig extends PlayerRules {
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
   readonly death: DeathConfig;
+  /** How near a player world entities must be to act on one another. */
+  readonly engagement: EngagementConfig;
   readonly stunned: StunnedConfig;
   /** How the world's day passes, and its daylight with it. */
   readonly day: DayConfig;

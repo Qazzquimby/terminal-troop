@@ -163,6 +163,7 @@ export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export {
   bodyById,
+  engages,
   footprintOf,
   isGone,
   livingBodies,

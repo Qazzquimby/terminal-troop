@@ -51,11 +51,12 @@ export function playersIn(game: Session, area: Circle, but?: string): Player[] {
 
 /**
  * Every body that touches `area`, living players and world entities alike, items lying about
- * included, but the one with id `but`, if given.
+ * included, but the one with id `but`, if given: the body looking, which, as a world entity,
+ * finds only the world entities it engages, as `livingBodies` has it.
  */
 export function bodiesIn(game: Session, area: Circle, but?: string): Body[] {
   const { center, radius } = area;
-  return livingBodies(game).filter(
+  return livingBodies(game, but ?? null).filter(
     (body) =>
       body.id !== but &&
       Math.hypot(body.x - center.x, body.y - center.y) <= radius + body.radius,
