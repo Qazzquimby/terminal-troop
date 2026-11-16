@@ -1,3 +1,4 @@
+import { omit } from "lodash-es";
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import {
@@ -29,6 +30,8 @@ import {
 
 const DT = 1 / 60;
 const { stalker: config } = testEntitiesConfig;
+/** The stalker, heeding any body's gaze but its own kind's rather than players' alone. */
+const heedingAnyone: StalkerConfig = omit(config, "watchedBy");
 
 /** The dev square, 18x12 cells of 50px, all dark; the local player stands at (x, y). */
 function world(x: number, y: number, stalker: StalkerConfig = config): Session {
@@ -104,16 +107,26 @@ function watches(
   return canSeeFrom(game.world.map, cone, at);
 }
 
-test("it creeps up behind a player faster than a walk and kills it at a touch", () => {
+test("it closes on a player faster than a walk, creeps once it sees them, and kills at a touch", () => {
   const game = world(700, 300);
   const stalker = stalkerAt(game, 150, 300);
   run(game, 0.5, { x: 900, y: 300 });
 
+  // Still further off than it sees, it comes on at its full speed.
   expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stateOf(stalker).creeping).toBe(false);
   expect(stalker.vx).toBeCloseTo(config.speed);
   expect(config.speed).toBeCloseTo(testSimConfig.player.speed * 1.2);
 
-  run(game, 2.5, { x: 900, y: 300 });
+  // In its sight, the player is crept up on at a tenth of a walk.
+  run(game, 0.5, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stateOf(stalker).creeping).toBe(true);
+  expect(stalker.vx).toBeCloseTo(config.creepSpeed);
+  expect(config.creepSpeed).toBeCloseTo(testSimConfig.player.speed * 0.1);
+  expect(game.local.health).toBe(game.local.maxHealth);
+
+  run(game, 20, { x: 900, y: 300 });
   expect(game.local.health).toBe(0);
   expect(sounded(game, "attack.mp3")).toBe(true);
 });
@@ -157,7 +170,12 @@ test("a retreat keeps its distance from a player where it can", () => {
 
 test("its hunt goes round another player's gaze, never stepping into it", () => {
   const range = 400;
-  const game = world(560, 560, { ...config, watchRange: range });
+  // It creeps at full speed here, to reach the local player within the test.
+  const game = world(560, 560, {
+    ...config,
+    watchRange: range,
+    creepSpeed: config.speed,
+  });
   // A second player, further off, looks down and to the left; the straight way to the local
   // player crosses its view, though neither end is in it.
   const watcher = createPlayer(
@@ -263,8 +281,17 @@ test("with no player about, it leaves other bodies be, but strikes one it touche
   expect(touched.health).toBeLessThan(1000);
 });
 
-test("any body's gaze sends it back, as far as that body looks", () => {
+test("a body that is not a player looking at it does not send it back", () => {
   const game = world(100, 550);
+  hurtPlayer(game, game.local, Infinity);
+  const stalker = stalkerAt(game, 500, 300);
+  lookoutAt(game, 700, 300, 300);
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("hunt");
+});
+
+test("heeding any body's gaze, any body's sends it back, as far as that body looks", () => {
+  const game = world(100, 550, heedingAnyone);
   hurtPlayer(game, game.local, Infinity);
   const near = stalkerAt(game, 500, 300);
   const far = stalkerAt(game, 300, 100);
@@ -276,7 +303,7 @@ test("any body's gaze sends it back, as far as that body looks", () => {
 });
 
 test("its own kind's gaze does not send it back", () => {
-  const game = world(100, 550);
+  const game = world(100, 550, heedingAnyone);
   hurtPlayer(game, game.local, Infinity);
   const stalker = stalkerAt(game, 400, 300);
   const other = stalkerAt(game, 600, 300);

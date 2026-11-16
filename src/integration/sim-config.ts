@@ -157,7 +157,7 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * exploder that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
  * round, from 100 damage to 30. Nor does a sleeper or a statue. No stalker nor hoarder appears
  * unless a test spawns one: a
- * stalker at 1.2 times the test player's walk, watched 700px down a player's cone, retreating
+ * stalker at 1.2 times the test player's walk, creeping at 0.1 times it, watched 700px down a player's cone, retreating
  * 600px clear; hoarders at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
  * nest, spooked within 400px, avenging a theft until the thief is 250px from it.
  */
@@ -348,6 +348,8 @@ export const testEntitiesConfig = {
     targets: ["player"],
     maxHealth: 75,
     speed: 264,
+    creepSpeed: 22,
+    watchedBy: ["player"],
     damage: 100,
     attackCooldown: 1,
     watchRange: 700,

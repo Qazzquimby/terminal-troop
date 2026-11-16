@@ -32,7 +32,13 @@ import {
   Waypoint,
   avenged,
 } from "../hunt.js";
-import { drawRing, nearestPrey, preyFor, touching } from "../bodies.js";
+import {
+  drawRing,
+  nearestPrey,
+  preyFor,
+  seenPrey,
+  touching,
+} from "../bodies.js";
 import { avoidingWhere, planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -54,6 +60,13 @@ export interface StalkerConfig extends Hunting {
   readonly maxHealth: number;
   /** Its speed, in pixels a second. */
   readonly speed: number;
+  /** Its speed while hunting with a body it hunts in its own sight, in pixels a second. */
+  readonly creepSpeed: number;
+  /**
+   * When given, the only kind tags whose gaze it heeds: "player" backs off from players' eyes
+   * alone. Absent, any body's gaze but the kinds it ignores.
+   */
+  readonly watchedBy?: readonly string[];
   /** Damage dealt to each body it touches. */
   readonly damage: number;
   /** Seconds between two touches' damage. */
@@ -82,6 +95,9 @@ export interface StalkerConfig extends Hunting {
 const NAME = "stalker";
 
 const GLYPH = "👤";
+
+/** How faint it is drawn while creeping. */
+const CREEPING_ALPHA = 0.45;
 
 /** A cell's middle and its four corners, as offsets from the middle. */
 const CORNERS = [
@@ -116,6 +132,7 @@ export const StalkerState = z.object({
   attacking: z.boolean(),
   foe: z.string().nullable(),
   facing: rounded(2),
+  creeping: z.boolean(),
 });
 
 export type StalkerState = z.output<typeof StalkerState>;
@@ -134,13 +151,15 @@ export function freshStalker(now: number): StalkerState {
     attacking: false,
     foe: null,
     facing: 0,
+    creeping: false,
   };
 }
 
 /**
- * Whether any living body but the kinds it ignores watches a point: it lies within that body's
- * view cone, as far as it looks but no further than the watch range, with nothing in the way.
- * Light plays no part, nor what lies behind a body. A stunned or blind body watches nothing.
+ * Whether any living body whose gaze it heeds watches a point: it lies within that body's view
+ * cone, as far as it looks but no further than the watch range, with nothing in the way. It heeds
+ * the kinds `watchedBy` names, or with none named any body but the kinds it ignores. Light plays
+ * no part, nor what lies behind a body. A stunned or blind body watches nothing.
  */
 function watcher(
   game: Session,
@@ -150,7 +169,10 @@ function watcher(
   const sights = livingBodies(game)
     .filter(
       (body) =>
-        body.id !== self.id && !hasKindTag(game, body.id, config.ignores),
+        body.id !== self.id &&
+        !hasKindTag(game, body.id, config.ignores) &&
+        (config.watchedBy === undefined ||
+          hasKindTag(game, body.id, config.watchedBy)),
     )
     .map((body) => eyesOf(game, body))
     .filter((sight) => (sight?.cone ?? null) !== null);
@@ -243,7 +265,7 @@ function enter(
 
 /**
  * The mode it moves to: hurt, it rages; a rage or retreat run out goes back to the hunt; and a
- * hunt that any body's gaze falls on, its own kind's aside, turns to retreat.
+ * hunt that the gaze of a body it heeds falls on turns to retreat.
  */
 function think(
   state: StalkerState,
@@ -349,8 +371,16 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
         touching(game, entity, config.ignores).length > 0,
         config.attackCooldown,
       );
+      // Hunting, with a body it hunts in its own sight, it creeps.
+      const creeping =
+        next.mode === "hunt" && seenPrey(game, entity, config).length > 0;
       cue(entity, state, next, game, sounds);
-      return walk(entity, next, config.speed, dt);
+      return walk(
+        entity,
+        { ...next, creeping },
+        creeping ? config.creepSpeed : config.speed,
+        dt,
+      );
     },
     strikes(entity, state, game): Strike[] {
       // A blow on whatever it touches, the step it strikes.
@@ -361,10 +391,11 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
     },
     draw(ctx, entity, state, now) {
       ctx.save();
-      // Raging, it shakes; hunting, it is hard to make out.
+      // Raging, it shakes; hunting, it is hard to make out, and creeping, harder still.
       const shake = state.mode === "enraged" ? Math.sin(now / 25) * 1.5 : 0;
       const at = { x: entity.x + shake, y: entity.y };
-      ctx.globalAlpha = state.mode === "hunt" ? 0.7 : 1;
+      ctx.globalAlpha =
+        state.mode !== "hunt" ? 1 : state.creeping ? CREEPING_ALPHA : 0.7;
       drawEmoji(ctx, at, GLYPH, entity.radius * 2);
       drawRing(
         ctx,
@@ -381,8 +412,10 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
 
 /**
  * The stalker: alone, arriving in the dark out of every player's sight. It knows
- * where every body is and which way each faces, and creeps up on the nearest along a way no
- * body looks down, faster than a walk. Caught in any body's gaze, it hisses and backs off to
+ * where every body is and which way each faces, and comes up on the nearest along a way no
+ * body looks down, faster than a walk, slowing to a creep once it has that body in its own
+ * sight. Caught in the gaze of a kind it heeds, players alone as configured, it hisses and backs
+ * off to
  * where it arrived, keeping well away, for a long while. Hurt, it shrieks and runs at whatever
  * lives nearest, for a short while. Whatever it touches takes a killing blow. Light means nothing
  * to it once it is about; a stun holds it like anything else.
