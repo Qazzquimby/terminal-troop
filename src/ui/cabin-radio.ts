@@ -51,8 +51,7 @@ export function radioPanel(send: CabinSend): CabinPanel {
     update(view, game) {
       const found = vehicleOf(game, view.vehicle);
       const station = found?.spec.station?.(found.entity) ?? null;
-      const text =
-        station === null ? "~ static ~" : `STATION ${String(station + 1)}`;
+      const text = station === null ? "~ static ~" : station.toUpperCase();
       if (dial.textContent !== text) dial.textContent = text;
       off.disabled = station === null;
       tune.disabled = found?.spec.tune === undefined;

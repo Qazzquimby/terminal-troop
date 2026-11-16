@@ -9,6 +9,7 @@ import type {
 import {
   nextStation,
   RADIO_TAG,
+  stationName,
   stationPlaying,
 } from "../../stations/index.js";
 import { CruiserState } from "./drive.js";
@@ -73,10 +74,11 @@ export const radioPlaying = (
 ): Playing | null =>
   state.station === null ? null : stationPlaying(state.station, 0, config);
 
-/** The station `vehicle`'s radio plays, as this client has it; null while it is off. */
-export function stationOf(vehicle: WorldEntity): number | null {
+/** The name of the station `vehicle`'s radio plays, as this client has it; null while it is off. */
+export function stationOf(vehicle: WorldEntity): string | null {
   const parsed = CruiserState.safeParse(vehicle.data);
-  return parsed.success ? parsed.data.station : null;
+  const station = parsed.success ? parsed.data.station : null;
+  return station === null ? null : stationName(station);
 }
 
 /** When each cruiser's radio next makes its noise, on the world's clock, by entity id, per session. */

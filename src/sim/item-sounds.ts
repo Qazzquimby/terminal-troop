@@ -14,7 +14,11 @@ export interface Playing {
    * as an item is picked up and dropped, and a new key starts it afresh.
    */
   readonly key: string;
-  readonly url: string;
+  /**
+   * What it plays: one sound, or a list of them played one after another, each from its start,
+   * and round again from the first when it loops.
+   */
+  readonly url: string | readonly string[];
   /** When it started, on the world's clock: a client that comes upon it joins it that far in. */
   readonly since: number;
   /** How loud it plays, 0..1; full when left out. */

@@ -145,8 +145,8 @@ export interface VehicleSpec {
   readonly transceiver?: boolean;
   /** Its radio, turned by `by` inside it, as part of an action. None when left out. */
   tune?(game: Session, vehicle: WorldEntity, by: Player, to: Tuning): void;
-  /** The station its radio plays, by number, as this client has it; null while it is off. */
-  station?(vehicle: WorldEntity): number | null;
+  /** The name of the station its radio plays, as this client has it; null while it is off. */
+  station?(vehicle: WorldEntity): string | null;
   /**
    * Runs on the host as its driver crashes it into a wall, once, as the host first runs that
    * step; its momentum is already spent.
