@@ -20,6 +20,7 @@ import type {
 } from "../../sim/index.js";
 import {
   between,
+  periodicCall,
   strikeEach,
   walk,
   NEVER_PREY,
@@ -44,6 +45,7 @@ const huffUrl = new URL("./sfx/huff.mp3", import.meta.url).href;
 const growlUrl = new URL("./sfx/growl.mp3", import.meta.url).href;
 const pounceUrl = new URL("./sfx/pounce.mp3", import.meta.url).href;
 const skidUrl = new URL("./sfx/skid.mp3", import.meta.url).href;
+const barkUrl = new URL("./sfx/bark.mp3", import.meta.url).href;
 
 /**
  * How it pounces once it commits: a crouch, a straight dash through its target and on past it that
@@ -83,6 +85,8 @@ export interface BlindDogConfig extends Hunting {
   readonly wanderRange: number;
   /** Seconds it stands after a wander leg, a noise followed up or a charge, drawn between the two. */
   readonly wanderPause: { readonly min: number; readonly max: number };
+  /** Seconds between its barks, drawn between the two after each; the first a gap after it arrives. */
+  readonly barkGap: { readonly min: number; readonly max: number };
   /** How far a new noise must seem to be from the one it heads for before it plans anew. */
   readonly repathDistance: number;
   /**
@@ -117,6 +121,8 @@ export interface BlindDogConfig extends Hunting {
     readonly pounce: number;
     /** The scrabble of claws as it skids. */
     readonly skid: number;
+    /** The bark it gives now and then while it roams or stalks. */
+    readonly bark: number;
   };
 }
 
@@ -159,6 +165,10 @@ export const BlindDogState = z.object({
   dash: z.object({ to: Waypoint, until: Time }).nullable(),
   /** The ids of the bodies this pounce has bitten. Host. */
   struck: z.array(z.string().max(64)).max(MAX_STRUCK),
+  /** When it next barks; null until the first is drawn. Host. */
+  barkAt: Time.nullable(),
+  /** Whether it barks in this step. Host. */
+  barking: z.boolean(),
   /** The id of what made the noise it follows; null for none, or a noise no one made. Host. */
   source: z.string().max(64).nullable(),
   /** Seconds it has kept near the noise it follows, biting nothing. Host. */
@@ -193,6 +203,8 @@ export function freshBlindDog(seed: number, now: number): BlindDogState {
     bites: [],
     dash: null,
     struck: [],
+    barkAt: null,
+    barking: false,
     source: null,
     camped: 0,
     bored: null,
@@ -604,8 +616,33 @@ function bite(
   };
 }
 
+/**
+ * Barks once its time comes, as a sleeper does, while it roams or stalks; charging it roars instead,
+ * and through a pounce it growls and bites, so a bark due then is passed over and the next drawn.
+ */
+function bark(
+  state: BlindDogState,
+  game: Session,
+  config: BlindDogConfig,
+): BlindDogState {
+  const call = periodicCall(
+    state.barkAt,
+    game.worldTime,
+    state.seed,
+    config.barkGap,
+  );
+  const free = state.mode === "wander" || state.mode === "stalk";
+  return {
+    ...state,
+    seed: call.seed,
+    barkAt: call.at,
+    barking: call.calls && free,
+  };
+}
+
 /** A blind dog's sounds, each heard, and making noise, out to its range. */
 interface Sounds {
+  readonly bark: Sound;
   readonly roar: Sound;
   readonly snarl: Sound;
   readonly bite: Sound;
@@ -632,6 +669,7 @@ function cue(
     entered("pounce") && sounds.pounce,
     entered("skid") && sounds.skid,
     next.bites.length > 0 && sounds.bite,
+    next.barking && sounds.bark,
     next.bored !== null &&
       next.bored.until !== previous.bored?.until &&
       sounds.huff,
@@ -793,6 +831,7 @@ function drawBlindDog(
 
 function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
   const sounds: Sounds = {
+    bark: sound({ url: barkUrl, range: config.sounds.bark }),
     roar: sound({ url: roarUrl, range: config.sounds.roar }),
     snarl: sound({ url: snarlUrl, range: config.sounds.snarl }),
     bite: sound({ url: biteUrl, range: config.sounds.bite }),
@@ -806,9 +845,13 @@ function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
     maxHealth: config.maxHealth,
     data: BlindDogState,
     update(entity, state, dt, game) {
-      const next = bite(
-        tire(think(state, entity, game, config), entity, dt, game, config),
-        entity,
+      const next = bark(
+        bite(
+          tire(think(state, entity, game, config), entity, dt, game, config),
+          entity,
+          game,
+          config,
+        ),
         game,
         config,
       );
@@ -847,7 +890,8 @@ function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
  * what it hears and grows suspicious by how loud it was; once suspicion is full it roars and
  * runs for where the last noise came from, steering for each new noise. Near enough, or near the
  * body making a noise, it crouches, growling, then pounces: a straight dash through its target and
- * on past it, biting each body on the line once, then a skid. Anything it touches it bites hard. Light does not keep it away: it may appear outdoors
+ * on past it, biting each body on the line once, then a skid. Anything it touches it bites hard. It barks now
+ * and then as it roams or stalks, a noise that draws whatever hears it but other blind dogs. Light does not keep it away: it may appear outdoors
  * too, though only far from every player.
  */
 export const blindDog = defineEntity(NAME, (config: BlindDogConfig) => ({

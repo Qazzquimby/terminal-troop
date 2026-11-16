@@ -63,6 +63,23 @@ export function between(
 }
 
 /**
+ * A call a monster makes now and then, such as a bark: given when it is next due, `at`, or null for
+ * one yet to be drawn, whether it calls at `now`, and when it next does, `gap` seconds on, drawn
+ * from `seed`. A call first drawn is not made, so a monster just arrived waits a gap before it.
+ * Any kind can keep a nullable `Time` and its seed in its state and declare its gap in its config.
+ */
+export function periodicCall(
+  at: number | null,
+  now: number,
+  seed: number,
+  gap: { readonly min: number; readonly max: number },
+): { calls: boolean; at: number; seed: number } {
+  if (at !== null && now < at) return { calls: false, at, seed };
+  const drawn = withSeed(seed, (rng) => between(rng, gap));
+  return { calls: at !== null, at: now + drawn.result, seed: drawn.seed };
+}
+
+/**
  * Kind tags no monster hunts, notices as prey or strikes, whatever its config says: inert things,
  * items lying about, and bodies every hunter leaves be, such as the snail.
  */

@@ -424,9 +424,14 @@ export const config = {
       lunge: CELL * 3,
       patience: 8,
       boredSeconds: 20,
+      // It barks every 10 to 16s as it roams or stalks, a little more often than a dormant
+      // sleeper, so a player hears it coming. Other blind dogs pay it no mind.
+      barkGap: { min: 10, max: 16 },
       // Its roar carries 25 cells, its snarl as it turns to a noise 4, its bite 6, its huff as it
-      // gives up 4, its growl as it crouches to pounce 5, its roar as it leaps 15, its skid 5.
+      // gives up 4, its growl as it crouches to pounce 5, its roar as it leaps 15, its skid 5, its
+      // bark 10.
       sounds: {
+        bark: CELL * 10,
         roar: CELL * 25,
         snarl: CELL * 4,
         bite: CELL * 6,
@@ -447,6 +452,8 @@ export const config = {
       maxHealth: SHOVEL_DAMAGE * 2,
       wanderSpeed: PLAYER_SPEED * 0.8,
       chaseSpeed: PLAYER_SPEED * 1.1,
+      // Once its fuse is lit it slows to half a player's walk, so whoever it chases can get clear.
+      litSpeed: PLAYER_SPEED * 0.5,
       senseRange: CELL * 12,
       wanderRange: CELL * 5,
       wanderPause: { min: 0.5, max: 2 },
@@ -461,7 +468,7 @@ export const config = {
       fuse: 2.5,
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
-      blast: { radius: CELL * 2.5, centre: 100, edge: 30 },
+      blast: { radius: CELL * 3, centre: 100, edge: 30 },
       sounds: { fuse: CELL * 6, blast: CELL * 40 },
     },
     // She arrives in the dark, never within 14 cells of a player. Five shovel hits fell her. She
@@ -515,6 +522,8 @@ export const config = {
         unseenDistance: CELL * 14,
       },
       ignores: ["statue"],
+      // It hunts players alone, though its blow still lands on any body it touches.
+      targets: ["player"],
       radius: 16,
       // Solid stone: a kick or a swing barely rocks it, a tenth of the way it would a player.
       mass: 10,

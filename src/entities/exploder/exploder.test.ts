@@ -230,6 +230,19 @@ describe("bursting", () => {
     expect(lastHurtBy(game, game.localId)).toBe(sac.id);
   });
 
+  test("once its fuse is lit it slows to its lit speed, chasing or not", () => {
+    const { game } = world();
+    standAt(game, 250, 25);
+    const sac = exploderAt(game, 250, 400);
+    run(game, DT);
+    expect(Math.hypot(sac.vx, sac.vy)).toBeCloseTo(config.chaseSpeed);
+    hurt(game, sac, 1, null);
+    run(game, DT * 2);
+    expect(stateOf(sac).fuseAt).not.toBeNull();
+    expect(Math.hypot(sac.vx, sac.vy)).toBeCloseTo(config.litSpeed);
+    expect(config.litSpeed).toBeLessThan(config.wanderSpeed);
+  });
+
   test("its burst knocks down the walls it reaches", () => {
     const { game } = world();
     expect(solidAt(game, 5, 2)).toBe(true);
