@@ -194,7 +194,9 @@ test("the cruiser's radio: tune switches it on and steps through the stations, i
   run(300);
   for (const game of [host, guest]) {
     expect(streams(game)).toHaveLength(1);
-    expect(streams(game)[0]?.[0]).toMatch(/\/songs\/song-1\.mp3$/);
+    expect(streams(game)[0]?.[0]).toMatch(
+      /\/songs\/rips\/breakcore_delivery__bachrees\.opus$/,
+    );
     expect(streams(game)[0]?.[1]).toEqual({ x: cruiser.x, y: cruiser.y });
     expect(streams(game)[0]?.[3]).toMatchObject({
       loop: true,
@@ -224,7 +226,7 @@ test("the cruiser's radio: tune switches it on and steps through the stations, i
   step({ b: { ...idle, cabin: "radio" } });
   run(300);
   expect(streams(guest)).toHaveLength(2);
-  expect(streams(guest)[1]?.[0]).toMatch(/\/songs\/song-2\.mp3$/);
+  expect(streams(guest)[1]?.[0]).toMatch(/\/songs\/rips\/baka_mitai\.opus$/);
   expect(stopOf(guest, 0)).toHaveBeenCalled();
   expect(stopOf(guest, 1)).not.toHaveBeenCalled();
 

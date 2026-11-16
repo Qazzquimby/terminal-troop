@@ -192,7 +192,7 @@ test("a radio switched on plays a song on every client from where the world's cl
   for (const id of ["a", "b"]) {
     const streams = vi.mocked(sessionOf(client(id)).sfx.stream).mock.calls;
     expect(streams).toHaveLength(1);
-    expect(streams[0]?.[0]).toMatch(/\/songs\/song-\d\.mp3$/);
+    expect(streams[0]?.[0]).toMatch(/\/songs\/.+\.(mp3|opus)$/);
     expect(streams[0]?.[3]).toMatchObject({
       loop: true,
       range: testItemsConfig.radio.range,
