@@ -11,6 +11,8 @@ import { stalker } from "./stalker/index.js";
 import { hoarder } from "./hoarder/index.js";
 import { landMine } from "./land-mine/index.js";
 import { mineLayer } from "./mine-layer/index.js";
+import { turret } from "./turret/index.js";
+import { teleporter } from "./teleporter/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -20,6 +22,8 @@ export {
   refuel,
 } from "./cruiser/index.js";
 export { placeStunTrap } from "./stun-trap/index.js";
+export { placeTurret } from "./turret/index.js";
+export { placeTeleporter } from "./teleporter/index.js";
 
 /** Every kind of entity in the game; the room numbers kinds by this order. */
 const ENTITIES = [
@@ -35,6 +39,8 @@ const ENTITIES = [
   hoarder,
   landMine,
   mineLayer,
+  turret,
+  teleporter,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

@@ -7,9 +7,8 @@ import type { EntityChange, EntityDelta } from "./entity-delta.js";
 import { isDead } from "./entity.js";
 import { dealDamage, pruneHurts, settleHurts } from "./hurts.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
-import { glideTo, glideToTarget } from "./interpolation.js";
+import { follow, glideToTarget } from "./interpolation.js";
 import { isAreaFree } from "./map.js";
-import type { Point } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import { isStunned, pruneStatuses } from "./status.js";
@@ -385,21 +384,6 @@ export function entitySnapshot(game: Session): EntitySnapshot[] {
 }
 
 /**
- * Moves `known` towards the position `to` its host reported: gliding there, or placed there at
- * once when that is further than `net.snap` from the last, as for an entity that teleported.
- */
-function moveTo(game: Session, known: WorldEntity, to: Point): void {
-  const { glide, snap } = game.config.net;
-  if (Math.hypot(to.x - known.tx, to.y - known.ty) <= snap) {
-    glideTo(known, to, glide);
-    return;
-  }
-  known.x = known.tx = known.prevX = to.x;
-  known.y = known.ty = known.prevY = to.y;
-  known.glide = 0;
-}
-
-/**
  * Takes the entities a host sent: known ones ease towards their new positions and take the new
  * health and state, and new ones appear where the entry puts them. An entry of an unregistered
  * kind, with data its kind rejects, or inside a wall is left out. Returns the ids taken.
@@ -418,7 +402,7 @@ function takeEntries(
 
     const known = game.entities.get(id);
     if (known?.kind === kind) {
-      moveTo(game, known, { x, y });
+      follow(known, { x, y }, game.config.net);
       hearHealth(game, known, Math.min(health, known.maxHealth));
       known.data = parsed.data;
     } else {

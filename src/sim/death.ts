@@ -5,14 +5,13 @@ import { arrivalPoint } from "./arrival.js";
 import { removeEntity } from "./entities.js";
 import { isGhost } from "./ghosts.js";
 import { setPlayerHealth } from "./health.js";
-import { snapPrevious } from "./interpolation.js";
 import { itemsOf, takeItem } from "./inventories.js";
 import type { ItemState } from "./inventory.js";
 import { itemInstances } from "./item-instances.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
-import { alter } from "./steering.js";
+import { placePlayer } from "./steering.js";
 import { putOut } from "./vehicle.js";
 import type { VoiceChannel } from "./voice-routes.js";
 import { worldData } from "./world-data.js";
@@ -205,16 +204,7 @@ export function revive(
     game.config.arrival.spread,
     Math.random,
   );
-  alter(game, player, (revived) => {
-    revived.x = spot.x;
-    revived.y = spot.y;
-    revived.vx = 0;
-    revived.vy = 0;
-    revived.dash = null;
-  });
-  snapPrevious(player);
-  player.tx = player.x;
-  player.ty = player.y;
+  placePlayer(game, player, spot);
   noteRise(game, player, by);
   return player;
 }

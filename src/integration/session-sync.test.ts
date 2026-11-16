@@ -159,7 +159,10 @@ async function hosted(): Promise<{ a: Room; b: Room }> {
 test("remote players ease toward where the host's snapshot last put them", async () => {
   const { a, b } = await hosted();
   const local = sessionOf(a).local;
-  const target = randomFreePosition(sessionOf(a).world, local.radius);
+  // Somewhere it could have walked to between snapshots: one further off it is placed at at once.
+  let target = randomFreePosition(sessionOf(a).world, local.radius);
+  while (Math.hypot(target.x - local.x, target.y - local.y) > 200)
+    target = randomFreePosition(sessionOf(a).world, local.radius);
   local.x = target.x;
   local.y = target.y;
   a.frame(clock.now() + SEND_GAP + 1);
@@ -196,9 +199,10 @@ test("the host's entities reach the other client, ids, kinds, spots and state al
   expect(a.hostId()).toBe("a");
   // Three zombies, the cruiser, then three scrap lying about, numbered by the content list (the
   // stun trap, the snail, the blind dog, the exploder, the sleeper, the statue, the stalker, the
-  // hoarder, the land mine and the mine layer come between) on both clients.
+  // hoarder, the land mine, the mine layer, the turret and the teleporter come between) on both
+  // clients.
   expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([
-    1, 1, 1, 2, 13, 13, 13,
+    1, 1, 1, 2, 15, 15, 15,
   ]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 
