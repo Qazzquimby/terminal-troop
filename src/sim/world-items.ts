@@ -50,6 +50,43 @@ type WorldItemData = z.infer<typeof WorldItemData>;
 /** The colour of the light an item switched on shows. */
 const ON_LIGHT = "#7dff8a";
 
+/** Seconds between one glinting item's glints, and how long each lasts. */
+const GLINT_EVERY = 1.8;
+const GLINT_FOR = 0.35;
+
+/**
+ * A glinting item's sparkle: a four-pointed star at its upper edge that swells and fades for a
+ * moment every so often, each item at a moment set by where it lies, so a hoard does not flash
+ * as one.
+ */
+function drawGlint(
+  ctx: CanvasRenderingContext2D,
+  entity: WorldEntity,
+  radius: number,
+  colour: string,
+  now: number,
+): void {
+  const offset = (entity.x * 0.013 + entity.y * 0.007) % GLINT_EVERY;
+  const phase = (now / 1000 + offset) % GLINT_EVERY;
+  if (phase > GLINT_FOR) return;
+  const size = radius * 0.6 * Math.sin((phase / GLINT_FOR) * Math.PI);
+  const x = entity.x + radius * 0.5;
+  const y = entity.y - radius * 0.5;
+  const waist = size * 0.2;
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + waist, y - waist);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x + waist, y + waist);
+  ctx.lineTo(x, y + size);
+  ctx.lineTo(x - waist, y + waist);
+  ctx.lineTo(x - size, y);
+  ctx.lineTo(x - waist, y - waist);
+  ctx.closePath();
+  ctx.fill();
+}
+
 /**
  * Registers the kind items lie in the world as, once a session has any items; each is drawn as
  * its item's glyph, with a small pulsing light while it is switched on. Clients that register the
@@ -71,7 +108,14 @@ export function registerWorldItems(game: Session): void {
       ctx.font = `${String(radius * 2)}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
+      const glint = view.itemDefinitions.get(item)?.glint;
+      if (glint !== undefined) {
+        ctx.shadowColor = glint;
+        ctx.shadowBlur = radius * (0.6 + 0.3 * Math.sin((now / 1000) * 3));
+      }
       ctx.fillText(glyph, entity.x, entity.y);
+      ctx.shadowBlur = 0;
+      if (glint !== undefined) drawGlint(ctx, entity, radius, glint, now);
       if (isOn(state)) {
         ctx.globalAlpha = 0.6 + 0.4 * Math.sin((now / 1000) * Math.PI * 2);
         ctx.fillStyle = ON_LIGHT;

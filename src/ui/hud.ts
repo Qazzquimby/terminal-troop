@@ -35,6 +35,8 @@ interface UsesView {
 interface SlotView {
   readonly number: string;
   readonly glyph: string;
+  /** The colour its glyph glows in, or null for an item that does not glint. */
+  readonly glint: string | null;
   readonly name: string;
   readonly weight: string;
   /** Null for an empty slot, or an item whose uses are unlimited. */
@@ -68,6 +70,7 @@ export function slotViews(
   return inventory.map((item, index) => ({
     number: String(index + 1),
     glyph: item?.emoji ?? "",
+    glint: item?.glint ?? null,
     name: item?.name ?? "",
     weight:
       item?.weight === undefined || item.weight <= 0
@@ -142,9 +145,12 @@ function slotElement(view: SlotView): HTMLLIElement {
   slot.className = "hud-slot";
   slot.classList.toggle("selected", view.selected);
   slot.classList.toggle("on", view.on);
+  const glyph = span("hud-slot-glyph", view.glyph);
+  if (view.glint !== null)
+    glyph.style.textShadow = `0 0 6px ${view.glint}, 0 0 2px ${view.glint}`;
   slot.append(
     span("slot-number", view.number),
-    span("hud-slot-glyph", view.glyph),
+    glyph,
     span("hud-slot-name", view.name),
     span("hud-slot-weight", view.weight),
   );

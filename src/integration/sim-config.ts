@@ -450,6 +450,16 @@ export const testItemsConfig: ItemsConfig = {
     dropNoiseRadius: 400,
     scatter: { count: 3, seed: 5, clearance: 200 },
   },
+  // None laid, so worlds under test hold what they did before it; worth 5, to tell from scrap's 2.
+  goldenScrap: {
+    weight: 0,
+    value: 5,
+    cashoutRadius: 150,
+    sellInterval: 0.25,
+    volume: 1,
+    dropNoiseRadius: 400,
+    scatter: { count: 0, seed: 3, clearance: 200, danger: 3 },
+  },
   flashlight: {
     weight: 0,
     uses: 10,

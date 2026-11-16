@@ -10,7 +10,14 @@ import {
 
 const CONFIG = { segmentsUpTo: 10 };
 const shovel = { id: "shovel", name: "Shovel", emoji: "🪏", weight: 15 };
-const blank = { glyph: "", name: "", weight: "", uses: null, on: false };
+const blank = {
+  glyph: "",
+  glint: null,
+  name: "",
+  weight: "",
+  uses: null,
+  on: false,
+};
 
 test("every slot shows its key number, the held one marked, an empty one blank", () => {
   const inventory: Inventory = [shovel, null, null];
@@ -18,6 +25,7 @@ test("every slot shows its key number, the held one marked, an empty one blank",
     {
       number: "1",
       glyph: "🪏",
+      glint: null,
       name: "Shovel",
       weight: "15 lb",
       uses: null,
