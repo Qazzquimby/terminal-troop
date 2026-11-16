@@ -10,8 +10,10 @@ import { worldData } from "./world-data.js";
  *   while it lasts, so every kind honours it without asking, and it goes on from the state it
  *   had. A player's steering is taken as standing still and its actions are refused, on the host
  *   and in its own client's prediction alike, and its view goes dark.
+ * - shrouded: it takes the whole world for dark. Whatever it asks of light, as `isLitTo` answers,
+ *   finds none, so a kind that shuns light neither steers round it nor wakes to it.
  */
-const STATUSES = ["stunned"] as const;
+const STATUSES = ["stunned", "shrouded"] as const;
 
 /** A status a body can be under. */
 type Status = (typeof STATUSES)[number];
@@ -90,6 +92,25 @@ export function stunnedIds(game: Session): string[] {
  */
 export function stun(game: Session, id: string, seconds: number): boolean {
   return inflict(game, id, "stunned", seconds);
+}
+
+/** Whether the body `id`, a player or a world entity, is shrouded: it takes the world for dark. */
+export function isShrouded(game: Session, id: string): boolean {
+  return endOf(game, id, "shrouded") !== null;
+}
+
+/** Seconds left of the shroud on the body `id`; null when it is not shrouded. */
+export function shroudLeft(game: Session, id: string): number | null {
+  const ends = endOf(game, id, "shrouded");
+  return ends === null ? null : ends - game.worldTime;
+}
+
+/**
+ * Shrouds the body `id`, a player or a world entity, for `seconds`, or for longer if it already
+ * is; only the host does. Returns whether it did.
+ */
+export function shroud(game: Session, id: string, seconds: number): boolean {
+  return inflict(game, id, "shrouded", seconds);
 }
 
 /**

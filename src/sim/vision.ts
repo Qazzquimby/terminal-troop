@@ -297,7 +297,8 @@ export function lightSources(game: Session, viewer: Viewer): LightSource[] {
 
 /**
  * Whether `point` is both seen from some source and lit: by some light that reaches it, or where
- * `ambient` says the place's own light does, such as sunlight out of doors.
+ * `ambient` says the place's own light does, such as sunlight out of doors; and not where `dark`
+ * says darkness something gives off reaches it, which no light lights.
  */
 export function isVisible(
   map: TileMap,
@@ -305,8 +306,10 @@ export function isVisible(
   lights: readonly LightSource[],
   point: Point,
   ambient: (point: Point) => boolean = () => false,
+  dark: (point: Point) => boolean = () => false,
 ): boolean {
   return (
+    !dark(point) &&
     sources.some((source) => canSeeFrom(map, source, point)) &&
     (ambient(point) || lights.some((light) => canSeeFrom(map, light, point)))
   );
@@ -324,9 +327,10 @@ export function isBodyVisible(
   body: Footprint,
   spacing: number,
   ambient: (point: Point) => boolean = () => false,
+  dark: (point: Point) => boolean = () => false,
 ): boolean {
   return footprintPoints(body, spacing).some((point) =>
-    isVisible(map, sources, lights, point, ambient),
+    isVisible(map, sources, lights, point, ambient, dark),
   );
 }
 

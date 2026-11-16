@@ -14,6 +14,7 @@ import { mineLayer } from "./mine-layer/index.js";
 import { turret } from "./turret/index.js";
 import { teleporter } from "./teleporter/index.js";
 import { livingWall } from "./living-wall/index.js";
+import { gloom } from "./gloom/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -44,6 +45,7 @@ const ENTITIES = [
   teleporter,
   giantSnail,
   livingWall,
+  gloom,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

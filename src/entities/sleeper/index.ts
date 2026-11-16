@@ -6,7 +6,8 @@ import {
   isAreaFree,
   hurtSinceLastStep,
   isGone,
-  isLit,
+  isLitTo,
+  SHUNS_LIGHT_TAG,
   livingBody,
   sound,
 } from "../../sim/index.js";
@@ -212,11 +213,12 @@ function hideout(
 ): Point[] | null {
   const { map } = game.world;
   const { distance, clearance } = config.retreat;
-  const avoid = avoidingLight(game);
+  const avoid = avoidingLight(game, self.id);
   const hunted = preyFor(game, self, config);
   for (let attempt = 0; attempt < config.retreat.tries; attempt++) {
     const to = pointAround(self, distance.min, distance.max);
-    if (!isAreaFree(map, to.x, to.y, self.radius) || isLit(game, to)) continue;
+    if (!isAreaFree(map, to.x, to.y, self.radius) || isLitTo(game, self.id, to))
+      continue;
     const near = hunted.some(
       (body) => Math.hypot(body.x - to.x, body.y - to.y) < clearance,
     );
@@ -345,7 +347,7 @@ function respond(
   switch (state.mode) {
     case "dormant":
     case "warning": {
-      if (hurt || isLit(game, self)) {
+      if (hurt || isLitTo(game, self.id, self)) {
         const woken = enrage(state, game, config);
         return hurt ? rage(woken, self, game, config) : woken;
       }
@@ -493,6 +495,7 @@ function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    tags: [SHUNS_LIGHT_TAG],
     data: SleeperState,
     // She sees all round her, asleep or awake, but looks down no cone.
     eyes: () => ({

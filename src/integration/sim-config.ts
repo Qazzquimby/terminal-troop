@@ -480,6 +480,22 @@ export const testEntitiesConfig = {
     repathInterval: 0.25,
     sounds: { attack: 400, flee: 500, crumble: 500 },
   },
+  gloom: {
+    spawning: { ...NEVER, unseenDistance: 700 },
+    radius: 12,
+    maxHealth: 1,
+    speed: 240,
+    sightRange: 500,
+    darkRadius: 250,
+    followDistance: 100,
+    leash: 800,
+    repathInterval: 0.5,
+    shroudSeconds: 1,
+    wanderRange: 400,
+    wanderPause: { min: 1, max: 3 },
+    humVolume: 0.6,
+    sounds: { hum: 300, latch: 300, disperse: 400 },
+  },
 } satisfies EntitiesConfig;
 
 /**

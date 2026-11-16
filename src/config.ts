@@ -821,6 +821,34 @@ export const config = {
       repathInterval: 0.5,
       sounds: { attack: CELL * 8, flee: CELL * 10, crumble: CELL * 10 },
     },
+    // Alone, in the dark, none in the first 3 minutes of a world, never within 14 cells of a
+    // player; as rare as the stalker. Any blow breaks it: 1 health. It moves at twice a walk and
+    // sees 10 cells all round it. Its darkness reaches 5 cells. It keeps within 2 cells of whom it
+    // follows, chooses anew and replans twice a second, and keeps following one it has lost sight
+    // of within 16 cells. Its shroud lasts 1s past its last renewal. With no one to follow it
+    // drifts up to 8 cells a leg, hanging 1 to 3s between legs. Its hum carries 6 cells, at 0.6;
+    // its breath as it takes someone up 6, its sigh as it breaks 8.
+    gloom: {
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      radius: 12,
+      maxHealth: 1,
+      speed: PLAYER_SPEED * 2,
+      sightRange: CELL * 10,
+      darkRadius: CELL * 5,
+      followDistance: CELL * 2,
+      leash: CELL * 16,
+      repathInterval: 0.5,
+      shroudSeconds: 1,
+      wanderRange: CELL * 8,
+      wanderPause: { min: 1, max: 3 },
+      humVolume: 0.6,
+      sounds: { hum: CELL * 6, latch: CELL * 6, disperse: CELL * 8 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its

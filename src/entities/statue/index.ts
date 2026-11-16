@@ -7,8 +7,9 @@ import {
   isAreaFree,
   livingBody,
   isLookedAt,
-  isLit,
+  isLitTo,
   sound,
+  SHUNS_LIGHT_TAG,
   UNNOTICED_TAG,
 } from "../../sim/index.js";
 import type {
@@ -137,7 +138,7 @@ function farEnd(
   const { map } = game.world;
   const { distance, spread, tries } = config.patrol;
   const home = state.home ?? self;
-  const avoid = avoidingLight(game);
+  const avoid = avoidingLight(game, self.id);
   for (let attempt = 0; attempt < tries; attempt++) {
     const angle = Math.random() * Math.PI * 2;
     const reach = distance + spread * (Math.random() * 2 - 1);
@@ -145,7 +146,10 @@ function farEnd(
       x: home.x + Math.cos(angle) * reach,
       y: home.y + Math.sin(angle) * reach,
     };
-    if (!isAreaFree(map, far.x, far.y, self.radius) || isLit(game, far))
+    if (
+      !isAreaFree(map, far.x, far.y, self.radius) ||
+      isLitTo(game, self.id, far)
+    )
       continue;
     const route = planRoute(map, self.radius, self, far, avoid);
     if (route !== null && route.length > 0) return { far, route };
@@ -171,7 +175,7 @@ function nextLeg(
       : home;
   const { map } = game.world;
   return (
-    planRoute(map, self.radius, self, to, avoidingLight(game)) ??
+    planRoute(map, self.radius, self, to, avoidingLight(game, self.id)) ??
     planRoute(map, self.radius, self, to)
   );
 }
@@ -332,7 +336,8 @@ function definition(config: StatueConfig): EntityDefinition<StatueState> {
     // It cannot die, whatever it takes.
     maxHealth: Infinity,
     // Stone that cannot die: no monster hunts, strikes or turns on it, even when it strikes them.
-    tags: [UNNOTICED_TAG],
+    // It keeps to the dark.
+    tags: [UNNOTICED_TAG, SHUNS_LIGHT_TAG],
     data: StatueState,
     // It sees all round it, but looks at nothing: its eyes never hold another statue.
     eyes: () => ({ cone: null, around: config.sightRange }),
