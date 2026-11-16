@@ -26,7 +26,10 @@ import { Arming, arming, drawArmingLight, stepArming } from "../placed.js";
  * stunning every body that sees its flash, players and world entities alike. Distances in pixels, times in sim seconds.
  */
 export interface StunTrapConfig {
+  /** Its size, and so how near a body must step to set it off. */
   readonly radius: number;
+  /** The radius its flash is drawn at, as it goes off. */
+  readonly flash: number;
   /** Seconds from being put down until it is armed. */
   readonly armSeconds: number;
   /** How far its flash stuns a body that has a clear line to it. */
@@ -52,9 +55,6 @@ type TrapState = z.output<typeof TrapState>;
 const NAME = "stunTrap";
 
 const TRAP_GLYPH = "🪤";
-
-/** How wide its flash is drawn, in its own radii. */
-const FLASH_SIZE = 6;
 
 /**
  * Puts a fresh stun trap down at `at`, which only the host does; the use of a stun trap item
@@ -131,7 +131,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
         {
           at: entity,
           noise: config.sounds.flash,
-          flash: { radius: entity.radius * FLASH_SIZE, hit: false },
+          flash: { radius: config.flash, hit: false },
           // sound: bang,
         },
         entity,

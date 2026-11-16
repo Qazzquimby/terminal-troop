@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { z } from "zod";
 import { reportedAt } from "../../integration/heard.js";
 import {
   testEntitiesConfig,
@@ -16,7 +17,7 @@ import {
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
 import { freshZombie, zombie as zombieContent } from "../zombie/index.js";
-import { turret, TurretState } from "./index.js";
+import { placeTurret, turret, TurretState } from "./index.js";
 
 const DT = 1 / 60;
 const idle = {
@@ -83,6 +84,7 @@ function turretAt(game: Session, x: number, y: number, facing = 0) {
     turnedAt: game.worldTime,
     target: null,
     shotAt: game.worldTime,
+    fired: 0,
   });
 }
 
@@ -196,4 +198,54 @@ test("worn down, it breaks", () => {
   hurt(game, self, config.maxHealth, null);
   run(game, DT * 2);
   expect(game.entities.has(self.id)).toBe(false);
+});
+
+const Sent = z.object({ effects: z.array(z.object({ sound: z.string() })) });
+
+/** The names of the sounds the host has sent since last asked, emptying its outbox. */
+function sent(game: Session): string[] {
+  return game.outbox.splice(0).flatMap(({ payload }) => {
+    const parsed = Sent.safeParse(payload);
+    if (!parsed.success) return [];
+    return parsed.data.effects.map(
+      ({ sound }) => sound.split("/").at(-1) ?? sound,
+    );
+  });
+}
+
+test("it holds its config's ammo, and once spent it clicks dry where it would shoot", () => {
+  const game = world();
+  const self = turretAt(game, 400, 300);
+  self.data = { ...stateOf(self), fired: config.ammo - 1 };
+  const zombie = zombieAt(game, 550, 300);
+  run(game, config.armSeconds + 0.1 + config.shot.aimSeconds);
+  expect(zombie.health).toBe(zombieHealth - config.shot.damage);
+  expect(stateOf(self).fired).toBe(config.ammo);
+
+  sent(game);
+  run(game, config.shot.interval);
+  expect(zombie.health).toBe(zombieHealth - config.shot.damage);
+  expect(stateOf(self)).toMatchObject({
+    target: zombie.id,
+    fired: config.ammo,
+  });
+  expect(sent(game)).toContain("click.mp3");
+});
+
+test("a turret put down has fired nothing yet, and fires its config's ammo before it runs dry", () => {
+  const game = world();
+  placeTurret(game, game.local, 0);
+  const self = [...game.entities.values()].at(-1);
+  if (self === undefined) throw new Error("No turret was put down");
+  expect(stateOf(self).fired).toBe(0);
+  // A fresh zombie every shot, each standing in its beam.
+  run(game, config.armSeconds + 0.1);
+  for (let shot = 0; shot < config.ammo + 2; shot++) {
+    const zombie = zombieAt(game, self.x + 150, self.y);
+    zombie.health = Infinity;
+    run(game, config.shot.aimSeconds + config.shot.interval);
+    game.entities.delete(zombie.id);
+    run(game, DT);
+  }
+  expect(stateOf(self).fired).toBe(config.ammo);
 });

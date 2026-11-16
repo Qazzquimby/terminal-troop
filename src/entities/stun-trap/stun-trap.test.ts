@@ -130,6 +130,21 @@ test("an armed trap goes off under an entity, stunning those whose eyes see it w
   expect(isStunned(game, trap.id)).toBe(false);
 });
 
+test("a body sets it off anywhere within its radius, its size, and not past it", () => {
+  const game = world();
+  const trap = trapAt(game, 400, 300);
+  run(game, config.armSeconds + 0.1);
+  const zombieRadius = testEntitiesConfig.zombie.radius;
+  const past = zombieAt(game, 400, 300 + config.radius + zombieRadius + 5);
+  run(game, DT * 2);
+  expect(TrapState.parse(trap.data).firedAt).toBeNull();
+
+  game.entities.delete(past.id);
+  zombieAt(game, 400, 300 + config.radius + zombieRadius - 5);
+  run(game, DT * 2);
+  expect(TrapState.parse(trap.data).firedAt).not.toBeNull();
+});
+
 test("its flash lights a wide circle for a moment, and then the trap is gone", () => {
   const game = world();
   const trap = trapAt(game, 400, 300);
