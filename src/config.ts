@@ -62,6 +62,8 @@ const SPRINT = 1.8;
  * is where its threat stops rising.
  */
 const END_GAME = 20 * 60;
+/** Cells out from the exit that are dark by day and most dangerous. */
+const EXIT_REACH = 20;
 
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
@@ -94,12 +96,15 @@ export const config = {
         exits: [0.6, 0.3, 0.1],
         building: { min: 3, max: 8 },
       },
-      // Half the rooms have a light fixture, and a third have power, so one room in six is lit.
-      // The road and yards are always lit, by sunlight. Monsters never appear in light.
-      lights: { fixture: 1.0, powered: 1 / 30 },
+      // Every room has a light fixture, and one in thirty has power to light it. The road and
+      // yards are lit by sunlight while the day lasts, but for 20 cells round the exit, which is
+      // dark. Monsters never appear in light.
+      lights: { fixture: 1.0, powered: 1 / 30, exitShade: EXIT_REACH },
       // Monsters spawn, and loot is richer, up to 4x by distance from the road and 4x towards the
-      // exit: 16x at the far right corner over the road at the start.
-      danger: { road: 3, right: 3 },
+      // right: 16x at the far right corner over the road at the start. On top of that, +20 in the
+      // exit itself, falling evenly to nothing 20 cells out: about 24x on the road at the exit,
+      // half again the corners, so the way out is the most dangerous place in the world.
+      danger: { road: 3, right: 3, exit: 20, reach: EXIT_REACH },
       start: 6,
       exit: 8,
     },
@@ -219,6 +224,16 @@ export const config = {
     footprintSpacing: CELL / 4,
   },
   light: { range: CELL * 6 },
+  // A world starts at 8am and reaches midnight in 20 minutes, when the spawner hits its end game.
+  // Afternoon comes 10 minutes in, and daylight recedes to the road's centre line until night,
+  // 17 minutes in, when none is left. Each turn is marked by a sound, at half volume.
+  day: {
+    startHour: 8,
+    midnight: END_GAME,
+    afternoon: 10 * 60,
+    night: 17 * 60,
+    volume: 0.5,
+  },
   // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
   // follows take 0.15s, one and a half snapshots at 10 a second, to reach each reported position,
   // so a late snapshot does not stop them. One reported 10 cells from its last, further than a

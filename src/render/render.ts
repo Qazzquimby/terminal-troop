@@ -16,6 +16,7 @@ import {
   aimAt,
   ambientLightAt,
   ambientPolygons,
+  daylightNow,
   emittedLights,
   footprintOf,
   heldItemOf,
@@ -35,6 +36,7 @@ import {
   visionOrigins,
 } from "../sim/index.js";
 import type { Camera } from "./camera.js";
+import { drawClock } from "./clock.js";
 import type { Eye } from "./spectate.js";
 import type {
   Area,
@@ -918,8 +920,10 @@ export function draw(
   const { map } = game.world;
   const { rays } = game.config.vision;
   const area = viewArea(camera);
-  const ambient = (point: Point) => ambientLightAt(game.world, point) !== null;
-  const sunlit = ambientPolygons(game.world, area, "sun");
+  const daylight = daylightNow(game);
+  const ambient = (point: Point) =>
+    ambientLightAt(game.world, point, daylight) !== null;
+  const sunlit = ambientPolygons(game.world, area, "sun", daylight);
   const fixtureLit = ambientPolygons(game.world, area, "fixture");
   const seen = tracePolygons(map, sources, camera, rays);
   const lit = [
@@ -1030,5 +1034,6 @@ export function draw(
   });
   if (glows.length > 0)
     drawEdgeGlows(ctx, ripples.config, glows, now, camera, viewer);
+  drawClock(ctx, game, viewer, camera.view, now);
   drawEyeBanner(ctx, eye, camera);
 }

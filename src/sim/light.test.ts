@@ -66,7 +66,9 @@ function smallWorld(): World {
       farthest: 0,
       start: { x: 0, y: 0, w: 0, h: 0 },
       exit: { x: 0, y: 0, w: 0, h: 0 },
-      danger: { road: 0, right: 0 },
+      danger: { road: 0, right: 0, exit: 0, reach: 0 },
+      roadCentre: new Float32Array(0),
+      exitShade: 0,
     },
   };
 }
@@ -150,9 +152,17 @@ test("rooms get fixtures and power by chance, power drawn apart from fixtures", 
     hallway: false,
     building: 0,
   }));
-  const none = lightRooms(rooms, { fixture: 0, powered: 0 }, mulberry32(1));
+  const none = lightRooms(
+    rooms,
+    { fixture: 0, powered: 0, exitShade: 0 },
+    mulberry32(1),
+  );
   expect(none.some((each) => each.fixture || each.powered)).toBe(false);
-  const all = lightRooms(rooms, { fixture: 1, powered: 1 }, mulberry32(1));
+  const all = lightRooms(
+    rooms,
+    { fixture: 1, powered: 1, exitShade: 0 },
+    mulberry32(1),
+  );
   expect(all.every((each) => each.fixture && each.powered)).toBe(true);
 
   const powered = powerRooms(rooms, 0.25, mulberry32(2)).filter(Boolean);
@@ -167,7 +177,7 @@ test("a world's lights change nothing of its layout", () => {
         ...testSimConfig.world,
         generation: {
           ...testSimConfig.world.generation,
-          lights: { fixture, powered },
+          lights: { fixture, powered, exitShade: 0 },
         },
       },
       mulberry32(3),
@@ -186,4 +196,77 @@ test("a world's lights change nothing of its layout", () => {
   };
   expect(ambientLightAt(dark, at)).toBeNull();
   expect(ambientLightAt(bright, at)).toBe("fixture");
+});
+
+/** The centres of every road and yard cell of `world`. */
+function outdoorCells(world: World): { x: number; y: number }[] {
+  const { cell, cols } = world.map;
+  return [...world.layout.area.entries()]
+    .filter(([, code]) => code === road || code === yard)
+    .map(([i]) => ({
+      x: ((i % cols) + 0.5) * cell,
+      y: (Math.floor(i / cols) + 0.5) * cell,
+    }));
+}
+
+test("daylight recedes towards the road's centre line, which is lit last, and none is left at night", () => {
+  const world = buildWorld(testSimConfig.world, mulberry32(5));
+  const outdoors = outdoorCells(world);
+  const sunlitAt = (daylight: number) =>
+    outdoors.filter((at) => ambientLightAt(world, at, daylight) === "sun");
+  const counts = [1, 0.6, 0.2, 0.01, 0].map((share) => sunlitAt(share).length);
+  for (let i = 1; i < counts.length; i++)
+    expect(counts[i]).toBeLessThan(counts[i - 1] ?? 0);
+  expect(counts.at(-1)).toBe(0);
+
+  // What is still lit late is what lies nearest the centre line.
+  const { cell } = world.map;
+  const offCentre = (at: { x: number; y: number }) =>
+    Math.abs(
+      at.y / cell - (world.layout.roadCentre[Math.floor(at.x / cell)] ?? 0),
+    );
+  const late = new Set(sunlitAt(0.2));
+  const furthestLit = Math.max(...[...late].map(offCentre));
+  const litByDay = sunlitAt(1);
+  expect(
+    litByDay
+      .filter((at) => !late.has(at))
+      .every((at) => offCentre(at) > furthestLit),
+  ).toBe(true);
+});
+
+test("sunlight never reaches the ground round the exit", () => {
+  const world = buildWorld(testSimConfig.world, mulberry32(5));
+  const { exit, exitShade } = world.layout;
+  expect(exitShade).toBeGreaterThan(0);
+  const inExit = outdoorCells(world).filter(
+    (at) => at.x >= exit.x && at.y >= exit.y && at.y <= exit.y + exit.h,
+  );
+  expect(inExit.length).toBeGreaterThan(0);
+  expect(inExit.every((at) => ambientLightAt(world, at, 1) === null)).toBe(
+    true,
+  );
+  const reach = (exitShade + 1) * world.map.cell;
+  const beyond = outdoorCells(world).filter((at) => at.x < exit.x - reach);
+  expect(beyond.every((at) => ambientLightAt(world, at, 1) === "sun")).toBe(
+    true,
+  );
+});
+
+test("a session's road is lit by day and dark at night, by its world clock", () => {
+  const game = createSession(
+    "me",
+    "ME",
+    "DAY",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  const middle = outdoorCells(game.world).find(
+    (at) => Math.abs(at.x - game.world.W / 2) < CELL,
+  );
+  if (middle === undefined) throw new Error("no road in the middle");
+  expect(isLit(game, middle, [])).toBe(true);
+  game.worldTime = testSimConfig.day.night;
+  expect(isLit(game, middle, [])).toBe(false);
 });

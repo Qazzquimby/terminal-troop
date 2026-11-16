@@ -209,4 +209,6 @@ export type {
 } from "./vision.js";
 export { isStunned, stun, stunLeft, stunnedIds } from "./status.js";
 export { ambientLightAt, ambientPolygons, isLit } from "./light.js";
+export { clockFace, clockMinutes, daylightNow } from "./day.js";
+export { areaAt } from "./map.js";
 export type { AmbientLight } from "./light.js";

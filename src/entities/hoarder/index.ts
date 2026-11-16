@@ -2,6 +2,7 @@ import { z } from "zod";
 import { drawEmoji, drawHeldItem } from "../../render/index.js";
 import {
   ambientLightAt,
+  daylightNow,
   defineEntity,
   effect,
   emittedLights,
@@ -209,7 +210,7 @@ function searchPoints(
   for (let i = 0; i < tries && points.length < count; i++) {
     const at = pointNear(nest, range);
     if (!isAreaFree(world.map, at.x, at.y, config.radius)) continue;
-    if (ambientLightAt(world, at) !== null) continue;
+    if (ambientLightAt(world, at, daylightNow(game)) !== null) continue;
     points.push(at);
   }
   return points.slice(0, MAX_POINTS);

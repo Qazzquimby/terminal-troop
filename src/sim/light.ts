@@ -1,15 +1,21 @@
 import type { Point, Rng, Room, World } from "./map.js";
-import { AREA, isSolid } from "./map.js";
+import { daylightNow } from "./day.js";
+import { AREA, exitDistance, isSolid } from "./map.js";
 import type { Session } from "./session.js";
 import { canSeeFrom, emittedLights, wallKey } from "./vision.js";
 import type { LightSource, VisibilityPolygon, WallFace } from "./vision.js";
 
-/** Which rooms a new world gives light fixtures, and which it gives power to light them. */
+/**
+ * Which rooms a new world gives light fixtures, and which it gives power to light them; and
+ * where sunlight never reaches.
+ */
 export interface RoomLightConfig {
   /** Chance each room has a light fixture. */
   readonly fixture: number;
   /** Chance each room has power, drawn room by room until the world has a power system. */
   readonly powered: number;
+  /** Cells round the exit left unlit by the sun, so the players' goal is dark. */
+  readonly exitShade: number;
 }
 
 /**
@@ -51,27 +57,89 @@ export function lightRooms(
 /** Whether `room` is lit: it has a light fixture, and the power to light it. */
 const roomLit = (room: Room): boolean => room.fixture && room.powered;
 
-/** The light of the cell at `index` of itself, or null for a dark one. */
-function cellLight(world: World, index: number): AmbientLight | null {
+/**
+ * Where sunlight reaches in a world: for each cell, how far it lies from the road's centre line,
+ * in cells, or -1 for one the sun never lights; and the farthest of them.
+ */
+interface SunReach {
+  readonly distance: Float32Array;
+  readonly farthest: number;
+}
+
+/** Each world's sun reach, worked out once, the first time its light is asked of. */
+const sunReaches = new WeakMap<World, SunReach>();
+
+function sunReach(world: World): SunReach {
+  const known = sunReaches.get(world);
+  if (known !== undefined) return known;
+  const { cell, cols } = world.map;
+  const { area, roadCentre, exitShade } = world.layout;
+  const distance = new Float32Array(area.length).fill(-1);
+  let farthest = 0;
+  area.forEach((code, i) => {
+    if (code !== AREA.road && code !== AREA.yard) return;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const at = { x: (col + 0.5) * cell, y: (row + 0.5) * cell };
+    if (exitShade > 0 && exitDistance(world, at) <= exitShade) return;
+    const centre = roadCentre[col];
+    const off = centre === undefined ? 0 : Math.abs(row + 0.5 - centre);
+    distance[i] = off;
+    farthest = Math.max(farthest, off);
+  });
+  const reach = { distance, farthest };
+  sunReaches.set(world, reach);
+  return reach;
+}
+
+/**
+ * Whether the sun lights the cell at `index` with `daylight` (0..1) left: out of doors, away
+ * from the exit, and, as daylight recedes, near enough the road's centre line. The line is the
+ * last to stay lit, and with none left nothing is.
+ */
+function sunlit(world: World, index: number, daylight: number): boolean {
+  if (daylight <= 0) return false;
+  const { distance, farthest } = sunReach(world);
+  const off = distance[index] ?? -1;
+  return off >= 0 && (daylight >= 1 || off <= farthest * daylight);
+}
+
+/**
+ * The light of the cell at `index` of itself with `daylight` (0..1) left, or null for a dark
+ * one.
+ */
+function cellLight(
+  world: World,
+  index: number,
+  daylight: number,
+): AmbientLight | null {
   const { area, room, rooms } = world.layout;
   const code = area[index];
-  if (code === AREA.road || code === AREA.yard) return "sun";
+  if (code === AREA.road || code === AREA.yard)
+    return sunlit(world, index, daylight) ? "sun" : null;
   if (code !== AREA.room) return null;
   const lit = rooms[room[index] ?? -1];
   return lit !== undefined && roomLit(lit) ? "fixture" : null;
 }
 
-/** The light the place at `at` has of itself, or null where it is dark without other light. */
-export function ambientLightAt(world: World, at: Point): AmbientLight | null {
+/**
+ * The light the place at `at` has of itself with `daylight` (0..1) left, whole by default, or
+ * null where it is dark without other light.
+ */
+export function ambientLightAt(
+  world: World,
+  at: Point,
+  daylight = 1,
+): AmbientLight | null {
   const { cell, cols, rows } = world.map;
   const col = Math.floor(at.x / cell);
   const row = Math.floor(at.y / cell);
   if (!(col >= 0 && row >= 0 && col < cols && row < rows)) return null;
-  return cellLight(world, row * cols + col);
+  return cellLight(world, row * cols + col, daylight);
 }
 
 /**
- * Whether `at` is lit: by its place's own light, sunlight or a powered fixture, or by a light
+ * Whether `at` is lit: by its place's own light, sunlight as the hour has it or a powered fixture, or by a light
  * something gives off there, such as a flashlight or the cruiser's headlights. A player's own
  * sight lights nothing. Monsters ask it: they appear only where it is dark, and may later avoid or
  * seek it. `lights` are the lights given off now, for a caller asking of many points at once.
@@ -82,7 +150,7 @@ export function isLit(
   lights: readonly LightSource[] = emittedLights(game),
 ): boolean {
   const { world } = game;
-  if (ambientLightAt(world, at) !== null) return true;
+  if (ambientLightAt(world, at, daylightNow(game)) !== null) return true;
   return lights.some((light) => canSeeFrom(world.map, light, at));
 }
 
@@ -145,13 +213,15 @@ function facesInto(
 }
 
 /**
- * The cells within `bounds` that `kind` of ambient light lights, as polygons the way traced
- * lights are: a box for each run of them along a row, with the faces of the walls round it.
+ * The cells within `bounds` that `kind` of ambient light lights with `daylight` (0..1) left,
+ * as polygons the way traced lights are: a box for each run of them along a row, with the faces
+ * of the walls round it.
  */
 export function ambientPolygons(
   world: World,
   bounds: Bounds,
   kind: AmbientLight,
+  daylight = 1,
 ): VisibilityPolygon[] {
   const { cell, cols, rows } = world.map;
   const minCol = Math.max(0, Math.floor(bounds.x / cell));
@@ -168,13 +238,16 @@ export function ambientPolygons(
   for (let row = minRow; row <= maxRow; row++) {
     let col = minCol;
     while (col <= maxCol) {
-      if (cellLight(world, row * cols + col) !== kind) {
+      if (cellLight(world, row * cols + col, daylight) !== kind) {
         col++;
         continue;
       }
       const start = col;
       const walls = new Map<number, WallFace[]>();
-      while (col <= maxCol && cellLight(world, row * cols + col) === kind) {
+      while (
+        col <= maxCol &&
+        cellLight(world, row * cols + col, daylight) === kind
+      ) {
         for (const [key, face] of facesInto(world, col, row))
           walls.set(key, [...(walls.get(key) ?? []), face]);
         col++;

@@ -106,7 +106,7 @@ test("a new world's danger is its layout's: none where nothing is dangerous, som
     ...testSimConfig.world,
     generation: {
       ...testSimConfig.world.generation,
-      danger: { road: 0, right: 0 },
+      danger: { road: 0, right: 0, exit: 0, reach: 0 },
     },
   };
   expect(laid(populated(40, undefined, safe))).toHaveLength(40);

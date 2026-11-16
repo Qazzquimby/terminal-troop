@@ -34,8 +34,8 @@ export const testGeneration: GenerationConfig = {
     exits: [0.6, 0.3, 0.1],
     building: { min: 3, max: 8 },
   },
-  lights: { fixture: 0.5, powered: 0.5 },
-  danger: { road: 3, right: 3 },
+  lights: { fixture: 0.5, powered: 0.5, exitShade: 10 },
+  danger: { road: 3, right: 3, exit: 20, reach: 10 },
   start: 5,
   exit: 5,
 };
@@ -88,6 +88,13 @@ export const testSimConfig: SimConfig = {
     footprintSpacing: 12.5,
   },
   light: { range: 200 },
+  day: {
+    startHour: 8,
+    midnight: 1200,
+    afternoon: 600,
+    night: 1020,
+    volume: 0.5,
+  },
   net: { smoothing: 12, glide: 0.15, predictionHold: 0.5, snap: 500 },
   noise: { blur: 0.2 },
   footsteps: {
