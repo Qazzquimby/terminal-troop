@@ -1,9 +1,7 @@
 import { z } from "zod";
 import {
   defineEntity,
-  destroyWalls,
   effect,
-  bodyById,
   hasKindTag,
   hurt,
   hurtSinceLastStep,
@@ -25,7 +23,6 @@ import {
   between,
   clearestNoise,
   walk,
-  preyNear,
   Route,
   Seed,
   Time,
@@ -35,6 +32,8 @@ import {
   avenged,
 } from "../hunt.js";
 import type { Hunting } from "../hunt.js";
+import { blastDamage as damageAt, detonate } from "../blast.js";
+import type { Blast } from "../blast.js";
 import { nearestPrey } from "../bodies.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
@@ -82,11 +81,7 @@ export interface ExploderConfig extends Hunting {
   /** Seconds from lighting its fuse to bursting. */
   readonly fuse: number;
   /** How far its burst reaches, and the damage it deals where it stands and at the edge. */
-  readonly blast: {
-    readonly radius: number;
-    readonly centre: number;
-    readonly edge: number;
-  };
+  readonly blast: Blast;
   /** How far, in pixels, each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: { readonly fuse: number; readonly blast: number };
 }
@@ -345,9 +340,7 @@ function lightsFuse(
 
 /** The damage its burst deals to a body `distance` from it, its middle to theirs. */
 export function blastDamage(distance: number, config: ExploderConfig): number {
-  const { radius, centre, edge } = config.blast;
-  const along = Math.min(1, Math.max(0, distance / radius));
-  return centre + (edge - centre) * along;
+  return damageAt(distance, config.blast);
 }
 
 /** An exploder's sounds, each heard, and making noise, out to its range. */
@@ -368,22 +361,9 @@ function burst(
   config: ExploderConfig,
   sounds: Sounds,
 ): ExploderState {
-  const { radius } = config.blast;
   entity.vx = 0;
   entity.vy = 0;
-  destroyWalls(game, { center: { x: entity.x, y: entity.y }, radius });
-  effect(
-    game,
-    { at: entity, sound: sounds.blast, flash: { radius, hit: true } },
-    entity,
-  );
-  const reach = (body: { readonly radius: number }) => radius + body.radius;
-  for (const body of preyNear(game, entity, reach, [])) {
-    const distance = Math.hypot(body.x - entity.x, body.y - entity.y);
-    const caught = bodyById(game, body.id);
-    if (caught !== null)
-      hurt(game, caught, blastDamage(distance, config), entity.id);
-  }
+  detonate(game, entity, config.blast, { sound: sounds.blast, walls: true });
   hurt(game, entity, entity.health, entity.id);
   return { ...state, burst: true };
 }

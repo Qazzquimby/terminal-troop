@@ -9,6 +9,8 @@ import { sleeper } from "./sleeper/index.js";
 import { statue } from "./statue/index.js";
 import { stalker } from "./stalker/index.js";
 import { hoarder } from "./hoarder/index.js";
+import { landMine } from "./land-mine/index.js";
+import { mineLayer } from "./mine-layer/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -31,6 +33,8 @@ const ENTITIES = [
   statue,
   stalker,
   hoarder,
+  landMine,
+  mineLayer,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

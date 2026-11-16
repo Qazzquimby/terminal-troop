@@ -96,6 +96,7 @@ const entities: EntitiesConfig = {
   statue: weighed(testEntitiesConfig.statue, 10, 180),
   stalker: weighed(testEntitiesConfig.stalker, 30, 240),
   hoarder: weighed(testEntitiesConfig.hoarder, 50),
+  mineLayer: weighed(testEntitiesConfig.mineLayer, 10, 120),
 };
 
 /** The test config, but with no extra danger nor darkness round the exit. */

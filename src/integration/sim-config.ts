@@ -167,7 +167,10 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * unless a test spawns one: a
  * stalker at 1.2 times the test player's walk, creeping at 0.1 times it, watched 700px down a player's cone, retreating
  * 600px clear; hoarders at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
- * nest, spooked within 400px, avenging a theft until the thief is 250px from it.
+ * nest, spooked within 400px, avenging a theft until the thief is 250px from it. No mine layer
+ * appears unless a test spawns one: one at the test player's walk, felled by a test shovel hit,
+ * seeing 400px all round; its land mines arm in 3s and go off within 100px, bursting 100px round
+ * from 120 damage to 60.
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
@@ -392,6 +395,32 @@ export const testEntitiesConfig = {
     repathInterval: 0.25,
     chitterGap: { min: 5, max: 10 },
     sounds: { chitter: 200, alarm: 500, pickUp: 150, attack: 250 },
+  },
+  landMine: {
+    radius: 8,
+    armSeconds: 3,
+    beepGap: 4,
+    triggerRange: 100,
+    ignores: ["landMine", "mineLayer"],
+    fuse: 0.3,
+    blast: { radius: 100, centre: 120, edge: 60 },
+    breaksWalls: false,
+    sounds: { arm: 200, beep: 150, trigger: 300, blast: 2000 },
+  },
+  mineLayer: {
+    spawning: { ...NEVER, unseenDistance: 700 },
+    ignores: ["mineLayer"],
+    radius: 12,
+    maxHealth: 25,
+    speed: 220,
+    sightRange: 400,
+    treasure: "goldenScrap",
+    orbit: { min: 100, max: 1200, step: 150, leg: 100, tries: 12 },
+    layGap: { wander: 10, flee: 3 },
+    mineSpacing: 50,
+    calmSeconds: 10,
+    flee: { leg: 200, tries: 12, homePull: 0.5, repathInterval: 0.5 },
+    sounds: { lay: 150 },
   },
 } satisfies EntitiesConfig;
 
