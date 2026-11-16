@@ -7,8 +7,10 @@ import type { CabinPanel } from "./cabin.js";
 export interface MinimapConfig {
   /** How far round the player it follows it shows, in cells. */
   readonly radius: number;
-  /** Its side on screen, in pixels. */
+  /** Its side on screen, in pixels: the most it is ever drawn at, shrinking only to fit. */
   readonly size: number;
+  /** Milliseconds its radar sweep takes to go round once. */
+  readonly sweepMs: number;
 }
 
 /**
@@ -38,16 +40,89 @@ export function cycleTarget(
   return targets[(((at + step) % count) + count) % count] ?? null;
 }
 
-/** Each area's colour on the minimap; a knocked-down wall shows as rubble. */
+/*
+ * The minimap is a radar screen: one phosphor green, in a few shades, on near black. Solid walls
+ * return the brightest echo, rooms and rubble a dimmer one, open ground barely any.
+ */
+const PHOSPHOR = {
+  void: "#010803",
+  ground: "#06200c",
+  floor: "#0f3d1a",
+  wall: "#24873a",
+  bright: "#b8ffb0",
+} as const;
+
+/** Each area's shade on the minimap; a knocked-down wall shows as rubble. */
 const COLOURS: Readonly<Record<number, string>> = {
-  [AREA.wall]: "#2b0033",
-  [AREA.road]: "#9a9a9a",
-  [AREA.yard]: "#3f8f2a",
-  [AREA.room]: "#c79a5a",
-  [AREA.door]: "#ffe600",
+  [AREA.wall]: PHOSPHOR.wall,
+  [AREA.road]: PHOSPHOR.ground,
+  [AREA.yard]: PHOSPHOR.ground,
+  [AREA.room]: PHOSPHOR.floor,
+  [AREA.door]: PHOSPHOR.floor,
 };
-const RUBBLE = "#6b4a3a";
-const OFF_MAP = "#000";
+const RUBBLE = PHOSPHOR.floor;
+const OFF_MAP = PHOSPHOR.void;
+
+/** How many fading slices trail the sweep line, and the angle they cover, in radians. */
+const SWEEP_TRAIL = 8;
+const SWEEP_ARC = Math.PI / 3;
+
+/**
+ * The sweep line's angle at `ms`, in radians clockwise from pointing right on screen, as canvas
+ * angles go: straight up at 0 ms, going round once every `periodMs`.
+ */
+export function sweepAngle(ms: number, periodMs: number): number {
+  const turn = (((ms % periodMs) + periodMs) % periodMs) / periodMs;
+  return turn * Math.PI * 2 - Math.PI / 2;
+}
+
+/** The radar's range rings, crosshair and sweep at `ms`, over a square canvas centred on `middle`. */
+function radarOverlay(
+  ctx: CanvasRenderingContext2D,
+  middle: number,
+  ms: number,
+  sweepMs: number,
+): void {
+  ctx.strokeStyle = PHOSPHOR.wall;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const ring of [1 / 3, 2 / 3, 1]) {
+    const r = middle * ring - 0.5;
+    ctx.moveTo(middle + r, middle);
+    ctx.arc(middle, middle, r, 0, Math.PI * 2);
+  }
+  ctx.moveTo(middle, 0);
+  ctx.lineTo(middle, middle * 2);
+  ctx.moveTo(0, middle);
+  ctx.lineTo(middle * 2, middle);
+  ctx.stroke();
+  const angle = sweepAngle(ms, sweepMs);
+  const slice = SWEEP_ARC / SWEEP_TRAIL;
+  ctx.fillStyle = PHOSPHOR.bright;
+  for (let step = 0; step < SWEEP_TRAIL; step++) {
+    ctx.globalAlpha = 0.25 * (1 - step / SWEEP_TRAIL);
+    ctx.beginPath();
+    ctx.moveTo(middle, middle);
+    ctx.arc(
+      middle,
+      middle,
+      middle,
+      angle - slice * (step + 1),
+      angle - slice * step,
+    );
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = PHOSPHOR.bright;
+  ctx.beginPath();
+  ctx.moveTo(middle, middle);
+  ctx.lineTo(
+    middle + Math.cos(angle) * middle,
+    middle + Math.sin(angle) * middle,
+  );
+  ctx.stroke();
+}
 
 /**
  * The world's layout drawn a pixel a cell, as every client knows it: built once, and again as
@@ -82,6 +157,8 @@ export function minimapPanel(config: MinimapConfig): CabinPanel {
   const canvas = make("canvas", "cabin-minimap-canvas");
   canvas.width = config.size;
   canvas.height = config.size;
+  // Never wider than its own size on screen, whatever else styles canvases; narrower to fit.
+  canvas.style.width = `${String(config.size)}px`;
   const name = make("span", "cabin-minimap-name");
   let target: string | null = null;
   let targets: readonly string[] = [];
@@ -129,8 +206,9 @@ export function minimapPanel(config: MinimapConfig): CabinPanel {
       config.size,
     );
     const middle = config.size / 2;
+    radarOverlay(ctx, middle, performance.now(), config.sweepMs);
     const facing = player.aim;
-    ctx.strokeStyle = "#00ffff";
+    ctx.strokeStyle = PHOSPHOR.bright;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(middle, middle);
@@ -139,7 +217,7 @@ export function minimapPanel(config: MinimapConfig): CabinPanel {
       middle + Math.sin(facing) * scale * 1.5,
     );
     ctx.stroke();
-    ctx.fillStyle = "#ff0044";
+    ctx.fillStyle = PHOSPHOR.bright;
     ctx.beginPath();
     ctx.arc(middle, middle, Math.max(3, scale * 0.5), 0, Math.PI * 2);
     ctx.fill();

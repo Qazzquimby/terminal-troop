@@ -225,7 +225,7 @@ function exitPanel(send: CabinSend): CabinPanel {
  * More panels go in with `addPanel`.
  */
 export function createCabin(root: HTMLElement, send: CabinSend) {
-  const header = make("h2", "cabin-header", "~*~ CRUISER CABIN ~*~");
+  const header = make("h2", "cabin-header", "CRUISER CABIN // CREW ONLY");
   const panels = make("div", "cabin-panels");
   root.replaceChildren(header, panels);
   root.hidden = true;
