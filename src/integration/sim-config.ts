@@ -171,7 +171,10 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * appears unless a test spawns one: one at the test player's walk, felled by a test shovel hit,
  * seeing 400px all round; its land mines arm in 3s and go off within 100px, bursting 100px round
  * from 120 damage to 60. No giant snail appears unless a test spawns one: 94px across, at 0.3
- * times the test player's walk, breaking a wall it presses for 5s.
+ * times the test player's walk, breaking a wall it presses for 5s. No living wall appears unless
+ * a test spawns one: one that moves on a body within 500px at 0.8 times the test player's walk,
+ * held by any gaze within 700px, striking for 80 from behind, fleeing at twice the test sprint
+ * for 3s once hurt.
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
@@ -459,6 +462,23 @@ export const testEntitiesConfig = {
     calmSeconds: 10,
     flee: { leg: 200, tries: 12, homePull: 0.5, repathInterval: 0.5 },
     sounds: { lay: 150 },
+  },
+  livingWall: {
+    spawning: { ...NEVER, unseenDistance: 700 },
+    ignores: ["livingWall"],
+    radius: 22,
+    maxHealth: 90,
+    mass: 10,
+    noticeRange: 500,
+    speed: 176,
+    fleeSpeed: 792,
+    fleeSeconds: 3,
+    flee: { leg: 300, tries: 12 },
+    watchRange: 700,
+    damage: 80,
+    attackCooldown: 1,
+    repathInterval: 0.25,
+    sounds: { attack: 400, flee: 500, crumble: 500 },
   },
 } satisfies EntitiesConfig;
 

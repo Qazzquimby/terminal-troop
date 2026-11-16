@@ -382,3 +382,19 @@ export function randomFreePositionIn(
   }
   return null;
 }
+
+/**
+ * Whether the cell holding `at` is open and has a wall, or the world's edge, on one of its four
+ * sides: ground a body standing there would stand against a wall on.
+ */
+export function besideWall(map: TileMap, at: Point): boolean {
+  const col = Math.floor(at.x / map.cell);
+  const row = Math.floor(at.y / map.cell);
+  if (isSolid(map, col, row)) return false;
+  return (
+    isSolid(map, col - 1, row) ||
+    isSolid(map, col + 1, row) ||
+    isSolid(map, col, row - 1) ||
+    isSolid(map, col, row + 1)
+  );
+}

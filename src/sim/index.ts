@@ -91,8 +91,10 @@ export type { LootConfig } from "./loot.js";
 
 export {
   AREA,
+  besideWall,
   inRect,
   isAreaFree,
+  isSolid,
   mulberry32,
   mulberry32Next,
   randomFreePosition,

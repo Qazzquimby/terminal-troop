@@ -17,7 +17,7 @@ import type {
 } from "../../sim/index.js";
 import { drawRing, seenPrey } from "../bodies.js";
 import type { Hunting } from "../hunt.js";
-import { nearest, Route, Time, walk, Waypoint } from "../hunt.js";
+import { fleeRoute, nearest, Route, Time, walk, Waypoint } from "../hunt.js";
 import { layMine, mines } from "../land-mine/index.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
@@ -175,47 +175,6 @@ function circle(
   return { ...state, ring, angle, outward, route: [] };
 }
 
-/** How far `at` is from the nearest of `threats`; Infinity with none. */
-function clearance(threats: readonly Point[], at: Point): number {
-  const body = nearest(at, threats);
-  return body === null ? Infinity : distance(body, at);
-}
-
-/**
- * Its way from `threats`: to the spot a leg off that best keeps it far from them and near home,
- * that a route reaches. None when no spot does.
- */
-function fleeRoute(
-  self: WorldEntity,
-  home: Point,
-  threats: readonly Point[],
-  game: Session,
-  config: MineLayerConfig,
-): Point[] {
-  const { map } = game.world;
-  const { leg, tries, homePull } = config.flee;
-  const spots: { at: Point; score: number }[] = [];
-  const offset = Math.random() * Math.PI * 2;
-  for (let attempt = 0; attempt < tries; attempt++) {
-    const angle = offset + (attempt / tries) * Math.PI * 2;
-    const at = {
-      x: self.x + Math.cos(angle) * leg,
-      y: self.y + Math.sin(angle) * leg,
-    };
-    if (!isAreaFree(map, at.x, at.y, self.radius)) continue;
-    spots.push({
-      at,
-      score: clearance(threats, at) - homePull * distance(home, at),
-    });
-  }
-  spots.sort((a, b) => b.score - a.score);
-  for (const { at } of spots) {
-    const route = planRoute(map, self.radius, self, at);
-    if (route !== null && route.length > 0) return route;
-  }
-  return [];
-}
-
 /** Back to circling its home, from the ring and the way round it it stands at now. */
 function calm(
   state: MineLayerState,
@@ -270,7 +229,7 @@ function think(
     seen.length > 0 ? seen : state.threat === null ? [] : [state.threat];
   return {
     ...state,
-    route: fleeRoute(self, home, threats, game, config),
+    route: fleeRoute(game.world.map, self, threats, config.flee, home),
     repathAt: now + config.flee.repathInterval,
   };
 }

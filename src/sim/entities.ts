@@ -69,6 +69,11 @@ export interface EntityDefinition<S> {
   readonly mass?: number | undefined;
   readonly collides?: boolean;
   /**
+   * Whether a bar over it shows its health once it is hurt; true when left out. False for a kind
+   * that must not give itself away, such as one passing for part of the world.
+   */
+  readonly healthBar?: boolean;
+  /**
    * What else the kind is, past its name, for others to filter on, such as `INERT_TAG`. The
    * noise it makes carries them after its name, as `kindTags` gives them.
    */
@@ -139,6 +144,7 @@ export interface EntityType {
   /** Its declared mass, in player masses; null for one sized to its radius. */
   readonly mass: number | null;
   readonly collides: boolean;
+  readonly healthBar: boolean;
   readonly tags: readonly string[];
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
@@ -175,6 +181,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     maxHealth: definition.maxHealth,
     mass: definition.mass ?? null,
     collides: definition.collides ?? true,
+    healthBar: definition.healthBar ?? true,
     tags: definition.tags ?? [],
     data: schema,
     vehicle: definition.vehicle ?? null,

@@ -792,6 +792,35 @@ export const config = {
       flee: { leg: CELL * 4, tries: 12, homePull: 0.5, repathInterval: 0.5 },
       sounds: { lay: CELL * 3 },
     },
+    // Alone, against a wall, in the dark: none in the first 2 minutes of a world, never within 14
+    // cells of a player; as rare as the stalker. Stone: six shovel hits fell it, and it is as hard
+    // to push as the statue. It moves on a body within 10 cells at 0.8 times a walk, while no
+    // body's gaze falls on it within 14 cells, the stalker's watch range. Touching one that is
+    // not facing it as it moves costs 80 health, once a second. Hurt, it flees at twice a sprint
+    // for 3s, 6 cells a leg, the best of 12. It replans twice a second. Its blow carries 8 cells,
+    // its grinding flight 10, its crumbling death 10.
+    livingWall: {
+      spawning: {
+        weight: 10,
+        after: 120,
+        tries: 48,
+        unseenDistance: CELL * 14,
+      },
+      ignores: ["livingWall"],
+      radius: CELL * 0.45,
+      maxHealth: SHOVEL_DAMAGE * 6,
+      mass: 10,
+      noticeRange: CELL * 10,
+      speed: PLAYER_SPEED * 0.8,
+      fleeSpeed: PLAYER_SPEED * SPRINT * 2,
+      fleeSeconds: 3,
+      flee: { leg: CELL * 6, tries: 12 },
+      watchRange: CELL * 14,
+      damage: 80,
+      attackCooldown: 1,
+      repathInterval: 0.5,
+      sounds: { attack: CELL * 8, flee: CELL * 10, crumble: CELL * 10 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its

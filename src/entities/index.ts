@@ -13,6 +13,7 @@ import { landMine } from "./land-mine/index.js";
 import { mineLayer } from "./mine-layer/index.js";
 import { turret } from "./turret/index.js";
 import { teleporter } from "./teleporter/index.js";
+import { livingWall } from "./living-wall/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -42,6 +43,7 @@ const ENTITIES = [
   turret,
   teleporter,
   giantSnail,
+  livingWall,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

@@ -24,6 +24,7 @@ import {
   isGhost,
   isStunned,
   isBodyVisible,
+  isSolid,
   isVisible,
   stunLeft,
   lightSources,
@@ -432,6 +433,56 @@ export function drawLitWalls(
 }
 
 /**
+ * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
+ * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
+ * real wall's. For a body passing itself off as a wall.
+ */
+export function drawWallBlock(
+  ctx: PathContext & Pick<CanvasRenderingContext2D, "fillRect">,
+  map: TileMap,
+  at: Point,
+  viewer: Point,
+): void {
+  const { cell } = map;
+  const col = Math.floor(at.x / cell);
+  const row = Math.floor(at.y / cell);
+  const left = col * cell;
+  const top = row * cell;
+  const right = left + cell;
+  const bottom = top + cell;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(left, top, cell, cell);
+  const sides = [
+    {
+      normal: { x: -1, y: 0 },
+      from: { x: left, y: top },
+      to: { x: left, y: bottom },
+    },
+    {
+      normal: { x: 1, y: 0 },
+      from: { x: right, y: top },
+      to: { x: right, y: bottom },
+    },
+    {
+      normal: { x: 0, y: -1 },
+      from: { x: left, y: top },
+      to: { x: right, y: top },
+    },
+    {
+      normal: { x: 0, y: 1 },
+      from: { x: left, y: bottom },
+      to: { x: right, y: bottom },
+    },
+  ];
+  const faces = sides.filter(
+    ({ normal, from }) =>
+      !isSolid(map, col + normal.x, row + normal.y) &&
+      normal.x * (viewer.x - from.x) + normal.y * (viewer.y - from.y) > 0,
+  );
+  drawLitWalls(ctx, new Map([[0, faces]]));
+}
+
+/**
  * Each noise the local player heard lately, as of `now` in ms, as a ring spreading from where it
  * seemed to come from.
  */
@@ -759,7 +810,8 @@ function drawBodies(
     ctx.restore();
     if (isStunned(game, entity.id))
       drawStunned(ctx, entity, now, STUN_ABOVE.entity);
-    drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+    if (definition.healthBar)
+      drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
   });
   game.players.forEach((player) => {
     if (player === but || isGhost(player) || isAboard(player)) return;
