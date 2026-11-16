@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  canSeeFrom,
   hasKindTag,
   INERT_TAG,
   ITEM_TAG,
@@ -18,7 +19,7 @@ import type {
   Strike,
   TileMap,
 } from "../sim/index.js";
-import { MAX_WAYPOINTS, planRoute, steer } from "./route.js";
+import { MAX_WAYPOINTS, planRoute, routeToNearest, steer } from "./route.js";
 
 /** Something listening: where it stands, its draws, and the kind tags it ignores. */
 type Listener = Parameters<typeof noisesHeardBy>[1];
@@ -197,8 +198,9 @@ export function nearest<T extends Point>(
 const LEG_ATTEMPTS = 8;
 
 /**
- * A route for a body of half-size `half` to a random point it fits at within `range` of `at`, as
- * the crow flies, or null when none of the tries finds one.
+ * A route for a body of half-size `half` at `at` to a random point it fits at within `range` of
+ * `around`, as the crow flies, or null when none of the tries finds one. Round where it stands
+ * unless told otherwise; round a home keeps a wanderer from drifting off.
  */
 export function wanderLeg(
   map: TileMap,
@@ -206,13 +208,14 @@ export function wanderLeg(
   rng: Rng,
   half: number,
   range: number,
+  around: Point = at,
 ): Point[] | null {
   for (let attempt = 0; attempt < LEG_ATTEMPTS; attempt++) {
     const angle = rng() * Math.PI * 2;
     const distance = range * Math.sqrt(rng());
     const to = {
-      x: at.x + Math.cos(angle) * distance,
-      y: at.y + Math.sin(angle) * distance,
+      x: around.x + Math.cos(angle) * distance,
+      y: around.y + Math.sin(angle) * distance,
     };
     if (!isAreaFree(map, to.x, to.y, half)) continue;
     const route = planRoute(map, half, at, to);
@@ -307,4 +310,50 @@ export function fleeRoute(
     if (route !== null && route.length > 0) return route;
   }
   return [];
+}
+
+/** A body's middle and four points round its edge, as offsets from its middle over its radius. */
+const FOOTPRINT = [
+  [0, 0],
+  [-Math.SQRT1_2, -Math.SQRT1_2],
+  [Math.SQRT1_2, -Math.SQRT1_2],
+  [-Math.SQRT1_2, Math.SQRT1_2],
+  [Math.SQRT1_2, Math.SQRT1_2],
+] as const;
+
+/**
+ * Whether any part of a body of `radius` standing at `at`, its middle or an edge, lies along a
+ * clear line within `range` of any of `eyes`, whichever way they face: where they see it, or would
+ * by turning.
+ */
+export function inSightOfAny(
+  map: TileMap,
+  eyes: readonly Point[],
+  at: Point,
+  radius: number,
+  range: number,
+): boolean {
+  return FOOTPRINT.some(([dx, dy]) => {
+    const point = { x: at.x + dx * radius, y: at.y + dy * radius };
+    return eyes.some((eye) => canSeeFrom(map, { ...eye, range }, point));
+  });
+}
+
+/**
+ * The quickest way for `self` out of the sight of all of `eyes`, as `inSightOfAny` has it: to the
+ * first spot, by the walk there, that none of them sees within `range` even by turning. Not the
+ * spot furthest from them nor the one nearest home, but the soonest it can stand unseen, round a
+ * corner or past where they see to. Empty when it already is; null when no spot it reaches is
+ * hidden. Any kind that flees sight rather than distance can take it.
+ */
+export function coverRoute(
+  map: TileMap,
+  self: Point & { readonly radius: number },
+  eyes: readonly Point[],
+  range: number,
+): Point[] | null {
+  const seen = (at: Point): boolean =>
+    inSightOfAny(map, eyes, at, self.radius, range);
+  if (!seen(self)) return [];
+  return routeToNearest(map, self.radius, self, (at) => !seen(at));
 }
