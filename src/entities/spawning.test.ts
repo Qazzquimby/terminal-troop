@@ -413,9 +413,9 @@ test("spawns favour dangerous spots: far from the road, and towards the exit's s
       across: mean(spots.map(({ across }) => across)),
     };
   };
-  const even = seeded({ road: 0, right: 0 });
-  const far = seeded({ road: 20, right: 0 });
-  const right = seeded({ road: 0, right: 20 });
+  const even = seeded({ road: 0, right: 0, exit: 0, reach: 0 });
+  const far = seeded({ road: 20, right: 0, exit: 0, reach: 0 });
+  const right = seeded({ road: 0, right: 20, exit: 0, reach: 0 });
 
   expect(far.count).toBeGreaterThan(20);
   // Spawns keep out of the sunlit road and yards, so every spot open to them is already some way
@@ -459,8 +459,14 @@ test("a spawn's weight is the world's danger weight there, and nothing in the st
 
 test("nothing spawns in light: not in the sunlit road, nor a lit room", () => {
   const game = world();
-  const middle = { x: game.world.W / 2, y: game.world.H / 2 };
-  const road = cellWhere(game, AREA.road, (at) => at.x >= middle.x);
+  // In the middle column, well short of the exit, which is dark.
+  const middle = game.world.W / 2;
+  const { cell } = game.world.map;
+  const road = cellWhere(
+    game,
+    AREA.road,
+    (at) => at.x >= middle && at.x < middle + cell,
+  );
   expect(isLit(game, road)).toBe(true);
   expect(spawnAllowed(game, road)).toBe(false);
   expect(spawnWeight(game, road)).toBe(0);
@@ -506,7 +512,26 @@ test("zombies a new world scatters favour the same spots", () => {
       .map(({ x, y }) => remoteness(game.world, { x, y }).across);
   };
   // Weighed 1 + 20a, an even spread across averages 0.5, a favoured one about two thirds.
-  expect(mean(first({ road: 0, right: 20 }))).toBeGreaterThan(
-    mean(first({ road: 0, right: 0 })) + 0.08,
+  expect(
+    mean(first({ road: 0, right: 20, exit: 0, reach: 0 })),
+  ).toBeGreaterThan(
+    mean(first({ road: 0, right: 0, exit: 0, reach: 0 })) + 0.08,
   );
+});
+
+test("the road round the exit is dark, and the most dangerous place to spawn, past the corners on the right", () => {
+  const game = world();
+  const { exit } = game.world.layout;
+  const atExit = cellWhere(game, AREA.road, (at) => inRect(exit, at));
+  expect(isLit(game, atExit)).toBe(false);
+  expect(spawnAllowed(game, atExit)).toBe(true);
+  const { W, H } = game.world;
+  const corners = [
+    { x: W - 1, y: 1 },
+    { x: W - 1, y: H - 1 },
+  ];
+  for (const corner of corners)
+    expect(spawnWeight(game, atExit)).toBeGreaterThan(
+      dangerWeight(game.world, corner),
+    );
 });

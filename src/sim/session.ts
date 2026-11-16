@@ -13,6 +13,8 @@ import type {
 import { applyEvents } from "./content-event.js";
 import type { WorldContent } from "./content.js";
 import type { Flash } from "./flashes.js";
+import { hearDay } from "./day.js";
+import type { DayConfig } from "./day.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
@@ -92,6 +94,8 @@ export interface SimConfig extends PlayerRules {
   readonly arrival: ArrivalConfig;
   readonly death: DeathConfig;
   readonly stunned: StunnedConfig;
+  /** How the world's day passes, and its daylight with it. */
+  readonly day: DayConfig;
 }
 
 export interface Session {
@@ -374,6 +378,7 @@ export function updateSession(
   // Sounds still playing are heard from where the local player is now, a ghost's view included.
   game.sfx.listen(game.local);
   hearStatuses(game);
+  hearDay(game);
 }
 
 /** Drops a remote player; false when there is none by that id. */

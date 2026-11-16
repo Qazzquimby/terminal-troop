@@ -13,7 +13,7 @@ import {
   registerContent,
   updateSession,
 } from "../sim/index.js";
-import type { Controls, Session } from "../sim/index.js";
+import type { Controls, Session, SimConfig } from "../sim/index.js";
 import {
   testEntitiesConfig,
   testItemsConfig,
@@ -27,6 +27,10 @@ import {
  * should do so slowly: a standard world with no living player keeps most of the monsters it began
  * with for half a minute, and its walls stand. With every kind ignoring only its own, this seed
  * fails both.
+ *
+ * It runs on a world without the exit's pull (#290): the dark, open ground round the exit draws
+ * many monsters together, where they thin each other out much faster. That is by design, a
+ * crowd at the goal, so it is not what this measures.
  */
 
 // Ten steps a second rather than sixty, so half a minute runs fast: monsters move a few
@@ -94,6 +98,19 @@ const entities: EntitiesConfig = {
   hoarder: weighed(testEntitiesConfig.hoarder, 50),
 };
 
+/** The test config, but with no extra danger nor darkness round the exit. */
+const spreadOut: SimConfig = {
+  ...testSimConfig,
+  world: {
+    ...testSimConfig.world,
+    generation: {
+      ...testSimConfig.world.generation,
+      lights: { ...testSimConfig.world.generation.lights, exitShade: 0 },
+      danger: { ...testSimConfig.world.generation.danger, exit: 0 },
+    },
+  },
+};
+
 /** A standard test world, populated by the spawner's head start, its one player a ghost. */
 function emptyWorld(): Session {
   const game = createSession(
@@ -102,7 +119,7 @@ function emptyWorld(): Session {
     "ALONE",
     "standard",
     testSfx(),
-    testSimConfig,
+    spreadOut,
   );
   registerContent(game, [
     ...entityContent(entities),

@@ -869,6 +869,11 @@ export function buildWorld(config: WorldConfig, rng: Rng): World {
     start: roadBox(road, 0, start, cell),
     exit: roadBox(road, cols - exit, cols, cell),
     danger: generation.danger,
+    roadCentre: Float32Array.from(
+      road,
+      (span) => (span.top + span.bottom + 1) / 2,
+    ),
+    exitShade: generation.lights.exitShade,
   };
   return {
     W: cols * cell,

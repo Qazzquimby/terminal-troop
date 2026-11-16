@@ -100,6 +100,13 @@ export interface Layout {
   readonly exit: Rect;
   /** How dangerous its places are; see `dangerWeight`. */
   readonly danger: DangerConfig;
+  /**
+   * By column, the row the road's centre line runs along, in cells: the middle of the road's
+   * span there. Daylight lingers along it longest as night falls. Empty for a world without one.
+   */
+  readonly roadCentre: Float32Array;
+  /** Cells round the exit that sunlight never reaches, so the way out is dark. */
+  readonly exitShade: number;
 }
 
 export interface World {
@@ -199,6 +206,8 @@ export function buildDevWorld(
       start: { x: 0, y: 0, w: zone, h: view.height },
       exit: { x: view.width - zone, y: 0, w: zone, h: view.height },
       danger,
+      roadCentre: new Float32Array(0),
+      exitShade: 0,
     },
   };
 }
@@ -254,17 +263,36 @@ export function remoteness(
   };
 }
 
+/** How far `at` is from the world's exit, in cells: 0 inside it. */
+export function exitDistance(world: World, at: Point): number {
+  const { exit } = world.layout;
+  const dx = Math.max(exit.x - at.x, 0, at.x - (exit.x + exit.w));
+  const dy = Math.max(exit.y - at.y, 0, at.y - (exit.y + exit.h));
+  return Math.hypot(dx, dy) / world.map.cell;
+}
+
 /**
  * How dangerous the world's places are. A spot's danger weight is
- * `(1 + road * r) * (1 + right * a)`, where `r` and `a` are its remoteness from the road and
- * across the world: 1 on the road at the left edge, up to `(1 + road) * (1 + right)` at the
- * farthest spot at the right.
+ * `(1 + road * r) * (1 + right * a) + exit * e`, where `r` and `a` are its remoteness from the
+ * road and across the world, and `e` its nearness to the exit: 1 in it, falling evenly to 0 at
+ * `reach` cells out. So 1 on the road at the left edge, `(1 + road) * (1 + right)` at the
+ * farthest spot at the right, and most round the exit, the players' goal.
  */
 export interface DangerConfig {
   /** Extra weight at the farthest spot from the road; 0 makes distance from it count for nothing. */
   readonly road: number;
   /** Extra weight at the world's right edge, the exit's side; 0 makes neither side count. */
   readonly right: number;
+  /** Extra weight in the exit itself; 0 makes nearness to it count for nothing. */
+  readonly exit: number;
+  /** Cells out from the exit its extra weight reaches, falling evenly to none there. */
+  readonly reach: number;
+}
+
+/** How near `at` is to the exit by `config`: 1 in it, 0 at `reach` cells out and beyond. */
+function exitNearness(world: World, at: Point, config: DangerConfig): number {
+  if (config.reach <= 0) return 0;
+  return Math.max(0, 1 - exitDistance(world, at) / config.reach);
 }
 
 /**
@@ -272,16 +300,22 @@ export interface DangerConfig {
  * spawn in proportion to it.
  */
 export function dangerWeight(world: World, at: Point): number {
-  const { road, right } = world.layout.danger;
+  const config = world.layout.danger;
   const far = remoteness(world, at);
-  return (1 + road * far.road) * (1 + right * far.across);
+  return (
+    (1 + config.road * far.road) * (1 + config.right * far.across) +
+    config.exit * exitNearness(world, at, config)
+  );
 }
 
-/** How dangerous `at` is, 0 (safest) to 1 (most dangerous): its danger weight, rescaled. */
+/**
+ * How dangerous `at` is, 0 (safest) to 1 (most dangerous): its danger weight, rescaled so the
+ * farthest corner from the road at the right is 1, as is anywhere the exit makes as dangerous.
+ */
 export function danger(world: World, at: Point): number {
   const { road, right } = world.layout.danger;
   const most = (1 + road) * (1 + right) - 1;
-  return most <= 0 ? 0 : (dangerWeight(world, at) - 1) / most;
+  return most <= 0 ? 0 : Math.min(1, (dangerWeight(world, at) - 1) / most);
 }
 
 /** Whether `at` lies within `rect`, edges included. */
