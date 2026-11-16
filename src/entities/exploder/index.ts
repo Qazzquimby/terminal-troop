@@ -12,6 +12,7 @@ import {
   sound,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Point,
   Session,
@@ -47,7 +48,7 @@ const blastUrl = new URL("./sfx/blast.mp3", import.meta.url).href;
  * How an exploder roams, hunts and bursts, and how often they come. Distances are in pixels, speeds
  * in pixels per second, times in seconds.
  */
-export interface ExploderConfig extends Hunting {
+export interface ExploderConfig extends Hunting, Dormancy {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -439,6 +440,10 @@ function definition(
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
+    // A lit fuse burns down, and whatever hurt it it chases, however far off.
+    wakeful: (_entity, state) =>
+      state.fuseAt !== null || state.attacker !== null,
     data: ExploderState,
     update(entity, state, dt, game) {
       if (state.burst) return state;

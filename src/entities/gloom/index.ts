@@ -14,6 +14,7 @@ import {
   UNNOTICED_TAG,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Point,
   Session,
@@ -34,7 +35,7 @@ const disperseUrl = new URL("./sfx/disperse.mp3", import.meta.url).href;
  * How a gloom drifts, picks whom it follows and how far its darkness reaches. Distances in
  * pixels, speeds in pixels per second, times in sim seconds.
  */
-export interface GloomConfig {
+export interface GloomConfig extends Dormancy {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -229,6 +230,7 @@ function definition(
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
     // Monsters leave it be, as if it were not there; a player's blow still breaks it.
     tags: [UNNOTICED_TAG],
     data: GloomState,

@@ -10,6 +10,7 @@ import {
   sound,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Point,
   Session,
@@ -41,7 +42,7 @@ const crumbleUrl = new URL("./sfx/crumble.mp3", import.meta.url).href;
  * How a living wall lurks, creeps and flees. Distances in pixels, speeds in pixels a second, times
  * in sim seconds.
  */
-export interface LivingWallConfig extends Watching {
+export interface LivingWallConfig extends Watching, Dormancy {
   /** How the world's spawner brings them: always against a wall. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -248,6 +249,7 @@ function definition(
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
     mass: config.mass,
     // A bar over it would give it away.
     healthBar: false,

@@ -43,6 +43,20 @@ export interface SpawningConfig {
   readonly unseenDistance: number;
   /** How many arrive together in each spawn; one when left out. */
   readonly group?: GroupConfig;
+  /** Kinds it would rather appear far from; it minds none when left out. */
+  readonly apart?: ApartConfig;
+}
+
+/**
+ * Kinds a spawn would rather keep away from. A spot nearer than `distance` to the nearest body of
+ * them weighs its share of that distance: nothing touching one, half at half the distance, full
+ * weight from the distance on. A preference, not a rule: only a spot touching one is never taken.
+ */
+export interface ApartConfig {
+  /** The kinds' names, its own among them to keep away from its own kind. */
+  readonly from: readonly string[];
+  /** Pixels from the nearest of them past which it minds them no more. */
+  readonly distance: number;
 }
 
 /** A group of a kind arriving together. */
@@ -132,6 +146,32 @@ export function spawnWeight(
   return spawnAllowed(game, at, rules) ? dangerWeight(game.world, at) : 0;
 }
 
+/**
+ * How much a spawn keeping `apart` still favours `at`, 0..1: its distance to the nearest body
+ * of the kinds it keeps from, as a share of `apart`'s distance; 1 when it keeps from none.
+ */
+export function apartShare(
+  game: Session,
+  at: Point,
+  apart: ApartConfig | undefined,
+): number {
+  if (apart === undefined || apart.distance <= 0) return 1;
+  const kinds = new Set<number>();
+  for (const name of apart.from) {
+    const kind = game.kindIds.get(name);
+    if (kind !== undefined) kinds.add(kind);
+  }
+  let nearest = apart.distance;
+  for (const entity of game.entities.values()) {
+    if (!kinds.has(entity.kind)) continue;
+    nearest = Math.min(
+      nearest,
+      Math.hypot(entity.x - at.x, entity.y - at.y) - entity.radius,
+    );
+  }
+  return Math.max(0, nearest) / apart.distance;
+}
+
 function nearestPlayerDistance(game: Session, at: Point): number {
   let nearest = Infinity;
   for (const player of livingPlayers(game))
@@ -140,8 +180,8 @@ function nearestPlayerDistance(game: Session, at: Point): number {
 }
 
 /**
- * A free point where `arrival` may appear, drawn among its tries by spawn weight from those no
- * player stands near enough to watch; or null when none of the tries finds one. A new world's
+ * A free point where `arrival` may appear, drawn among its tries by spawn weight, less near the
+ * kinds it keeps apart from, from those no player stands near enough to watch; or null when none of the tries finds one. A new world's
  * first, `starting`, takes the allowed point farthest from the players when none is out of
  * their sight, as a world too small to hide in, such as the dev square, still starts with some.
  * Only the host spawns, and snapshots carry what it spawned, so the draws need no shared seed.
@@ -162,14 +202,15 @@ function spawnPoint(
       y: Math.random() * game.world.H,
     };
     if (!isAreaFree(game.world.map, at.x, at.y, radius)) continue;
-    const weight = spawnWeight(game, at, arrival.rules);
-    if (weight <= 0) continue;
+    const allowed = spawnWeight(game, at, arrival.rules);
+    if (allowed <= 0) continue;
+    const weight = allowed * apartShare(game, at, config.apart);
     const distance = nearestPlayerDistance(game, at);
     if (distance > farthestDistance) {
       farthest = at;
       farthestDistance = distance;
     }
-    if (distance < config.unseenDistance) continue;
+    if (distance < config.unseenDistance || weight <= 0) continue;
     totalWeight += weight;
     if (Math.random() * totalWeight < weight) chosen = at;
   }
