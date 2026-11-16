@@ -347,7 +347,7 @@ export const config = {
       // Its radio plays as loud and as far as a radio carried about: heard, and a noise, 25 cells
       // round every second while it plays. Its dial clicks 2 cells out.
       radio: {
-        volume: 0.7,
+        volume: 0.2,
         range: CELL * 25,
         noiseInterval: 1,
         switchVolume: 0.6,
@@ -509,7 +509,7 @@ export const config = {
     // cells, between a walk and a sprint, every 0.3s, a sprint's pace; its blow 8.
     statue: {
       spawning: {
-        weight: 10,
+        weight: 7,
         after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
@@ -536,8 +536,8 @@ export const config = {
     // 16, its strike 8.
     stalker: {
       spawning: {
-        weight: 40,
-        after: 240,
+        weight: 10,
+        after: 0,
         tries: 24,
         unseenDistance: CELL * 30,
       },
@@ -713,7 +713,7 @@ export const config = {
       volume: 0.7,
       switchVolume: 0.6,
       switchRange: CELL * 2,
-      range: CELL * 25,
+      range: CELL * 20,
       noiseInterval: 1,
     },
     // One use: put down where its entitholder stands. As likely as a handgun, and light.
