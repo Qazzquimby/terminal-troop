@@ -31,6 +31,8 @@ function devMap(): TileMap {
 
 const map = devMap();
 const everywhere: Area = { x: 0, y: 0, width: 900, height: 600 };
+/** Where the viewer stands, as fading measures from: where the tests see from. */
+const viewer: Point = { x: 125, y: 75 };
 const here: MapPlace = { room: "ROOM1", world: "dev", seed: 1 };
 
 /** Storage held in a map, counting writes of remembered terrain. */
@@ -68,7 +70,7 @@ const cellAt = (col: number, row: number): Point => ({
 
 function remembers(memory: MapMemory, col: number, row: number): boolean {
   return memory
-    .within(everywhere, 0)
+    .within(everywhere, 0, viewer)
     .floor.some(({ x, y }) => x === col * CELL && y === row * CELL);
 }
 
@@ -109,7 +111,7 @@ describe("marking", () => {
       0,
     );
 
-    expect(memory.within(everywhere, 0).floor).toEqual([]);
+    expect(memory.within(everywhere, 0, viewer).floor).toEqual([]);
   });
 
   test("only floor within the view is marked", () => {
@@ -133,7 +135,7 @@ describe("marking", () => {
     const memory = entered();
     memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
 
-    const { walls } = memory.within(everywhere, 0);
+    const { walls } = memory.within(everywhere, 0, viewer);
     const pillar = [...walls.values()].flat();
 
     expect(pillar).toContainEqual({
@@ -149,7 +151,7 @@ describe("marking", () => {
   test("nothing is remembered before entering a world", () => {
     const memory = createMapMemory(config, memoryStorage());
     memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
-    const { floor, walls } = memory.within(everywhere, 0);
+    const { floor, walls } = memory.within(everywhere, 0, viewer);
     expect({ floor, walls }).toEqual({ floor: [], walls: new Map() });
   });
 });
@@ -157,10 +159,16 @@ describe("marking", () => {
 describe("fading", () => {
   const { seconds, spread } = config.fade;
   const seenFloor = (memory: MapMemory, now: number) =>
-    memory.within(everywhere, now).floor.length;
+    memory.within(everywhere, now, viewer).floor.length;
 
-  test("terrain out of sight is all there until the first of it fades, and gone after `seconds`", () => {
-    const memory = entered();
+  /** The test config fading every cell alike, by time out of sight, wherever the viewer is. */
+  const timed: MapMemoryConfig = {
+    ...config,
+    fade: { ...config.fade, reach: 0 },
+  };
+
+  test("with no reach, terrain out of sight is all there until the first of it fades, and gone after `seconds`", () => {
+    const memory = entered(memoryStorage(), timed);
     memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
     const all = seenFloor(memory, 0);
 
@@ -168,13 +176,15 @@ describe("fading", () => {
     expect(seenFloor(memory, seconds * (1 - spread) * 1000 - 1)).toBe(all);
     expect(seenFloor(memory, seconds * 1000 - 1)).toBe(all);
     expect(seenFloor(memory, seconds * 1000)).toBe(0);
-    expect(memory.within(everywhere, seconds * 1000).walls.size).toBe(0);
+    expect(memory.within(everywhere, seconds * 1000, viewer).walls.size).toBe(
+      0,
+    );
   });
 
-  test("each cell's age over the view is how long since it was seen, Infinity where never", () => {
-    const memory = entered();
+  test("with no reach, each cell's age over the view is how long since it was seen, Infinity where never", () => {
+    const memory = entered(memoryStorage(), timed);
     memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 1000);
-    const { ages } = memory.within(everywhere, 3500);
+    const { ages } = memory.within(everywhere, 3500, viewer);
     const at = (col: number, row: number) =>
       ages.ages[(row - ages.row) * ages.cols + (col - ages.col)];
 
@@ -183,18 +193,73 @@ describe("fading", () => {
   });
 
   test("terrain still in sight is renewed, at most once a refresh", () => {
-    const memory = entered();
+    const memory = entered(memoryStorage(), timed);
     const sight = sightFrom({ x: 125, y: 75 });
     const refresh = config.fade.refresh * 1000;
     memory.see(sight, everywhere, 0);
     memory.see(sight, everywhere, refresh / 2);
     memory.see(sight, everywhere, refresh);
 
+    const { ages } = memory.within(everywhere, refresh, viewer);
+    expect(Math.min(...ages.ages)).toBe(0);
     // Renewed at `refresh`, not at half of it.
     expect(seenFloor(memory, seconds * 1000 + refresh / 2)).toBeGreaterThan(0);
-    const { ages } = memory.within(everywhere, refresh);
-    expect(Math.min(...ages.ages)).toBe(0);
     expect(seenFloor(memory, seconds * 1000 + refresh)).toBe(0);
+  });
+
+  /** How far, in cells, the floor cell with top-left corner `at` is from where the viewer stands. */
+  const cellsFrom = (from: Point) => (at: Point) =>
+    Math.hypot(at.x + CELL / 2 - from.x, at.y + CELL / 2 - from.y) / CELL;
+
+  test("terrain fades from far to near: what is left is always nearer than what has gone", () => {
+    const memory = entered();
+    memory.see(sightFrom(viewer, 900), everywhere, 0);
+    const distance = cellsFrom(viewer);
+    const all = memory.within(everywhere, 0, viewer).floor;
+    expect(all.length).toBeGreaterThan(30);
+
+    let reach = Infinity;
+    let thinned = false;
+    for (let now = 500; now <= 30_000; now += 500) {
+      const left = memory.within(everywhere, now, viewer).floor;
+      const spot = ({ x, y }: Point) => `${String(x)},${String(y)}`;
+      const kept = new Set(left.map(spot));
+      const gone = all.filter((cell) => !kept.has(spot(cell)));
+      const farthestLeft = Math.max(0, ...left.map(distance));
+      // Every cell gone is farther than every cell left.
+      for (const cell of gone)
+        expect(distance(cell)).toBeGreaterThan(farthestLeft);
+      // And the edge only ever creeps inward.
+      expect(farthestLeft).toBeLessThanOrEqual(reach);
+      reach = farthestLeft;
+      thinned ||= gone.length > 0 && left.length > 0;
+    }
+    expect(thinned).toBe(true);
+  });
+
+  test("terrain `reach` cells away fades in `seconds`, twice as far in half that", () => {
+    const { reach } = config.fade;
+    const memory = entered();
+    memory.see(sightFrom(viewer, 900), everywhere, 0);
+    const distance = cellsFrom(viewer);
+    const left = (now: number) =>
+      memory.within(everywhere, now, viewer).floor.map(distance);
+
+    expect(Math.max(...left((seconds * 1000) / 2))).toBeLessThan(reach * 2);
+    expect(Math.max(...left((seconds * 1000) / 2))).toBeGreaterThan(reach);
+    expect(Math.max(...left(seconds * 1000))).toBeLessThan(reach);
+  });
+
+  test("ink that has soaked away does not come back as the viewer nears it", () => {
+    const memory = entered();
+    memory.see(sightFrom(viewer, 900), everywhere, 0);
+    const far = { x: 875, y: 575 };
+    const before = memory.within(everywhere, 0, far).floor.length;
+    const after = memory.within(everywhere, seconds * 1000, far).floor.length;
+    expect(after).toBeLessThan(before);
+    expect(
+      memory.within(everywhere, seconds * 1000, viewer).floor,
+    ).toHaveLength(after);
   });
 
   test("with `seconds` 0, remembered terrain never fades", () => {
@@ -223,7 +288,9 @@ describe("persistence", () => {
 
     const again = entered(storage, lasting);
 
-    expect(again.within(everywhere, 0)).toEqual(first.within(everywhere, 0));
+    expect(again.within(everywhere, 0, viewer)).toEqual(
+      first.within(everywhere, 0, viewer),
+    );
     expect(remembers(again, 3, 1)).toBe(true);
     expect(storage.saved.has(mapMemoryKey(here, map))).toBe(true);
   });
@@ -238,7 +305,7 @@ describe("persistence", () => {
     memory.see(sightFrom({ x: 125, y: 75 }), everywhere, 0);
 
     memory.enter(other, map);
-    expect(memory.within(everywhere, 0).floor).toEqual([]);
+    expect(memory.within(everywhere, 0, viewer).floor).toEqual([]);
 
     memory.enter(here, map);
     expect(remembers(memory, 3, 1)).toBe(true);
@@ -266,7 +333,7 @@ describe("persistence", () => {
   test("a save that doesn't fit the map is ignored", () => {
     const storage = memoryStorage();
     storage.saved.set(mapMemoryKey(here, map), btoa("short"));
-    expect(entered(storage).within(everywhere, 0).floor).toEqual([]);
+    expect(entered(storage).within(everywhere, 0, viewer).floor).toEqual([]);
   });
 
   test("failing storage leaves memory working for the visit", () => {

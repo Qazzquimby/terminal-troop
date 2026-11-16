@@ -4,7 +4,14 @@ import type { EntitiesConfig } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import type { Room } from "../room/index.js";
-import { hurtPlayer, isGhost, spawnEntity } from "../sim/index.js";
+import {
+  CORPSE_ITEM,
+  hurtPlayer,
+  isGhost,
+  itemInstances,
+  revive,
+  spawnEntity,
+} from "../sim/index.js";
 import type { Controls, Session, WorldEntity } from "../sim/index.js";
 import { createWorldLog } from "../world-log/index.js";
 import { crew as crewAt, idle, jitter, playerOn, sessionOf } from "./crew.js";
@@ -49,10 +56,19 @@ async function logged() {
     ["a", []],
     ["b", []],
   ]);
+  /** The lines each client printed loud. */
+  const loud = new Map<string, string[]>([
+    ["a", []],
+    ["b", []],
+  ]);
   const logs = [...lines].map(([id, kept]) => ({
     id,
-    log: createWorldLog({ enabled: true, capacity: 500, quiet: [] }, (line) =>
-      kept.push(line),
+    log: createWorldLog(
+      { enabled: true, capacity: 500, quiet: [], monsterDeaths: false },
+      (line, isLoud) => {
+        kept.push(line);
+        if (isLoud) loud.get(id)?.push(line);
+      },
     ),
   }));
   const step = (controls: Readonly<Record<string, Controls>> = {}): void => {
@@ -60,7 +76,14 @@ async function logged() {
     for (const { id, log } of logs) log.observe(sessionOf(crew.room(id)));
   };
   step();
-  return { ...crew, step, lines, host: sessionOf(crew.room("a")) };
+  return {
+    ...crew,
+    step,
+    lines,
+    loud,
+    logs: new Map(logs.map(({ id, log }) => [id, log])),
+    host: sessionOf(crew.room("a")),
+  };
 }
 
 /** Steps until player `id` is a ghost on every client, or `limit` steps pass. */
@@ -174,6 +197,43 @@ for (const victim of ["a", "b"]) {
     expectKilled(lines, label, `player ${driver.toUpperCase()}`);
   });
 }
+
+test("a player's death and revival print loud everywhere, and players() lists each with its cause", async () => {
+  const { room, step, loud, logs, host } = await logged();
+  const prey = playerOn(room("a"), "b");
+  const zombie = spawnEntity(host, "zombie", prey.x + 20, prey.y, {
+    mode: "wander",
+    seed: 1,
+    route: [],
+    target: null,
+    standUntil: host.worldTime,
+    noiseTarget: null,
+    barkAt: host.worldTime + 60,
+    attackAt: 0,
+    attacking: false,
+    restUntil: 0,
+    facing: 0,
+  });
+  untilDead(room, step, "b");
+  const [corpse] = itemInstances(host, CORPSE_ITEM);
+  if (corpse === undefined) throw new Error("no corpse");
+  revive(host, corpse.state, { x: 150, y: 450 }, "a");
+  for (let i = 0; i < 30; i++) step();
+
+  for (const [id, log] of logs) {
+    expect(
+      log.players().map(({ player, what, by }) => ({ player, what, by })),
+    ).toEqual([
+      { player: "player B", what: "died", by: `zombie#${zombie.id}` },
+      { player: "player B", what: "revived", by: "player A" },
+    ]);
+    const shouted = loud.get(id) ?? [];
+    expect(shouted).toEqual([
+      expect.stringMatching(/\] player B killed by zombie#/),
+      expect.stringMatching(/\] player B revived by player A$/),
+    ]);
+  }
+});
 
 function cruiserOf(game: Session): WorldEntity {
   const kind = game.kindIds.get("cruiser");

@@ -29,7 +29,7 @@ export function stepRevival(
     if ("lying" in place) continue;
     const cruiser = cruiserBy(place.carrier);
     if (cruiser === null) continue;
-    const revived = revive(game, corpse.state, cruiser);
+    const revived = revive(game, corpse.state, cruiser, place.carrier.id);
     if (revived === null) continue;
     effect(
       game,

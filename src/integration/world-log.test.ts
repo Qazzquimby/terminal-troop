@@ -57,7 +57,12 @@ const bodies: WorldContent = {
   populate: () => undefined,
 };
 
-const CONFIG: WorldLogConfig = { enabled: true, capacity: 100, quiet: [] };
+const CONFIG: WorldLogConfig = {
+  enabled: true,
+  capacity: 100,
+  quiet: [],
+  monsterDeaths: true,
+};
 
 /** A log that keeps what it prints. */
 function printingLog(config = CONFIG): { log: WorldLog; lines: string[] } {
@@ -190,4 +195,27 @@ test("a stun is logged with how long it lasts, quiet categories are kept but not
   log.observe(loneSession());
   expect(log.events("stun")).toEqual([]);
   expect(log.kills()).toEqual([]);
+});
+
+test("by default a death no player took part in is kept and tallied but not printed", () => {
+  const game = loneSession();
+  const { log, lines } = printingLog({ ...CONFIG, monsterDeaths: false });
+  log.observe(game);
+  const prey = spawnEntity(game, "prey", SPOT.x, SPOT.y, {});
+  spawnEntity(game, "biter", SPOT.x + 10, SPOT.y, {
+    steps: 0,
+    anonymous: false,
+  });
+  for (let i = 0; i < 10; i++) {
+    updateSession(game, idle, 1 / 60);
+    log.observe(game);
+  }
+  expect(log.events("death").map((event) => event.text)).toEqual([
+    expect.stringMatching(new RegExp(`^prey#${prey.id} killed by biter#`)),
+  ]);
+  expect(log.kills("prey")).toEqual([
+    { victim: "prey", killer: "biter", count: 1 },
+  ]);
+  expect(log.counts().prey?.died).toBe(1);
+  expect(lines.some((line) => line.includes("killed by"))).toBe(false);
 });

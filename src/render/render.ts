@@ -937,7 +937,7 @@ export function draw(
   ctx.fillRect(0, 0, width, height);
 
   // Remembered terrain, drawn on its own layer so the ink fading it eats into it alone.
-  const remembered = memory.within(area, now);
+  const remembered = memory.within(area, now, viewer);
   const recall = sized((memoryCache ??= createLayer()), width, height);
   recall.ctx.clearRect(0, 0, width, height);
   applyCamera(recall.ctx, camera, () => {
