@@ -581,9 +581,10 @@ export const config = {
       strikeRange: CELL * 8,
     },
     // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
-    // player. Five shovel hits fell it; it moves at 1.2 times a walk, and touching it costs 100
-    // health, once a second. Any body but another stalker sees it down its view cone as far as that
-    // body looks, a player 10 cells, but never past 14, as far as a flashlight reaches. Seen, it
+    // player. Five shovel hits fell it; it moves at 1.2 times a walk, creeping at 0.1 times a walk
+    // once it sees a player it hunts, and touching it costs 100 health, once a second. Only a
+    // player's gaze counts: a player sees it down its view cone as far as it looks, 10 cells, but
+    // never past 14, as far as a flashlight reaches. Seen, it
     // backs off for 25s, keeping 12 cells from every body it hunts where it can; hurt, it rages for
     // 10s. It replans twice a second. Its hiss as it backs off carries 6 cells, its shriek of rage
     // 16, its strike 8.
@@ -599,6 +600,8 @@ export const config = {
       radius: 14,
       maxHealth: SHOVEL_DAMAGE * 5,
       speed: PLAYER_SPEED * 1.2,
+      creepSpeed: PLAYER_SPEED * 0.1,
+      watchedBy: ["player"],
       damage: 100,
       attackCooldown: 1,
       watchRange: CELL * 14,
