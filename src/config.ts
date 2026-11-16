@@ -59,6 +59,12 @@ const SHOVEL_DAMAGE = 15;
 const PLAYER_SPEED = 120;
 const SPRINT = 1.8;
 /**
+ * How far past either edge of a body's view cone a kind held back by being looked at still counts
+ * as looked at, so it does not stutter in and out at the edge: 10 degrees, in radians. Each such
+ * kind takes it as its `watchMargin`, and may be given its own.
+ */
+const WATCH_MARGIN = (10 * Math.PI) / 180;
+/**
  * Seconds into a world at which it reaches its end game: the spawner is at full pace, and groups
  * that grow with the world have grown to their full size. A world has no fixed length, so this
  * is where its threat stops rising.
@@ -774,12 +780,14 @@ export const config = {
     },
     // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
     // player. Five shovel hits fell it; it moves at 1.2 times a walk, creeping at 0.1 times a walk
-    // once it sees a player it hunts, and touching it costs 100 health, once a second. Only a
-    // player's gaze counts: a player sees it down its view cone as far as it looks, 10 cells, but
-    // never past 14, as far as a flashlight reaches. Seen, it
-    // backs off for 25s, keeping 12 cells from every body it hunts where it can; hurt, it rages for
-    // 10s. It replans twice a second. Its hiss as it backs off carries 6 cells, its shriek of rage
-    // 16, its strike 8.
+    // once it sees a player in the dark it hunts, and touching it costs 100 health, once a second.
+    // Only a player's gaze counts: a player sees it down its view cone, 10 degrees wider each side,
+    // as far as it looks, 10 cells, but never past 14, as far as a flashlight reaches. Seen, it
+    // backs off for 25s, out of every player's sight within 14 cells by the quickest way, or where
+    // none is out of sight keeping 12 cells from every body it hunts; hurt, it rages for 10s. With
+    // no player in the dark it heads home and wanders up to 6 cells round it, standing 2 to 5s
+    // between legs. It replans twice a second. Its hiss as it backs off carries 6 cells, its
+    // shriek of rage 16, its strike 8.
     stalker: {
       spawning: {
         weight: 10,
@@ -797,10 +805,12 @@ export const config = {
       damage: 100,
       attackCooldown: 1,
       watchRange: CELL * 14,
+      watchMargin: WATCH_MARGIN,
       retreatDistance: CELL * 12,
       retreatSeconds: 25,
       enragedSeconds: 10,
       repathInterval: 0.5,
+      wander: { range: CELL * 6, pause: { min: 2, max: 5 } },
       sounds: { retreat: CELL * 6, enraged: CELL * 16, attack: CELL * 8 },
     },
     // Groups of 3 to 5 sharing a nest, never arriving within 14 cells of a player. Three shovel hits fell one. It forages at 0.8 times a walk and chases at 1.1, sees 6 cells,
@@ -922,6 +932,7 @@ export const config = {
       fleeSeconds: 3,
       flee: { leg: CELL * 6, tries: 12 },
       watchRange: CELL * 14,
+      watchMargin: WATCH_MARGIN,
       damage: 80,
       attackCooldown: 1,
       repathInterval: 0.5,
@@ -974,6 +985,7 @@ export const config = {
       },
       ignores: ["doppelganger"],
       watchRange: CELL * 14,
+      watchMargin: WATCH_MARGIN,
       radius: 14,
       maxHealth: 100,
       speed: PLAYER_SPEED,

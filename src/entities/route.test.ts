@@ -8,7 +8,13 @@ import {
   spawnEntity,
 } from "../sim/index.js";
 import type { Point, TileMap } from "../sim/index.js";
-import { avoidingLight, avoidingWhere, planRoute, steer } from "./route.js";
+import {
+  avoidingLight,
+  avoidingWhere,
+  planRoute,
+  routeToNearest,
+  steer,
+} from "./route.js";
 
 const HALF = 15;
 
@@ -275,4 +281,24 @@ test("avoidingLight names the cells a light reaches, and no others", () => {
   expect(avoid({ col: 8, row: 6 })).toBe(true);
   expect(avoid({ col: 10, row: 6 })).toBe(true);
   expect(avoid({ col: 1, row: 1 })).toBe(false);
+});
+
+describe("routeToNearest", () => {
+  test("heads round the wall to the first wanted cell it can reach", () => {
+    const map = walled();
+    const from = { x: 125, y: 75 };
+    // Right of the wall is wanted; the way there is under its end, past row 3.
+    const route = routeToNearest(map, HALF, from, (at) => at.x > 200) ?? [];
+    const end = route.at(-1);
+    expect(end?.x).toBeGreaterThan(200);
+    expect(end?.y).toBeGreaterThan(200);
+    expect(clear(map, from, route)).toBe(true);
+  });
+
+  test("is empty where it stands is wanted, and null where none is", () => {
+    const map = walled();
+    const from = { x: 125, y: 75 };
+    expect(routeToNearest(map, HALF, from, () => true)).toEqual([]);
+    expect(routeToNearest(map, HALF, from, () => false)).toBeNull();
+  });
 });

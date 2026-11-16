@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Cell, Grid } from "./index.js";
-import { findPath } from "./index.js";
+import { findNearest, findPath } from "./index.js";
 
 /** A grid drawn as rows of text: `#` is blocked, anything else is free. */
 function grid(...lines: string[]): Grid {
@@ -120,5 +120,34 @@ describe("findPath", () => {
 
   test("is null from a blocked start", () => {
     expect(findPath(grid("#.."), cell(0, 0), cell(2, 0))).toBeNull();
+  });
+});
+
+describe("findNearest", () => {
+  test("walks to the wanted cell cheapest to reach, not the nearest as the crow flies", () => {
+    const map = grid(
+      // prettier-ignore
+      ".#.",
+      ".#.",
+      "...",
+    );
+    // (2, 0) is two columns off as the crow flies, but six steps round the wall; (0, 2) is two.
+    const wanted = (at: Cell) =>
+      (at.col === 2 && at.row === 0) || (at.col === 0 && at.row === 2);
+    const path = findNearest(map, cell(0, 0), wanted) ?? [];
+    expect(path.at(-1)).toEqual(cell(0, 2));
+    expect(legal(map, path)).toBe(true);
+  });
+
+  test("is just the start when the start is wanted", () => {
+    expect(findNearest(grid("..."), cell(1, 0), () => true)).toEqual([
+      cell(1, 0),
+    ]);
+  });
+
+  test("is null when no wanted cell is reachable, or from a blocked start", () => {
+    const wanted = (at: Cell) => at.col === 2;
+    expect(findNearest(grid(".#."), cell(0, 0), wanted)).toBeNull();
+    expect(findNearest(grid("#.."), cell(0, 0), wanted)).toBeNull();
   });
 });

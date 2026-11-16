@@ -173,7 +173,7 @@ export {
   looksAt,
   notices,
 } from "./eyes.js";
-export type { Eyes } from "./eyes.js";
+export type { Eyes, Sight } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
 export { entityWho, falls, rises, who } from "./fallen.js";

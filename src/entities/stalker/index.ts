@@ -1,15 +1,19 @@
 import { z } from "zod";
 import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
+  darkSources,
   defineEntity,
   distanceToWall,
   effect,
+  emittedLights,
   hurtSinceLastStep,
+  isLitTo,
   livingBody,
   rounded,
   sound,
 } from "../../sim/index.js";
 import type {
+  Body,
   EntityDefinition,
   Point,
   Session,
@@ -18,12 +22,16 @@ import type {
   WorldEntity,
 } from "../../sim/index.js";
 import {
+  between,
+  coverRoute,
+  inSightOfAny,
   nearest,
   Route,
   strikeEach,
   strikeIf,
   Time,
   walk,
+  wanderLeg,
   Waypoint,
   avenged,
 } from "../hunt.js";
@@ -34,6 +42,7 @@ import {
   preyFor,
   seenPrey,
   touching,
+  watchers,
 } from "../bodies.js";
 import type { Watching } from "../bodies.js";
 import { avoidingWhere, planRoute } from "../route.js";
@@ -46,9 +55,9 @@ const enragedUrl = new URL("./sfx/enraged.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 
 /**
- * The stalker: knows where every body is and which way it faces, creeps up on the nearest out
- * of everyone's sight, backs off when looked at, and goes wild when hurt. Distances in pixels,
- * times in sim seconds.
+ * The stalker: knows where every body is and which way it faces, creeps up on the nearest in the
+ * dark out of everyone's sight, ducks out of sight when looked at, and goes wild when hurt.
+ * Distances in pixels, times in sim seconds.
  */
 export interface StalkerConfig extends Watching {
   /** How the world's spawner brings them. */
@@ -63,7 +72,10 @@ export interface StalkerConfig extends Watching {
   readonly damage: number;
   /** Seconds between two touches' damage. */
   readonly attackCooldown: number;
-  /** Least distance a retreat keeps from every body it hunts, where it can. */
+  /**
+   * Least distance a retreat keeps from every body it hunts, where it can, when nowhere it reaches
+   * is out of sight.
+   */
   readonly retreatDistance: number;
   /** Seconds a retreat lasts before it hunts again. */
   readonly retreatSeconds: number;
@@ -71,6 +83,14 @@ export interface StalkerConfig extends Watching {
   readonly enragedSeconds: number;
   /** Seconds between plans of its route. */
   readonly repathInterval: number;
+  /**
+   * How it wanders with nothing to hunt, once home: legs to spots up to `range` from home, as the
+   * crow flies, standing `pause` seconds between them.
+   */
+  readonly wander: {
+    readonly range: number;
+    readonly pause: { readonly min: number; readonly max: number };
+  };
   /** How far each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly retreat: number;
@@ -83,8 +103,9 @@ const NAME = "stalker";
 
 const GLYPH = "👤";
 
-/** How faint it is drawn while creeping. */
+/** How faint it is drawn while creeping, and while about otherwise unseen. */
 const CREEPING_ALPHA = 0.45;
+const LURKING_ALPHA = 0.7;
 
 /** A cell's middle and its four corners, as offsets from the middle. */
 const CORNERS = [
@@ -97,24 +118,31 @@ const CORNERS = [
 
 const COLOURS = {
   hunt: "#4b4f63",
+  home: "#4b4f63",
+  wander: "#4b4f63",
   retreat: "#7e8bb0",
   enraged: "#e0302a",
 } as const;
 
 /**
  * Everyone reads its mode, to draw it, and its facing; the rest only the host reads.
- * - hunt: heads for the nearest living body it hunts by a way no body watches
- * - retreat: heads home, keeping its distance from every body it hunts, until `until`
+ * - hunt: heads for the nearest body it hunts that stands in the dark, by a way no body watches
+ * - home: with none to hunt, heads home by a way no body watches
+ * - wander: home, it walks legs round it, standing until `standUntil` between them, null while it
+ *   walks one
+ * - retreat: gets out of the sight of every body whose gaze it heeds by the quickest way, then
+ *   heads home by a way none of them sees, until `until`
  * - enraged: runs straight at `foe`, while it lives, or else the nearest living body, until `until`
  * `home` is where it arrived, null until it first steps; `foe` is the body that last hurt it,
  * which it goes for while enraged.
  */
 export const StalkerState = z.object({
-  mode: z.enum(["hunt", "retreat", "enraged"]),
+  mode: z.enum(["hunt", "home", "wander", "retreat", "enraged"]),
   until: Time,
   home: Waypoint.nullable(),
   route: Route,
   repathAt: Time,
+  standUntil: Time.nullable(),
   attackAt: Time,
   attacking: z.boolean(),
   foe: z.string().nullable(),
@@ -134,12 +162,30 @@ export function freshStalker(now: number): StalkerState {
     home: null,
     route: [],
     repathAt: now,
+    standUntil: null,
     attackAt: now,
     attacking: false,
     foe: null,
     facing: 0,
     creeping: false,
   };
+}
+
+/**
+ * The nearest body it hunts that stands in the dark, as it takes the light: wherever it is lit,
+ * by a fixture, the day or a light some body carries, it is passed over. Null for none.
+ */
+function quarryOf(
+  game: Session,
+  self: WorldEntity,
+  config: StalkerConfig,
+): Body | null {
+  const lights = emittedLights(game);
+  const darks = darkSources(game);
+  const dark = preyFor(game, self, config).filter(
+    (body) => !isLitTo(game, self.id, body, lights, darks),
+  );
+  return nearest(self, dark);
 }
 
 /** How far `at` is from the nearest of `bodies`; Infinity with none. */
@@ -151,9 +197,9 @@ function distanceFrom(bodies: readonly Point[], at: Point): number {
 /**
  * Its way home keeping at least the retreat distance from every body it hunts, or, while one is
  * already nearer than that, never nearer than it stands now. With no such way, straight away from
- * the nearest as far as the walls let it run.
+ * the nearest as far as the walls let it run. For when nowhere it reaches is out of sight.
  */
-function retreatRoute(
+function distancingRoute(
   game: Session,
   self: WorldEntity,
   home: Point,
@@ -175,7 +221,55 @@ function retreatRoute(
   return [{ x: self.x + direction.x * run, y: self.y + direction.y * run }];
 }
 
-/** Its route for its mode, planned now. */
+/**
+ * Its retreat: in the sight of any body whose gaze it heeds, as far as the watch range and
+ * whichever way they face, the quickest way out of it, round a corner or past where they see to,
+ * rather than straight home. Out of it, home by a way none of them sees, or standing where it
+ * is hidden when there is none. Where nowhere it reaches is hidden, home keeping its distance.
+ */
+function retreatRoute(
+  game: Session,
+  self: WorldEntity,
+  home: Point,
+  config: StalkerConfig,
+): Point[] {
+  const { map } = game.world;
+  const eyes = watchers(game, self, config);
+  const cover = coverRoute(map, self, eyes, config.watchRange);
+  if (cover === null) return distancingRoute(game, self, home, config);
+  if (cover.length > 0) return cover;
+  const seen = avoidingWhere(map, (at) =>
+    inSightOfAny(map, eyes, at, self.radius, config.watchRange),
+  );
+  return planRoute(map, self.radius, self, home, seen) ?? [];
+}
+
+/**
+ * A way to `to` through no cell any part of which a body whose gaze it heeds watches, its middle
+ * or near any corner, so it never steps into view on the way. The last cell or so up to `to` it
+ * takes whatever way, to reach it at all. Null for none.
+ */
+function unwatchedRoute(
+  game: Session,
+  self: WorldEntity,
+  to: Point,
+  config: StalkerConfig,
+): Point[] | null {
+  const { map } = game.world;
+  const watched = gazeOn(game, self, config);
+  const inset = map.cell * 0.45;
+  const avoid = avoidingWhere(
+    map,
+    (at) =>
+      Math.hypot(at.x - to.x, at.y - to.y) > map.cell * 1.5 &&
+      CORNERS.some(([dx, dy]) =>
+        watched({ x: at.x + dx * inset, y: at.y + dy * inset }),
+      ),
+  );
+  return planRoute(map, self.radius, self, to, avoid);
+}
+
+/** Its route for its mode, planned now; wandering plans its own legs. */
 function plan(
   game: Session,
   self: WorldEntity,
@@ -183,27 +277,23 @@ function plan(
   config: StalkerConfig,
 ): Point[] {
   const { map } = game.world;
+  const home = state.home ?? self;
   switch (state.mode) {
     case "hunt": {
-      const quarry = nearestPrey(game, self, config);
+      const quarry = quarryOf(game, self, config);
       if (quarry === null) return [];
-      const watched = gazeOn(game, self, config);
-      // A cell any part of which is watched, its middle or near any corner, is kept out of, so
-      // a body heading through the cells left never steps into view. The last cell or so up to
-      // its quarry it takes whatever way, to reach it at all.
-      const inset = map.cell * 0.45;
-      const avoid = avoidingWhere(
-        map,
-        (at) =>
-          Math.hypot(at.x - quarry.x, at.y - quarry.y) > map.cell * 1.5 &&
-          CORNERS.some(([dx, dy]) =>
-            watched({ x: at.x + dx * inset, y: at.y + dy * inset }),
-          ),
-      );
-      return planRoute(map, self.radius, self, quarry, avoid) ?? [];
+      return unwatchedRoute(game, self, quarry, config) ?? [];
     }
+    case "home":
+      return (
+        unwatchedRoute(game, self, home, config) ??
+        planRoute(map, self.radius, self, home) ??
+        []
+      );
+    case "wander":
+      return state.route;
     case "retreat":
-      return retreatRoute(game, self, state.home ?? self, config);
+      return retreatRoute(game, self, home, config);
     case "enraged": {
       const prey =
         livingBody(game, state.foe) ?? nearestPrey(game, self, config);
@@ -222,12 +312,30 @@ function enter(
   now: number,
   until: number,
 ): StalkerState {
-  return { ...state, mode, until, route: [], repathAt: now };
+  return { ...state, mode, until, route: [], repathAt: now, standUntil: null };
+}
+
+/** `state` in `mode`, entered anew only if it is not in it already. */
+function settle(state: StalkerState, mode: Mode, now: number): StalkerState {
+  return state.mode === mode ? state : enter(state, mode, now, now);
+}
+
+/** Whether it stands home: within half a cell of where it arrived. */
+function isHome(
+  game: Session,
+  self: WorldEntity,
+  state: StalkerState,
+): boolean {
+  const home = state.home ?? self;
+  return (
+    Math.hypot(home.x - self.x, home.y - self.y) <= game.world.map.cell * 0.5
+  );
 }
 
 /**
- * The mode it moves to: hurt, it rages; a rage or retreat run out goes back to the hunt; and a
- * hunt that the gaze of a body it heeds falls on turns to retreat.
+ * The mode it moves to: hurt, it rages; a rage or retreat runs its length. Otherwise the gaze of a
+ * body it heeds sends it into retreat; a body it hunts in the dark sets it hunting; and with none,
+ * it heads home, then wanders there.
  */
 function think(
   state: StalkerState,
@@ -246,11 +354,15 @@ function think(
       now + config.enragedSeconds,
     );
   }
-  if (state.mode !== "hunt" && now >= state.until)
-    return enter(state, "hunt", now, now);
-  if (state.mode === "hunt" && gazeOn(game, self, config)(self))
+  const timed = state.mode === "retreat" || state.mode === "enraged";
+  if (timed && now < state.until) return state;
+  if (gazeOn(game, self, config)(self))
     return enter(state, "retreat", now, now + config.retreatSeconds);
-  return state;
+  if (quarryOf(game, self, config) !== null) return settle(state, "hunt", now);
+  if (state.mode === "wander") return state;
+  if (state.mode === "home" && isHome(game, self, state))
+    return enter(state, "wander", now, now);
+  return settle(state, "home", now);
 }
 
 /** `state` with its route replanned, when due. */
@@ -261,12 +373,40 @@ function replan(
   config: StalkerConfig,
 ): StalkerState {
   const now = game.worldTime;
+  if (state.mode === "wander") return roam(state, self, game, config);
   if (now < state.repathAt) return state;
   return {
     ...state,
     route: plan(game, self, state, config),
     repathAt: now + config.repathInterval,
   };
+}
+
+/**
+ * Wandering: walks its leg; at its end stands a while, then draws the next, round home. A leg it
+ * cannot draw it stands out again.
+ */
+function roam(
+  state: StalkerState,
+  self: WorldEntity,
+  game: Session,
+  config: StalkerConfig,
+): StalkerState {
+  const now = game.worldTime;
+  if (state.route.length > 0) return state;
+  const stand = (): number => now + between(Math.random, config.wander.pause);
+  if (state.standUntil === null) return { ...state, standUntil: stand() };
+  if (now < state.standUntil) return state;
+  const leg = wanderLeg(
+    game.world.map,
+    self,
+    Math.random,
+    self.radius,
+    config.wander.range,
+    state.home ?? self,
+  );
+  if (leg === null) return { ...state, standUntil: stand() };
+  return { ...state, route: leg, standUntil: null };
 }
 
 interface Sounds {
@@ -333,9 +473,12 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
         touching(game, entity, config.ignores).length > 0,
         config.attackCooldown,
       );
-      // Hunting, with a body it hunts in its own sight, it creeps.
+      // Hunting, with a body it would hunt, one in the dark, in its own sight, it creeps.
       const creeping =
-        next.mode === "hunt" && seenPrey(game, entity, config).length > 0;
+        next.mode === "hunt" &&
+        seenPrey(game, entity, config).some(
+          (body) => !isLitTo(game, entity.id, body),
+        );
       cue(entity, state, next, game, sounds);
       return walk(
         entity,
@@ -353,11 +496,19 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
     },
     draw(ctx, entity, state, now) {
       ctx.save();
-      // Raging, it shakes; hunting, it is hard to make out, and creeping, harder still.
+      // Raging, it shakes; hunting, heading home or wandering, it is hard to make out, and
+      // creeping, harder still.
       const shake = state.mode === "enraged" ? Math.sin(now / 25) * 1.5 : 0;
       const at = { x: entity.x + shake, y: entity.y };
-      ctx.globalAlpha =
-        state.mode !== "hunt" ? 1 : state.creeping ? CREEPING_ALPHA : 0.7;
+      const lurking =
+        state.mode === "hunt" ||
+        state.mode === "home" ||
+        state.mode === "wander";
+      ctx.globalAlpha = !lurking
+        ? 1
+        : state.creeping
+          ? CREEPING_ALPHA
+          : LURKING_ALPHA;
       drawEmoji(ctx, at, GLYPH, entity.radius * 2);
       drawRing(
         ctx,
@@ -373,14 +524,15 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
 }
 
 /**
- * The stalker: alone, arriving in the dark out of every player's sight. It knows
- * where every body is and which way each faces, and comes up on the nearest along a way no
- * body looks down, faster than a walk, slowing to a creep once it has that body in its own
- * sight. Caught in the gaze of a kind it heeds, players alone as configured, it hisses and backs
- * off to
- * where it arrived, keeping well away, for a long while. Hurt, it shrieks and runs at whatever
- * lives nearest, for a short while. Whatever it touches takes a killing blow. Light means nothing
- * to it once it is about; a stun holds it like anything else.
+ * The stalker: alone, arriving in the dark out of every player's sight. It knows where every body
+ * is and which way each faces, and comes up on the nearest standing in the dark along a way no
+ * body looks down, faster than a walk, slowing to a creep once it has that body in its own sight.
+ * A body in the light it passes over; with none in the dark it goes home and wanders there.
+ * Caught in the gaze of a kind it heeds, players alone as configured, it hisses and gets out of
+ * their sight by the quickest way, round a corner or past where they see to, then makes its way
+ * home unseen, for a long while. Hurt, it shrieks and runs at whatever lives nearest, for a short
+ * while. Whatever it touches takes a killing blow. It walks through light as through dark; a
+ * stun holds it like anything else.
  */
 export const stalker = defineEntity(NAME, (config: StalkerConfig) => ({
   ...definition(config),
