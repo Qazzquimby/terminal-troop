@@ -345,7 +345,9 @@ function cornerRayOffsets(
   const minCol = Math.max(0, Math.floor((origin.x - limit) / map.cell));
   const maxCol = Math.min(map.cols, Math.ceil((origin.x + limit) / map.cell));
   const minRow = Math.max(0, Math.floor((origin.y - limit) / map.cell));
-  const maxRow = Math.min(map.rows, Math.ceil((origin.y + limit) / map.cell));
+  // A viewer below the map stands in a pocket, whose corners lie past its last row.
+  const lastRow = origin.y > map.rows * map.cell ? Infinity : map.rows;
+  const maxRow = Math.min(lastRow, Math.ceil((origin.y + limit) / map.cell));
   const turn = Math.PI * 2;
 
   for (let row = minRow; row <= maxRow; row++) {

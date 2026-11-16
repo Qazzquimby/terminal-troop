@@ -1,4 +1,4 @@
-import { carriedWeight, isOn, usesLeft } from "../sim/index.js";
+import { carriedWeight, glyphOf, isOn, usesLeft } from "../sim/index.js";
 import type { CarriedItem, HeldSlot, Inventory } from "../sim/index.js";
 
 /** How the toolbar shows items. */
@@ -69,7 +69,7 @@ export function slotViews(
 ): SlotView[] {
   return inventory.map((item, index) => ({
     number: String(index + 1),
-    glyph: item?.emoji ?? "",
+    glyph: item === null ? "" : glyphOf(item, item.state),
     glint: item?.glint ?? null,
     name: item?.name ?? "",
     weight:

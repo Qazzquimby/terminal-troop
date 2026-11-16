@@ -213,8 +213,82 @@ export function buildDevWorld(
 }
 
 export function isSolid(map: TileMap, col: number, row: number): boolean {
-  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return true;
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows)
+    return pocketOfCell(map, col, row) === null;
   return map.solid[row * map.cols + col] === 1;
+}
+
+/*
+ * Pockets: small walled rooms off the map, below its bottom edge, for holding bodies apart from
+ * the world, such as whatever a pocketball has caught. Every cell outside the map is solid but a
+ * pocket's floor, so a body in one moves, sees and is seen as in any room, walled in. They lie far
+ * enough from the map and from each other that no noise, light or blast reaches between them, on a
+ * lattice of columns within the map's own, so a wall cell's key stays unique.
+ */
+const POCKET = {
+  /** Side of a pocket's floor, in cells. */
+  size: 3,
+  /** Cells between the map's bottom edge and the first row of pockets. */
+  gap: 60,
+  /** Cells from one pocket to the next, across and down: more than the loudest noise carries. */
+  spacing: 60,
+} as const;
+
+/** How many pockets lie in one row of the lattice under `map`. */
+const pocketsPerRow = (map: TileMap): number =>
+  Math.max(1, Math.floor((map.cols - POCKET.size - 1) / POCKET.spacing) + 1);
+
+/** The pocket whose floor holds cell `col`, `row`, outside `map`; null for none. */
+function pocketOfCell(map: TileMap, col: number, row: number): number | null {
+  const below = row - map.rows - POCKET.gap;
+  if (below < 0 || col < 1) return null;
+  const across = pocketsPerRow(map);
+  const down = Math.floor(below / POCKET.spacing);
+  const over = Math.floor((col - 1) / POCKET.spacing);
+  if (over >= across) return null;
+  if (below - down * POCKET.spacing >= POCKET.size) return null;
+  if (col - 1 - over * POCKET.spacing >= POCKET.size) return null;
+  return down * across + over;
+}
+
+/** The floor of pocket `index` under `map`, numbered from 0, in pixels. */
+export function pocketRect(map: TileMap, index: number): Rect {
+  const across = pocketsPerRow(map);
+  const col = 1 + (index % across) * POCKET.spacing;
+  const row =
+    map.rows + POCKET.gap + Math.floor(index / across) * POCKET.spacing;
+  const side = POCKET.size * map.cell;
+  return { x: col * map.cell, y: row * map.cell, w: side, h: side };
+}
+
+/** The middle of pocket `index`'s floor under `map`. */
+export function pocketCentre(map: TileMap, index: number): Point {
+  const { x, y, w, h } = pocketRect(map, index);
+  return { x: x + w / 2, y: y + h / 2 };
+}
+
+/** The pocket `at` stands in, by number; null when it is in none. */
+export function pocketAt(map: TileMap, at: Point): number | null {
+  const col = Math.floor(at.x / map.cell);
+  const row = Math.floor(at.y / map.cell);
+  if (!Number.isFinite(col) || !Number.isFinite(row)) return null;
+  if (col >= 0 && row >= 0 && col < map.cols && row < map.rows) return null;
+  return pocketOfCell(map, col, row);
+}
+
+/** Every pocket whose floor `rect`, in pixels, overlaps, under `map`. */
+export function pocketsIn(map: TileMap, rect: Rect): number[] {
+  const found: number[] = [];
+  const minRow = Math.max(map.rows, Math.floor(rect.y / map.cell));
+  const maxRow = Math.floor((rect.y + rect.h) / map.cell);
+  const minCol = Math.max(0, Math.floor(rect.x / map.cell));
+  const maxCol = Math.min(map.cols, Math.floor((rect.x + rect.w) / map.cell));
+  for (let row = minRow; row <= maxRow; row++)
+    for (let col = minCol; col <= maxCol; col++) {
+      const pocket = pocketOfCell(map, col, row);
+      if (pocket !== null && !found.includes(pocket)) found.push(pocket);
+    }
+  return found;
 }
 
 /** The index of the cell holding `at`, or -1 when it is outside the world. */

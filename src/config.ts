@@ -374,13 +374,15 @@ export const config = {
       // its body, so only something pressed against it hears.
       storage: { slots: 6, noiseRadius: CELL, volume: 0.7 },
       // Sells for the team's credit, which a scrap's sale adds 1 to, so a price is that many scrap.
-      // A teleporter goes for 5 and a turret 8, dear as they are rare. The register rings 2 cells off.
+      // A teleporter goes for 5, a pocketball 6 and a turret 8, dear as they are rare. The register
+      // rings 2 cells off.
       shop: {
         wares: [
           { item: "walkie", price: 2 },
           { item: "flashlight", price: 3 },
           { item: "shovel", price: 3 },
           { item: "teleporter", price: 5 },
+          { item: "pocketball", price: 6 },
           { item: "turret", price: 8 },
         ],
         noiseRadius: CELL * 2,
@@ -460,6 +462,17 @@ export const config = {
       spread: CELL * 2,
       flash: 30,
       sounds: { hum: CELL * 8, zap: CELL * 10, fizzle: CELL * 4 },
+      volume: 0.8,
+    },
+    // A thrown pocketball flies 15 cells a second, so its 6 cells take 0.4s, and can't touch its
+    // thrower until it has flown a cell. Each bounce taps 3 cells out; catching or letting out a
+    // body flashes a body wide at both ends with a pop heard 8 cells off.
+    pocketball: {
+      radius: 6,
+      speed: CELL * 15,
+      grace: CELL,
+      flash: 30,
+      sounds: { bounce: CELL * 3, capture: CELL * 8, release: CELL * 8 },
       volume: 0.8,
     },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
@@ -1031,6 +1044,17 @@ export const config = {
       cooldown: 0.5,
       volume: 0.6,
       placeNoiseRadius: CELL,
+    },
+    // Thrown 6 cells. Rare, as the turret, as it takes a monster out of the world for as long as
+    // it is kept, and light. Its throw whooshes 2 cells out, and it lands with a clack heard 2.
+    pocketball: {
+      weight: 2,
+      loot: { weight: 3, rarity: "rare" },
+      cooldown: 0.5,
+      range: CELL * 6,
+      volume: 0.7,
+      throwNoiseRadius: CELL * 2,
+      dropNoiseRadius: CELL * 2,
     },
     // One use, light, and as common as a walkie. Wrapped on whoever is within a shovel's reach in
     // front, or on its user: three quarters of a body's full health back, or a corpse up on a
