@@ -774,7 +774,7 @@ export const config = {
       beepGap: 4,
       triggerRange: CELL * 2,
       ignores: ["landMine", "mineLayer"],
-      fuse: 0.3,
+      fuse: 0.6e,
       blast: { radius: CELL * 2, centre: 120, edge: 60 },
       breaksWalls: false,
       sounds: {
