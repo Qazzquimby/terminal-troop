@@ -16,6 +16,7 @@ import { teleporter } from "./teleporter/index.js";
 import { livingWall } from "./living-wall/index.js";
 import { gloom } from "./gloom/index.js";
 import { recall } from "./recall/index.js";
+import { pocketball } from "./pocketball/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -27,6 +28,12 @@ export {
 export { placeStunTrap } from "./stun-trap/index.js";
 export { placeTurret } from "./turret/index.js";
 export { placeTeleporter } from "./teleporter/index.js";
+export {
+  POCKETBALL_ITEM,
+  pocketballGlyph,
+  pocketOf,
+  throwPocketball,
+} from "./pocketball/index.js";
 
 /** Every kind of entity in the game; the room numbers kinds by this order. */
 const ENTITIES = [
@@ -48,6 +55,7 @@ const ENTITIES = [
   livingWall,
   gloom,
   recall,
+  pocketball,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

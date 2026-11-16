@@ -280,6 +280,14 @@ export const testEntitiesConfig = {
     sounds: { hum: 400, zap: 500, fizzle: 200 },
     volume: 1,
   },
+  pocketball: {
+    radius: 6,
+    speed: 750,
+    grace: 50,
+    flash: 30,
+    sounds: { bounce: 150, capture: 400, release: 400 },
+    volume: 1,
+  },
   snail: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,
@@ -643,6 +651,14 @@ export const testItemsConfig: ItemsConfig = {
     cooldown: 0.5,
     volume: 1,
     placeNoiseRadius: 50,
+  },
+  pocketball: {
+    weight: 0,
+    cooldown: 0.5,
+    range: 300,
+    volume: 1,
+    throwNoiseRadius: 100,
+    dropNoiseRadius: 100,
   },
   loot: {
     scatter: { count: 0, seed: 6, clearance: 200 },

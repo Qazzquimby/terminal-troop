@@ -1,4 +1,4 @@
-import { cabinShop, cabinStorage, usesLeft } from "../sim/index.js";
+import { cabinShop, cabinStorage, glyphOf, usesLeft } from "../sim/index.js";
 import type { CarriedItem, Inventory, Session } from "../sim/index.js";
 import { button, make } from "./cabin.js";
 import type { CabinPanel, CabinSend } from "./cabin.js";
@@ -17,7 +17,8 @@ const STORAGE_COLUMNS = 3;
 function label(item: CarriedItem | null): string {
   if (item === null) return "·";
   const left = usesLeft(item);
-  return left === null ? item.emoji : `${item.emoji}${String(left)}`;
+  const glyph = glyphOf(item, item.state);
+  return left === null ? glyph : `${glyph}${String(left)}`;
 }
 
 /** A slot button for `item`, its name as its tooltip, or `empty` for none. */

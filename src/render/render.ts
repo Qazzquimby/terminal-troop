@@ -24,6 +24,7 @@ import {
   emittedLights,
   inDarkness,
   footprintOf,
+  glyphOf,
   heldItemOf,
   isAboard,
   isGhost,
@@ -35,6 +36,8 @@ import {
   lightSources,
   litWalls,
   movement,
+  pocketRect,
+  pocketsIn,
   renderAim,
   drawnLocal,
   renderPosition,
@@ -118,6 +121,21 @@ function drawTerrain(
   ctx.save();
   ctx.fillStyle = "#181818";
   ctx.fillRect(0, 0, world.W, world.H);
+  // Any pocket in view, off the map: a floor like any room's, its cells marked out.
+  const view = {
+    x: camera.x,
+    y: camera.y,
+    w: viewWidth(camera),
+    h: viewHeight(camera),
+  };
+  for (const pocket of pocketsIn(map, view)) {
+    const floor = pocketRect(map, pocket);
+    ctx.fillRect(floor.x, floor.y, floor.w, floor.h);
+    ctx.strokeStyle = "#252525";
+    for (let y = floor.y; y < floor.y + floor.h; y += map.cell)
+      for (let x = floor.x; x < floor.x + floor.w; x += map.cell)
+        ctx.strokeRect(x, y, map.cell, map.cell);
+  }
   ctx.fillStyle = TERRAIN.road;
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
@@ -169,7 +187,8 @@ function drawPlayer(
   if (player.use !== null)
     game.items.get(player.use.item)?.draw?.(ctx, player.use, game.time);
   const held = heldItemOf(game, player);
-  if (held !== null) drawHeldItem(ctx, player, player.aim, held.emoji);
+  if (held !== null)
+    drawHeldItem(ctx, player, player.aim, glyphOf(held, held.state));
   if (away) {
     ctx.font = "10px system-ui";
     ctx.fillStyle = "#aaa";

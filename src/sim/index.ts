@@ -1,4 +1,9 @@
-export { isSweepFree } from "./collision.js";
+export {
+  isSweepFree,
+  moveWithCollision,
+  nearestFreePoint,
+} from "./collision.js";
+export { massOf } from "./mass.js";
 export {
   applyEntityChanges,
   applyEntitySnapshot,
@@ -83,7 +88,7 @@ export type {
 export { renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
-export { carriedWeight, isOn, usesLeft } from "./inventory.js";
+export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";
 export { itemInstances, makerOf, spendInstanceUses } from "./item-instances.js";
 export type { ItemInstance } from "./item-instances.js";
 export { onAir, voiceRoutes } from "./voice-routes.js";
@@ -99,6 +104,10 @@ export {
   isSolid,
   mulberry32,
   mulberry32Next,
+  pocketAt,
+  pocketCentre,
+  pocketRect,
+  pocketsIn,
   randomFreePosition,
   dangerWeight,
   remoteness,

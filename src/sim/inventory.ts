@@ -30,6 +30,11 @@ export interface ItemDefinition {
   /** The glyph the item is drawn with. */
   readonly emoji: string;
   /**
+   * The glyph one of it is drawn with given the state it keeps, wherever it is drawn: a pocketball
+   * full or empty, say. Always `emoji` when left out.
+   */
+  readonly emojiFor?: (state: ItemState | undefined) => string;
+  /**
    * A CSS colour its glyph glows and glints in, wherever it is drawn, to tell a precious item from
    * a plain one sharing its glyph; none when left out.
    */
@@ -57,6 +62,12 @@ export interface CarriedItem extends ItemDefinition {
 
 /** One item per slot; items do not stack. */
 export type Inventory = (CarriedItem | null)[];
+
+/** The glyph `item` is drawn with, keeping `state`: its own for that state, or its usual one. */
+export const glyphOf = (
+  item: Pick<ItemDefinition, "emoji" | "emojiFor">,
+  state: ItemState | undefined,
+): string => item.emojiFor?.(state) ?? item.emoji;
 
 /** The uses `item` has left; null for an item whose uses are unlimited. */
 export function usesLeft(item: CarriedItem): number | null {

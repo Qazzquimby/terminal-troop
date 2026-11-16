@@ -17,7 +17,14 @@ import {
   spawnEntity,
 } from "./entities.js";
 import { hasRoom, isReaching, itemIn } from "./inventories.js";
-import { isFull, isOn, ItemId, ItemState, UsesLeft } from "./inventory.js";
+import {
+  glyphOf,
+  isFull,
+  isOn,
+  ItemId,
+  ItemState,
+  UsesLeft,
+} from "./inventory.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { controlHeldItem } from "./use.js";
@@ -102,8 +109,9 @@ export function registerWorldItems(game: Session): void {
     tags: [ITEM_TAG],
     data: WorldItemData,
     draw(ctx, entity, { item, state }, now, view) {
-      const glyph = view.itemDefinitions.get(item)?.emoji;
-      if (glyph === undefined) return;
+      const definition = view.itemDefinitions.get(item);
+      if (definition === undefined) return;
+      const glyph = glyphOf(definition, state);
       ctx.save();
       ctx.font = `${String(radius * 2)}px system-ui`;
       ctx.textAlign = "center";
