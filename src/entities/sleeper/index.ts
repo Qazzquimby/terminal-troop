@@ -62,6 +62,8 @@ export interface SleeperConfig extends Hunting {
   readonly sightRange: number;
   /** How close a body she sees, player or monster, must be to wake her. */
   readonly wakeRange: number;
+  /** Her running speed, as a share of a player's sprint. */
+  readonly runShare: number;
   /** Seconds she growls at a body that close before she wakes, if they are still there. */
   readonly warnSeconds: number;
   /** Seconds she stays enraged, unless she kills before then. */
@@ -169,9 +171,10 @@ export function freshSleeper(now: number, config: SleeperConfig): SleeperState {
   };
 }
 
-function runSpeed(game: Session): number {
+/** The speed she runs at whenever she moves: a share of a player's sprint. */
+function runSpeed(game: Session, config: SleeperConfig): number {
   const { player } = game.config;
-  return player.speed * player.sprintMultiplier * 0.9;
+  return player.speed * player.sprintMultiplier * config.runShare;
 }
 
 /** A point drawn `min` to `max` from `at`, any way. */
@@ -515,7 +518,7 @@ function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
       );
       const next = bark(acted, game, config);
       cue(entity, state, next, game, sounds);
-      const route = steer(entity, next.route, runSpeed(game), dt);
+      const route = steer(entity, next.route, runSpeed(game, config), dt);
       return { ...next, route };
     },
     strikes(entity, state, game): Strike[] {

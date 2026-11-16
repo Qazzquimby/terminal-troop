@@ -216,7 +216,9 @@ test("once her rage runs out she runs for a dark spot away from the players and 
   run(game, 0.6);
   expect(stateOf(sleeper).mode).toBe("retreat");
   const speed =
-    testSimConfig.player.speed * testSimConfig.player.sprintMultiplier;
+    testSimConfig.player.speed *
+    testSimConfig.player.sprintMultiplier *
+    config.runShare;
   expect(Math.hypot(sleeper.vx, sleeper.vy)).toBeCloseTo(speed);
   run(game, 4);
   expect(stateOf(sleeper).mode).toBe("dormant");

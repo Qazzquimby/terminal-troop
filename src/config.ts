@@ -627,6 +627,7 @@ export const config = {
       maxHealth: SHOVEL_DAMAGE * 10,
       sightRange: CELL * 8,
       wakeRange: CELL * 5,
+      runShare: 0.9,
       warnSeconds: 1,
       rageSeconds: 10,
       wanderRange: CELL * 8,
