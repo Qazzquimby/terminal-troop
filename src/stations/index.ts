@@ -7,7 +7,8 @@ import type { Playing } from "../sim/index.js";
 
 /** Each station's song, by station number. */
 export const STATIONS: readonly string[] = [
-  new URL("./songs/rips/breakcore_delivery__bachrees.opus", import.meta.url).href,
+  new URL("./songs/rips/breakcore_delivery__bachrees.opus", import.meta.url)
+    .href,
   new URL("./songs/rips/baka_mitai.opus", import.meta.url).href,
   new URL("./songs/rips/overworld_theme_unused_smw.opus", import.meta.url).href,
   new URL("./songs/song-4.mp3", import.meta.url).href,
