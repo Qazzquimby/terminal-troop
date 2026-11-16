@@ -1,5 +1,6 @@
 import type {
   AmbientLight,
+  DarkSource,
   Entity,
   Footprint,
   Interpolated,
@@ -9,6 +10,7 @@ import type {
   TileMap,
   VisibilityPolygon,
   VisionSource,
+  WallFace,
   World,
 } from "../sim/index.js";
 import {
@@ -16,8 +18,11 @@ import {
   aimAt,
   ambientLightAt,
   ambientPolygons,
+  canSeeFrom,
+  darkSources,
   daylightNow,
   emittedLights,
+  inDarkness,
   footprintOf,
   heldItemOf,
   isAboard,
@@ -778,6 +783,90 @@ function keepWithin(scene: Layer, mask: Layer): void {
   scene.ctx.restore();
 }
 
+/** Takes the scene away wherever `mask` reaches, its edge soft: darkness no light lights. */
+function unlight(scene: Layer, mask: Layer): void {
+  scene.ctx.save();
+  scene.ctx.globalCompositeOperation = "destination-out";
+  scene.ctx.drawImage(mask.canvas, -EDGE_FADE, -EDGE_FADE);
+  scene.ctx.restore();
+}
+
+/**
+ * The lit wall faces of `walls` but those `dark` says lie in darkness, each judged by its
+ * middle, a little out from the wall; all of them with no darkness given off.
+ */
+function outOfDarkness(
+  walls: VisibilityPolygon["walls"],
+  dark: ((point: Point) => boolean) | undefined,
+): VisibilityPolygon["walls"] {
+  if (dark === undefined) return walls;
+  const kept = new Map<number, readonly WallFace[]>();
+  for (const [key, faces] of walls) {
+    const lit = faces.filter(
+      ({ from, to, normal }) =>
+        !dark({
+          x: (from.x + to.x) / 2 + normal.x * SHROUD_WALL_INSET,
+          y: (from.y + to.y) / 2 + normal.y * SHROUD_WALL_INSET,
+        }),
+    );
+    if (lit.length > 0) kept.set(key, lit);
+  }
+  return kept;
+}
+
+/** How far out from a wall face its middle is judged for darkness, in pixels. */
+const SHROUD_WALL_INSET = 2;
+
+/** Wisps of smoke each shroud of darkness is drawn with, turning slowly about its heart. */
+const SHROUD_WISPS = 7;
+const SHROUD_SMOKE = "rgba(70, 52, 92, 0.22)";
+const SHROUD_CLEAR = "rgba(70, 52, 92, 0)";
+
+/**
+ * Draws each of `darks` the viewer sees any of, from its heart or round its edge, as wisps of
+ * dark smoke drifting about it, so darkness something gives off shows as a shape against the
+ * night. Darkness in view but out of sight is not drawn, so it gives nothing away.
+ */
+function drawShrouds(
+  ctx: CanvasRenderingContext2D,
+  darks: readonly DarkSource[],
+  sources: readonly VisionSource[],
+  map: TileMap,
+  camera: Camera,
+  now: number,
+): void {
+  const seconds = now / 1000;
+  for (const dark of darks) {
+    if (!inView({ ...dark, radius: dark.range }, camera)) continue;
+    const seen = [0, 1, 2, 3, 4, 5, 6, 7, 8].some((i) => {
+      const angle = (i * Math.PI) / 4;
+      const out = i === 8 ? 0 : dark.range * 0.7;
+      const at = {
+        x: dark.x + Math.cos(angle) * out,
+        y: dark.y + Math.sin(angle) * out,
+      };
+      return sources.some((source) => canSeeFrom(map, source, at));
+    });
+    if (!seen) continue;
+    for (let wisp = 0; wisp < SHROUD_WISPS; wisp++) {
+      const turn = (wisp % 2 === 0 ? 1 : -1) * seconds * 0.25;
+      const angle = (wisp * Math.PI * 2) / SHROUD_WISPS + turn;
+      const breathe = 0.85 + 0.15 * Math.sin(seconds * 0.9 + wisp * 1.7);
+      const out = dark.range * 0.45 * breathe;
+      const x = dark.x + Math.cos(angle) * out;
+      const y = dark.y + Math.sin(angle) * out;
+      const size = dark.range * 0.55;
+      const smoke = ctx.createRadialGradient(x, y, 0, x, y, size);
+      smoke.addColorStop(0, SHROUD_SMOKE);
+      smoke.addColorStop(1, SHROUD_CLEAR);
+      ctx.fillStyle = smoke;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 /** Lays `mask`'s warm shapes over the scene, only where the scene still shows. */
 function layLight(scene: Layer, mask: Layer): void {
   scene.ctx.save();
@@ -975,6 +1064,12 @@ export function draw(
   const daylight = daylightNow(game);
   const ambient = (point: Point) =>
     ambientLightAt(game.world, point, daylight) !== null;
+  // Darkness something gives off, which no light lights: nothing in it shows.
+  const darks = darkSources(game);
+  const dark =
+    darks.length === 0
+      ? undefined
+      : (point: Point) => inDarkness(map, darks, point);
   const sunlit = ambientPolygons(game.world, area, "sun", daylight);
   const fixtureLit = ambientPolygons(game.world, area, "fixture");
   const seen = tracePolygons(map, sources, camera, rays);
@@ -983,7 +1078,7 @@ export function draw(
     ...sunlit,
     ...fixtureLit,
   ];
-  const walls = litWalls(seen, lit);
+  const walls = outOfDarkness(litWalls(seen, lit), dark);
   // A stunned viewer sees nothing, so learns nothing of the map.
   const blind = blindness(game, viewer);
   if (blind === 0) memory.see({ seen, lit, walls }, area, now);
@@ -1024,6 +1119,7 @@ export function draw(
         body,
         game.config.vision.footprintSpacing,
         ambient,
+        dark,
       ),
     );
     drawFlashes(sceneCtx, flashes, now);
@@ -1054,7 +1150,15 @@ export function draw(
     );
     layLight(scene, tint);
   }
+  if (darks.length > 0) {
+    const shade = tracePolygons(map, darks, camera, rays);
+    if (shade.length > 0)
+      unlight(scene, featheredMask(mask, shade, camera, width, height, "#000"));
+  }
   ctx.drawImage(scene.canvas, 0, 0);
+  applyCamera(ctx, camera, () => {
+    drawShrouds(ctx, darks, sources, map, camera, now);
+  });
 
   // What the local player hears: a ring for a player's noise or one whose maker it can see, a
   // glow at the screen's edge for any other.
@@ -1062,7 +1166,7 @@ export function draw(
     blind === 0 &&
     (ripple.player ||
       (inView({ ...ripple.origin, radius: 0 }, camera) &&
-        isVisible(map, sources, lights, ripple.origin, ambient)));
+        isVisible(map, sources, lights, ripple.origin, ambient, dark)));
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));
 

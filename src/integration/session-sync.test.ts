@@ -199,10 +199,10 @@ test("the host's entities reach the other client, ids, kinds, spots and state al
   expect(a.hostId()).toBe("a");
   // Three zombies, the cruiser, then three scrap lying about, numbered by the content list (the
   // stun trap, the snail, the blind dog, the exploder, the sleeper, the statue, the stalker, the
-  // hoarder, the land mine, the mine layer, the turret, the teleporter, the giant snail and the
-  // living wall come between) on both clients.
+  // hoarder, the land mine, the mine layer, the turret, the teleporter, the giant snail, the
+  // living wall and the gloom come between) on both clients.
   expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([
-    1, 1, 1, 2, 17, 17, 17,
+    1, 1, 1, 2, 18, 18, 18,
   ]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 

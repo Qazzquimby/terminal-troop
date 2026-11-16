@@ -4,6 +4,7 @@ export {
   applyEntitySnapshot,
   INERT_TAG,
   ITEM_TAG,
+  SHUNS_LIGHT_TAG,
   UNNOTICED_TAG,
   entitySnapshot,
   registerEntityType,
@@ -210,9 +211,26 @@ export type {
   LightEmission,
   VisibilityPolygon,
   VisionSource,
+  WallFace,
 } from "./vision.js";
-export { isStunned, stun, stunLeft, stunnedIds } from "./status.js";
-export { ambientLightAt, ambientPolygons, isLit } from "./light.js";
+export {
+  isShrouded,
+  isStunned,
+  shroud,
+  shroudLeft,
+  stun,
+  stunLeft,
+  stunnedIds,
+} from "./status.js";
+export {
+  ambientLightAt,
+  ambientPolygons,
+  darkSources,
+  inDarkness,
+  isLit,
+  isLitTo,
+} from "./light.js";
+export type { DarkSource } from "./light.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
 export { areaAt } from "./map.js";
 export type { AmbientLight } from "./light.js";

@@ -271,7 +271,7 @@ test("avoidingLight names the cells a light reaches, and no others", () => {
     draw: () => undefined,
   });
   spawnEntity(game, "lamp", 425, 325, {});
-  const avoid = avoidingLight(game);
+  const avoid = avoidingLight(game, game.local.id);
   expect(avoid({ col: 8, row: 6 })).toBe(true);
   expect(avoid({ col: 10, row: 6 })).toBe(true);
   expect(avoid({ col: 1, row: 1 })).toBe(false);

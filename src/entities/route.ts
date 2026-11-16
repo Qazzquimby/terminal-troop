@@ -1,6 +1,13 @@
 import { findPath } from "../lib/astar/index.js";
 import type { Cell, Grid } from "../lib/astar/index.js";
-import { emittedLights, isAreaFree, isLit, isSweepFree } from "../sim/index.js";
+import {
+  darkSources,
+  emittedLights,
+  isAreaFree,
+  isLit,
+  isShrouded,
+  isSweepFree,
+} from "../sim/index.js";
 import type { Point, Session, TileMap } from "../sim/index.js";
 
 /** Longest route a monster keeps; a longer one is not taken. */
@@ -215,12 +222,16 @@ export function planRoute(
 }
 
 /**
- * Keeps a route off ground lit now, as `isLit` has it: by its place's own light or a light given
- * off there. Each cell is judged by its middle, once a plan, so make one for each plan.
+ * Keeps the route of the body `id` off ground lit now, as `isLitTo` has it: by its place's own
+ * light or a light given off there, out of any darkness given off. A shrouded body takes the whole
+ * world for dark, and keeps off nothing. Each cell is judged by its middle, once a plan, so make
+ * one for each plan.
  */
-export function avoidingLight(game: Session): Avoid {
+export function avoidingLight(game: Session, id: string): Avoid {
+  if (isShrouded(game, id)) return () => false;
   const lights = emittedLights(game);
-  return avoidingWhere(game.world.map, (at) => isLit(game, at, lights));
+  const darks = darkSources(game);
+  return avoidingWhere(game.world.map, (at) => isLit(game, at, lights, darks));
 }
 
 /**

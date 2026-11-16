@@ -1,7 +1,8 @@
-import type { Point, Rng, Room, World } from "./map.js";
+import type { Point, Rng, Room, TileMap, World } from "./map.js";
 import { daylightNow } from "./day.js";
 import { AREA, exitDistance, isSolid } from "./map.js";
 import type { Session } from "./session.js";
+import { isShrouded } from "./status.js";
 import { canSeeFrom, emittedLights, wallKey } from "./vision.js";
 import type { LightSource, VisibilityPolygon, WallFace } from "./vision.js";
 
@@ -139,19 +140,63 @@ export function ambientLightAt(
 }
 
 /**
+ * A spot of darkness something gives off: no light lights a point within `range` of it along a
+ * clear line, whatever its kind, the sun's included.
+ */
+export interface DarkSource extends Point {
+  readonly range: number;
+}
+
+/** The darkness every world entity gives off now, as its kind's `darkness` has it. */
+export function darkSources(game: Session): DarkSource[] {
+  const darks: DarkSource[] = [];
+  game.entities.forEach((entity) => {
+    const range = game.entityTypes.get(entity.kind)?.darkness(entity) ?? 0;
+    if (range > 0) darks.push({ x: entity.x, y: entity.y, range });
+  });
+  return darks;
+}
+
+/** Whether any of `darks` reaches `at` along a clear line, so no light there lights it. */
+export function inDarkness(
+  map: TileMap,
+  darks: readonly DarkSource[],
+  at: Point,
+): boolean {
+  return darks.some((dark) => canSeeFrom(map, dark, at));
+}
+
+/**
  * Whether `at` is lit: by its place's own light, sunlight as the hour has it or a powered fixture, or by a light
- * something gives off there, such as a flashlight or the cruiser's headlights. A player's own
- * sight lights nothing. Monsters ask it: they appear only where it is dark, and may later avoid or
- * seek it. `lights` are the lights given off now, for a caller asking of many points at once.
+ * something gives off there, such as a flashlight or the cruiser's headlights; and no darkness
+ * something gives off reaches it, which no light lights. A player's own sight lights nothing.
+ * Monsters ask it: they appear only where it is dark, and those that shun light avoid it. `lights`
+ * and `darks` are those given off now, for a caller asking of many points at once.
  */
 export function isLit(
   game: Session,
   at: Point,
   lights: readonly LightSource[] = emittedLights(game),
+  darks: readonly DarkSource[] = darkSources(game),
 ): boolean {
   const { world } = game;
+  if (inDarkness(world.map, darks, at)) return false;
   if (ambientLightAt(world, at, daylightNow(game)) !== null) return true;
   return lights.some((light) => canSeeFrom(world.map, light, at));
+}
+
+/**
+ * Whether `at` is lit as the body `id` takes it: as `isLit` has it, but never for a shrouded body,
+ * which takes the whole world for dark. Whatever a body does by light should ask this.
+ */
+export function isLitTo(
+  game: Session,
+  id: string,
+  at: Point,
+  lights?: readonly LightSource[],
+  darks?: readonly DarkSource[],
+): boolean {
+  return !isShrouded(game, id) && isLit(game, at, lights, darks);
 }
 
 /** A box of the world, in pixels. */

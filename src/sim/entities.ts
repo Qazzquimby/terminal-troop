@@ -48,6 +48,13 @@ export const ITEM_TAG = "item";
 export const UNNOTICED_TAG = "unnoticed";
 
 /**
+ * A kind tag for kinds that shun light: they keep to the dark, steering round lit ground and
+ * waking at light, unless something leaves them blind to it (`isShrouded`). A kind without it pays
+ * light no mind.
+ */
+export const SHUNS_LIGHT_TAG = "shuns-light";
+
+/**
  * Damage an entity deals to `target`, any body. It is down to `by`, a body's id, or to no one for
  * null; to the striking entity when left out.
  */
@@ -85,6 +92,11 @@ export interface EntityDefinition<S> {
     entity: WorldEntity,
     data: S,
   ) => LightEmission | readonly LightEmission[] | null;
+  /**
+   * How far round it, in pixels, it gives off darkness, given its state: no light lights a point
+   * it reaches along a clear line, and nothing there shows to anyone. None when left out, null or 0.
+   */
+  readonly darkness?: (entity: WorldEntity, data: S) => number | null;
   /**
    * How it sees, given its state: the view cone it looks down and how far it sees all round, or
    * null while it sees nothing. A kind without it is blind. A stunned entity sees nothing,
@@ -151,6 +163,8 @@ export interface EntityType {
   /** Its body's box, turned the way it points now; null for a kind whose body is its disc. */
   box(entity: WorldEntity): BoxPose | null;
   light(entity: WorldEntity): readonly LightEmission[];
+  /** How far round it it gives off darkness, in pixels; 0 for none. */
+  darkness(entity: WorldEntity): number;
   eyes(entity: WorldEntity, game: Session): Eyes | null;
   plays(entity: WorldEntity, game: Session): Playing | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
@@ -198,6 +212,14 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       if (!parsed.success) return [];
       const light = definition.light?.(entity, parsed.data) ?? [];
       return "range" in light ? [light] : light;
+    },
+    darkness(entity) {
+      const { darkness } = definition;
+      // Most kinds give off none, and pay nothing to parse their state for it.
+      if (darkness === undefined) return 0;
+      const parsed = schema.safeParse(entity.data);
+      if (!parsed.success) return 0;
+      return Math.max(0, darkness(entity, parsed.data) ?? 0);
     },
     eyes(entity, game) {
       const parsed = schema.safeParse(entity.data);

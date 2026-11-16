@@ -5,11 +5,13 @@ import {
   daylightNow,
   defineEntity,
   effect,
+  darkSources,
   emittedLights,
   hurtSinceLastStep,
   inView,
   isAreaFree,
-  isLit,
+  isLitTo,
+  SHUNS_LIGHT_TAG,
   itemInstances,
   livingBody,
   livingPlayers,
@@ -345,9 +347,10 @@ function scrapInSight(
   );
   if (lying.length === 0) return null;
   const lights = emittedLights(game);
+  const darks = darkSources(game);
   return nearest(
     self,
-    lying.filter((entity) => !isLit(game, entity, lights)),
+    lying.filter((entity) => !isLitTo(game, self.id, entity, lights, darks)),
   );
 }
 
@@ -412,8 +415,12 @@ function think(
 }
 
 /** How it plans a route in `mode`: out of light, but for revenge, which pays it no mind. */
-function routing(game: Session, mode: Mode): Avoid | undefined {
-  return mode === "revenge" ? undefined : avoidingLight(game);
+function routing(
+  game: Session,
+  self: WorldEntity,
+  mode: Mode,
+): Avoid | undefined {
+  return mode === "revenge" ? undefined : avoidingLight(game, self.id);
 }
 
 /** A route for it to `to`, or none when no way reaches it. */
@@ -429,7 +436,7 @@ function routeTo(
       self.radius,
       self,
       to,
-      routing(game, state.mode),
+      routing(game, self, state.mode),
     ) ?? []
   );
 }
@@ -675,6 +682,7 @@ function definition(config: HoarderConfig): EntityDefinition<HoarderState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    tags: [SHUNS_LIGHT_TAG],
     data: HoarderState,
     eyes: (_entity, state, game) => hoarderEyes(state, game, config),
     update(entity, state, dt, game) {

@@ -6,10 +6,13 @@ import { buildWorld } from "./generation.js";
 import {
   ambientLightAt,
   ambientPolygons,
+  darkSources,
   isLit,
+  isLitTo,
   lightRooms,
   powerRooms,
 } from "./light.js";
+import { isShrouded, shroud } from "./status.js";
 import type { UnlitRoom } from "./light.js";
 import { AREA, mulberry32 } from "./map.js";
 import type { Room, World } from "./map.js";
@@ -269,4 +272,40 @@ test("a session's road is lit by day and dark at night, by its world clock", () 
   expect(isLit(game, middle, [])).toBe(true);
   game.worldTime = testSimConfig.day.night;
   expect(isLit(game, middle, [])).toBe(false);
+});
+
+test("darkness given off unlights what it reaches, whatever lights it; a shrouded body takes the world for dark", () => {
+  const game = createSession("me", "ME", "DARK", "dev", testSfx(), {
+    ...testSimConfig,
+  });
+  registerEntityType(game, "lamp", {
+    radius: 5,
+    maxHealth: 1,
+    collides: false,
+    data: z.object({}),
+    light: () => ({ range: 600 }),
+    draw: () => undefined,
+  });
+  registerEntityType(game, "shade", {
+    radius: 5,
+    maxHealth: 1,
+    collides: false,
+    data: z.object({}),
+    darkness: () => 100,
+    draw: () => undefined,
+  });
+  spawnEntity(game, "lamp", 450, 300, {});
+  expect(isLit(game, { x: 650, y: 300 })).toBe(true);
+  spawnEntity(game, "shade", 600, 300, {});
+  expect(darkSources(game)).toEqual([{ x: 600, y: 300, range: 100 }]);
+  expect(isLit(game, { x: 650, y: 300 })).toBe(false);
+  expect(isLit(game, { x: 450, y: 300 })).toBe(true);
+
+  expect(isLitTo(game, "me", { x: 450, y: 300 })).toBe(true);
+  expect(shroud(game, "me", 1)).toBe(true);
+  expect(isShrouded(game, "me")).toBe(true);
+  expect(isLitTo(game, "me", { x: 450, y: 300 })).toBe(false);
+  expect(isLit(game, { x: 450, y: 300 })).toBe(true);
+  game.worldTime += 1.1;
+  expect(isLitTo(game, "me", { x: 450, y: 300 })).toBe(true);
 });
