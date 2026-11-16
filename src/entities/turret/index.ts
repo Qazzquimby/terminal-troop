@@ -36,6 +36,7 @@ const beepUrl = new URL("./sfx/beep.mp3", import.meta.url).href;
 const lockUrl = new URL("./sfx/lock.mp3", import.meta.url).href;
 const shotUrl = new URL("./sfx/shot.mp3", import.meta.url).href;
 const breakUrl = new URL("./sfx/break.mp3", import.meta.url).href;
+const clickUrl = new URL("./sfx/click.mp3", import.meta.url).href;
 
 /**
  * A turret lying where a player put it down: it sets up, then sweeps a narrow beam round and round,
@@ -55,6 +56,11 @@ export interface TurretConfig extends Hunting {
   readonly sight: { readonly angle: number; readonly range: number };
   /** Seconds it takes to sweep once all the way round. */
   readonly turnSeconds: number;
+  /**
+   * Shots it holds as it is put down. Once they are spent it still sweeps and locks on, but where
+   * it would shoot it only clicks.
+   */
+  readonly ammo: number;
   /** Its shots, each a handgun's, the first `aimSeconds` after it locks on. */
   readonly shot: {
     readonly damage: number;
@@ -69,6 +75,8 @@ export interface TurretConfig extends Hunting {
     readonly lock: number;
     readonly shot: number;
     readonly break: number;
+    /** Its click, out of ammo, where it would have shot. */
+    readonly click: number;
   };
   /** Volume of its sounds, 0..1. */
   readonly volume: number;
@@ -77,13 +85,15 @@ export interface TurretConfig extends Hunting {
 /**
  * Whether it has set up; the way it faced as of `turnedAt`, from which, sweeping, it turns on at a
  * steady pace, and locked on, faces its target; the body it is locked on, null while it sweeps;
- * and when its next shot is due. Everyone reads them, to draw it and its beam.
+ * when its next shot is due; and how many shots it has fired, so how much of its ammo is left.
+ * Everyone reads them, to draw it, its beam and its ammo.
  */
 export const TurretState = Arming.extend({
   facing: rounded(2),
   turnedAt: Time,
   target: z.string().nullable(),
   shotAt: Time,
+  fired: z.number().int().nonnegative(),
 });
 
 type TurretState = z.output<typeof TurretState>;
@@ -98,6 +108,8 @@ const COLOURS = {
   barrel: "#2c3136",
   beam: "rgba(255, 50, 40, 0.35)",
   locked: "rgba(255, 40, 30, 0.85)",
+  dry: "rgba(160, 160, 160, 0.6)",
+  ammo: "#ffb43a",
 } as const;
 
 /**
@@ -112,6 +124,7 @@ export function placeTurret(game: Session, by: Player, aim: number): Point {
     turnedAt: game.worldTime,
     target: null,
     shotAt: game.worldTime,
+    fired: 0,
   };
   spawn(game, NAME, at, state);
   return at;
@@ -161,7 +174,9 @@ function heldTarget(
  * A turret: sets up some seconds after it is put down, beeping once it has; then sweeps its narrow
  * beam round at a steady pace. The first body it catches in its beam that it shoots at, it locks
  * on: it turns to follow it and shoots it a handgun's shot every few seconds, which stops at the
- * first body in its way, friend or foe, as any shot does. Once it no longer sees its target it
+ * first body in its way, friend or foe, as any shot does. It holds so many shots; once they are
+ * spent it goes on sweeping and locking on, but clicks dry where it would shoot, its locked beam
+ * grey and its ammo ring empty. Once it no longer sees its target it
  * sweeps again from where it faces. Stunned, it is blind and holds its fire, its laser out, its
  * motor turning on regardless. Shots, kicks and
  * blasts hurt it and kicks shove it; hunters pay it no mind. It breaks once worn down.
@@ -172,6 +187,7 @@ export const turret = defineEntity(NAME, (config: TurretConfig) => {
   const lock = sound({ url: lockUrl, volume, range: config.sounds.lock });
   const report = sound({ url: shotUrl, volume, range: config.sounds.shot });
   const broken = sound({ url: breakUrl, volume, range: config.sounds.break });
+  const click = sound({ url: clickUrl, volume, range: config.sounds.click });
 
   /** Sweeps on from where it faces now, having lost its target. */
   const sweep = (state: TurretState, now: number): TurretState => ({
@@ -226,6 +242,15 @@ export const turret = defineEntity(NAME, (config: TurretConfig) => {
       if (target === null) return sweep(state, now);
       const aim = angleTo(entity, target);
       if (now < state.shotAt) return { ...state, facing: aim };
+      const next = {
+        ...state,
+        facing: aim,
+        shotAt: now + config.shot.interval,
+      };
+      if (state.fired >= config.ammo) {
+        effect(game, { at: entity, sound: click }, entity);
+        return next;
+      }
       shoot(
         game,
         entity,
@@ -233,7 +258,7 @@ export const turret = defineEntity(NAME, (config: TurretConfig) => {
         { spark: config.shot.spark },
       );
       effect(game, { at: entity, sound: report }, entity);
-      return { ...state, facing: aim, shotAt: now + config.shot.interval };
+      return { ...next, fired: state.fired + 1 };
     },
     dies(entity, _state, game) {
       effect(
@@ -253,9 +278,11 @@ export const turret = defineEntity(NAME, (config: TurretConfig) => {
         target === null
           ? facingAt(state, game.worldTime, config)
           : angleTo(entity, target);
+      const left = Math.max(0, config.ammo - state.fired);
       if (state.armed && !isStunned(game, entity.id))
-        drawBeam(ctx, game, entity, facing, target, config);
+        drawBeam(ctx, game, entity, facing, target, left > 0, config);
       drawBody(ctx, entity, facing);
+      drawAmmo(ctx, entity, config.ammo === 0 ? 0 : left / config.ammo);
       drawArmingLight(ctx, entity, state, now);
     },
   };
@@ -263,7 +290,7 @@ export const turret = defineEntity(NAME, (config: TurretConfig) => {
 
 /**
  * Its laser: a thin line the way it faces, out to its sight range or the first wall; locked on, a
- * bright one to its target.
+ * bright one to its target, or a grey one once it is out of ammo.
  */
 function drawBeam(
   ctx: CanvasRenderingContext2D,
@@ -271,6 +298,7 @@ function drawBeam(
   self: WorldEntity,
   facing: number,
   target: Point | null,
+  loaded: boolean,
   config: TurretConfig,
 ): void {
   const direction = { x: Math.cos(facing), y: Math.sin(facing) };
@@ -279,7 +307,8 @@ function drawBeam(
       ? distanceToWall(game.world.map, self, direction, config.sight.range)
       : Math.hypot(target.x - self.x, target.y - self.y);
   ctx.save();
-  ctx.strokeStyle = target === null ? COLOURS.beam : COLOURS.locked;
+  ctx.strokeStyle =
+    target === null ? COLOURS.beam : loaded ? COLOURS.locked : COLOURS.dry;
   ctx.lineWidth = target === null ? 1 : 1.5;
   ctx.beginPath();
   ctx.moveTo(
@@ -287,6 +316,31 @@ function drawBeam(
     self.y + direction.y * self.radius,
   );
   ctx.lineTo(self.x + direction.x * length, self.y + direction.y * length);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Its ammo: an amber ring round its base, from the top clockwise, as full as the share `left` of
+ * its shots it has left; none once it is out.
+ */
+function drawAmmo(
+  ctx: CanvasRenderingContext2D,
+  self: WorldEntity,
+  left: number,
+): void {
+  if (left <= 0) return;
+  ctx.save();
+  ctx.strokeStyle = COLOURS.ammo;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(
+    self.x,
+    self.y,
+    self.radius + 3,
+    -Math.PI / 2,
+    -Math.PI / 2 + left * TAU,
+  );
   ctx.stroke();
   ctx.restore();
 }

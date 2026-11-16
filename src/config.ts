@@ -403,11 +403,14 @@ export const config = {
         switchRange: CELL * 2,
       },
     },
-    // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it sets it
-    // off: a bang heard 12 cells off, and a flash that stuns for 5s every body, players included,
-    // whose eyes catch it within 5 cells, lighting 8 cells round it for half a second.
+    // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it, anywhere
+    // within its 30px radius, sets it off: a bang heard 12 cells off, a flash drawn 60px round, and
+    // a flash that stuns for 5s every body, players included, whose eyes catch it within 5 cells,
+    // lighting 8 cells round it for half a second. Its radius, its size and so how near a body must
+    // step to set it off, was 10px; tripled so it is easier to walk into.
     stunTrap: {
-      radius: 10,
+      radius: 30,
+      flash: 60,
       armSeconds: 3,
       stunRange: CELL * 5,
       stunSeconds: 5,
@@ -419,11 +422,13 @@ export const config = {
     // laser is a 10 degree beam out 12 cells, a handgun's reach, sweeping round once every 3s. It
     // locks on any living body it catches but players, inert things and items, chirping 4 cells
     // out, and half a second later fires a handgun's shot at it, then one every 2s, as loud as a
-    // handgun. Two handgun shots or four shovel hits break it, with a crunch heard 10 cells off; a
-    // kick shoves it as it would a player.
+    // handgun. It holds 30 shots; spent, it still sweeps and locks on, but clicks dry, heard 2
+    // cells off, where it would shoot. It has 100 health, four handgun shots or seven shovel hits,
+    // and breaks with a crunch heard 10 cells off; a kick shoves it as it would a player.
     turret: {
       radius: 14,
-      maxHealth: SHOVEL_DAMAGE * 4,
+      maxHealth: 100,
+      ammo: 30,
       mass: 1,
       ignores: ["player"],
       armSeconds: 3,
@@ -441,14 +446,17 @@ export const config = {
         lock: CELL * 4,
         shot: CELL * 30,
         break: CELL * 10,
+        click: CELL * 2,
       },
       volume: 0.8,
     },
-    // Charges 3s after it is laid, then beeps, heard 8 cells off. It sends whatever steps on it 8
-    // to 30 cells the way it is aimed, to the first clear spot of 24 drawn, with a flash a body
-    // wide and a warp heard 10 cells off at both ends; it charges again over 3s and beeps.
+    // Charges 3s after it is laid, then beeps, heard 8 cells off. It sends whatever steps on it,
+    // anywhere within its 48px radius, 8 to 30 cells the way it is aimed, to the first clear spot
+    // of 24 drawn, with a flash a body wide and a warp heard 10 cells off at both ends; it charges
+    // again over 3s and beeps. Its radius, its size and so how near a body must step to ride it,
+    // was 16px; tripled so it is easier to walk onto.
     teleporter: {
-      radius: 16,
+      radius: 48,
       armSeconds: 3,
       rearmSeconds: 3,
       distance: { min: CELL * 8, max: CELL * 30 },
