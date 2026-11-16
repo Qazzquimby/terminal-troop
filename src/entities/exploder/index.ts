@@ -54,6 +54,8 @@ export interface ExploderConfig extends Hunting {
   readonly maxHealth: number;
   readonly wanderSpeed: number;
   readonly chaseSpeed: number;
+  /** How fast it walks, wandering or chasing, once its fuse is lit. */
+  readonly litSpeed: number;
   /** How far it feels the bodies it hunts, walls or no walls. */
   readonly senseRange: number;
   /** Furthest a wander leg heads from where it starts, as the crow flies. */
@@ -386,6 +388,12 @@ function burst(
   return { ...state, burst: true };
 }
 
+/** How fast it walks: slowed once its fuse is lit, else by whether it chases. */
+function speedOf(state: ExploderState, config: ExploderConfig): number {
+  if (state.fuseAt !== null) return config.litSpeed;
+  return state.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
+}
+
 /** Whether its fuse has burnt down, and it has yet to burst. */
 const due = (state: ExploderState, game: Session): boolean =>
   !state.burst && state.fuseAt !== null && game.worldTime >= state.fuseAt;
@@ -471,9 +479,7 @@ function definition(
       if (state.fuseAt === null && lit.fuseAt !== null)
         effect(game, { at: entity, sound: sounds.fuse }, entity);
       if (due(lit, game)) return burst(entity, lit, game, config, sounds);
-      const speed =
-        lit.mode === "chase" ? config.chaseSpeed : config.wanderSpeed;
-      return walk(entity, lit, speed, dt);
+      return walk(entity, lit, speedOf(lit, config), dt);
     },
     draw(ctx, entity, state, _now, game) {
       drawExploder(ctx, entity, state, game, config);
@@ -503,7 +509,7 @@ function burstStunned(
  * An exploder: comes alone, out of the dark, and makes no sound but its fuse and its burst. It
  * wanders towards any noise, feels bodies through walls nearby, players and monsters alike, and
  * chases them down, by a route where one is short enough, else straight at them. Near one, hurt, or
- * stopped by a wall in its straight way, it lights a short fuse and keeps coming, then bursts,
+ * stopped by a wall in its straight way, it lights a short fuse and keeps coming, slowed, then bursts,
  * knocking the walls round it down and hurting everything near, worst nearest. Once hurt, it goes
  * for whatever body hurt it, wherever it is, or with none to chase, for the nearest body.
  */

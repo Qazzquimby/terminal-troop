@@ -225,7 +225,7 @@ function hunt(
   return { ...state, route, repathAt: now + config.repathInterval };
 }
 
-/** The state it moves to: a body it sees on its round, player or monster, starts a hunt. */
+/** The state it moves to: a body of a kind it targets, seen on its round, starts a hunt. */
 function think(
   state: StatueState,
   self: WorldEntity,
@@ -372,9 +372,9 @@ function definition(config: StatueConfig): EntityDefinition<StatueState> {
 /**
  * The statue: a stone figure that cannot die. It walks back and forth between where it arrived and a
  * dark point about thirty cells off, never setting foot on lit ground, its tread heard far off.
- * Once it sees a body all round it, a player or a monster it does not ignore, it hunts it for a
- * while: it always knows where it is and goes straight for it at a sprint, and whatever it touches
- * takes a heavy blow. While any living body but another statue looks at it, down its view cone and
+ * Once it sees a body all round it of a kind it targets (players, as configured), it hunts it for a
+ * while: it always knows where it is and goes straight for it at a sprint, and whatever it touches,
+ * targeted or not, takes a heavy blow. While any living body but another statue looks at it, down its view cone and
  * within its reach, along a clear line, a player or a zombie alike, it cannot move, strike, nor run
  * down its hunt's clock; being near one, within the small circle it sees all round it, does not
  * hold it. It arrives rarely, out of the world's start, the light and every player's sight.

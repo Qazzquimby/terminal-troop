@@ -257,7 +257,10 @@ export const testEntitiesConfig = {
     lunge: 150,
     patience: 4,
     boredSeconds: 10,
+    // Long enough that no test but the bark's own hears one.
+    barkGap: { min: 1000, max: 1000 },
     sounds: {
+      bark: 500,
       roar: 1000,
       snarl: 200,
       bite: 300,
@@ -274,6 +277,7 @@ export const testEntitiesConfig = {
     maxHealth: 45,
     wanderSpeed: 80,
     chaseSpeed: 120,
+    litSpeed: 60,
     senseRange: 600,
     wanderRange: 200,
     wanderPause: { min: 0.5, max: 1 },
@@ -310,6 +314,7 @@ export const testEntitiesConfig = {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 16,
     ignores: ["statue"],
+    targets: ["player"],
     sightRange: 800,
     patrol: { distance: 300, spread: 50, tries: 16, retry: 2 },
     huntSeconds: 10,

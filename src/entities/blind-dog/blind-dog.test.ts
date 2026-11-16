@@ -152,14 +152,15 @@ describe("hearing", () => {
   });
 
   test("several quieter noises add up to a charge", () => {
+    // Past its pounce reach, however its hearing places the noise.
     const { game, noise } = world();
     const hound = blindDogAt(game, 150, 300);
     for (let i = 0; i < 2; i++) {
-      noise({ by: game.local, at: { x: 450, y: 300 }, radius: 700 });
+      noise({ by: game.local, at: { x: 500, y: 300 }, radius: 700 });
       run(game, DT);
       expect(stateOf(hound).mode).toBe("stalk");
     }
-    noise({ by: game.local, at: { x: 450, y: 300 }, radius: 700 });
+    noise({ by: game.local, at: { x: 500, y: 300 }, radius: 700 });
     run(game, DT);
     expect(stateOf(hound).mode).toBe("charge");
   });
@@ -470,5 +471,45 @@ describe("a noise that goes on", () => {
     const until = bored.bored?.until ?? 0;
     keepsUp(game, noise, radio, until - game.worldTime + 1);
     expect(stateOf(hound).source).toBe(radio.id);
+  });
+});
+
+describe("barking", () => {
+  const barker: BlindDogConfig = { ...config, barkGap: { min: 0.5, max: 0.5 } };
+  const barks = (game: Session): number =>
+    played(game).filter((url) => url.endsWith("bark.mp3")).length;
+
+  test("it barks now and then as it roams, a gap after it arrives, making a noise", () => {
+    const { game } = world(barker);
+    const hound = blindDogAt(game, 150, 300);
+    run(game, 0.3);
+    expect(barks(game)).toBe(0);
+    run(game, 0.3);
+    expect(barks(game)).toBe(1);
+    run(game, 0.5);
+    expect(barks(game)).toBe(2);
+    expect(stateOf(hound).mode).toBe("wander");
+  });
+
+  test("its bark is a noise other kinds hear, but other blind dogs pay no mind", () => {
+    const { game } = world(barker);
+    const hound = blindDogAt(game, 150, 300);
+    const other = blindDogAt(game, 450, 300);
+    for (let step = 0; step < 60 && game.noises.length === 0; step++)
+      run(game, DT);
+    const made = game.noises.find((noise) => noise.source === hound.id);
+    expect(made?.radius).toBe(config.sounds.bark);
+    expect(made?.tags).toContain("blindDog");
+    run(game, DT);
+    expect(stateOf(other)).toMatchObject({ mode: "wander", suspicion: 0 });
+  });
+
+  test("it does not bark as it charges, roaring instead", () => {
+    const { game, noise } = world(barker);
+    const hound = blindDogAt(game, 150, 300);
+    noise({ by: game.local, at: { x: 850, y: 300 }, radius: 2000 });
+    run(game, 1);
+    expect(stateOf(hound).mode).not.toBe("wander");
+    expect(barks(game)).toBe(0);
   });
 });

@@ -240,8 +240,30 @@ function postAt(game: Session, x: number, y: number): WorldEntity {
   return spawnEntity(game, "post", x, y, {});
 }
 
-test("it hunts any body it sees, not just players, and strikes it", () => {
+test("it hunts only the kinds it targets: a player, not a nearer body it sees", () => {
   const game = world(100, 550);
+  const statue = statueAt(game, 650, 300);
+  postAt(game, 400, 300);
+  run(game, 0.1);
+  expect(stateOf(statue)).toMatchObject({
+    mode: "hunt",
+    quarry: game.localId,
+  });
+});
+
+test("seeing only bodies of kinds it does not target, it keeps to its round", () => {
+  const game = world(100, 550);
+  hurtPlayer(game, game.local, Infinity);
+  const statue = statueAt(game, 650, 300);
+  postAt(game, 400, 300);
+  run(game, 0.5);
+  expect(stateOf(statue).mode).toBe("patrol");
+});
+
+test("with no targets it hunts any body it sees, not just players, and strikes it", () => {
+  const anyBody: StatueConfig = { ...config };
+  Reflect.deleteProperty(anyBody, "targets");
+  const game = world(100, 550, anyBody);
   hurtPlayer(game, game.local, Infinity);
   const statue = statueAt(game, 650, 300);
   const post = postAt(game, 400, 300);
