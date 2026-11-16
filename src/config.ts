@@ -895,8 +895,9 @@ export const config = {
   // An item with up to 10 uses shows each as a segment of its bar.
   hud: { segmentsUpTo: 10 },
   // The cabin's minimap shows 12 cells round the player it follows, about a screen's width
-  // across, in a 132px square, small enough for the cabin to fit a 720p window.
-  minimap: { radius: 12, size: 132 },
+  // across, in a 132px square at most, small enough for the cabin to fit a 720p window. Its radar
+  // sweep goes round every 2.4 seconds.
+  minimap: { radius: 12, size: 132, sweepMs: 2400 },
   // The world log is always on in development and under ?debug; `enabled` keeps it on in
   // production too, as playtests run on the deployed build. It is console-only and cheap.
   // It keeps the latest 2000 events; items dropped and picked up are kept but not printed.

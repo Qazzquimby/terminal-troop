@@ -388,76 +388,148 @@ canvas {
 }
 
 /*
- * The cruiser's cabin: ugly and awkward on purpose. Clashing colours, a lopsided frame, a font
- * nobody would choose, and everything a little too close together.
+ * The cruiser's cabin: ugly and awkward on purpose, the way a works vehicle's dashboard is. Bolted-on
+ * grey plates of slightly different sizes and shades, none quite lined up, hazard tape round the
+ * frame, label-maker tags for titles, chunky buttons. Every word stays readable: monospace, light on
+ * dark, nothing under 11px.
  */
 .cabin {
+  --cabin-text: #f0ede2;
+  --cabin-dim: #c3c6c9;
+  --cabin-frame: #34383d;
+  --cabin-plate: #545a61;
+  --cabin-plate-alt: #4b5056;
+  --cabin-socket: #24272b;
+  --cabin-edge: #15171a;
+  --cabin-hazard: #e3b400;
+  --cabin-phosphor: #7dff8a;
+  --cabin-mono:
+    "DejaVu Sans Mono", "Consolas", "Lucida Console", "Liberation Mono",
+    "Courier New", monospace;
   position: absolute;
   top: 5%;
   left: 7%;
   width: 83%;
   height: 68%;
   box-sizing: border-box;
-  padding: 6px 9px 4px 14px;
+  padding: 8px 10px 6px 14px;
   overflow: auto;
-  background: repeating-linear-gradient(
-    -45deg,
-    #c400b8 0 14px,
-    #b100a6 14px 28px
-  );
-  color: #c8ff00;
-  border-style: dashed double groove ridge;
-  border-width: 7px 3px 11px 5px;
-  border-color: #ff7a00 #00e5ff #8a5a00 #39ff14;
-  border-radius: 2px 22px 0 9px;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgb(255 255 255 / 3%) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(170deg, #3d4247, var(--cabin-frame) 60%, #2c2f33);
+  color: var(--cabin-text);
+  border: 9px solid;
+  border-image: repeating-linear-gradient(
+      -45deg,
+      var(--cabin-hazard) 0 10px,
+      var(--cabin-edge) 10px 20px
+    )
+    9;
   box-shadow:
-    9px 11px 0 #3a00ff,
-    -3px -2px 0 #ffea00;
-  font:
-    bold 13px/1.1 "Comic Sans MS",
-    "Comic Sans",
-    "Chalkboard SE",
-    cursive;
-  transform: rotate(-0.6deg);
+    0 7px 0 var(--cabin-edge),
+    0 10px 18px rgb(0 0 0 / 60%);
+  font: 12px/1.25 var(--cabin-mono);
+  transform: rotate(-0.4deg);
 }
 .cabin[hidden] {
   display: none;
 }
+/* A label-maker strip stuck on a little crooked. */
 .cabin-header {
-  margin: 0 0 3px 31px;
-  color: #ffea00;
-  font-size: 19px;
-  letter-spacing: 5px;
-  text-shadow:
-    2px 2px 0 #00a2ff,
-    -1px 0 0 #ff0000;
+  width: fit-content;
+  margin: 0 0 7px 31px;
+  padding: 3px 10px;
+  background: var(--cabin-edge);
+  color: var(--cabin-text);
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  border-radius: 2px;
+  box-shadow: 1px 2px 0 rgb(0 0 0 / 50%);
+  transform: rotate(-1deg);
 }
 .cabin-panels {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px 11px;
+  gap: 5px 11px;
   align-items: flex-start;
 }
+/* A bolted-on plate: bevelled edges and a rivet in each corner. */
 .cabin-panel {
-  padding: 3px 5px;
-  background: #4d6b00;
-  border: 3px outset #ff9cf0;
+  --rivet: radial-gradient(
+    circle,
+    #c9ced4 0 1.4px,
+    #2b2e32 2.2px,
+    transparent 2.8px
+  );
+  padding: 9px 11px 8px;
+  background:
+    var(--rivet) left 1px top 1px / 8px 8px no-repeat,
+    var(--rivet) right 1px top 1px / 8px 8px no-repeat,
+    var(--rivet) left 1px bottom 1px / 8px 8px no-repeat,
+    var(--rivet) right 1px bottom 1px / 8px 8px no-repeat,
+    var(--cabin-plate);
+  border: 2px solid var(--cabin-edge);
+  box-shadow:
+    inset 1px 1px 0 rgb(255 255 255 / 22%),
+    inset -1px -1px 0 rgb(0 0 0 / 40%),
+    2px 3px 0 rgb(0 0 0 / 35%);
 }
 .cabin-panel:nth-child(even) {
-  background: #006b5b;
-  border: 2px dotted #ff3300;
-  transform: rotate(1.2deg);
+  background:
+    var(--rivet) left 1px top 1px / 8px 8px no-repeat,
+    var(--rivet) right 1px top 1px / 8px 8px no-repeat,
+    var(--rivet) left 1px bottom 1px / 8px 8px no-repeat,
+    var(--rivet) right 1px bottom 1px / 8px 8px no-repeat,
+    var(--cabin-plate-alt);
+  transform: translateY(3px);
 }
+/* Each plate's name on a strip of label tape. */
 .cabin-title {
-  margin: 0;
-  color: #ff3366;
+  width: fit-content;
+  margin: 0 0 4px;
+  padding: 1px 5px;
+  background: var(--cabin-edge);
+  color: var(--cabin-text);
   font-size: 11px;
-  text-decoration: underline wavy #00ffcc;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-radius: 1px;
 }
 .cabin-caption {
   margin: 0;
-  color: #fff200;
-  font-size: 10px;
+  color: var(--cabin-text);
+  font-size: 11px;
+}
+/* Cabin buttons: chunky, with a face colour of their own that hovering only brightens. */
+.cabin button {
+  --face: var(--cabin-socket);
+  background: var(--face);
+  color: var(--cabin-text);
+  border: 2px solid var(--cabin-edge);
+  border-radius: 2px;
+  font: inherit;
+  font-weight: bold;
+  box-shadow: 0 2px 0 var(--cabin-edge);
+  cursor: pointer;
+}
+.cabin button:hover:not(:disabled) {
+  background: var(--face);
+  filter: brightness(1.2);
+}
+.cabin button:active:not(:disabled) {
+  box-shadow: none;
+  transform: translateY(2px);
+}
+.cabin button:disabled {
+  opacity: 1;
+  cursor: not-allowed;
 }
 .cabin-wheel-svg {
   display: block;
@@ -468,59 +540,55 @@ canvas {
 }
 .cabin-wheel-rim {
   fill: none;
-  stroke: #ff6a00;
+  stroke: #1d1f22;
   stroke-width: 9;
 }
 .cabin-wheel-spoke {
-  stroke: #7c00ff;
+  stroke: #8a9098;
   stroke-width: 7;
 }
 .cabin-wheel-hub {
-  fill: #00ff9d;
-  stroke: #ff00cc;
+  fill: #2b2e32;
+  stroke: var(--cabin-hazard);
   stroke-width: 3;
 }
 .cabin-wheel-mark {
-  fill: #ffff00;
+  fill: var(--cabin-hazard);
 }
 .cabin-controls {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 92px;
+  gap: 4px;
+  width: 96px;
 }
-.cabin-drive {
+.cabin .cabin-drive {
+  --face: #2f7d36;
   padding: 12px 2px;
-  background: #00ff2a;
-  color: #ff00d4;
-  border: 4px ridge #ffd000;
-  font: inherit;
   font-size: 17px;
-  cursor: pointer;
+  letter-spacing: 1px;
 }
-.cabin-drive:disabled {
-  background: #6b6b4d;
-  color: #2b2b2b;
-  cursor: not-allowed;
+.cabin .cabin-drive:disabled {
+  --face: repeating-linear-gradient(-45deg, #44484d 0 6px, #3a3e42 6px 12px);
+  color: var(--cabin-dim);
+  box-shadow: none;
   text-decoration: line-through;
 }
-.cabin-honk {
+.cabin .cabin-honk {
+  --face: var(--cabin-hazard);
   width: 61px;
-  padding: 1px;
+  padding: 2px;
   margin-left: 23px;
-  background: #ff0040;
-  color: #00ffee;
-  border: 1px solid #001aff;
-  border-radius: 50% 10% 50% 10%;
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
+  color: var(--cabin-edge);
+  font-size: 11px;
+  text-transform: uppercase;
+  border-radius: 50%;
 }
 .cabin-honked {
   margin: 0;
-  color: #fff;
+  color: var(--cabin-hazard);
   font-size: 22px;
-  text-shadow: 0 0 4px #ff0;
+  font-weight: bold;
+  text-shadow: 2px 2px 0 var(--cabin-edge);
   animation: cabin-honk 0.45s steps(3) both;
 }
 @keyframes cabin-honk {
@@ -537,8 +605,8 @@ canvas {
 }
 .cabin-occupant-list {
   margin: 1px 0 0;
-  padding-left: 13px;
-  color: #e0ffff;
+  padding-left: 15px;
+  color: var(--cabin-text);
   font-size: 12px;
 }
 /* Stuck to the bottom of the cabin's scroll view, so the way out shows on any screen size. */
@@ -555,13 +623,14 @@ canvas {
 .cabin-panel.cabin-exit-panel {
   background: none;
   border: none;
+  box-shadow: none;
 }
-.cabin-exit {
+.cabin .cabin-exit {
+  --face: #0b8f2a;
   display: flex;
   gap: 4px;
   align-items: center;
   padding: 8px 14px 8px 10px;
-  background: #0b8f2a;
   color: #fff;
   border: 4px solid #fff;
   border-radius: 12px;
@@ -571,10 +640,9 @@ canvas {
     900 26px/1 "Impact",
     "Arial Black",
     sans-serif;
-  cursor: pointer;
   transform: rotate(-7deg);
 }
-.cabin-exit:hover {
+.cabin .cabin-exit:hover {
   transform: rotate(4deg) scale(1.08);
 }
 .cabin-exit-runner {
@@ -592,51 +660,45 @@ canvas {
 }
 .cabin-storage-grid {
   display: grid;
-  gap: 2px 5px;
-  margin: 2px 0 3px 6px;
+  gap: 3px 5px;
+  margin: 2px 0 4px 6px;
 }
-.cabin-slot {
-  height: 26px;
+/* Slots and pockets are sunken sockets in the plate. */
+.cabin .cabin-slot,
+.cabin .cabin-pocket {
+  --face: var(--cabin-socket);
   padding: 0;
-  background: #ffe100;
-  color: #000;
-  border: 3px inset #6a00ff;
-  font: inherit;
+  border: 2px inset #7c8288;
+  box-shadow: none;
+}
+.cabin .cabin-slot {
+  height: 28px;
   font-size: 15px;
-  cursor: pointer;
 }
-.cabin-slot:nth-child(odd) {
-  border-color: #00ff6a;
-  border-style: outset;
+.cabin .cabin-slot-empty {
+  --face: #1b1d20;
+  color: #8c9196;
 }
-.cabin-slot-empty {
-  background: #8f6f00;
-  color: #c400b8;
-}
-.cabin-slot:disabled,
-.cabin-pocket:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.cabin .cabin-slot:disabled,
+.cabin .cabin-pocket:disabled {
+  opacity: 0.6;
 }
 .cabin-pockets {
   display: flex;
-  gap: 1px;
+  gap: 2px;
+  margin-top: 2px;
 }
-.cabin-pocket {
+.cabin .cabin-pocket {
   width: 27px;
-  height: 22px;
-  padding: 0;
-  background: #00e5ff;
-  border: 1px dashed #ff0000;
-  font: inherit;
+  height: 23px;
   font-size: 12px;
-  cursor: pointer;
 }
-.cabin-pocket-held {
-  outline: 2px solid #ffffff;
+.cabin .cabin-pocket-held {
+  outline: 2px solid var(--cabin-hazard);
 }
 .cabin-shop {
-  max-width: 180px;
+  width: max-content;
+  max-width: 100%;
 }
 .cabin-wares {
   margin: 1px 0 0;
@@ -646,78 +708,78 @@ canvas {
 .cabin-ware:nth-child(even) {
   margin-left: 9px;
 }
-.cabin-buy {
+.cabin .cabin-buy {
   width: 100%;
-  margin: 1px 0;
-  padding: 2px 4px;
-  background: #00ff2a;
-  color: #7c00ff;
-  border: 2px ridge #ff6a00;
-  font: inherit;
+  margin: 2px 0;
+  padding: 3px 5px;
   font-size: 11px;
+  font-weight: normal;
   text-align: left;
   white-space: nowrap;
-  cursor: pointer;
 }
-.cabin-buy:disabled {
-  background: #777766;
-  color: #3a3a3a;
-  cursor: not-allowed;
+.cabin .cabin-buy:disabled {
+  --face: #45494e;
+  color: var(--cabin-dim);
+  box-shadow: none;
   text-decoration: line-through;
 }
 
-/* The cabin's minimap, transmit button and radio: as ugly as the rest of it. */
+/* The minimap is a round radar screen in a black bezel, never bigger than it is drawn. */
 .cabin-minimap-canvas {
   display: block;
-  border: 4px ridge #00e5ff;
+  max-width: 100%;
+  height: auto;
+  margin: 2px auto 4px;
+  background: #010803;
+  border: 5px solid var(--cabin-edge);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px #7c8288,
+    0 0 10px rgb(60 255 90 / 25%);
   image-rendering: pixelated;
-  transform: rotate(-1.5deg);
 }
 .cabin-minimap-row {
   display: flex;
-  gap: 2px;
+  gap: 4px;
   align-items: center;
   justify-content: space-between;
 }
 .cabin-minimap-name {
-  color: #ffea00;
+  flex: 1;
+  padding: 1px 4px;
+  background: #010803;
+  color: var(--cabin-phosphor);
+  font-size: 11px;
+  text-align: center;
+}
+.cabin .cabin-minimap-step {
+  padding: 1px 4px;
   font-size: 11px;
 }
-.cabin-minimap-step {
-  padding: 0 3px;
-  background: #ff00aa;
-  color: #00ff66;
-  border: 2px outset #ffea00;
-  font: inherit;
-  font-size: 10px;
-}
-.cabin-transmit-button {
-  padding: 6px 4px;
-  background: #5c5c00;
-  color: #ff7a00;
-  border: 4px outset #b0b0b0;
-  border-radius: 50% 10% 40% 5%;
-  font: inherit;
+.cabin .cabin-transmit-button {
+  --face: var(--cabin-socket);
+  padding: 8px 6px;
+  color: var(--cabin-hazard);
+  border-width: 3px;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 var(--cabin-edge);
   user-select: none;
 }
-.cabin-transmit-button.cabin-on-air {
-  background: #ff0000;
-  color: #ffff00;
-  border-style: inset;
+.cabin .cabin-transmit-button.cabin-on-air {
+  --face: #b3261e;
+  color: #fff;
+  box-shadow: none;
+  transform: translateY(3px);
 }
 .cabin-radio-dial {
-  margin: 2px 0;
-  padding: 1px 4px;
-  background: #001a00;
-  color: #39ff14;
-  font-family: "Courier New", monospace;
+  margin: 2px 0 4px;
+  padding: 2px 5px;
+  background: #010803;
+  color: var(--cabin-phosphor);
   letter-spacing: 3px;
 }
-.cabin-radio-tune,
-.cabin-radio-off {
-  background: #8a5a00;
-  color: #c8ff00;
-  border: 3px groove #ff9cf0;
-  font: inherit;
+.cabin .cabin-radio-tune,
+.cabin .cabin-radio-off {
+  padding: 2px 6px;
   font-size: 11px;
 }

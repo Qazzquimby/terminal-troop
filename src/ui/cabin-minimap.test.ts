@@ -1,5 +1,12 @@
 import { expect, test } from "vitest";
-import { cycleTarget } from "./cabin-minimap.js";
+import { cycleTarget, sweepAngle } from "./cabin-minimap.js";
+
+test("the radar sweep starts straight up and goes round clockwise once a period", () => {
+  expect(sweepAngle(0, 2000)).toBeCloseTo(-Math.PI / 2);
+  expect(sweepAngle(500, 2000)).toBeCloseTo(0);
+  expect(sweepAngle(1000, 2000)).toBeCloseTo(Math.PI / 2);
+  expect(sweepAngle(2500, 2000)).toBeCloseTo(sweepAngle(500, 2000));
+});
 
 const TARGETS = ["ann", "bob", "cat"];
 
