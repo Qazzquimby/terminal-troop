@@ -6,6 +6,7 @@ import {
   effect,
   INERT_TAG,
   livingBody,
+  putIn,
   removeFromWorld,
   sound,
   spawn,
@@ -119,10 +120,11 @@ const zapAt = (at: Point, sound: Sound, radius: number) => ({
 /**
  * A recall: locked on a body, it follows it about, humming as it charges, shimmering round it, the
  * hum heard by whatever is near and noise as the body's own. Once charged, everything the body
- * carries drops where it stands, and it is taken to a free spot near whatever sent for it, with a
- * flash and a zap at both ends. Should the body die, become a ghost or get inside a vehicle, or
- * what sent for it be gone, the recall fizzles out. Any body may be recalled; nothing sees,
- * strikes or hears the recall itself.
+ * carries drops where it stands, and it is taken to whatever sent for it, with a flash and a zap
+ * at both ends: inside it, for a vehicle that body can ride in and that lets it in, as if it had
+ * got in; otherwise to a free spot near it. Should the body die, become a ghost or get inside a
+ * vehicle, or what sent for it be gone, the recall fizzles out. Any body may be recalled; nothing
+ * sees, strikes or hears the recall itself.
  */
 export const recall = defineEntity(NAME, (config: RecallConfig) => {
   const { volume } = config;
@@ -169,7 +171,9 @@ export const recall = defineEntity(NAME, (config: RecallConfig) => {
       );
       effect(game, zapAt(from, zap, config.flash), body);
       teleport(game, body, to);
-      effect(game, zapAt(to, zap, config.flash), body);
+      // Brought to a vehicle, a body that can ride lands in it, as if it had got in.
+      const aboard = putIn(game, body, anchor);
+      effect(game, zapAt(aboard ? anchor : to, zap, config.flash), body);
       removeFromWorld(game, entity);
       return state;
     },

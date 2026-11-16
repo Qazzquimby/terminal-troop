@@ -1,4 +1,4 @@
-import { driverOf, occupantsOf, vehicleOf } from "../sim/index.js";
+import { driversOf, occupantsOf, vehicleOf } from "../sim/index.js";
 import type { CabinCommand, Session } from "../sim/index.js";
 
 /*
@@ -25,23 +25,21 @@ export interface CabinView {
   /** The vehicle's entity id. */
   readonly vehicle: string;
   readonly occupants: readonly Occupant[];
-  /** The name of whoever has the wheel; null for no one. */
-  readonly driver: string | null;
+  /** The names of everyone at the wheel, in the order they lead in; empty for no one. */
+  readonly drivers: readonly string[];
   /** How far the wheel is turned, -1 to 1, right positive. */
   readonly turn: number;
-  /** Whether the local player may take the wheel now. */
-  readonly canDrive: boolean;
 }
 
 /**
  * What the cabin shows the local player: null unless it is inside a vehicle, off its wheel. The
- * wheel turns as its driver turns it; with no driver it stands straight.
+ * wheel turns as everyone at it turns it together; with no one at it, it stands straight.
  */
 export function cabinView(game: Session): CabinView | null {
   const { ride } = game.local;
   if (ride === null || ride.driving) return null;
   if (vehicleOf(game, ride.vehicle) === null) return null;
-  const driver = driverOf(game, ride.vehicle);
+  const drivers = driversOf(game, ride.vehicle);
   return {
     vehicle: ride.vehicle,
     occupants: occupantsOf(game, ride.vehicle).map((player) => ({
@@ -50,9 +48,8 @@ export function cabinView(game: Session): CabinView | null {
       driving: player.ride?.driving === true,
       self: player === game.local,
     })),
-    driver: driver?.name ?? null,
-    turn: driver?.ride?.turn ?? 0,
-    canDrive: driver === null,
+    drivers: drivers.map((driver) => driver.name),
+    turn: drivers[0]?.ride?.turn ?? 0,
   };
 }
 
@@ -133,7 +130,7 @@ function wheelSvg(): SVGSVGElement {
   return svg;
 }
 
-/** The steering wheel, turning as the vehicle's driver turns it, and who drives. */
+/** The steering wheel, turning as those at it turn it together, and who is at it. */
 function wheelPanel(): CabinPanel {
   const element = make("section", "cabin-panel cabin-wheel");
   const title = make("h3", "cabin-title", "STEERING (wheel)");
@@ -144,13 +141,17 @@ function wheelPanel(): CabinPanel {
     element,
     update(view) {
       svg.style.transform = `rotate(${String(view.turn * FULL_LOCK)}deg)`;
-      const text =
-        view.driver === null
-          ? "nobody is driving!!"
-          : `${view.driver} has the wheel`;
+      const text = wheelCaption(view.drivers);
       if (caption.textContent !== text) caption.textContent = text;
     },
   };
+}
+
+/** Who the wheel panel says has the wheel, given everyone at it by name. */
+export function wheelCaption(drivers: readonly string[]): string {
+  if (drivers.length === 0) return "nobody is driving!!";
+  if (drivers.length === 1) return `${drivers[0] ?? ""} has the wheel`;
+  return `${drivers.join(" + ")} are fighting over the wheel`;
 }
 
 /** The Drive and Honk buttons. */
@@ -174,8 +175,8 @@ function controlsPanel(send: CabinSend): CabinPanel {
   return {
     element,
     update(view) {
-      drive.disabled = !view.canDrive;
-      drive.title = view.canDrive ? "" : "Someone else has the wheel";
+      drive.title =
+        view.drivers.length === 0 ? "" : "Grab the wheel alongside them";
     },
   };
 }

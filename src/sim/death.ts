@@ -86,6 +86,17 @@ function corpseOwner(
   return null;
 }
 
+/**
+ * Where player `id`'s corpse is, as this client knows it: where it lies, or where whoever carries
+ * it stands. Null when it lies nowhere this client knows of: not yet laid, carried out of sight of
+ * this client's record, or in a world with no items.
+ */
+export function corpseAt(game: Session, id: string): Point | null {
+  for (const instance of itemInstances(game, CORPSE_ITEM))
+    if (corpseOwner(game, instance.state) === id) return instance.at;
+  return null;
+}
+
 /** The name `item` shows: a corpse is named after whose it is. */
 export function itemName(
   game: Session,

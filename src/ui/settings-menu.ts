@@ -209,6 +209,8 @@ export function createSettingsMenu(
 
   return {
     open,
+    /** Whether it is open now. */
+    isOpen: (): boolean => dialog.open,
     toggle(time: number): void {
       if (dialog.open) dialog.close();
       else open(time);

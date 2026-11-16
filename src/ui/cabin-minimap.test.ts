@@ -23,9 +23,11 @@ test("with no one followed yet, or one no longer alive, it follows the first", (
   expect(cycleTarget([], "ann", 1)).toBeNull();
 });
 
-const outside = { id: "ann", ride: null };
+const outside = { id: "ann", ride: null, health: 100 };
+const dead = { id: "dan", ride: null, health: 0 };
 const aboard = {
   id: "bob",
+  health: 100,
   ride: { vehicle: "1", driving: false, heading: 0, speed: 0, turn: 0 },
 };
 
@@ -45,5 +47,13 @@ test("it sends for one player out in the world at a time, and shows who it is br
   expect(teleportButton({ sending: "ann" }, outside)).toMatchObject({
     enabled: false,
     charging: true,
+  });
+});
+
+test("it never sends for a dead player, whose corpse the minimap shows instead", () => {
+  expect(teleportButton({ sending: null }, dead)).toMatchObject({
+    shown: true,
+    enabled: false,
+    text: "TELEPORT (dead)",
   });
 });

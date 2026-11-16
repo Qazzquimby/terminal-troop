@@ -28,6 +28,7 @@ export { rounded } from "./rounded.js";
 export { soundDrop, spawnWorldItem } from "./world-items.js";
 export {
   driverOf,
+  driversOf,
   liveTransceivers,
   occupantsOf,
   transceiverOf,
@@ -42,7 +43,13 @@ export type {
   VehicleSpec,
   Ware,
 } from "./driving.js";
-export { cabinShop, cabinStorage, cabinTeleporter, unseat } from "./vehicle.js";
+export {
+  cabinShop,
+  cabinStorage,
+  cabinTeleporter,
+  putIn,
+  unseat,
+} from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
 export type { CabinTeleporter } from "./vehicle.js";
@@ -144,6 +151,7 @@ export { Health, hurtPlayer } from "./health.js";
 export { isGhost, livingPlayers } from "./ghosts.js";
 export {
   CORPSE_ITEM,
+  corpseAt,
   dropAll,
   isRevivable,
   itemName,

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { arrivalPoint } from "./arrival.js";
 import { separateBody, solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
-import { drive, RideWire } from "./driving.js";
+import { drive, driverOf, RideWire, wheelOf } from "./driving.js";
 import type { Ride } from "./driving.js";
 import { isGhost } from "./ghosts.js";
 import { heldSlot, weightOf } from "./inventories.js";
@@ -283,6 +283,17 @@ function sameRide(a: Ride | null, b: Ride | null): boolean {
 }
 
 /**
+ * Whether two runs of a step left the local player at the wheel of one vehicle, behind another
+ * who leads it.
+ */
+function following(game: Session, a: Ride | null, b: Ride | null): boolean {
+  if (a === null || b === null || !a.driving || !b.driving) return false;
+  if (a.vehicle !== b.vehicle) return false;
+  const lead = driverOf(game, a.vehicle);
+  return lead !== null && lead !== game.local;
+}
+
+/**
  * Whether two runs of a step left the player alike. Two that left it inside one vehicle, off the
  * wheel, are alike wherever: it sits where the vehicle is, which each client has from the host.
  */
@@ -321,6 +332,20 @@ const sameSteer = (a: Steer, b: Steer): boolean =>
   a.held === b.held;
 
 /**
+ * The way `player` steers now, as this client knows it: the local player's latest steer; on the
+ * host, what it runs a remote player on; elsewhere, what the host last said it steers with. A
+ * stunned player steers nothing.
+ */
+function steerOf(game: Session, player: Player): Point {
+  if (isStunned(game, player.id)) return IDLE.move;
+  if (player === game.local) return game.pilot.steer.move;
+  const steer = game.hosting
+    ? game.feeds.get(player.id)?.steer
+    : game.heard.get(player.id)?.steer;
+  return steer?.move ?? IDLE.move;
+}
+
+/**
  * One step of `player`'s movement: it walks as `input` steers it, slowed by what it carries,
  * goes on with any dash, then steps out of every body it overlaps; or, at the wheel, drives. The
  * same on every client that runs the player. `live` is false while running a step again. A
@@ -345,7 +370,10 @@ function movePlayer(
       ? { steer: { ...IDLE, held: input.steer.held }, crouch: false }
       : input;
   if (player.ride !== null) {
-    drive(game, player, steer.move, dt, live, game.config);
+    const wheel = wheelOf(game, player, steer.move, (other) =>
+      steerOf(game, other),
+    );
+    drive(game, player, wheel, dt, live, game.config);
     return;
   }
   const { map } = game.world;
@@ -810,6 +838,9 @@ function reconcile(game: Session, entry: PlayerEntry): void {
   const later = pilot.marks.filter((kept) => kept.step > step);
   pilot.marks = later;
   if (mark !== undefined && sameMotion(mark.motion, entry)) return;
+  // At the wheel behind another, it goes along with the lead where this client has it, as one off
+  // the wheel sits where the vehicle is: the host's word on where that was is no correction.
+  if (following(game, mark?.motion.ride ?? null, entry.ride)) return;
   const before = { x: local.x, y: local.y };
   place(local, entry);
   for (const kept of later) {

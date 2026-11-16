@@ -18,6 +18,7 @@ import {
   cabinView,
   controlsHintFor,
   createCabin,
+  escapeLeavesVehicle,
   hintMode,
   minimapPanel,
   radioPanel,
@@ -323,6 +324,16 @@ const input = createInput(
   {
     toggleSettings: {
       press(time) {
+        // Inside a vehicle, Esc gets out, wheel or cabin; settings are a click on their button.
+        const session = joinedSession(room.state());
+        if (
+          !settingsMenu.isOpen() &&
+          session !== null &&
+          escapeLeavesVehicle(hintMode(session.local))
+        ) {
+          sendCabin("exit");
+          return;
+        }
         settingsMenu.toggle(time);
       },
     },
