@@ -9,7 +9,7 @@ import { isGhost } from "./ghosts.js";
 import { heldSlot, weightOf } from "./inventories.js";
 import { cycleSlot, selectSlot } from "./inventory.js";
 import {
-  glideTo,
+  follow,
   lerpAngle,
   renderPosition,
   snapPrevious,
@@ -417,6 +417,24 @@ export function alter(game: Session, player: Player, change: Change): void {
 }
 
 /**
+ * Puts `player` at `at` at once, standing still, as part of the step it is in: a client that runs
+ * its steps makes the move again as it runs that step again, and it is drawn there rather than
+ * sliding from where it was.
+ */
+export function placePlayer(game: Session, player: Player, at: Point): void {
+  alter(game, player, (placed) => {
+    placed.x = at.x;
+    placed.y = at.y;
+    placed.vx = 0;
+    placed.vy = 0;
+    placed.dash = null;
+  });
+  snapPrevious(player);
+  player.tx = player.x;
+  player.ty = player.y;
+}
+
+/**
  * Sim seconds on `actor`'s own clock: the step the host has run it to, for a remote player while
  * hosting; this client's time otherwise.
  */
@@ -766,7 +784,7 @@ export function playerReport(game: Session): PlayerReport {
 /** Takes the host's entry for a player this client follows: it moves steadily there. */
 function followEntry(game: Session, player: Player, entry: PlayerEntry): void {
   player.name = entry.name;
-  glideTo(player, entry, game.config.net.glide);
+  follow(player, entry, game.config.net);
   player.stamina = { ...entry.stamina };
   player.crouched = entry.crouched;
   player.ride = entry.ride;

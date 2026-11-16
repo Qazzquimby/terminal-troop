@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { drawEmoji } from "../../render/index.js";
 import {
   bodiesIn,
@@ -11,11 +11,12 @@ import {
   livingBodies,
   notices,
   removeFromWorld,
-  rounded,
   spawn,
   stun,
 } from "../../sim/index.js";
 import type { Body, Point, Session, WorldEntity } from "../../sim/index.js";
+import { Time } from "../hunt.js";
+import { Arming, arming, drawArmingLight, stepArming } from "../placed.js";
 // Its sounds, once their assets land; importing a missing file breaks the build.
 // import beepUrl from "./sfx/beep.mp3";
 // import flashUrl from "./sfx/flash.mp3";
@@ -40,18 +41,11 @@ export interface StunTrapConfig {
   readonly volume: number;
 }
 
-/** A moment on the world's clock, in sim seconds, sent to a hundredth. */
-const Time = rounded(2);
-
 /**
  * When it was put down, whether it has armed, and when it went off, null until it does. Everyone
  * reads them, to draw it and the light of its flash.
  */
-export const TrapState = z.object({
-  placedAt: Time,
-  armed: z.boolean(),
-  firedAt: Time.nullable(),
-});
+export const TrapState = Arming.extend({ firedAt: Time.nullable() });
 
 type TrapState = z.output<typeof TrapState>;
 
@@ -62,21 +56,12 @@ const TRAP_GLYPH = "🪤";
 /** How wide its flash is drawn, in its own radii. */
 const FLASH_SIZE = 6;
 
-/** Seconds between the blinks of its light once armed. */
-const BLINK = 1;
-
-const COLOURS = { arming: "#8a8f96", armed: "#ff4a3a" } as const;
-
 /**
  * Puts a fresh stun trap down at `at`, which only the host does; the use of a stun trap item
  * calls it, on the host and on its user's own client alike.
  */
 export function placeStunTrap(game: Session, at: Point): void {
-  const state: TrapState = {
-    placedAt: game.worldTime,
-    armed: false,
-    firedAt: null,
-  };
+  const state: TrapState = { ...arming(game), firedAt: null };
   spawn(game, NAME, { x: at.x, y: at.y }, state);
 }
 
@@ -134,15 +119,12 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
           removeFromWorld(game, entity);
         return state;
       }
-      if (!state.armed) {
-        if (now < state.placedAt + config.armSeconds) return state;
-        effect(
-          game,
-          { at: entity, noise: config.sounds.beep /* , sound: beep */ },
-          entity,
-        );
-        return { ...state, armed: true };
-      }
+      if (!state.armed)
+        return stepArming(game, entity, state, {
+          seconds: config.armSeconds,
+          noise: config.sounds.beep,
+          // sound: beep,
+        });
       if (!steppedOn(game, entity)) return state;
       effect(
         game,
@@ -159,13 +141,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
     },
     draw(ctx, entity, state, now) {
       drawEmoji(ctx, entity, TRAP_GLYPH, entity.radius * 2);
-      if (state.firedAt !== null) return;
-      const lit = state.armed && (now / 1000) % BLINK < BLINK / 2;
-      if (state.armed && !lit) return;
-      ctx.fillStyle = state.armed ? COLOURS.armed : COLOURS.arming;
-      ctx.beginPath();
-      ctx.arc(entity.x, entity.y - entity.radius, 2.5, 0, Math.PI * 2);
-      ctx.fill();
+      if (state.firedAt === null) drawArmingLight(ctx, entity, state, now);
     },
   };
 });

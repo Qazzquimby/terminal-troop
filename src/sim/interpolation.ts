@@ -27,6 +27,33 @@ export function glideTo(body: Tracked, to: Point, seconds: number): void {
   body.glide = seconds;
 }
 
+/** How a body follows the positions its host reports, in sim seconds and pixels. */
+interface Following {
+  /** Seconds it takes to reach each reported position. */
+  readonly glide: number;
+  /** Furthest a report may be from the last before the body is placed there at once. */
+  readonly snap: number;
+}
+
+/**
+ * Moves `body`, a player or a world entity, towards the position `to` its host reported: gliding
+ * there, or placed there at once when that is further than `snap` from the last, as for a body
+ * that teleported, so it does not streak across the world.
+ */
+export function follow(
+  body: Tracked & Interpolated,
+  to: Point,
+  { glide, snap }: Following,
+): void {
+  if (Math.hypot(to.x - body.tx, to.y - body.ty) <= snap) {
+    glideTo(body, to, glide);
+    return;
+  }
+  body.x = body.tx = body.prevX = to.x;
+  body.y = body.ty = body.prevY = to.y;
+  body.glide = 0;
+}
+
 /** Moves `body` a step of `dt` towards its target, at the speed that reaches it in time. */
 export function glideToTarget(body: Tracked, dt: number): void {
   const left = body.glide ?? 0;

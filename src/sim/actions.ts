@@ -42,7 +42,7 @@ import type { Session } from "./session.js";
 import { declaredSound, soundNoise } from "./sound.js";
 import type { Sound } from "./sound.js";
 import { spendStamina } from "./stamina.js";
-import { actorTime, alter, queueAction } from "./steering.js";
+import { actorTime, alter, placePlayer, queueAction } from "./steering.js";
 import type { WorldData } from "./world-data.js";
 
 /**
@@ -566,6 +566,27 @@ export function push(
     if (scope(game) === "world") knockPlayer(game, player, from, distance);
   } else if (entity !== null && mayChange(game, entity))
     knockBack(entity, from, distance, game.world.map, blocked);
+}
+
+/**
+ * Moves `body`, a player or a world entity, to `to` at once, as a teleport does, which only the
+ * host does: it stands still there, and every client places it there rather than gliding it across
+ * the world. Whether `to` is clear of walls and bodies is the caller's to check.
+ */
+export function teleport(game: Session, body: Body, to: Point): void {
+  if (scope(game) !== "world") return;
+  const player = asPlayer(game, body);
+  if (player !== null) {
+    placePlayer(game, player, to);
+    return;
+  }
+  const entity = asEntity(game, body);
+  if (entity === null) return;
+  entity.x = entity.prevX = entity.tx = to.x;
+  entity.y = entity.prevY = entity.ty = to.y;
+  entity.vx = 0;
+  entity.vy = 0;
+  entity.glide = 0;
 }
 
 /** A dash an actor makes as it acts. Distances in pixels, times in sim seconds. */

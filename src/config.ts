@@ -236,10 +236,10 @@ export const config = {
   },
   // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
   // follows take 0.15s, one and a half snapshots at 10 a second, to reach each reported position,
-  // so a late snapshot does not stop them. One reported 10 cells from its last, further than a
-  // sprint carries in two seconds, was moved there, as by a teleport, and is placed there at once
-  // rather than streaking across.
-  net: { smoothing: 12, glide: 0.15, predictionHold: 1, snap: CELL * 10 },
+  // so a late snapshot does not stop them. One reported 7 cells from its last, further than a
+  // sprint carries in a second and a half, was moved there, as by a teleport (whose shortest jump
+  // is 8 cells), and is placed there at once rather than streaking across.
+  net: { smoothing: 12, glide: 0.15, predictionHold: 1, snap: CELL * 7 },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
   // Each step is heard by anything within its radius: a sprint carries well past a zombie's
@@ -374,12 +374,14 @@ export const config = {
       // its body, so only something pressed against it hears.
       storage: { slots: 6, noiseRadius: CELL, volume: 0.7 },
       // Sells for the team's credit, which a scrap's sale adds 1 to, so a price is that many scrap.
-      // The register rings 2 cells off.
+      // A teleporter goes for 5 and a turret 8, dear as they are rare. The register rings 2 cells off.
       shop: {
         wares: [
           { item: "walkie", price: 2 },
           { item: "flashlight", price: 3 },
           { item: "shovel", price: 3 },
+          { item: "teleporter", price: 5 },
+          { item: "turret", price: 8 },
         ],
         noiseRadius: CELL * 2,
         volume: 0.8,
@@ -404,6 +406,48 @@ export const config = {
       stunSeconds: 5,
       light: { range: CELL * 8, seconds: 0.5 },
       sounds: { beep: CELL * 8, flash: CELL * 12 },
+      volume: 0.8,
+    },
+    // Sets up 3s after it is put down, as the stun trap arms, then beeps, heard 8 cells off. Its
+    // laser is a 10 degree beam out 12 cells, a handgun's reach, sweeping round once every 3s. It
+    // locks on any living body it catches but players, inert things and items, chirping 4 cells
+    // out, and half a second later fires a handgun's shot at it, then one every 2s, as loud as a
+    // handgun. Two handgun shots or four shovel hits break it, with a crunch heard 10 cells off; a
+    // kick shoves it as it would a player.
+    turret: {
+      radius: 14,
+      maxHealth: SHOVEL_DAMAGE * 4,
+      mass: 1,
+      ignores: ["player"],
+      armSeconds: 3,
+      sight: { angle: Math.PI / 18, range: CELL * 12 },
+      turnSeconds: 3,
+      shot: {
+        damage: SHOVEL_DAMAGE * 2,
+        range: CELL * 12,
+        interval: 2,
+        aimSeconds: 0.5,
+        spark: 5,
+      },
+      sounds: {
+        beep: CELL * 8,
+        lock: CELL * 4,
+        shot: CELL * 30,
+        break: CELL * 10,
+      },
+      volume: 0.8,
+    },
+    // Charges 3s after it is laid, then beeps, heard 8 cells off. It sends whatever steps on it 8
+    // to 30 cells the way it is aimed, to the first clear spot of 24 drawn, with a flash a body
+    // wide and a warp heard 10 cells off at both ends; it charges again over 3s and beeps.
+    teleporter: {
+      radius: 16,
+      armSeconds: 3,
+      rearmSeconds: 3,
+      distance: { min: CELL * 8, max: CELL * 30 },
+      tries: 24,
+      flash: 30,
+      sounds: { beep: CELL * 8, warp: CELL * 10 },
       volume: 0.8,
     },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
@@ -869,6 +913,26 @@ export const config = {
       weight: 4,
       uses: 1,
       loot: { weight: 6, rarity: "uncommon" },
+      cooldown: 0.5,
+      volume: 0.6,
+      placeNoiseRadius: CELL,
+    },
+    // One use: set down just ahead of its holder, facing the way it aims. Rare, as the shotgun,
+    // and heavy, a box of a gun on a stand.
+    turret: {
+      weight: 12,
+      uses: 1,
+      loot: { weight: 3, rarity: "rare" },
+      cooldown: 0.5,
+      volume: 0.7,
+      placeNoiseRadius: CELL * 1.5,
+    },
+    // One use: laid just ahead of its holder, aimed the way it aims. A little rarer than a stun
+    // trap, and light.
+    teleporter: {
+      weight: 5,
+      uses: 1,
+      loot: { weight: 5, rarity: "uncommon" },
       cooldown: 0.5,
       volume: 0.6,
       placeNoiseRadius: CELL,

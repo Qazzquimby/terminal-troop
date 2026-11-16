@@ -62,6 +62,7 @@ export {
   spendUses,
   stateAt,
   take,
+  teleport,
   usesAt,
 } from "./actions.js";
 export type { Action } from "./actions.js";

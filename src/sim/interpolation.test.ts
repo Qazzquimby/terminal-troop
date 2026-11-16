@@ -82,8 +82,8 @@ test("a remote player first seen in a host snapshot snaps there, then interpolat
   const remote = heardAt(game, "them", first);
   expect(remote).toMatchObject({ ...first, prevX: first.x, prevY: first.y });
 
-  const next = randomFreePosition(game.world, PLAYER_RADIUS);
-  heardAt(game, "them", next);
+  // Near enough to have walked there between snapshots; further off, it would be placed there.
+  heardAt(game, "them", { x: first.x + 5, y: first.y });
   updateSession(game, walkRight, FIXED_DT);
 
   expect({ x: remote.prevX, y: remote.prevY }).toEqual(first);
