@@ -18,6 +18,7 @@ import type { WheelConfig } from "./input/index.js";
 
 import type {
   RadioSoundConfig,
+  VoiceClipConfig,
   VoiceConnectionConfig,
   VoiceFalloff,
 } from "./voice/index.js";
@@ -41,6 +42,7 @@ interface AppConfig extends SimConfig {
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly voiceRadio: RadioSoundConfig;
+  readonly voiceClips: VoiceClipConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
@@ -263,6 +265,9 @@ export const config = {
     step: CELL,
     interval: 0.5,
   },
+  // A clip of a player's speech goes out at most 64,000 base64 characters, about 47KB: a
+  // recorder's 5s at 32kbps fits with room to spare, well inside a broadcast's 256KB.
+  echoes: { maxChars: 64_000 },
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {
@@ -924,6 +929,43 @@ export const config = {
       humVolume: 0.6,
       sounds: { hum: CELL * 6, latch: CELL * 6, disperse: CELL * 8 },
     },
+    // Alone, in the dark: none in the first 3 minutes of a world, never within 14 cells of a
+    // player; as rare as the stalker. A player's size, health and walk. Watched by any body within
+    // 14 cells, the stalker's watch range, it wanders up to 6 cells a leg, looking round 2s at
+    // each stop, its head turning up to about 70 degrees either way. Unwatched for 2s, it heads for
+    // where it last saw or heard a body. Any body within 1.5 cells it runs at and bites as a zombie
+    // does: 35 within 30px, every 2s, heard 5 cells off. It speaks every 6 to 12s, heard 4 cells
+    // off, as far as talking carries. Three in ten arrive holding a shovel, a bandage, a walkie or
+    // scrap.
+    doppelganger: {
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      ignores: ["doppelganger"],
+      watchRange: CELL * 14,
+      radius: 14,
+      maxHealth: 100,
+      speed: PLAYER_SPEED,
+      attackRange: CELL * 1.5,
+      reach: 30,
+      damage: 35,
+      attackCooldown: 2,
+      unwatchedSeconds: 2,
+      wanderRange: CELL * 6,
+      lookSeconds: 2,
+      lookSweep: 1.2,
+      repathDistance: CELL / 2,
+      barkGap: { min: 6, max: 12 },
+      barkRange: CELL * 4,
+      holds: {
+        chance: 0.3,
+        items: ["shovel", "bandage", "walkie", "scrap"],
+      },
+      sounds: { attack: CELL * 5 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its
@@ -1188,6 +1230,20 @@ export const config = {
       length: { min: 0.01, max: 0.04 },
       volume: 0.7,
     },
+  },
+  // A clip of a player's own speech starts once what goes out reaches 0.4, past a quiet room's
+  // 0.35 and short of talking's 0.5, and ends after 0.6s under it, longer than the gap between
+  // words; under 0.8s of speech is dropped, so a cough or a "yeah" is not kept, and 5s is the
+  // most a clip runs. The newest 8 are held, at 32kbps: 20KB each. The mic is looked at 20 times
+  // a second.
+  voiceClips: {
+    threshold: 0.4,
+    quietSeconds: 0.6,
+    minSeconds: 0.8,
+    maxSeconds: 5,
+    keep: 8,
+    bitsPerSecond: 32_000,
+    pollMs: 50,
   },
   voiceConnections: {
     levelRampS: 0.05,

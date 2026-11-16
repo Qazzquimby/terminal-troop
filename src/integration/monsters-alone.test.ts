@@ -100,6 +100,7 @@ const entities: EntitiesConfig = {
   giantSnail: weighed(testEntitiesConfig.giantSnail, 5, 480),
   livingWall: weighed(testEntitiesConfig.livingWall, 10, 120),
   gloom: weighed(testEntitiesConfig.gloom, 10, 180),
+  doppelganger: weighed(testEntitiesConfig.doppelganger, 10, 180),
 };
 
 /** The test config, but with no extra danger nor darkness round the exit. */

@@ -2,7 +2,9 @@ import { z } from "zod";
 import { effect } from "./actions.js";
 import { noteRise } from "./fallen.js";
 import { arrivalPoint } from "./arrival.js";
-import { removeEntity } from "./entities.js";
+import type { Body as LivingBody } from "./bodies.js";
+import { removeEntity, spawnEntity } from "./entities.js";
+import type { WorldEntity } from "./entities.js";
 import { isGhost } from "./ghosts.js";
 import { setPlayerHealth } from "./health.js";
 import { itemsOf, takeItem } from "./inventories.js";
@@ -22,6 +24,9 @@ import { itemsCanLie, soundDrop, spawnWorldItem } from "./world-items.js";
  * lies there as an item, its corpse, which anyone can carry. Its player is a ghost meanwhile
  * (see ghosts.ts). Content brings a corpse back to life, such as the cruiser does with one
  * brought to it, through `revive`.
+ *
+ * A world entity may leave a corpse too, through `layCorpse`, under a name of its choosing:
+ * whatever brings a player's corpse back brings it back the same way, as the entity it recorded.
  */
 
 /** How dying and coming back go. Distances in pixels. */
@@ -38,15 +43,28 @@ export const CORPSE_ITEM = "corpse";
 /** The key a corpse keeps, in its item state, the number of the body it is. */
 const BODY_KEY = "body";
 
-/** One fallen player's body: its name as it fell, and the number its corpse keeps. */
+/** The entity a corpse rises as once brought back: its kind's name and its state then. */
+const Riser = z.object({ kind: z.string().min(1).max(64), data: z.unknown() });
+
+type Riser = z.infer<typeof Riser>;
+
+/**
+ * One fallen body that lies as a corpse: its name as it fell, the number its corpse keeps, and,
+ * for a world entity's, what it rises as.
+ */
 const Body = z.object({
   name: z.string().max(64),
   tag: z.number().int().min(0),
+  rises: Riser.optional(),
 });
 
+/** The key a world entity's body is kept under, apart from every player's. */
+const entityKey = (id: string): string => `entity:${id}`;
+
 /**
- * Every fallen player's body that lies as a corpse, by player id, and the number the next one
- * takes. The host keeps it, and every client holds it, so a new host goes on from it.
+ * Every fallen body that lies as a corpse, by player id or, for a world entity's, `entityKey`,
+ * and the number the next one takes. The host keeps it, and every client holds it, so a new
+ * host goes on from it.
  */
 export const bodies = worldData({
   schema: z.object({
@@ -117,14 +135,32 @@ function fall(game: Session, player: Player): void {
   putOut(game, player);
   const at = { x: player.x, y: player.y };
   // A world with no items has nothing to drop, and no corpse to lie.
-  const lies = itemsCanLie(game);
   dropAll(game, player.id, at);
+  lie(game, player.id, player.name, at, player.radius);
+}
+
+/**
+ * As the host, records the body kept under `key`, named `name`, rising as `rises` if given, and
+ * lays its corpse at `at`, with the corpse's drop sound and a flash as wide as `radius` calls for.
+ * A world with no items records it but lays nothing.
+ */
+function lie(
+  game: Session,
+  key: string,
+  name: string,
+  at: Point,
+  radius: number,
+  rises?: Riser,
+): void {
   const held = bodies.get(game);
   bodies.set(game, {
     next: held.next + 1,
-    of: { ...held.of, [player.id]: { name: player.name, tag: held.next } },
+    of: {
+      ...held.of,
+      [key]: { name, tag: held.next, ...(rises !== undefined && { rises }) },
+    },
   });
-  if (!lies) return;
+  if (!itemsCanLie(game)) return;
   const corpse = spawnWorldItem(game, at, CORPSE_ITEM, undefined, {
     [BODY_KEY]: held.next,
   });
@@ -134,10 +170,27 @@ function fall(game: Session, player: Player): void {
     {
       at,
       ...(sound !== undefined && { sound }),
-      flash: { radius: player.radius * FALL_FLASH, hit: true },
+      flash: { radius: radius * FALL_FLASH, hit: true },
     },
     corpse,
   );
+}
+
+/**
+ * As the host, lays the corpse of world entity `entity` where it stands, named `name`, which
+ * brought back rises as `rises`: an entity of that kind with that state, standing where it is
+ * brought back. For a kind whose dead come back as a fallen player does, by whatever brings a
+ * player's corpse back.
+ */
+export function layCorpse(
+  game: Session,
+  entity: WorldEntity,
+  name: string,
+  rises: Riser,
+): void {
+  if (!game.hosting) return;
+  const at = { x: entity.x, y: entity.y };
+  lie(game, entityKey(entity.id), name, at, entity.radius, rises);
 }
 
 /**
@@ -151,10 +204,10 @@ export function layBodies(game: Session): void {
     if (isGhost(player) && of[player.id] === undefined) fall(game, player);
 }
 
-/** Takes every corpse of player `id` out of the world, wherever it is. */
-function takeCorpses(game: Session, id: string): void {
+/** Takes every corpse of the body kept under `key` out of the world, wherever it is. */
+function takeCorpses(game: Session, key: string): void {
   for (const instance of itemInstances(game, CORPSE_ITEM)) {
-    if (corpseOwner(game, instance.state) !== id) continue;
+    if (corpseOwner(game, instance.state) !== key) continue;
     const { place } = instance;
     if ("lying" in place) removeEntity(game, place.lying.id);
     else takeItem(game, place.carrier.id, place.slot, CORPSE_ITEM);
@@ -169,53 +222,92 @@ function ghostOf(game: Session, state: ItemState | undefined): Player | null {
 }
 
 /**
+ * The world entity's body whose corpse keeps `state`, by the key it is kept under, and what it
+ * rises as; null when it is no entity's.
+ */
+function riserOf(
+  game: Session,
+  state: ItemState | undefined,
+): { readonly key: string; readonly rises: Riser } | null {
+  const key = corpseOwner(game, state);
+  const rises = key === null ? undefined : bodies.get(game).of[key]?.rises;
+  return key === null || rises === undefined ? null : { key, rises };
+}
+
+/**
  * Whether the corpse that keeps `state` can be brought back to life: its player is a ghost in the
- * session. Every client holds what this reads, so a client may ask it as it predicts.
+ * session, or it is a world entity's that rises again. Every client holds what this reads, so a
+ * client may ask it as it predicts.
  */
 export const isRevivable = (
   game: Session,
   state: ItemState | undefined,
-): boolean => ghostOf(game, state) !== null;
+): boolean => ghostOf(game, state) !== null || riserOf(game, state) !== null;
+
+/** Forgets the body kept under `key`, and takes its every corpse out of the world. */
+function bury(game: Session, key: string): void {
+  takeCorpses(game, key);
+  const held = bodies.get(game);
+  bodies.set(game, {
+    ...held,
+    of: Object.fromEntries(
+      Object.entries(held.of).filter(([owner]) => owner !== key),
+    ),
+  });
+}
+
+/** A spot near `at` where a body of `radius` stands. */
+const standingNear = (game: Session, at: Point, radius: number): Point =>
+  arrivalPoint(game.world, at, radius, game.config.arrival.spread, Math.random);
+
+/** The radius of an entity of the kind named `kind`; null for a kind not registered. */
+function kindRadius(game: Session, kind: string): number | null {
+  const id = game.kindIds.get(kind);
+  const type = id === undefined ? undefined : game.entityTypes.get(id);
+  return type === undefined ? null : type.radius;
+}
 
 /**
- * As the host, brings the ghost of the player whose corpse keeps `state` back to life by `at`,
- * the work of body `by` (null for no one): its corpse is gone, wherever it was, and the player
- * stands near `at` with `health(player)` health, or the configured revive health when left out.
- * Returns the player revived; null when
- * the corpse is nobody's, or its player is not in the session or not a ghost.
+ * As the host, brings the body whose corpse keeps `state` back to life by `at`, the work of body
+ * `by` (null for no one): its corpse is gone, wherever it was, and it stands near `at` with
+ * `health(body)` health, or the configured revive health when left out, never past its full. A
+ * player's corpse brings back its ghost; a world entity's, a new entity as `layCorpse` recorded.
+ * Returns the body revived; null when the corpse is nobody's, its player is not in the session
+ * or not a ghost, or its entity's kind is not registered.
  */
 export function revive(
   game: Session,
   state: ItemState | undefined,
   at: Point,
   by: string | null,
-  health?: (player: Player) => number,
-): Player | null {
+  health?: (body: { readonly maxHealth: number }) => number,
+): LivingBody | null {
+  if (!game.hosting) return null;
+  const healthOf = (body: { readonly maxHealth: number }): number =>
+    Math.min(body.maxHealth, health?.(body) ?? game.config.death.reviveHealth);
   const player = ghostOf(game, state);
-  if (!game.hosting || player === null) return null;
-  takeCorpses(game, player.id);
-  const held = bodies.get(game);
-  bodies.set(game, {
-    ...held,
-    of: Object.fromEntries(
-      Object.entries(held.of).filter(([owner]) => owner !== player.id),
-    ),
-  });
-  setPlayerHealth(
+  if (player !== null) {
+    bury(game, player.id);
+    setPlayerHealth(game, player, healthOf(player));
+    placePlayer(game, player, standingNear(game, at, player.radius));
+    noteRise(game, player, by);
+    return player;
+  }
+  const riser = riserOf(game, state);
+  const radius = riser === null ? null : kindRadius(game, riser.rises.kind);
+  if (riser === null || radius === null) return null;
+  bury(game, riser.key);
+  const spot = standingNear(game, at, radius);
+  const entity = spawnEntity(
     game,
-    player,
-    health?.(player) ?? game.config.death.reviveHealth,
+    riser.rises.kind,
+    spot.x,
+    spot.y,
+    riser.rises.data,
   );
-  const spot = arrivalPoint(
-    game.world,
-    at,
-    player.radius,
-    game.config.arrival.spread,
-    Math.random,
-  );
-  placePlayer(game, player, spot);
-  noteRise(game, player, by);
-  return player;
+  entity.health = healthOf(entity);
+  noteRise(game, entity, by);
+  return entity;
 }
 
 /**

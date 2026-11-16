@@ -10,9 +10,12 @@ import type {
   Voice,
   RadioSoundConfig,
   VoiceConnectionConfig,
+  VoiceClipConfig,
   VoiceRoom,
   VoiceSettings,
 } from "../../voice/index.js";
+import { createClipRecorder } from "./clips.js";
+import type { ClipRecorder } from "./clips.js";
 import { createScope } from "../../lib/scope/index.js";
 import type { Scope } from "../../lib/scope/index.js";
 import { createMicCapture } from "./mic-capture.js";
@@ -109,7 +112,10 @@ export function createWebRtcVoice(
   initial: VoiceSettings,
   config: VoiceConnectionConfig,
   radio: RadioSoundConfig,
+  clipConfig?: VoiceClipConfig,
 ): Voice {
+  /** The clips of the player's speech in the room joined now; null outside one or unrecorded. */
+  let clips: ClipRecorder | null = null;
   const { audioContext } = audio;
   const levels = createPeerLevels();
   /** The peers of the room joined now, by id. */
@@ -258,6 +264,25 @@ export function createWebRtcVoice(
     const own = new Map<string, Peer>();
     const pending = createPendingSignals(config.pending);
     peers = own;
+    if (clipConfig !== undefined) {
+      const recorder = createClipRecorder(
+        {
+          track: () => mic.track(),
+          level: () => (transmitting() ? mic.level() : 0),
+          live: () =>
+            transmitting() &&
+            [...own.values()].some(
+              (peer) => peer.connection?.pc.connectionState === "connected",
+            ),
+        },
+        clipConfig,
+      );
+      clips = recorder;
+      scope.defer(() => {
+        recorder.stop();
+        if (clips === recorder) clips = null;
+      });
+    }
 
     function send(to: string, connection: Connection, signal: Signal): void {
       if (connection.scope.disposed) return;
@@ -638,6 +663,10 @@ export function createWebRtcVoice(
       return transmitting() ? mic.level() : 0;
     },
 
+    clipCount: () => clips?.count() ?? 0,
+
+    clip: (index) => clips?.clip(index) ?? null,
+
     setTalking(held) {
       talking = held;
       applyTransmit();
@@ -670,6 +699,7 @@ export function createWebRtcVoice(
       return {
         mode,
         muted,
+        volume,
         mic: mic.state(),
         transmitting: transmitting(),
         peers: connected,

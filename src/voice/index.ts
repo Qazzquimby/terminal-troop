@@ -17,4 +17,6 @@ export type {
   VoiceMode,
   VoiceRoom,
   VoiceSettings,
+  VoiceClip,
+  VoiceClipConfig,
 } from "./voice.js";
