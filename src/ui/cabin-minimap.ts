@@ -3,6 +3,7 @@ import {
   cabinTeleporter,
   destroyedWalls,
   livingPlayers,
+  perceives,
 } from "../sim/index.js";
 import type { CabinTeleporter, Player, Session } from "../sim/index.js";
 import { button, make } from "./cabin.js";
@@ -190,7 +191,8 @@ function layoutImage(game: Session): HTMLCanvasElement {
  * The minimap: the world round one living player, walls and all, whatever the local player can see
  * from the cabin, the player marked with the way it faces. Buttons step through who it follows.
  * It shows no monsters: the car knows where its crew are, not what hunts them. Under it, for a
- * vehicle with a teleporter, a button sends for the player it follows.
+ * vehicle with a teleporter, a button sends for the player it follows. Only what a kind draws
+ * over it for the local player, if the local player perceives it, shows over all that.
  */
 export function minimapPanel(
   config: MinimapConfig,
@@ -270,6 +272,14 @@ export function minimapPanel(
     ctx.beginPath();
     ctx.arc(middle, middle, Math.max(3, scale * 0.5), 0, Math.PI * 2);
     ctx.fill();
+    for (const entity of game.entities.values()) {
+      if (!perceives(game, game.localId, entity.id)) continue;
+      ctx.save();
+      game.entityTypes
+        .get(entity.kind)
+        ?.minimap(ctx, entity, config.size, performance.now());
+      ctx.restore();
+    }
   };
 
   return {

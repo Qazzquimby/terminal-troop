@@ -14,7 +14,8 @@ import type { Hunting, Prey } from "./hunt.js";
  * strikes any living body, player or world entity, but itself, what `NEVER_PREY` names (inert
  * things, items lying about, unnoticed bodies such as the snail), and the kinds its config tells it
  * to ignore, its own kind by default. A kind whose config names `targets` hunts only bodies of
- * those kind tags, though it still strikes whatever it touches.
+ * those kind tags, though it still strikes whatever it touches. Nor does it find a body only some
+ * other body perceives, as the ghost girl, there to hunt or strike at all.
  */
 
 /**
@@ -29,7 +30,7 @@ export function preyFor(
 ): Body[] {
   const passed = [...hunting.ignores, ...NEVER_PREY];
   const { targets } = hunting;
-  return livingBodies(game).filter(
+  return livingBodies(game, self?.id ?? null).filter(
     (body) =>
       body.id !== self?.id &&
       !hasKindTag(game, body.id, passed) &&

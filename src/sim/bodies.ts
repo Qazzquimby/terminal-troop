@@ -40,16 +40,45 @@ export function asEntity(game: Session, body: Body): WorldEntity | null {
 export const isPlayer = (game: Session, body: Body): boolean =>
   asPlayer(game, body) !== null;
 
+/*
+ * Most bodies are there for every body to perceive. A kind can name the one body that perceives
+ * one of it instead (`perceivedBy`), as a haunting only its victim sees: to every other body it is
+ * not there at all. Nothing sees, hears, hunts, strikes, traps or bumps into it, and no other
+ * player's client draws it, plays its sounds or logs it. `perceives` is the one rule they all ask.
+ */
+
+/**
+ * Whether the body `by`, by id, perceives the body `id`: always, unless `id` is of a kind that
+ * names the one body perceiving it, which must then be `by`. Null for `by` is no body at all,
+ * as a dead player's free camera, which perceives only what every body does.
+ */
+export function perceives(
+  game: Session,
+  by: string | null,
+  id: string | null | undefined,
+): boolean {
+  if (id === null || id === undefined) return true;
+  const entity = game.entities.get(id);
+  if (entity === undefined) return true;
+  const type = game.entityTypes.get(entity.kind);
+  if (type?.restricted !== true) return true;
+  return by !== null && type.perceiver(entity) === by;
+}
+
 /**
  * Every body out in the world that is not dead: each living player, then each world entity with
  * health left, items lying about included. Ghosts are left out, and so is every body inside a
- * vehicle: nothing out in the world sees, strikes or targets it.
+ * vehicle: nothing out in the world sees, strikes or targets it. So is every body that only some
+ * other body than `by`, by id, perceives, and with `by` left out, every body only one perceives.
  */
-export function livingBodies(game: Session): Body[] {
+export function livingBodies(game: Session, by: string | null = null): Body[] {
   return [
     ...playersOutside(game),
     ...[...game.entities.values()].filter(
-      (entity) => entity.health > 0 && !isAboard(entity),
+      (entity) =>
+        entity.health > 0 &&
+        !isAboard(entity) &&
+        perceives(game, by, entity.id),
     ),
   ];
 }

@@ -157,6 +157,7 @@ export {
   isGone,
   livingBodies,
   livingBody,
+  perceives,
 } from "./bodies.js";
 export { axesOf, gapTo, isBoxFree, reachAlong, touches } from "./shape.js";
 export type { BoxSize, Footprint } from "./shape.js";
@@ -217,6 +218,7 @@ export {
   directionalVision,
   distanceToWall,
   emittedLights,
+  footprintPoints,
   isBodyVisible,
   isVisible,
   lightSources,

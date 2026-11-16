@@ -103,6 +103,31 @@ export interface EntityDefinition<S> {
    * whatever this says; `eyesOf` sees to that.
    */
   readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
+  /**
+   * The one body that perceives it, by id, given its state; null for no body at all. Only that
+   * body finds it among the living bodies (to hunt, strike, trap, shoot or bump into), hears the
+   * noise it makes and, on that body's own client, sees it drawn and hears its sounds; the world
+   * log of every other client leaves it out. Every body perceives a kind without it; `perceives`
+   * judges it for every rule.
+   */
+  readonly perceivedBy?: (entity: WorldEntity, data: S) => string | null;
+  /**
+   * Whether it shows wherever whoever sees it has a clear line to it, down its view cone however
+   * far, or within what it sees all round it, light or no light. Left out, it shows only where it
+   * is lit, as any body does.
+   */
+  readonly seenInDark?: boolean;
+  /**
+   * Draws whatever of it shows over the cabin's minimap, `size` pixels square, on the client of
+   * each player that perceives it. The minimap shows no entity otherwise.
+   */
+  readonly minimap?: (
+    ctx: CanvasRenderingContext2D,
+    entity: WorldEntity,
+    data: S,
+    size: number,
+    now: number,
+  ) => void;
   /** What makes it a vehicle a player can drive, if it is one. */
   readonly vehicle?: VehicleSpec;
   /**
@@ -166,6 +191,17 @@ export interface EntityType {
   /** How far round it it gives off darkness, in pixels; 0 for none. */
   darkness(entity: WorldEntity): number;
   eyes(entity: WorldEntity, game: Session): Eyes | null;
+  /** Whether only one body perceives it, the one `perceiver` names. */
+  readonly restricted: boolean;
+  /** The one body that perceives it, when `restricted`; null for none. */
+  perceiver(entity: WorldEntity): string | null;
+  readonly seenInDark: boolean;
+  minimap(
+    ctx: CanvasRenderingContext2D,
+    entity: WorldEntity,
+    size: number,
+    now: number,
+  ): void;
   plays(entity: WorldEntity, game: Session): Playing | null;
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
@@ -225,6 +261,19 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return null;
       return definition.eyes?.(entity, parsed.data, game) ?? null;
+    },
+    restricted: definition.perceivedBy !== undefined,
+    perceiver(entity) {
+      const { perceivedBy } = definition;
+      if (perceivedBy === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      return parsed.success ? perceivedBy(entity, parsed.data) : null;
+    },
+    seenInDark: definition.seenInDark ?? false,
+    minimap(ctx, entity, size, now) {
+      const parsed = schema.safeParse(entity.data);
+      if (parsed.success)
+        definition.minimap?.(ctx, entity, parsed.data, size, now);
     },
     plays(entity, game) {
       const parsed = schema.safeParse(entity.data);
@@ -415,7 +464,7 @@ export function entitySnapshot(game: Session): EntitySnapshot[] {
 /**
  * Takes the entities a host sent: known ones ease towards their new positions and take the new
  * health and state, and new ones appear where the entry puts them. An entry of an unregistered
- * kind, with data its kind rejects, or inside a wall is left out. Returns the ids taken.
+ * kind, with data its kind rejects, or inside a wall that would stop it is left out. Returns the ids taken.
  */
 function takeEntries(
   game: Session,
@@ -424,7 +473,11 @@ function takeEntries(
   const taken = new Set<string>();
   for (const { id, kind, x, y, health, data } of entries) {
     const type = game.entityTypes.get(kind);
-    if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
+    // A kind walls do not stop may stand in one, or off the map.
+    if (
+      type === undefined ||
+      (type.collides && !isAreaFree(game.world.map, x, y, type.radius))
+    )
       continue;
     const parsed = type.data.safeParse(data);
     if (!parsed.success) continue;
