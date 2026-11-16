@@ -110,6 +110,7 @@ describe("null voice", () => {
     expect(voice.status()).toEqual({
       mode: "pushToTalk",
       muted: false,
+      volume: 0.5,
       mic: "unavailable",
       transmitting: false,
       peers: [],

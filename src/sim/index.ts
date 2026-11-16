@@ -146,6 +146,7 @@ export {
   dropAll,
   isRevivable,
   itemName,
+  layCorpse,
   revive,
 } from "./death.js";
 export { arrivalPoint } from "./arrival.js";
@@ -186,9 +187,12 @@ export {
   worldData,
 } from "./world-data.js";
 export { movement } from "./movement.js";
+export { FOOTSTEP_TAG } from "./footsteps.js";
 export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
+export { echoVoice } from "./echoes.js";
+export type { VoiceClips } from "./echoes.js";
 export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";
-export type { Heard } from "./noise.js";
+export type { Heard, Noise } from "./noise.js";
 export { declaredSounds, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";

@@ -110,6 +110,7 @@ export const testSimConfig: SimConfig = {
     step: 50,
     interval: 0.4,
   },
+  echoes: { maxChars: 1000 },
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };
 
@@ -175,7 +176,10 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * a test spawns one: one that moves on a body within 500px at 0.8 times the test player's walk,
  * held by any gaze within 700px, striking for 80 from behind, fleeing at twice the test sprint
  * for 3s once hurt. No ghost girl appears unless a test spawns one: as the game's, but appearing
- * 200 to 600px off, staying away 10s and chasing for 6s, with 10 patience.
+ * 200 to 600px off, staying away 10s and chasing for 6s, with 10 patience. No doppelganger
+ * appears unless a test spawns one: the test player's size, health and walk, held by any gaze
+ * within 700px, biting for 35 within 30px of a body within 75px, heading for where it last knew a
+ * body once unwatched for 2s, speaking every 6 to 12s.
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
@@ -533,6 +537,27 @@ export const testEntitiesConfig = {
     wanderPause: { min: 1, max: 3 },
     humVolume: 0.6,
     sounds: { hum: 300, latch: 300, disperse: 400 },
+  },
+  doppelganger: {
+    spawning: { ...NEVER, unseenDistance: 700 },
+    ignores: ["doppelganger"],
+    watchRange: 700,
+    radius: 14,
+    maxHealth: 100,
+    speed: 220,
+    attackRange: 75,
+    reach: 30,
+    damage: 35,
+    attackCooldown: 2,
+    unwatchedSeconds: 2,
+    wanderRange: 300,
+    lookSeconds: 2,
+    lookSweep: 1.2,
+    repathDistance: 25,
+    barkGap: { min: 6, max: 12 },
+    barkRange: 200,
+    holds: { chance: 0, items: ["shovel"] },
+    sounds: { attack: 250 },
   },
 } satisfies EntitiesConfig;
 

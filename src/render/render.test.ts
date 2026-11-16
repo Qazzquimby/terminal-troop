@@ -32,6 +32,7 @@ import {
   drawFlashes,
   drawHealthBar,
   drawHeldItem,
+  drawLikePlayer,
   drawLitWalls,
   drawWallBlock,
   drawRemembered,
@@ -429,4 +430,48 @@ test("emojis are drawn opaque whatever translucent fill was set before them", ()
     { text: "🔦", fill: "#fff" },
   ]);
   expect(ctx.fillStyle).toBe(before);
+});
+
+test("a body drawn as a player shows its name, what it holds, and its bar where a player's shows", () => {
+  const texts: string[] = [];
+  const bars: number[] = [];
+  const noop = (): void => undefined;
+  const align: CanvasTextAlign = "start";
+  const baseline: CanvasTextBaseline = "alphabetic";
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 1,
+    font: "",
+    textAlign: align,
+    textBaseline: baseline,
+    save: noop,
+    restore: noop,
+    beginPath: noop,
+    closePath: noop,
+    moveTo: noop,
+    lineTo: noop,
+    arc: noop,
+    fill: noop,
+    stroke: noop,
+    fillText(text: string) {
+      texts.push(text);
+    },
+    fillRect(_x: number, y: number) {
+      bars.push(y);
+    },
+  };
+  const body = {
+    x: 100,
+    y: 100,
+    vx: 0,
+    vy: 0,
+    radius: 14,
+    health: 50,
+    maxHealth: 100,
+  };
+  drawLikePlayer(ctx, body, { name: "ME", aim: 0, crouched: false }, "🪏");
+  expect(texts).toEqual(["ME", "🪏"]);
+  // Its bar sits above its name, as a player's does.
+  expect(Math.min(...bars)).toBe(body.y - body.radius - 26 - 1);
 });

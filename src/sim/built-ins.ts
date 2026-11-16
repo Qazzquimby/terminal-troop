@@ -17,6 +17,7 @@ import { credit } from "./credit.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
 import { voiceNoise } from "./voice-noise.js";
+import { clipsHeld, echoEvents } from "./echoes.js";
 import { addVoiceChannel, onAir } from "./voice-routes.js";
 import type { VoiceChannel } from "./voice-routes.js";
 import { bodies, ghostVoices } from "./death.js";
@@ -54,6 +55,11 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
   "core/voice": { player: voiceNoise },
   /** Whether each player is on the air, its voice going past the air through a channel. */
   "core/on-air": { player: onAir },
+  /**
+   * How many clips of its own speech each player's client holds, and how an entity speaking in a
+   * player's voice gets one played.
+   */
+  "core/echoes": { player: clipsHeld, events: echoEvents },
   /** Each player's health, which the host alone changes. */
   "core/health": { world: { players: playerHealth } },
   /** The statuses each body, player or entity, is under, such as stunned, and when each ends. */

@@ -155,6 +155,33 @@ export interface VoiceConnectionConfig {
   statsIntervalMs: number;
 }
 
+/** A clip of the player's own speech: its media type, and its bytes in base64. */
+export interface VoiceClip {
+  readonly mime: string;
+  readonly data: string;
+}
+
+/**
+ * How clips of the player's own speech are cut, between pauses, from what its mic sends out.
+ * Times in seconds, levels as the mic's 0..1.
+ */
+export interface VoiceClipConfig {
+  /** Level speech going out must reach to start a clip, and to count as speech within one. */
+  readonly threshold: number;
+  /** A pause in speech this long ends a clip. */
+  readonly quietSeconds: number;
+  /** Speech shorter than this is not kept. */
+  readonly minSeconds: number;
+  /** A clip is cut off at this length. */
+  readonly maxSeconds: number;
+  /** How many of the newest clips are held. */
+  readonly keep: number;
+  /** The bitrate a clip is recorded at. */
+  readonly bitsPerSecond: number;
+  /** Milliseconds between looks at the mic. */
+  readonly pollMs: number;
+}
+
 /** One wanted peer. Its state is "pending" while it waits for its next connection attempt. */
 interface VoiceConnection {
   id: string;
@@ -167,6 +194,8 @@ interface VoiceStatus {
   mode: VoiceMode;
   /** Hard mute of the outgoing mic, in either mode. */
   muted: boolean;
+  /** How loud incoming voices play, 0..1. */
+  volume: number;
   mic: MicState;
   /** Whether our mic is currently going out to the other players. */
   transmitting: boolean;
@@ -239,6 +268,14 @@ export interface Voice {
    */
   speakingLevel(): number;
   /**
+   * How many clips of the player's own speech are held: cut between pauses from what its mic sent
+   * out live to a connected player in the room joined now, and forgotten on leaving it. None while
+   * muted, without a mic, or talking to no one.
+   */
+  clipCount(): number;
+  /** The held clip at `index`, counting round; null with none held. */
+  clip(index: number): VoiceClip | null;
+  /**
    * Starts voice in a room, leaving the room joined before. Setup messages go out through
    * `send`, for the room to deliver as SIGNAL events. The mic stays captured across rooms.
    */
@@ -260,7 +297,7 @@ export function pushToTalk(voice: Pick<Voice, "setTalking">): UiHandlers {
 
 /** Voice that does nothing: for tests, and browsers without WebRTC. */
 export function createNullVoice(initial: VoiceSettings): Voice {
-  let { mode, muted } = initial;
+  let { mode, muted, volume } = initial;
   const noop = (): void => undefined;
   const room: VoiceRoom = {
     receive: noop,
@@ -271,7 +308,7 @@ export function createNullVoice(initial: VoiceSettings): Voice {
   return {
     requestMic: noop,
     configure(settings) {
-      ({ mode, muted } = settings);
+      ({ mode, muted, volume } = settings);
     },
     setTalking: noop,
     setKeyed: noop,
@@ -279,6 +316,8 @@ export function createNullVoice(initial: VoiceSettings): Voice {
     setMicTest: noop,
     retry: noop,
     speakingLevel: () => 0,
+    clipCount: () => 0,
+    clip: () => null,
     diagnostics: () => ({
       mic: {
         permission: "unavailable",
@@ -293,6 +332,7 @@ export function createNullVoice(initial: VoiceSettings): Voice {
     status: () => ({
       mode,
       muted,
+      volume,
       mic: "unavailable",
       transmitting: false,
       peers: [],

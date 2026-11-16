@@ -186,7 +186,7 @@ function drawPlayer(
 ): void {
   ctx.save();
   if (away) ctx.globalAlpha = AWAY_ALPHA;
-  drawBody(ctx, player, isSelf);
+  drawBody(ctx, player, lookOf(player), isSelf);
   if (player.use !== null)
     game.items.get(player.use.item)?.draw?.(ctx, player.use, game.time);
   const held = heldItemOf(game, player);
@@ -202,7 +202,7 @@ function drawPlayer(
 
 /** Draws the white facing line from `at` in `direction` (radians) out to `radius`. */
 export function drawFacing(
-  ctx: CanvasRenderingContext2D,
+  ctx: PathContext,
   at: Point,
   direction: number,
   radius: number,
@@ -299,30 +299,70 @@ function drawStunned(
 /** How large a crouching player's body is drawn, as a fraction of its radius. */
 const CROUCHED_SCALE = 0.7;
 
+/** What a player looks like, past where it stands: its name, its facing, and whether it crouches. */
+interface PlayerLook {
+  readonly name: string;
+  /** Radians. */
+  readonly aim: number;
+  readonly crouched: boolean;
+}
+
+const lookOf = (player: Player): PlayerLook => ({
+  name: player.name,
+  aim: player.aim,
+  crouched: movement.get(player).mode === "crouch",
+});
+
+/** What drawing a body as a player needs of a context. */
+type BodyContext = PathContext &
+  TextContext &
+  Pick<CanvasRenderingContext2D, "arc" | "fillRect">;
+
 /** A player's body, drawn smaller while it crouches, its facing line, and its name. */
 function drawBody(
-  ctx: CanvasRenderingContext2D,
-  player: Player,
+  ctx: BodyContext,
+  body: Entity,
+  { name, aim, crouched }: PlayerLook,
   isSelf: boolean,
 ): void {
-  const crouched = movement.get(player).mode === "crouch";
   ctx.fillStyle = isSelf ? "#73cfff" : "#e1bd83";
   ctx.beginPath();
   ctx.arc(
-    player.x,
-    player.y,
-    player.radius * (crouched ? CROUCHED_SCALE : 1),
+    body.x,
+    body.y,
+    body.radius * (crouched ? CROUCHED_SCALE : 1),
     0,
     Math.PI * 2,
   );
   ctx.fill();
 
-  drawFacing(ctx, player, player.aim, player.radius * 1.5);
+  drawFacing(ctx, body, aim, body.radius * 1.5);
 
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.fillStyle = "#eee";
-  ctx.fillText(player.name, player.x, player.y - player.radius - 8);
+  ctx.fillText(name, body.x, body.y - body.radius - 8);
+}
+
+/** How far over a player's top its health bar shows, clear of its name. */
+const PLAYER_BAR_ABOVE = 26;
+
+/**
+ * `body` drawn as another player looks to whoever sees it, as `look` has it: its body, facing and
+ * name, the glyph `held` it holds, if any, and its health bar where a player's shows. For a body
+ * passing itself off as a player.
+ */
+export function drawLikePlayer(
+  ctx: BodyContext,
+  body: Entity,
+  look: PlayerLook,
+  held: string | null,
+): void {
+  ctx.save();
+  drawBody(ctx, body, look, false);
+  if (held !== null) drawHeldItem(ctx, body, look.aim, held);
+  ctx.restore();
+  drawHealthBar(ctx, body, body.y - body.radius - PLAYER_BAR_ABOVE);
 }
 
 function drawStamina(
@@ -947,7 +987,7 @@ function drawBodies(
     if (!inView(player, camera)) return;
     if (!shows(player)) return;
     drawPlayer(ctx, game, player, false, isAway(player.id));
-    drawHealthBar(ctx, player, player.y - player.radius - 26);
+    drawHealthBar(ctx, player, player.y - player.radius - PLAYER_BAR_ABOVE);
     if (isStunned(game, player.id))
       drawStunned(ctx, player, now, STUN_ABOVE.player);
   });
@@ -1262,7 +1302,7 @@ export function draw(
     drawRipples(ctx, ripples.config, rings, now, camera);
     // Inside a vehicle, the viewer is out of sight in it, as every other occupant is.
     if (!isAboard(viewer)) drawPlayer(ctx, game, viewer, viewer === game.local);
-    drawHealthBar(ctx, viewer, viewer.y - viewer.radius - 26);
+    drawHealthBar(ctx, viewer, viewer.y - viewer.radius - PLAYER_BAR_ABOVE);
     drawStamina(ctx, viewer, game.config.stamina.max);
     if (isStunned(game, viewer.id))
       drawStunned(ctx, viewer, now, STUN_ABOVE.player);

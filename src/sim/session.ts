@@ -42,6 +42,8 @@ import type { HeldWorldValue, WorldData } from "./world-data.js";
 import type { Prediction } from "./prediction.js";
 import { emitVoices } from "./voice-noise.js";
 import type { SpokenLevel, VoiceNoiseConfig } from "./voice-noise.js";
+import { followEchoes, noClips } from "./echoes.js";
+import type { EchoConfig, VoiceClips } from "./echoes.js";
 import { settlePredictions } from "./prediction.js";
 import {
   createPilot,
@@ -90,6 +92,8 @@ export interface SimConfig extends PlayerRules {
   readonly noise: NoiseConfig;
   readonly footsteps: FootstepConfig;
   readonly voiceNoise: VoiceNoiseConfig;
+  /** How clips of players' voices travel, for entities that speak in them. */
+  readonly echoes: EchoConfig;
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
   readonly death: DeathConfig;
@@ -109,6 +113,8 @@ export interface Session {
   /** Where the world's starting things gather and new players arrive; seeded like `seed`. */
   readonly rally: Point;
   readonly sfx: Sfx;
+  /** The local player's recorded speech, for entities that speak in its voice. */
+  readonly clips: VoiceClips;
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
   readonly entityTypes: Map<number, EntityType>;
@@ -197,6 +203,8 @@ export interface Start {
   readonly at?: Point | undefined;
   /** Picks the spot a player new to the world arrives at; `Math.random` by default. */
   readonly rng?: Rng | undefined;
+  /** The local player's recorded speech; none when left out. */
+  readonly clips?: VoiceClips | undefined;
 }
 
 /** The seed of the room `code` in worlds seeded by `base`. */
@@ -256,6 +264,7 @@ export function createSession(
     seed,
     rally,
     sfx,
+    clips: start.clips ?? noClips,
     players: new Map([[localId, local]]),
     entities: new Map(),
     entityTypes: new Map(),
@@ -375,6 +384,7 @@ export function updateSession(
 
   followHealth(game);
   followPlayings(game);
+  followEchoes(game);
   // Sounds still playing are heard from where the local player is now, a ghost's view included.
   game.sfx.listen(game.local);
   hearStatuses(game);
