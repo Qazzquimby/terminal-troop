@@ -29,6 +29,11 @@ export interface ItemDefinition {
   readonly name: string;
   /** The glyph the item is drawn with. */
   readonly emoji: string;
+  /**
+   * A CSS colour its glyph glows and glints in, wherever it is drawn, to tell a precious item from
+   * a plain one sharing its glyph; none when left out.
+   */
+  readonly glint?: string;
   /** What every client near it hears when it is dropped, if anything. */
   readonly drop?: Sound;
   /** What every client near it hears as its last use is spent and it is gone, if anything. */

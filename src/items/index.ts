@@ -4,6 +4,7 @@ import { flashlight } from "./flashlight/index.js";
 import { fuel } from "./fuel/index.js";
 import { handgun } from "./handgun/index.js";
 import { scrap } from "./scrap/index.js";
+import { goldenScrap } from "./golden-scrap/index.js";
 import { shotgun } from "./shotgun/index.js";
 import { radio } from "./radio/index.js";
 import { shovel } from "./shovel/index.js";
@@ -21,6 +22,7 @@ export { credit } from "./scrap/index.js";
 const ITEMS = [
   shovel,
   scrap,
+  goldenScrap,
   handgun,
   shotgun,
   flashlight,

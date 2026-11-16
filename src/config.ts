@@ -56,6 +56,12 @@ const SHOVEL_DAMAGE = 15;
 /** A player's walking pace, in pixels a second, and how much faster it sprints. */
 const PLAYER_SPEED = 120;
 const SPRINT = 1.8;
+/**
+ * Seconds into a world at which it reaches its end game: the spawner is at full pace, and groups
+ * that grow with the world have grown to their full size. A world has no fixed length, so this
+ * is where its threat stops rising.
+ */
+const END_GAME = 20 * 60;
 
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
@@ -264,7 +270,14 @@ export const config = {
         weight: 100,
         tries: 24,
         unseenDistance: 700,
-        group: { min: 1, max: 5, spread: CELL * 2 },
+        // In groups of 1 to 5 as a world begins, 3 on average, growing to 5 to 11, 8 on average,
+        // by its end game; a crowd that size wants room, so it spreads up to 3 cells.
+        group: {
+          min: 1,
+          max: 5,
+          spread: CELL * 3,
+          grows: { min: 5, max: 11, by: END_GAME },
+        },
       },
       radius: 15,
       // A person's weight, as a player's: a kick sends it as far as it would a player.
@@ -453,10 +466,21 @@ export const config = {
         skid: CELL * 5,
       },
     },
-    // A swollen thing that comes alone, out of the dark, never within 14 cells of a player. It
-    // feels prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
+    // A swollen thing out of the dark, never within 14 cells of a player. It comes alone as a world
+    // begins, in groups of 2 to 4, 3 on average, by its end game, up to 3 cells apart. It feels
+    // prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
     exploder: {
-      spawning: { weight: 70, tries: 24, unseenDistance: CELL * 14 },
+      spawning: {
+        weight: 70,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: {
+          min: 1,
+          max: 1,
+          spread: CELL * 3,
+          grows: { min: 2, max: 4, by: END_GAME },
+        },
+      },
       radius: 16,
       // It passes over the crowds, zombies and hoarder beetles, or it would spend itself and the
       // walls round it on the first it felt; players and the rarer monsters it hunts.
@@ -627,7 +651,12 @@ export const config = {
     // first, one every 10s from then on. Each roll that brings something picks a kind by its
     // `spawning.weight`. A new world starts with 5 minutes of rolls at the starting chance:
     // about 15 spawns.
-    spawner: { period: 2, nothing: 0.7, certainAfter: 1200, headStart: 300 },
+    spawner: {
+      period: 2,
+      nothing: 0.7,
+      certainAfter: END_GAME,
+      headStart: 300,
+    },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.
@@ -702,6 +731,19 @@ export const config = {
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
       scatter: { count: 50, seed: 2, clearance: CELL * 3, danger: 1 },
+    },
+    // Scrap worth 5, sold, carried and dropped as plain scrap is. A new world lays only 5, a tenth
+    // as many as plain scrap, favouring danger thrice over as strongly as monsters do: its spots
+    // are drawn by danger weight cubed, so the most dangerous corner is 4096 times as likely as the
+    // road at the start, where plain scrap's is 16.
+    goldenScrap: {
+      weight: 15,
+      value: 5,
+      cashoutRadius: CELL * 3,
+      sellInterval: 0.25,
+      volume: 0.8,
+      dropNoiseRadius: CELL * 8,
+      scatter: { count: 5, seed: 3, clearance: CELL * 3, danger: 3 },
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
     // cells, past a player's own 6 cells of sight in the dark. Its click carries a cell.

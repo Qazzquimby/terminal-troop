@@ -27,7 +27,7 @@ import {
   testSimConfig,
 } from "./sim-config.js";
 
-const { scrap } = testItemsConfig;
+const { scrap, goldenScrap } = testItemsConfig;
 const DT = 1 / 60;
 
 const idle: Controls = {
@@ -237,6 +237,31 @@ test("the host sells its own scrap the same way", async () => {
   expect(credit.get(sessionOf(a))).toBe(scrap.value);
   expect(credit.get(sessionOf(get("b")))).toBe(scrap.value);
   expect(scrapCarried(a)).toBe(0);
+});
+
+test("golden scrap sells for its own value, the held one first and one piece of any kind each interval", async () => {
+  const { get, exchange } = await crew("a", "b");
+  const host = sessionOf(get("a"));
+  const b = get("b");
+  const guest = sessionOf(b);
+  place(b, byCruiser(b, goldenScrap.cashoutRadius + 60));
+  exchange();
+  expect(giveItem(host, guest.localId, "scrap", 1)).toBe(true);
+  expect(giveItem(host, guest.localId, "goldenScrap", 2)).toBe(true);
+  expect(giveItem(host, guest.localId, "goldenScrap", 3)).toBe(true);
+  exchange();
+  guest.local.held = 3;
+  exchange();
+  place(b, byCruiser(b, 60));
+  for (let step = 0; step < 120 && credit.get(host) === 0; step++) exchange(DT);
+  expect(credit.get(host)).toBe(goldenScrap.value);
+  exchange(1);
+  expect(credit.get(host)).toBe(scrap.value + goldenScrap.value * 2);
+  expect(credit.get(guest)).toBe(scrap.value + goldenScrap.value * 2);
+  expect(scrapCarried(b)).toBe(0);
+  expect(
+    guest.local.inventory.filter((item) => item?.id === "goldenScrap"),
+  ).toHaveLength(0);
 });
 
 test("scrap held away from the cruiser does not sell", async () => {

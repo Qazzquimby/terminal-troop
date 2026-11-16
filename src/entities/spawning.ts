@@ -46,13 +46,29 @@ export interface SpawningConfig {
 }
 
 /** A group of a kind arriving together. */
-interface GroupConfig {
-  /** Fewest in a group; each group's size is drawn evenly between the two. */
+export interface GroupConfig {
+  /** Fewest in a group as a world begins; each group's size is drawn evenly between the two. */
   readonly min: number;
-  /** Most in a group. */
+  /** Most in a group as a world begins. */
   readonly max: number;
   /** Furthest, in pixels, the rest of a group stands from its first. */
   readonly spread: number;
+  /**
+   * How the group grows as the world ages: its least and most move evenly from `min` and `max`
+   * at the start to these by `by` seconds in, and hold there after. The same throughout when
+   * left out.
+   */
+  readonly grows?: GroupGrowth;
+}
+
+/** Where a group's least and most end up as the world ages. */
+interface GroupGrowth {
+  /** Fewest in a group from `by` on. */
+  readonly min: number;
+  /** Most in a group from `by` on. */
+  readonly max: number;
+  /** Seconds into the world by which the group has grown to its full size. */
+  readonly by: number;
 }
 
 /** A kind the spawner may bring: which kind, how big a body, how it arrives and where it may. */
@@ -181,11 +197,33 @@ export function watchedAt(game: Session, kind: string, at: Point): boolean {
   return nearestPlayerDistance(game, at) < arrival.config.unseenDistance;
 }
 
-/** A group's size, drawn evenly from its least to its most. */
-function groupSize(group: GroupConfig): number {
-  const min = Math.max(1, Math.round(group.min));
-  const max = Math.max(min, Math.round(group.max));
-  return min + Math.floor(Math.random() * (max - min + 1));
+/**
+ * A group's least and most at world time `time`, moving evenly from where they start to where
+ * they grow to; fractional in between.
+ */
+export function groupRange(
+  group: GroupConfig,
+  time: number,
+): { readonly min: number; readonly max: number } {
+  const { grows } = group;
+  if (grows === undefined) return { min: group.min, max: group.max };
+  const t = grows.by > 0 ? Math.min(1, Math.max(0, time / grows.by)) : 1;
+  return {
+    min: group.min + (grows.min - group.min) * t,
+    max: group.max + (grows.max - group.max) * t,
+  };
+}
+
+/**
+ * A group's size at world time `time`, drawn evenly from its least to its most. Where those are
+ * fractional, as while a group grows, the draw still averages halfway between them, so the
+ * average grows smoothly rather than in steps.
+ */
+export function groupSize(group: GroupConfig, time: number): number {
+  const range = groupRange(group, time);
+  const min = Math.max(1, range.min);
+  const max = Math.max(min, range.max);
+  return Math.floor(min + Math.random() * (max - min + 1));
 }
 
 /**
@@ -243,7 +281,7 @@ function bring(game: Session, arrival: Arrival, starting: boolean): boolean {
     game,
     arrival,
     leader,
-    groupSize(group) - 1,
+    groupSize(group, game.worldTime) - 1,
     unseen,
     group,
   );

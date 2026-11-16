@@ -28,8 +28,13 @@ import type {
 import type { EntitiesConfig } from "./index.js";
 import { entityContent } from "./index.js";
 import { spawnAllowed } from "./spawn-rules.js";
-import { nothingChance, spawnWeight } from "./spawning.js";
-import type { SpawnerConfig, SpawningConfig } from "./spawning.js";
+import {
+  groupRange,
+  groupSize,
+  nothingChance,
+  spawnWeight,
+} from "./spawning.js";
+import type { GroupConfig, SpawnerConfig, SpawningConfig } from "./spawning.js";
 
 const DT = 1 / 60;
 
@@ -329,6 +334,54 @@ test("groups come in sizes between the least and the most", () => {
     expect(size).toBeLessThanOrEqual(5);
   }
   expect(new Set(counts).size).toBeGreaterThan(1);
+});
+
+test("a growing group's size moves evenly from its start to its end, then holds", () => {
+  const group: GroupConfig = {
+    min: 1,
+    max: 5,
+    spread: 100,
+    grows: { min: 5, max: 11, by: 100 },
+  };
+  expect(groupRange(group, 0)).toEqual({ min: 1, max: 5 });
+  expect(groupRange(group, 50)).toEqual({ min: 3, max: 8 });
+  expect(groupRange(group, 100)).toEqual({ min: 5, max: 11 });
+  expect(groupRange(group, 1000)).toEqual({ min: 5, max: 11 });
+  const sizes = (time: number) =>
+    Array.from({ length: 4000 }, () => groupSize(group, time));
+  expect(mean(sizes(0))).toBeCloseTo(3, 0);
+  expect(mean(sizes(50))).toBeCloseTo(5.5, 0);
+  expect(mean(sizes(100))).toBeCloseTo(8, 0);
+  for (const size of sizes(100)) {
+    expect(size).toBeGreaterThanOrEqual(5);
+    expect(size).toBeLessThanOrEqual(11);
+  }
+  const fixed: GroupConfig = { min: 2, max: 2, spread: 100 };
+  expect(groupSize(fixed, 1000)).toBe(2);
+});
+
+test("the spawner's groups grow as the world ages", () => {
+  const game = world({
+    spawner: { ...CERTAIN, period: 0.5 },
+    zombie: {
+      ...ZOMBIES,
+      group: {
+        min: 1,
+        max: 1,
+        spread: 100,
+        grows: { min: 4, max: 4, by: 20 },
+      },
+    },
+  });
+  const sizes = new Map<number, number>();
+  for (const { time } of play(game, 25))
+    sizes.set(time, (sizes.get(time) ?? 0) + 1);
+  const early = [...sizes].filter(([time]) => time < 2);
+  const late = [...sizes].filter(([time]) => time >= 20);
+  expect(early.length).toBeGreaterThan(0);
+  expect(late.length).toBeGreaterThan(5);
+  expect(mean(early.map(([, size]) => size))).toBeLessThan(1.5);
+  expect(mean(late.map(([, size]) => size))).toBeGreaterThan(3.5);
 });
 
 /** The test tuning, its world as dangerous as `danger` makes it; the layout is the same. */

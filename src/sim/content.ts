@@ -498,6 +498,7 @@ export function defineItem<N extends string, C>(
         id: name,
         name: spec.name,
         emoji: spec.emoji,
+        ...(spec.glint !== undefined && { glint: spec.glint }),
         ...(traits.weight !== undefined && { weight: traits.weight }),
         ...(spec.drop !== undefined && { drop: spec.drop }),
         ...(spec.breaks !== undefined && { breaks: spec.breaks }),
