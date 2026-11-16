@@ -413,7 +413,7 @@ export const config = {
     // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     blindDog: {
-      spawning: { weight: 30, tries: 24, unseenDistance: CELL * 30 },
+      spawning: { weight: 10, tries: 24, unseenDistance: CELL * 40, group: { min: 1, max: 3, spread: CELL * 16 },},
       radius: CELL - 3, // Currently size 2 // 3-> Cell * 1.5 - 3,
       ignores: ["blindDog"],
       maxHealth: SHOVEL_DAMAGE * 10.0,
@@ -560,7 +560,7 @@ export const config = {
     // cells, between a walk and a sprint, every 0.3s, a sprint's pace; its blow 8.
     statue: {
       spawning: {
-        weight: 7,
+        weight: 5,
         after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
@@ -577,7 +577,7 @@ export const config = {
       repathInterval: 0.25,
       damage: 90,
       attackCooldown: 1,
-      step: { interval: 0.3, range: CELL * 14 },
+      step: { interval: 0.3, range: CELL * 10 },
       strikeRange: CELL * 8,
     },
     // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
