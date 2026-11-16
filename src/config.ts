@@ -735,7 +735,7 @@ export const config = {
       attackDamage: SHOVEL_DAMAGE * 3,
       attackCooldown: 1,
       barkGap: {
-        dormant: { min: 13, max: 16 },
+        dormant: { min: 3, max: 8 },
         enraged: { min: 1.5, max: 3 },
       },
       retreat: {
@@ -866,7 +866,7 @@ export const config = {
       beepGap: 4,
       triggerRange: CELL * 2,
       ignores: ["landMine", "mineLayer"],
-      fuse: 0.6e,
+      fuse: 0.6,
       blast: { radius: CELL * 2, centre: 120, edge: 60 },
       breaksWalls: false,
       sounds: {
