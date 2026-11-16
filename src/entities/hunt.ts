@@ -140,7 +140,7 @@ export function preyNear(
   ignores: readonly string[],
 ): Prey[] {
   const near: Prey[] = [];
-  for (const body of livingBodies(game)) {
+  for (const body of livingBodies(game, hunter.id)) {
     if (body.id === hunter.id) continue;
     const distance = Math.hypot(body.x - hunter.x, body.y - hunter.y);
     if (distance > reach(body)) continue;

@@ -519,6 +519,55 @@ export const config = {
         sounds: { grind: CELL * 8, crumble: CELL * 16 },
       },
     },
+    // The ghost girl haunts one player, picked at random, rare and none in the first 5 minutes.
+    // She stays away 20s to 3min, then appears 4 to 12 cells off, at least 90 degrees past the
+    // edge of her target's view cone (so within the 90 degrees straight behind it), with a clear
+    // line to it; trying 24 spots, then again half a second later. She stares with 15 patience,
+    // losing 1 a second, gaining 2 while unseen and 1 while looked at. From 3 anger a look sets
+    // her on her target 30% of the time, 10% more for each anger past 3. She chases at half a
+    // sprint, a tenth of a sprint faster per anger past 3, never past 1.2 sprints, for 5 to 10s,
+    // then flickers for 0.8s and vanishes. Touching her costs 20 health a second, 5 every 0.25s.
+    // Slipping away, she walks at half a sprint to a spot within 8 cells her target cannot see,
+    // trying 12 a step for 2s before making for the nearest wall; after 10s she is gone anyway.
+    // Her sounds carry 16 cells, past the furthest she appears.
+    ghostGirl: {
+      spawning: {
+        weight: 3,
+        after: 300,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      radius: 14,
+      targets: ["player"],
+      absent: { min: 20, max: 180 },
+      appear: {
+        near: CELL * 4,
+        far: CELL * 12,
+        behind: Math.PI / 2,
+        tries: 24,
+        retry: 0.5,
+      },
+      patience: { start: 15, drain: 1, unseen: 2, watched: 1 },
+      chase: {
+        from: 3,
+        chance: 0.3,
+        chancePerAnger: 0.1,
+        speed: 0.5,
+        speedPerAnger: 0.1,
+        maxSpeed: 1.2,
+        seconds: { min: 5, max: 10 },
+      },
+      hide: {
+        range: CELL * 8,
+        tries: 12,
+        search: 2,
+        speed: 0.5,
+        giveUp: 10,
+      },
+      flicker: 0.8,
+      contact: { damage: 5, interval: 0.25 },
+      soundRange: CELL * 16,
+    },
     // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     blindDog: {

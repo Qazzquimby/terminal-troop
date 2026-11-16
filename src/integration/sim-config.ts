@@ -174,7 +174,8 @@ const NEVER = { weight: 0, tries: 24 } as const;
  * times the test player's walk, breaking a wall it presses for 5s. No living wall appears unless
  * a test spawns one: one that moves on a body within 500px at 0.8 times the test player's walk,
  * held by any gaze within 700px, striking for 80 from behind, fleeing at twice the test sprint
- * for 3s once hurt.
+ * for 3s once hurt. No ghost girl appears unless a test spawns one: as the game's, but appearing
+ * 200 to 600px off, staying away 10s and chasing for 6s, with 10 patience.
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
@@ -312,6 +313,27 @@ export const testEntitiesConfig = {
       grindGap: 1,
       sounds: { grind: 400, crumble: 800 },
     },
+  },
+  ghostGirl: {
+    spawning: { ...NEVER, unseenDistance: 1100 },
+    radius: 14,
+    targets: ["player"],
+    absent: { min: 10, max: 10 },
+    appear: { near: 200, far: 600, behind: Math.PI / 2, tries: 24, retry: 0.5 },
+    patience: { start: 10, drain: 1, unseen: 2, watched: 1 },
+    chase: {
+      seconds: { min: 6, max: 6 },
+      from: 3,
+      chance: 0.3,
+      chancePerAnger: 0.1,
+      speed: 0.5,
+      speedPerAnger: 0.1,
+      maxSpeed: 1.2,
+    },
+    hide: { range: 400, tries: 12, search: 2, speed: 0.5, giveUp: 10 },
+    flicker: 0.8,
+    contact: { damage: 5, interval: 0.25 },
+    soundRange: 800,
   },
   blindDog: {
     spawning: { ...NEVER, unseenDistance: 1100 },

@@ -12,10 +12,12 @@ import type {
   VisionSource,
   WallFace,
   World,
+  WorldEntity,
 } from "../sim/index.js";
 import {
   AREA,
   aimAt,
+  footprintPoints,
   ambientLightAt,
   ambientPolygons,
   canSeeFrom,
@@ -32,6 +34,7 @@ import {
   isBodyVisible,
   isSolid,
   isVisible,
+  perceives,
   stunLeft,
   lightSources,
   litWalls,
@@ -894,9 +897,31 @@ function layLight(scene: Layer, mask: Layer): void {
   scene.ctx.restore();
 }
 
+/** Draws world entity `entity` as its kind does, with its stun, and its health bar if it shows one. */
+function drawEntity(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  entity: WorldEntity,
+  now: number,
+): void {
+  const definition = game.entityTypes.get(entity.kind);
+  if (definition === undefined) return;
+  ctx.save();
+  // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
+  ctx.fillStyle = EMOJI_FILL;
+  definition.draw(ctx, entity, now, game);
+  ctx.restore();
+  if (isStunned(game, entity.id))
+    drawStunned(ctx, entity, now, STUN_ABOVE.entity);
+  if (definition.healthBar)
+    drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+}
+
 /**
  * Every world entity and living player in view that `shows` lets through, but `but`, each with
- * its health bar. A ghost is never drawn.
+ * its health bar; of the entities, only those the body `by` perceives, and, unless `dark`, none
+ * of a kind seen in the dark, which `drawSeenInDark` draws over the darkness. A ghost is never
+ * drawn.
  */
 function drawBodies(
   ctx: CanvasRenderingContext2D,
@@ -906,20 +931,16 @@ function drawBodies(
   isAway: (id: string) => boolean,
   but: Player | null,
   shows: (body: Footprint) => boolean,
+  by: string | null,
+  dark: boolean,
 ): void {
   game.entities.forEach((entity) => {
     const definition = game.entityTypes.get(entity.kind);
     if (definition === undefined) return;
+    if (definition.seenInDark && !dark) return;
+    if (!perceives(game, by, entity.id)) return;
     if (!inView(entity, camera) || !shows(footprintOf(game, entity))) return;
-    ctx.save();
-    // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
-    ctx.fillStyle = EMOJI_FILL;
-    definition.draw(ctx, entity, now, game);
-    ctx.restore();
-    if (isStunned(game, entity.id))
-      drawStunned(ctx, entity, now, STUN_ABOVE.entity);
-    if (definition.healthBar)
-      drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+    drawEntity(ctx, game, entity, now);
   });
   game.players.forEach((player) => {
     if (player === but || isGhost(player) || isAboard(player)) return;
@@ -929,6 +950,35 @@ function drawBodies(
     drawHealthBar(ctx, player, player.y - player.radius - 26);
     if (isStunned(game, player.id))
       drawStunned(ctx, player, now, STUN_ABOVE.player);
+  });
+}
+
+/**
+ * Every world entity in view of a kind seen in the dark that `viewer` perceives and that any of
+ * `sources`, its sight, reaches some part of, light or no light. Drawn over the darkness, so
+ * nothing masks it.
+ */
+function drawSeenInDark(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  viewer: Player,
+  sources: readonly VisionSource[],
+): void {
+  const { map } = game.world;
+  const reached = (point: Point): boolean =>
+    sources.some((source) => canSeeFrom(map, source, point));
+  game.entities.forEach((entity) => {
+    if (game.entityTypes.get(entity.kind)?.seenInDark !== true) return;
+    if (!perceives(game, viewer.id, entity.id) || !inView(entity, camera))
+      return;
+    const footprint = footprintOf(game, entity);
+    const points = footprintPoints(
+      footprint,
+      game.config.vision.footprintSpacing,
+    );
+    if (points.some(reached)) drawEntity(ctx, game, entity, now);
   });
 }
 
@@ -978,7 +1028,7 @@ function drawFree(
   applyCamera(ctx, camera, () => {
     drawTerrain(ctx, game.world, camera);
     drawWalls(ctx, game.world.map, camera);
-    drawBodies(ctx, game, camera, now, isAway, null, () => true);
+    drawBodies(ctx, game, camera, now, isAway, null, () => true, null, true);
     drawFlashes(ctx, flashes, now);
     drawRipples(ctx, ripples.config, ripples.list, now, camera);
   });
@@ -1130,16 +1180,25 @@ export function draw(
   sceneCtx.clearRect(0, 0, width, height);
   applyCamera(sceneCtx, camera, () => {
     drawTerrain(sceneCtx, game.world, camera);
-    drawBodies(sceneCtx, game, camera, now, isAway, viewer, (body) =>
-      isBodyVisible(
-        map,
-        sources,
-        lights,
-        body,
-        game.config.vision.footprintSpacing,
-        ambient,
-        dark,
-      ),
+    drawBodies(
+      sceneCtx,
+      game,
+      camera,
+      now,
+      isAway,
+      viewer,
+      (body) =>
+        isBodyVisible(
+          map,
+          sources,
+          lights,
+          body,
+          game.config.vision.footprintSpacing,
+          ambient,
+          dark,
+        ),
+      viewer.id,
+      false,
     );
     drawFlashes(sceneCtx, flashes, now);
   });
@@ -1193,6 +1252,7 @@ export function draw(
   // then rings, the player and its HUD, then edge glows.
   applyCamera(ctx, camera, () => {
     drawLitWalls(ctx, walls);
+    drawSeenInDark(ctx, game, camera, now, viewer, sources);
   });
   if (blind > 0) {
     ctx.fillStyle = `rgba(0, 0, 0, ${String(blind)})`;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { asEntity, asPlayer } from "./bodies.js";
+import { asEntity, asPlayer, perceives } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { solidBodiesBut } from "./collision.js";
 import { contentEvent, registerEvents } from "./content-event.js";
@@ -224,7 +224,8 @@ function arrived({ x, y, sound, flash, use, noise, tags }: SentEffect): {
 
 /**
  * Effects the host made, sent to every client, the host's own included: each plays them and makes
- * their noise, but the actor's own client plays an action's effects only as it acts.
+ * their noise, but the actor's own client plays an action's effects only as it acts, and only
+ * the client of a player that perceives their maker plays them at all.
  */
 const effected = contentEvent({
   schema: z.object({
@@ -237,7 +238,9 @@ const effected = contentEvent({
   from: "host",
   receive(game, { by, effects, acted }) {
     for (const { made, noise } of effects.map(arrived)) {
-      if (acted !== true || by !== game.localId) play(game, by, made);
+      const shown = perceives(game, game.localId, by);
+      if (shown && (acted !== true || by !== game.localId))
+        play(game, by, made);
       if (noise !== undefined)
         emitNoise(game, { at: made.at, source: by, ...noise });
     }

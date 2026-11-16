@@ -318,7 +318,7 @@ function think(
     by === null || state.mode === "retreat" ? state : { ...state, foe: by };
   const alarm = bigNoise(
     game,
-    { at: self, rng: Math.random, ignores: config.ignores },
+    { id: self.id, at: self, rng: Math.random, ignores: config.ignores },
     config.alarmRadius,
   );
   return respond(marked, self, game, config, {

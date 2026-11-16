@@ -1,3 +1,4 @@
+import { perceives } from "./bodies.js";
 import { isGhostId } from "./ghosts.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
@@ -32,8 +33,16 @@ export interface NoiseConfig {
   readonly blur: number;
 }
 
-/** Something that hears noise: the point it stands at, its random draws, and what it ignores. */
+/**
+ * Something that hears noise: who it is, the point it stands at, its random draws, and what it
+ * ignores.
+ */
 export interface Listener {
+  /**
+   * The body listening, by id: noise made by a body only some body perceives reaches only that
+   * one. Left out, it hears only what every body hears.
+   */
+  readonly id?: string;
   readonly at: Point;
   /** Draws where each heard noise seems to come from. */
   readonly rng: Rng;
@@ -125,8 +134,8 @@ function blurred(at: Point, spread: number, rng: Rng): Point {
 }
 
 /**
- * The noises made this step whose radius reaches `listener` and that carry none of the tags it
- * ignores, oldest first, each placed with a blur that grows with its distance. Each one heard
+ * The noises made this step whose radius reaches `listener`, that carry none of the tags it
+ * ignores and whose makers it perceives, oldest first, each placed with a blur that grows with its distance. Each one heard
  * takes two draws from the listener's generator.
  */
 export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
@@ -134,6 +143,7 @@ export function noisesHeardBy(game: Session, listener: Listener): Heard[] {
   const ignores = listener.ignores ?? [];
   for (const noise of game.noises) {
     if (noise.tags.some((tag) => ignores.includes(tag))) continue;
+    if (!perceives(game, listener.id ?? null, noise.source)) continue;
     const distance = Math.hypot(
       noise.at.x - listener.at.x,
       noise.at.y - listener.at.y,

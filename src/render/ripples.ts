@@ -81,7 +81,11 @@ export function createRipples(config: RippleConfig, rng: Rng): Ripples {
       return list;
     },
     hear(game, time) {
-      const heard = noisesHeardBy(game, { at: game.local, rng });
+      const heard = noisesHeardBy(game, {
+        id: game.localId,
+        at: game.local,
+        rng,
+      });
       list = [
         ...list.filter((ripple) => time - ripple.startedAt < durationMs),
         ...heard.map(({ at, origin, clarity, radius, tags }) => ({
