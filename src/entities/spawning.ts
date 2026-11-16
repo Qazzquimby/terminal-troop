@@ -160,6 +160,27 @@ function spawnPoint(
   return chosen ?? (starting ? farthest : null);
 }
 
+/**
+ * A point where one of `kind` might arrive now, as the spawner would choose it: free, where its
+ * rules let it appear, by spawn weight, out of every player's sight. Null when the kind is not
+ * enlisted with this session's spawner or none of its tries finds one. For a body to move to, as
+ * one that teleports.
+ */
+export function arrivalPoint(game: Session, kind: string): Point | null {
+  const arrival = arrivalsOf(game).find((each) => each.kind === kind);
+  return arrival === undefined ? null : spawnPoint(game, arrival, false);
+}
+
+/**
+ * Whether a player stands near enough to `at` to watch one of `kind` come or go there: within
+ * its spawn's unseen distance. False for a kind not enlisted with this session's spawner.
+ */
+export function watchedAt(game: Session, kind: string, at: Point): boolean {
+  const arrival = arrivalsOf(game).find((each) => each.kind === kind);
+  if (arrival === undefined) return false;
+  return nearestPlayerDistance(game, at) < arrival.config.unseenDistance;
+}
+
 /** A group's size, drawn evenly from its least to its most. */
 function groupSize(group: GroupConfig): number {
   const min = Math.max(1, Math.round(group.min));

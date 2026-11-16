@@ -69,6 +69,12 @@ interface SyncConfig {
    * between them, at the speed it really goes, that much behind the host.
    */
   readonly glide: number;
+  /**
+   * Furthest, in pixels, a reported position may be from the last before a body is placed there
+   * at once rather than glided to: no body runs that far between reports, so one that does was
+   * moved there, as by a teleport, and should not streak across the world.
+   */
+  readonly snap: number;
   /** Longest, in sim seconds, a guest holds what it predicted of an entity unconfirmed. */
   readonly predictionHold: number;
 }

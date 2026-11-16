@@ -9,13 +9,19 @@ import {
   createSession,
   hurt,
   hurtPlayer,
+  makeNoise,
   mulberry32,
   registerContent,
   registerEntityType,
   spawnEntity,
   updateSession,
 } from "../../sim/index.js";
-import type { Session, WorldEntity } from "../../sim/index.js";
+import type {
+  Point,
+  Session,
+  WorldContent,
+  WorldEntity,
+} from "../../sim/index.js";
 import {
   freshSleeper,
   sleeper as sleeperContent,
@@ -51,6 +57,24 @@ afterEach(() => {
 /** The sounds each session's host has sent, by the last part of their urls. */
 const sent = new WeakMap<Session, string[]>();
 
+/** Noises each session makes in its next step, each carrying `radius` from `at`. */
+const pending = new WeakMap<Session, { at: Point; radius: number }[]>();
+
+/** Makes, in `game`'s next step, a noise from `at` carrying `radius`, made by no one in it. */
+function noise(game: Session, at: Point, radius: number): void {
+  pending.get(game)?.push({ at, radius });
+}
+
+const noiser: WorldContent = {
+  name: "move/noiser",
+  register: () => undefined,
+  populate: () => undefined,
+  act(game) {
+    for (const made of (pending.get(game) ?? []).splice(0))
+      makeNoise(game, { id: "somewhere" }, made);
+  },
+};
+
 /** The dev square, all of it dark, with the sleeper; the player stands at (x, y). */
 function world(x: number, y: number, sleeper: SleeperConfig = config): Session {
   const game = createSession(
@@ -61,7 +85,8 @@ function world(x: number, y: number, sleeper: SleeperConfig = config): Session {
     testSfx(),
     testSimConfig,
   );
-  registerContent(game, [sleeperContent.create({ sleeper })]);
+  registerContent(game, [sleeperContent.create({ sleeper }), noiser]);
+  pending.set(game, []);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   sent.set(game, []);
   return game;
@@ -256,4 +281,79 @@ test("she sleeps again away from every body she hunts, not just the players", ()
   expect(Math.hypot(sleeper.x - post.x, sleeper.y - post.y)).toBeGreaterThan(
     config.retreat.clearance - sleeper.radius,
   );
+});
+
+test("a noise that carries her alarm radius wakes her screaming, and she runs at it", () => {
+  const game = world(100, 550);
+  const sleeper = sleeperAt(game, 700, 300);
+  run(game, 0.1);
+  noise(game, { x: 700, y: 650 }, config.alarmRadius);
+  run(game, 0.1);
+  expect(stateOf(sleeper).mode).toBe("enraged");
+  expect(played(game)).toContain("enrage.mp3");
+  expect(stateOf(sleeper).target?.y).toBeGreaterThan(550);
+  expect(sleeper.vy).toBeGreaterThan(0);
+});
+
+test("a noise short of her alarm radius, however close, leaves her asleep", () => {
+  const game = world(100, 550);
+  const sleeper = sleeperAt(game, 700, 300);
+  run(game, 0.1);
+  noise(game, { x: 700, y: 400 }, config.alarmRadius - 1);
+  run(game, 0.5);
+  expect(stateOf(sleeper).mode).toBe("dormant");
+  expect(played(game)).not.toContain("enrage.mp3");
+});
+
+test("a big noise turns her back from her retreat", () => {
+  const game = world(100, 550);
+  const sleeper = sleeperAt(game, 700, 300);
+  sleeper.data = {
+    ...stateOf(sleeper),
+    mode: "enraged",
+    until: game.worldTime,
+  };
+  run(game, 0.1);
+  expect(stateOf(sleeper).mode).toBe("retreat");
+  noise(game, { x: 300, y: 300 }, config.alarmRadius);
+  run(game, 0.1);
+  expect(stateOf(sleeper).mode).toBe("enraged");
+});
+
+/** Leaves her place after 2s with no body within 200px, never within 300px of a player. */
+const restless: SleeperConfig = {
+  ...config,
+  spawning: { ...config.spawning, unseenDistance: 300 },
+  relocate: { after: 2, range: 200, retry: 1 },
+};
+
+test("asleep long enough with no body near, she moves unseen to somewhere she might have arrived", () => {
+  const game = world(100, 550, restless);
+  const sleeper = sleeperAt(game, 700, 300);
+  run(game, 1.5);
+  expect(sleeper).toMatchObject({ x: 700, y: 300 });
+  run(game, 1);
+  expect(stateOf(sleeper).mode).toBe("dormant");
+  expect(sleeper.x !== 700 || sleeper.y !== 300).toBe(true);
+  expect(
+    Math.hypot(sleeper.x - game.local.x, sleeper.y - game.local.y),
+  ).toBeGreaterThanOrEqual(restless.spawning.unseenDistance);
+  expect(played(game).filter((url) => url === "vanish.mp3")).toHaveLength(2);
+});
+
+test("any body near keeps her where she is, a player or not", () => {
+  const game = world(100, 550, { ...restless, wakeRange: 100 });
+  hurtPlayer(game, game.local, Infinity);
+  const sleeper = sleeperAt(game, 700, 300);
+  postAt(game, 700, 450);
+  run(game, 3);
+  expect(sleeper).toMatchObject({ x: 700, y: 300 });
+});
+
+test("she does not leave while a player stands near enough to watch her go", () => {
+  const game = world(450, 300, { ...restless, wakeRange: 100 });
+  const sleeper = sleeperAt(game, 700, 300);
+  run(game, 3);
+  expect(sleeper).toMatchObject({ x: 700, y: 300 });
+  expect(played(game)).not.toContain("vanish.mp3");
 });
