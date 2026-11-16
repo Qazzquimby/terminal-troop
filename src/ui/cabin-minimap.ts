@@ -1,11 +1,17 @@
 import {
   AREA,
   cabinTeleporter,
+  corpseAt,
   destroyedWalls,
+  hasKindTag,
+  INERT_TAG,
+  isGhost,
+  ITEM_TAG,
+  livingBodies,
   livingPlayers,
   perceives,
 } from "../sim/index.js";
-import type { CabinTeleporter, Player, Session } from "../sim/index.js";
+import type { CabinTeleporter, Player, Point, Session } from "../sim/index.js";
 import { button, make } from "./cabin.js";
 import type { CabinPanel, CabinSend } from "./cabin.js";
 
@@ -20,15 +26,60 @@ export interface MinimapConfig {
 }
 
 /**
- * The living players the minimap may follow, by id: everyone else first, the local player last,
- * each in the order the session has them.
+ * The players the minimap may follow, by id: the living first, everyone else before the local
+ * player, then the dead, to find their corpses; each in the order the session has them.
  */
 export function minimapTargets(game: Session): string[] {
   const living = livingPlayers(game);
+  const dead = [...game.players.values()].filter(isGhost);
   return [
     ...living.filter((player) => player !== game.local),
     ...living.filter((player) => player === game.local),
+    ...dead,
   ].map((player) => player.id);
+}
+
+/**
+ * Where the minimap centres on `player`: where it is while it lives; once dead, its corpse, or
+ * where it fell while this client knows of no corpse. `corpse` says which: whether a corpse is
+ * there to mark.
+ */
+export function minimapCentre(
+  game: Session,
+  player: Player,
+): { readonly at: Point; readonly corpse: boolean } {
+  if (!isGhost(player))
+    return { at: { x: player.x, y: player.y }, corpse: false };
+  const corpse = corpseAt(game, player.id);
+  return corpse === null
+    ? { at: { x: player.x, y: player.y }, corpse: false }
+    : { at: corpse, corpse: true };
+}
+
+/** What the radar picks up besides the walls, by where each is. */
+export interface Blips {
+  /** Items lying about, a dim mark each. */
+  readonly items: readonly Point[];
+  /** Living bodies, players and entities alike, a red dot each. */
+  readonly living: readonly Point[];
+}
+
+/**
+ * What the radar picks up for the local player: every item lying out in the world, and every
+ * living body out in it, player or entity, that the local player perceives, but `centre`, the
+ * player it follows, marked apart. Bodies inside a vehicle, ghosts, and inert things such as traps,
+ * the car itself or a recall do not show; nor does what only another body perceives.
+ */
+export function radarBlips(game: Session, centre: string | null): Blips {
+  const items: Point[] = [];
+  const living: Point[] = [];
+  for (const body of livingBodies(game, game.localId)) {
+    if (body.id === centre) continue;
+    const at = { x: body.x, y: body.y };
+    if (hasKindTag(game, body.id, [ITEM_TAG])) items.push(at);
+    else if (!hasKindTag(game, body.id, [INERT_TAG])) living.push(at);
+  }
+  return { items, living };
 }
 
 /**
@@ -57,12 +108,12 @@ export interface TeleportButton {
 
 /**
  * The teleporter's button, for the vehicle's `teleporter` (null for a vehicle without one) and the
- * player the minimap follows, if any: it sends for a player out in the world, one at a time, never
- * one already inside a vehicle.
+ * player the minimap follows, if any: it sends for a living player out in the world, one at a
+ * time, never one already inside a vehicle, nor a dead one.
  */
 export function teleportButton(
   teleporter: CabinTeleporter | null,
-  player: Pick<Player, "id" | "ride"> | undefined,
+  player: Pick<Player, "id" | "ride" | "health"> | undefined,
 ): TeleportButton {
   if (teleporter === null)
     return { shown: false, enabled: false, text: "", charging: false };
@@ -71,9 +122,11 @@ export function teleportButton(
   const charging = teleporter.sending === player.id;
   if (charging)
     return { shown: true, enabled: false, text: "⚡ CHARGING... ⚡", charging };
-  const enabled = player.ride === null && teleporter.sending === null;
-  const text =
-    player.ride !== null
+  const dead = isGhost(player);
+  const enabled = !dead && player.ride === null && teleporter.sending === null;
+  const text = dead
+    ? "TELEPORT (dead)"
+    : player.ride !== null
       ? "TELEPORT (already aboard)"
       : teleporter.sending !== null
         ? "TELEPORT (busy)"
@@ -90,8 +143,12 @@ const PHOSPHOR = {
   ground: "#06200c",
   floor: "#0f3d1a",
   wall: "#24873a",
+  item: "#5fa868",
   bright: "#b8ffb0",
 } as const;
+
+/** The one colour off the phosphor: a living body's echo. */
+const LIVING = "#ff3b30";
 
 /** Each area's shade on the minimap; a knocked-down wall shows as rubble. */
 const COLOURS: Readonly<Record<number, string>> = {
@@ -188,11 +245,13 @@ function layoutImage(game: Session): HTMLCanvasElement {
 }
 
 /**
- * The minimap: the world round one living player, walls and all, whatever the local player can see
- * from the cabin, the player marked with the way it faces. Buttons step through who it follows.
- * It shows no monsters: the car knows where its crew are, not what hunts them. Under it, for a
- * vehicle with a teleporter, a button sends for the player it follows. Only what a kind draws
- * over it for the local player, if the local player perceives it, shows over all that.
+ * The minimap: the world round one player, walls and all, whatever the local player can see from
+ * the cabin. A living player is marked in the middle with the way it faces; a dead one's corpse is
+ * marked with a cross, or the middle is where it fell while no corpse is known. Buttons step
+ * through who it follows, the living then the dead. Items lying about show as dim marks, and every
+ * living body the local player perceives, player or monster, as a red dot. Under it, for a vehicle
+ * with a teleporter, a button sends for the player it follows. What a kind draws over it for the
+ * local player, if the local player perceives it, shows over all that.
  */
 export function minimapPanel(
   config: MinimapConfig,
@@ -220,7 +279,7 @@ export function minimapPanel(
     if (target !== null) send({ teleport: target });
   });
   teleport.title =
-    "Teleports them beside the car after a few seconds. They drop everything they carry.";
+    "Teleports them into the car after a few seconds. They drop everything they carry.";
   element.append(title, canvas, row, teleport);
 
   const ctx = canvas.getContext("2d");
@@ -242,13 +301,14 @@ export function minimapPanel(
     const { cell } = game.world.map;
     const span = config.radius * 2;
     const scale = config.size / span;
+    const { at, corpse } = minimapCentre(game, player);
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = OFF_MAP;
     ctx.fillRect(0, 0, config.size, config.size);
     ctx.drawImage(
       layout(game),
-      player.x / cell - config.radius,
-      player.y / cell - config.radius,
+      at.x / cell - config.radius,
+      at.y / cell - config.radius,
       span,
       span,
       0,
@@ -258,20 +318,52 @@ export function minimapPanel(
     );
     const middle = config.size / 2;
     radarOverlay(ctx, middle, performance.now(), config.sweepMs);
-    const facing = player.aim;
+    /** Where `point` in the world is on the radar. */
+    const onRadar = (point: Point): Point => ({
+      x: middle + ((point.x - at.x) / cell) * scale,
+      y: middle + ((point.y - at.y) / cell) * scale,
+    });
+    const blips = radarBlips(game, player.id);
+    const mark = Math.max(2, scale * 0.3);
+    ctx.strokeStyle = PHOSPHOR.item;
+    ctx.lineWidth = 1;
+    for (const item of blips.items) {
+      const { x, y } = onRadar(item);
+      ctx.strokeRect(x - mark, y - mark, mark * 2, mark * 2);
+    }
+    ctx.fillStyle = LIVING;
+    for (const body of blips.living) {
+      const { x, y } = onRadar(body);
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(2.5, scale * 0.35), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const dot = Math.max(3, scale * 0.5);
     ctx.strokeStyle = PHOSPHOR.bright;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(middle, middle);
-    ctx.lineTo(
-      middle + Math.cos(facing) * scale * 1.5,
-      middle + Math.sin(facing) * scale * 1.5,
-    );
-    ctx.stroke();
-    ctx.fillStyle = PHOSPHOR.bright;
-    ctx.beginPath();
-    ctx.arc(middle, middle, Math.max(3, scale * 0.5), 0, Math.PI * 2);
-    ctx.fill();
+    if (isGhost(player)) {
+      // The corpse, a cross; a ring where it fell while no corpse is known.
+      if (corpse) {
+        ctx.moveTo(middle - dot, middle - dot);
+        ctx.lineTo(middle + dot, middle + dot);
+        ctx.moveTo(middle + dot, middle - dot);
+        ctx.lineTo(middle - dot, middle + dot);
+      } else ctx.arc(middle, middle, dot, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      const facing = player.aim;
+      ctx.moveTo(middle, middle);
+      ctx.lineTo(
+        middle + Math.cos(facing) * scale * 1.5,
+        middle + Math.sin(facing) * scale * 1.5,
+      );
+      ctx.stroke();
+      ctx.fillStyle = PHOSPHOR.bright;
+      ctx.beginPath();
+      ctx.arc(middle, middle, dot, 0, Math.PI * 2);
+      ctx.fill();
+    }
     for (const entity of game.entities.values()) {
       if (!perceives(game, game.localId, entity.id)) continue;
       ctx.save();
@@ -288,7 +380,12 @@ export function minimapPanel(
       targets = minimapTargets(game);
       target = cycleTarget(targets, target, 0);
       const player = target === null ? undefined : game.players.get(target);
-      const text = player === undefined ? "nobody alive?!" : player.name;
+      const text =
+        player === undefined
+          ? "nobody here?!"
+          : isGhost(player)
+            ? `✝ ${player.name} (dead)`
+            : player.name;
       if (name.textContent !== text) name.textContent = text;
       previous.disabled = targets.length < 2;
       next.disabled = targets.length < 2;

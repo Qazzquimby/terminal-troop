@@ -13,7 +13,7 @@ import { footprintOf, livingBody } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { nearestFreePoint } from "./collision.js";
 import { credit } from "./credit.js";
-import { driverOf, vehicleOf } from "./driving.js";
+import { driverOf, driversOf, vehicleOf } from "./driving.js";
 import type {
   CabinCommand,
   Ride,
@@ -54,7 +54,11 @@ function mayBoard(game: Session, player: Player, id: string): boolean {
   return spec.canBoard?.(game, entity) ?? true;
 }
 
-/** `player`'s ride in `entity`, pointing the way it points, at rest, at the wheel or not. */
+/**
+ * `player`'s ride in `entity`, at the wheel or not: pointing the way it points, at rest; or, taking
+ * a wheel others are already at, where and as their lead drives it, so the vehicle goes on as it
+ * went.
+ */
 function seat(
   game: Session,
   player: Player,
@@ -63,17 +67,19 @@ function seat(
 ): void {
   const found = vehicleOf(game, entity.id);
   if (found === null) return;
+  const lead = driving ? driverOf(game, entity.id) : null;
   const ride: Ride = {
     vehicle: entity.id,
     driving,
-    heading: found.spec.heading(entity),
-    speed: 0,
-    turn: 0,
+    heading: lead?.ride?.heading ?? found.spec.heading(entity),
+    speed: lead?.ride?.speed ?? 0,
+    turn: lead?.ride?.turn ?? 0,
   };
+  const at = lead ?? entity;
   alter(game, player, (rider) => {
     Object.assign(rider, {
-      x: entity.x,
-      y: entity.y,
+      x: at.x,
+      y: at.y,
       vx: 0,
       vy: 0,
       dash: null,
@@ -96,14 +102,14 @@ const board = defineAction("board", {
   },
 });
 
-/** A player inside a vehicle taking its wheel, while no one else has it; from then its steps drive it. */
+/**
+ * A player inside a vehicle taking its wheel, alongside anyone else already at it; from then its
+ * steer works the wheel with theirs.
+ */
 const takeWheel = defineAction("wheel", {
   input: z.object({}),
   cooldown: COOLDOWN,
-  check: (game, player) =>
-    player.ride !== null &&
-    !player.ride.driving &&
-    driverOf(game, player.ride.vehicle) === null,
+  check: (_game, player) => player.ride !== null && !player.ride.driving,
   apply(game, player) {
     const found =
       player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
@@ -111,7 +117,10 @@ const takeWheel = defineAction("wheel", {
   },
 });
 
-/** Lets go of the wheel of the vehicle `player` drives, staying inside; the vehicle stops where it is. */
+/**
+ * Lets go of the wheel of the vehicle `player` drives, staying inside. With no one else left at
+ * it, the vehicle stops where it is; otherwise it goes on as the others drive it.
+ */
 function letGo(game: Session, player: Player): void {
   const { ride } = player;
   if (ride?.driving !== true) return;
@@ -447,13 +456,12 @@ export const vehicleActions = [
 ] as const;
 
 /**
- * As the host, takes the wheel from whoever drives `vehicle`, as when it breaks down under them:
- * they stay inside. Does nothing on any other client, or when no one drives it.
+ * As the host, takes the wheel from everyone at it in `vehicle`, as when it breaks down under
+ * them: they stay inside. Does nothing on any other client, or when no one drives it.
  */
 export function unseat(game: Session, vehicle: WorldEntity): void {
   if (!game.hosting) return;
-  const driver = driverOf(game, vehicle.id);
-  if (driver !== null) letGo(game, driver);
+  for (const driver of driversOf(game, vehicle.id)) letGo(game, driver);
 }
 
 /**
@@ -462,6 +470,27 @@ export function unseat(game: Session, vehicle: WorldEntity): void {
  */
 export function putOut(game: Session, player: Player): void {
   if (game.hosting) alight(game, player);
+}
+
+/**
+ * As the host, puts `body` inside `vehicle`, off the wheel, wherever it stands, as if it got in:
+ * as a teleporter brings it there. Only a body that can ride, on foot and alive, goes in, and only
+ * while the vehicle lets anyone in. Returns whether it went in; false on any other client.
+ */
+export function putIn(
+  game: Session,
+  body: Body,
+  vehicle: WorldEntity,
+): boolean {
+  if (!game.hosting) return false;
+  const player = game.players.get(body.id);
+  const found = vehicleOf(game, vehicle.id);
+  if (player === undefined || found === null || player.ride !== null)
+    return false;
+  if (player.health <= 0) return false;
+  if (!(found.spec.canBoard?.(game, vehicle) ?? true)) return false;
+  seat(game, player, vehicle, false);
+  return true;
 }
 
 /** The vehicle the local player may get in now, nearest first; null for none. */

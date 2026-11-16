@@ -7,6 +7,7 @@ import {
   bodiesIn,
   createSession,
   driverOf,
+  driversOf,
   eyesOf,
   inView,
   isLookedAt,
@@ -127,7 +128,7 @@ function inside(game: Session, at: Point, fuel = 0): WorldEntity {
   return cruiser;
 }
 
-test("three players get in one cruiser, unfuelled; only one at a time takes its wheel", async () => {
+test("three players get in one cruiser, unfuelled; any number take its wheel at once", async () => {
   const made = await crew(
     {
       spots: {
@@ -161,27 +162,26 @@ test("three players get in one cruiser, unfuelled; only one at a time takes its 
       y: cruiser.y,
     });
 
-  made.step({ b: { ...idle, cabin: "drive" } });
-  made.run(500);
   made.step({ c: { ...idle, cabin: "drive" } });
+  made.run(500);
+  made.step({ b: { ...idle, cabin: "drive" } });
   made.run(1000);
-  expect(driverOf(host, cruiser.id)?.id).toBe("b");
-  expect(playerOn(made.room("a"), "c").ride?.driving).toBe(false);
-  // c's own client, refused, takes the host's word.
-  expect(sessionOf(made.room("c")).local.ride?.driving).toBe(false);
-  // Every client sees who is in it, and who drives.
+  // Both are at the wheel; b leads, first by id, whoever took it first.
   for (const id of ["a", "b", "c"]) {
     const game = sessionOf(made.room(id));
     expect(occupantsOf(game, cruiser.id)).toHaveLength(3);
+    expect(driversOf(game, cruiser.id).map((player) => player.id)).toEqual([
+      "b",
+      "c",
+    ]);
     expect(driverOf(game, cruiser.id)?.id).toBe("b");
   }
+  expect(sessionOf(made.room("c")).local.ride?.driving).toBe(true);
 
-  // Once b lets go, c may take it.
+  // Once b lets go, c leads alone.
   made.step({ b: { ...idle, interact: true } });
-  made.run(500);
-  made.step({ c: { ...idle, interact: true } });
   made.run(1000);
-  expect(driverOf(host, cruiser.id)?.id).toBe("c");
+  expect(driversOf(host, cruiser.id).map((player) => player.id)).toEqual(["c"]);
 
   made.step({ a: { ...idle, cabin: "exit" } });
   made.run(500);

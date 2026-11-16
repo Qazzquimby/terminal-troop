@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { entityContent } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
+import { driverOf } from "../sim/index.js";
 import { crew, idle, jitter, playerOn, sessionOf } from "./crew.js";
 import { testEntitiesConfig, testItemsConfig } from "./sim-config.js";
 
@@ -120,4 +121,63 @@ test("a guest's crash knocks the wall down on every client", async () => {
     expect(map.solid[1 * map.cols + 4]).toBe(1);
   }
   expect(gap(guest.local, playerOn(room("a"), "b"))).toBeLessThan(0.01);
+});
+
+test("two at the wheel at once: their steers add up, so pulling against each other holds the cruiser still", async () => {
+  const { room, run, step } = await crew(
+    {
+      spots: { a: { x: 280, y: 360 }, b: { x: 320, y: 360 } },
+      content: content(),
+      delay: jitter(),
+    },
+    "a",
+    "b",
+  );
+  const host = sessionOf(room("a"));
+  const guest = sessionOf(room("b"));
+  const cruiser = park(host, { x: 300, y: 300 });
+  run(500);
+  for (const id of ["a", "b"]) {
+    step({ [id]: { ...idle, interact: true } });
+    run(200);
+    step({ [id]: { ...idle, cabin: "drive" } });
+    run(200);
+  }
+  run(500);
+  for (const game of [host, guest])
+    for (const id of ["a", "b"])
+      expect(game.players.get(id)?.ride).toMatchObject({
+        vehicle: cruiser.id,
+        driving: true,
+      });
+
+  // One forward, one back: they cancel, and once both steers are in it stays put.
+  const against = { a: throttle, b: { ...idle, move: { x: 0, y: 1 } } };
+  run(1000, against);
+  const held = cruiser.x;
+  run(1500, against);
+  expect(Math.abs(cruiser.x - held)).toBeLessThan(1);
+
+  // Both forward: it goes, no faster than one alone would. The guest following the lead takes
+  // the lead's lagging place as no correction.
+  const corrections = guest.corrections.count;
+  run(1500, { a: throttle, b: throttle });
+  expect(guest.corrections.count).toBe(corrections);
+  expect(cruiser.x).toBeGreaterThan(400);
+  const speed = playerOn(room("a"), "a").ride?.speed ?? 0;
+  expect(speed).toBeLessThanOrEqual(
+    testEntitiesConfig.cruiser.handling.speed + 1e-6,
+  );
+  // Once it rolls to a stop, the one following is with the lead, on every client.
+  run(4000);
+  expect(gap(playerOn(room("a"), "b"), cruiser)).toBeLessThan(0.01);
+  expect(gap(cruiserOn(guest), cruiser)).toBeLessThan(1);
+
+  // The lead lets go; the other goes on driving it alone, back the way it came.
+  step({ a: { ...idle, interact: true } });
+  run(500);
+  expect(driverOf(host, cruiser.id)?.id).toBe("b");
+  const before = cruiser.x;
+  run(1500, { b: { ...idle, move: { x: 0, y: 1 } } });
+  expect(cruiser.x).toBeLessThan(before - 30);
 });

@@ -262,10 +262,10 @@ test("the cruiser's radio: tune switches it on and steps through the stations, i
   expect(playerOn(room("a"), "b").ride?.vehicle).toBe(cruiser.id);
 });
 
-test("the minimap follows the living players, everyone else before the local player", async () => {
+test("the minimap follows the living players, everyone else before the local player, then the dead", async () => {
   const { host, guest, room } = await car();
   expect(minimapTargets(host)).toEqual(["b", "a"]);
   expect(minimapTargets(guest)).toEqual(["a", "b"]);
   playerOn(room("b"), "a").health = 0;
-  expect(minimapTargets(guest)).toEqual(["b"]);
+  expect(minimapTargets(guest)).toEqual(["b", "a"]);
 });

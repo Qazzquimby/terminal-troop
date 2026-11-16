@@ -73,7 +73,7 @@ async function teleporterCrew() {
   return { made, game, host, cruiser, ask };
 }
 
-test("the cabin teleports a player beside the cruiser after its charge, leaving its items where it stood", async () => {
+test("the cabin teleports a player into the cruiser after its charge, leaving its items where it stood", async () => {
   const { made, game, host, cruiser, ask } = await teleporterCrew();
   expect(giveItem(host, "a", "shovel")).toBe(true);
   expect(giveItem(host, "a", "flashlight")).toBe(true);
@@ -92,7 +92,8 @@ test("the cabin teleports a player beside the cruiser after its charge, leaving 
 
   made.run(config.seconds * 1000);
   const landed = playerOn(made.room("a"), "a");
-  expect(near(landed, cruiser, config.spread + 1)).toBe(true);
+  expect(near(landed, cruiser, 1)).toBe(true);
+  expect(landed.ride).toMatchObject({ vehicle: cruiser.id, driving: false });
   expect(itemsOf(host, "a").every((item) => item === null)).toBe(true);
   const dropped = itemInstances(host).filter(
     (instance) => "lying" in instance.place,
@@ -100,15 +101,39 @@ test("the cabin teleports a player beside the cruiser after its charge, leaving 
   expect(dropped.map((instance) => instance.item).sort()).toEqual(carried);
   for (const instance of dropped)
     expect(near(instance.at, OUT, 100)).toBe(true);
-  // Every client has a beside the cruiser, its own included, placed there rather than gliding,
-  // and the teleporter free again.
+  // Every client has a inside the cruiser, its own included, and the teleporter free again.
   made.run(500);
   for (const id of ["a", "b"]) {
     const seen = playerOn(made.room(id), "a");
     expect(near(seen, landed, 2)).toBe(true);
+    expect(seen.ride?.vehicle).toBe(cruiser.id);
     expect(cabinTeleporter(game(id), cruiser.id)).toEqual({ sending: null });
   }
   expect(game("a").local.inventory.every((item) => item === null)).toBe(true);
+});
+
+test("a guest teleported lands in the cruiser on its own client too, and may get out", async () => {
+  const { made, game, cruiser, ask } = await teleporterCrew();
+  ask("b", "exit");
+  made.run(300);
+  made.place("b", OUT);
+  made.run(300);
+  made.place("a", { x: 450, y: 360 });
+  made.run(300);
+  made.step({ a: { ...idle, interact: true } });
+  made.run(300);
+  expect(game("a").local.ride?.vehicle).toBe(cruiser.id);
+  ask("a", { teleport: "b" });
+  made.run(config.seconds * 1000 + 800);
+  expect(game("b").local.ride).toMatchObject({
+    vehicle: cruiser.id,
+    driving: false,
+  });
+  expect(playerOn(made.room("a"), "b").ride?.vehicle).toBe(cruiser.id);
+  ask("b", "exit");
+  made.run(500);
+  expect(game("b").local.ride).toBeNull();
+  expect(playerOn(made.room("a"), "b").ride).toBeNull();
 });
 
 test("the teleporter sends for one body at a time, and never one inside a vehicle", async () => {
