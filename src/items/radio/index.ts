@@ -10,7 +10,11 @@ import {
   stateAt,
 } from "../../sim/index.js";
 import type { ItemInstance, ItemTraits, Session } from "../../sim/index.js";
-import { RADIO_TAG, STATIONS, stationPlaying } from "../../stations/index.js";
+import {
+  RADIO_TAG,
+  stationCount,
+  stationPlaying,
+} from "../../stations/index.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
 const onUrl = new URL("./sfx/on.mp3", import.meta.url).href;
@@ -36,19 +40,20 @@ export interface RadioConfig extends ItemTraits {
 const ITEM = "radio";
 
 /** The station a radio switched on in state `state` plays, by number; null for none. */
-function songOf(
+function tuneOf(
   state: ItemInstance["state"],
-): { readonly song: number; readonly since: number } | null {
+): { readonly station: number; readonly since: number } | null {
   if (!isOn(state)) return null;
-  const song = state?.song;
+  const station = state?.station;
   const since = state?.since;
-  if (typeof song !== "number" || typeof since !== "number") return null;
-  return { song, since };
+  if (typeof station !== "number" || typeof since !== "number") return null;
+  return { station, since };
 }
 
 /**
- * The radio: E switches it on or off, held or not. Switched on, it picks a song at random and
- * plays it over and over, streamed from where the world's clock has it, as far as its range,
+ * The radio: E switches it on or off, held or not. Switched on, it picks a station at random and
+ * plays its songs in a shuffled order, round and round, streamed from where the world's clock has
+ * it, as far as its range,
  * making a noise that far each interval wherever it is. It never runs down.
  */
 export const radio = defineItem(ITEM, (config: RadioConfig) => {
@@ -77,13 +82,13 @@ export const radio = defineItem(ITEM, (config: RadioConfig) => {
       apply(game, user, { slot }) {
         const on = !isOn(stateAt(game, user, slot));
         // Only the host's switch counts, so the station is drawn there alone.
-        const song = Math.floor(Math.random() * STATIONS.length);
+        const station = Math.floor(Math.random() * stationCount());
         setStateAt(
           game,
           user,
           slot,
           ITEM,
-          on ? { on: true, song, since: game.worldTime } : undefined,
+          on ? { on: true, station, since: game.worldTime } : undefined,
         );
         effect(game, {
           at: { x: user.x, y: user.y },
@@ -92,10 +97,10 @@ export const radio = defineItem(ITEM, (config: RadioConfig) => {
       },
     },
     plays(instance) {
-      const tune = songOf(instance.state);
+      const tune = tuneOf(instance.state);
       return tune === null
         ? null
-        : stationPlaying(tune.song, tune.since, config);
+        : stationPlaying(tune.station, tune.since, config);
     },
     step(game, dt) {
       const due = (playing.get(game) ?? 0) - dt;
@@ -105,7 +110,7 @@ export const radio = defineItem(ITEM, (config: RadioConfig) => {
       }
       playing.set(game, config.noiseInterval);
       for (const instance of itemInstances(game, ITEM))
-        if (songOf(instance.state) !== null)
+        if (tuneOf(instance.state) !== null)
           makeNoise(game, makerOf(instance), {
             at: instance.at,
             radius: config.range,

@@ -1,3 +1,5 @@
+import { nextInList, placeInList } from "./playlist.js";
+
 /** A position in world pixels. */
 interface Point {
   readonly x: number;
@@ -58,9 +60,12 @@ export interface Sfx {
   /**
    * Streams the long sound at `url`, such as a song, from `offset` seconds in, rather than
    * loading it whole first. Looped, an offset past its end wraps round. `stopAll` stops it too.
+   * Given a list of urls, it streams them one after another, the offset reckoned across the whole
+   * list once each one's length is read from its metadata, round again from the first if looped:
+   * a radio station's songs, say.
    */
   stream: (
-    url: string,
+    url: string | readonly string[],
     origin: Point | null,
     listener: Point | null,
     options?: StreamOptions,
@@ -154,6 +159,8 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
   let masterVolume = 1;
 
   const buffers = new Map<string, Promise<AudioBuffer | null>>();
+  /** How long each long sound is, by url, read once. */
+  const durations = new Map<string, Promise<number>>();
   const activeLoops = new Map<string, SoundHandle>();
   const pendingLoops = new Map<string, symbol>();
   const streams = new Set<SoundHandle>();
@@ -359,34 +366,101 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     activeLoops.delete(id);
   }
 
+  /**
+   * How long the sound at `url` is, in seconds, read once from its metadata alone; 0 for one that
+   * will not load or does not say.
+   */
+  function durationOf(url: string): Promise<number> {
+    const cached = durations.get(url);
+    if (cached !== undefined) return cached;
+    const promise = new Promise<number>((resolve) => {
+      const probe = new Audio();
+      probe.preload = "metadata";
+      probe.addEventListener(
+        "loadedmetadata",
+        () => {
+          const { duration } = probe;
+          resolve(Number.isFinite(duration) && duration > 0 ? duration : 0);
+          probe.removeAttribute("src");
+          probe.load();
+        },
+        { once: true },
+      );
+      probe.addEventListener(
+        "error",
+        () => {
+          console.warn(`Sound "${url}" is unavailable`);
+          resolve(0);
+        },
+        { once: true },
+      );
+      probe.src = url;
+    });
+    durations.set(url, promise);
+    return promise;
+  }
+
   function stream(
-    url: string,
+    url: string | readonly string[],
     origin: Point | null,
     listener: Point | null,
     { volume = 1, loop = false, range, offset = 0 }: StreamOptions = {},
   ): SoundHandle {
     const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
-    const element = new Audio(url);
-    element.loop = loop;
+    const element = new Audio();
     element.preload = "auto";
-    element.addEventListener(
-      "loadedmetadata",
-      () => {
-        const { duration } = element;
-        if (!Number.isFinite(duration) || duration <= 0) return;
-        element.currentTime = loop ? offset % duration : offset;
-      },
-      { once: true },
-    );
 
     const source = context.createMediaElementSource(element);
     const out = placed(context, fades, origin, listener, volume);
     const { gain } = out;
     source.connect(gain);
-    void context.resume().then(() => element.play().catch(() => undefined));
-
     let stopped = false;
+
+    /** Plays `src` from `from` seconds in, wrapping round its end if it loops. */
+    const cue = (src: string, from: number, loops: boolean): void => {
+      element.loop = loops;
+      element.addEventListener(
+        "loadedmetadata",
+        () => {
+          const { duration } = element;
+          if (!Number.isFinite(duration) || duration <= 0) return;
+          element.currentTime = loops ? from % duration : from;
+        },
+        { once: true },
+      );
+      element.src = src;
+      void context.resume().then(() => element.play().catch(() => undefined));
+    };
+
+    if (typeof url === "string") cue(url, offset, loop);
+    else {
+      // The list is reckoned from when it started, by this client's clock, so each next sound
+      // starts where the world's clock has it however late the last one loaded.
+      const started = performance.now() / 1000 - offset;
+      let current: number | null = null;
+      const next = async (): Promise<void> => {
+        const lengths = await Promise.all(url.map(durationOf));
+        if (stopped) return;
+        const at = placeInList(
+          lengths,
+          performance.now() / 1000 - started,
+          loop,
+        );
+        // The sound that just ended may still be reckoned as playing: the one after it, then.
+        const place =
+          current !== null && (at === null || at.index === current)
+            ? nextInList(lengths, current, loop)
+            : at;
+        const src = place === null ? undefined : url[place.index];
+        if (place === null || src === undefined) return;
+        current = place.index;
+        cue(src, place.offset, false);
+      };
+      element.addEventListener("ended", () => void next());
+      void next();
+    }
+
     const handle: SoundHandle = {
       stop(fadeTime = 0.1) {
         if (stopped) return;

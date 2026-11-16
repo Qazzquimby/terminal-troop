@@ -11,8 +11,11 @@ import {
   voiceRoutes,
 } from "../sim/index.js";
 import type { Controls, ItemInstance, Session } from "../sim/index.js";
+import { useStations } from "../stations/index.js";
 import { crew, idle, playerOn, sessionOf } from "./crew.js";
-import { testItemsConfig } from "./sim-config.js";
+import { testItemsConfig, testStations } from "./sim-config.js";
+
+useStations(testStations);
 
 const SILENT = {
   stop: () => undefined,
@@ -187,17 +190,26 @@ test("a radio switched on plays a song on every client from where the world's cl
   run(300);
   const [on] = all(guest, "radio");
   expect(isOn(on?.state)).toBe(true);
-  expect(typeof on?.state?.song).toBe("number");
+  const tuned = on?.state?.station;
+  const station = typeof tuned === "number" ? testStations[tuned] : undefined;
+  expect(station).toBeDefined();
   expect(on?.state?.since).toBeGreaterThan(0);
+  const lists: unknown[] = [];
   for (const id of ["a", "b"]) {
     const streams = vi.mocked(sessionOf(client(id)).sfx.stream).mock.calls;
     expect(streams).toHaveLength(1);
-    expect(streams[0]?.[0]).toMatch(/\/songs\/.+\.(mp3|opus)$/);
+    // The station's every song, in an order every client shares.
+    const list = streams[0]?.[0];
+    expect(typeof list === "object" ? [...list].sort() : list).toEqual(
+      station?.songs,
+    );
+    lists.push(list);
     expect(streams[0]?.[3]).toMatchObject({
       loop: true,
       range: testItemsConfig.radio.range,
     });
   }
+  expect(lists[0]).toEqual(lists[1]);
 
   step({ b: { ...idle, drop: true } });
   run(300);

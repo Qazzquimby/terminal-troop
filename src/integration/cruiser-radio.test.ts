@@ -13,8 +13,25 @@ import {
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { minimapTargets } from "../ui/index.js";
+import { useStations } from "../stations/index.js";
 import { crew, idle, playerOn, sessionOf } from "./crew.js";
-import { testEntitiesConfig, testItemsConfig } from "./sim-config.js";
+import {
+  testEntitiesConfig,
+  testItemsConfig,
+  testStations,
+} from "./sim-config.js";
+
+useStations(testStations);
+
+/** The songs of the station `streamed`, a list of urls, is from: its name. */
+const stationOfList = (
+  streamed: string | readonly string[] | undefined,
+): string | undefined =>
+  testStations.find(
+    (station) =>
+      typeof streamed === "object" &&
+      [...streamed].sort().join() === station.songs.join(),
+  )?.name;
 
 const SILENT = {
   stop: () => undefined,
@@ -194,9 +211,7 @@ test("the cruiser's radio: tune switches it on and steps through the stations, i
   run(300);
   for (const game of [host, guest]) {
     expect(streams(game)).toHaveLength(1);
-    expect(streams(game)[0]?.[0]).toMatch(
-      /\/songs\/rips\/breakcore_delivery__bachrees\.opus$/,
-    );
+    expect(stationOfList(streams(game)[0]?.[0])).toBe("Alpha FM");
     expect(streams(game)[0]?.[1]).toEqual({ x: cruiser.x, y: cruiser.y });
     expect(streams(game)[0]?.[3]).toMatchObject({
       loop: true,
@@ -226,7 +241,7 @@ test("the cruiser's radio: tune switches it on and steps through the stations, i
   step({ b: { ...idle, cabin: "radio" } });
   run(300);
   expect(streams(guest)).toHaveLength(2);
-  expect(streams(guest)[1]?.[0]).toMatch(/\/songs\/rips\/baka_mitai\.opus$/);
+  expect(stationOfList(streams(guest)[1]?.[0])).toBe("Beta FM");
   expect(stopOf(guest, 0)).toHaveBeenCalled();
   expect(stopOf(guest, 1)).not.toHaveBeenCalled();
 

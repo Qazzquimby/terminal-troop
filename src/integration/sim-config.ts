@@ -9,6 +9,7 @@ import type {
   RippleConfig,
 } from "../render/index.js";
 import type { GenerationConfig, SimConfig } from "../sim/index.js";
+import type { Station } from "../stations/index.js";
 
 /**
  * A road 8 to 16 cells wide, bending every 12 columns by up to 6 rows, kept 10 rows off the top and
@@ -551,6 +552,22 @@ const SILENT: Awaited<ReturnType<Sfx["play"]>> = {
   setVolume: () => undefined,
   setPosition: () => undefined,
 };
+
+/** Radio stations for tests, in place of the song files that ship. */
+export const testStations: readonly Station[] = [
+  {
+    name: "Alpha FM",
+    songs: ["/songs/Alpha FM/a1.opus", "/songs/Alpha FM/a2.opus"],
+  },
+  {
+    name: "Beta FM",
+    songs: [
+      "/songs/Beta FM/b1.mp3",
+      "/songs/Beta FM/b2.ogg",
+      "/songs/Beta FM/b3.opus",
+    ],
+  },
+];
 
 /** Sound effects for sessions under test; nothing plays. */
 export function testSfx(): Sfx {
