@@ -169,10 +169,9 @@ export function freshSleeper(now: number, config: SleeperConfig): SleeperState {
   };
 }
 
-/** The speed she runs at whenever she moves: a player's sprint. */
 function runSpeed(game: Session): number {
   const { player } = game.config;
-  return player.speed * player.sprintMultiplier;
+  return player.speed * player.sprintMultiplier * 0.9;
 }
 
 /** A point drawn `min` to `max` from `at`, any way. */

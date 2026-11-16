@@ -624,7 +624,7 @@ export const config = {
       spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
       ignores: ["sleeper"],
       radius: 15,
-      maxHealth: SHOVEL_DAMAGE * 5,
+      maxHealth: SHOVEL_DAMAGE * 10,
       sightRange: CELL * 8,
       wakeRange: CELL * 5,
       warnSeconds: 1,
