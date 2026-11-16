@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Body } from "./bodies.js";
 import { moveWithCollision } from "./collision.js";
 import type { WorldEntity } from "./entities.js";
 import type { Point } from "./map.js";
@@ -45,8 +46,8 @@ export const RideWire = z
  * What a player inside a vehicle asks of it from its cabin: to take the wheel, sound the horn,
  * get out, tune its radio to the next station (switching it on), or switch its radio off; to stow
  * the item in its own slot `stow` in the vehicle's storage, in its slot `into` or the first empty
- * one; to take the item in the storage's slot `unstow`; or to buy the item `buy` at the vehicle's
- * shop.
+ * one; to take the item in the storage's slot `unstow`; to buy the item `buy` at the vehicle's
+ * shop; or to teleport the body `teleport` to the vehicle.
  */
 export type CabinCommand =
   | "drive"
@@ -56,10 +57,25 @@ export type CabinCommand =
   | "radioOff"
   | { readonly stow: number; readonly into?: number }
   | { readonly unstow: number }
-  | { readonly buy: string };
+  | { readonly buy: string }
+  | { readonly teleport: string };
 
 /** What a radio is turned to: the next station along, switching it on, or off. */
 export type Tuning = "next" | "off";
+
+/**
+ * A vehicle's teleporter: anyone inside sends for a body out in the world, which is brought to
+ * the vehicle, by whatever means and however long it takes.
+ */
+export interface VehicleTeleporter {
+  /**
+   * The id of the body it is bringing to `vehicle` now, as this client has it; null while it is
+   * free to send for one. Read on every client. It sends for one at a time.
+   */
+  sending(game: Session, vehicle: WorldEntity): string | null;
+  /** Sends for `target`, out in the world, by `by` inside `vehicle`, as part of an action. */
+  send(game: Session, vehicle: WorldEntity, by: Player, target: Body): void;
+}
 
 /** A vehicle's storage: items anyone inside may leave in it, or take out. */
 export interface Storage {
@@ -143,6 +159,8 @@ export interface VehicleSpec {
    * inside may transmit on it. Never when left out.
    */
   readonly transceiver?: boolean;
+  /** Its teleporter, which brings bodies to it; none when left out. */
+  readonly teleporter?: VehicleTeleporter;
   /** Its radio, turned by `by` inside it, as part of an action. None when left out. */
   tune?(game: Session, vehicle: WorldEntity, by: Player, to: Tuning): void;
   /** The name of the station its radio plays, as this client has it; null while it is off. */

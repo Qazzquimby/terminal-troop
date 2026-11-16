@@ -1,7 +1,12 @@
-import { AREA, destroyedWalls, livingPlayers } from "../sim/index.js";
-import type { Player, Session } from "../sim/index.js";
+import {
+  AREA,
+  cabinTeleporter,
+  destroyedWalls,
+  livingPlayers,
+} from "../sim/index.js";
+import type { CabinTeleporter, Player, Session } from "../sim/index.js";
 import { button, make } from "./cabin.js";
-import type { CabinPanel } from "./cabin.js";
+import type { CabinPanel, CabinSend } from "./cabin.js";
 
 /** The cabin's minimap. */
 export interface MinimapConfig {
@@ -38,6 +43,41 @@ export function cycleTarget(
   if (at === -1) return targets[0] ?? null;
   const count = targets.length;
   return targets[(((at + step) % count) + count) % count] ?? null;
+}
+
+/** How the teleporter's button shows: whether at all, whether it may be pressed, and its label. */
+export interface TeleportButton {
+  readonly shown: boolean;
+  readonly enabled: boolean;
+  readonly text: string;
+  /** Whether the teleporter is bringing the player the minimap follows. */
+  readonly charging: boolean;
+}
+
+/**
+ * The teleporter's button, for the vehicle's `teleporter` (null for a vehicle without one) and the
+ * player the minimap follows, if any: it sends for a player out in the world, one at a time, never
+ * one already inside a vehicle.
+ */
+export function teleportButton(
+  teleporter: CabinTeleporter | null,
+  player: Pick<Player, "id" | "ride"> | undefined,
+): TeleportButton {
+  if (teleporter === null)
+    return { shown: false, enabled: false, text: "", charging: false };
+  if (player === undefined)
+    return { shown: true, enabled: false, text: "TELEPORT", charging: false };
+  const charging = teleporter.sending === player.id;
+  if (charging)
+    return { shown: true, enabled: false, text: "⚡ CHARGING... ⚡", charging };
+  const enabled = player.ride === null && teleporter.sending === null;
+  const text =
+    player.ride !== null
+      ? "TELEPORT (already aboard)"
+      : teleporter.sending !== null
+        ? "TELEPORT (busy)"
+        : "⚡ TELEPORT HERE ⚡";
+  return { shown: true, enabled, text, charging };
 }
 
 /*
@@ -149,9 +189,13 @@ function layoutImage(game: Session): HTMLCanvasElement {
 /**
  * The minimap: the world round one living player, walls and all, whatever the local player can see
  * from the cabin, the player marked with the way it faces. Buttons step through who it follows.
- * It shows no monsters: the car knows where its crew are, not what hunts them.
+ * It shows no monsters: the car knows where its crew are, not what hunts them. Under it, for a
+ * vehicle with a teleporter, a button sends for the player it follows.
  */
-export function minimapPanel(config: MinimapConfig): CabinPanel {
+export function minimapPanel(
+  config: MinimapConfig,
+  send: CabinSend,
+): CabinPanel {
   const element = make("section", "cabin-panel cabin-minimap");
   const title = make("h3", "cabin-title", "CREW-O-LOCATOR 3000");
   const canvas = make("canvas", "cabin-minimap-canvas");
@@ -170,7 +214,12 @@ export function minimapPanel(config: MinimapConfig): CabinPanel {
   });
   const row = make("div", "cabin-minimap-row");
   row.append(previous, name, next);
-  element.append(title, canvas, row);
+  const teleport = button("cabin-teleport", "", () => {
+    if (target !== null) send({ teleport: target });
+  });
+  teleport.title =
+    "Teleports them beside the car after a few seconds. They drop everything they carry.";
+  element.append(title, canvas, row, teleport);
 
   const ctx = canvas.getContext("2d");
   /** The layout image, and the session and count of fallen walls it was drawn for. */
@@ -225,7 +274,7 @@ export function minimapPanel(config: MinimapConfig): CabinPanel {
 
   return {
     element,
-    update(_view, game) {
+    update(view, game) {
       targets = minimapTargets(game);
       target = cycleTarget(targets, target, 0);
       const player = target === null ? undefined : game.players.get(target);
@@ -233,6 +282,12 @@ export function minimapPanel(config: MinimapConfig): CabinPanel {
       if (name.textContent !== text) name.textContent = text;
       previous.disabled = targets.length < 2;
       next.disabled = targets.length < 2;
+      const shows = teleportButton(cabinTeleporter(game, view.vehicle), player);
+      teleport.hidden = !shows.shown;
+      teleport.disabled = !shows.enabled;
+      teleport.classList.toggle("cabin-teleport-charging", shows.charging);
+      if (teleport.textContent !== shows.text)
+        teleport.textContent = shows.text;
       if (player !== undefined) draw(game, player);
     },
   };

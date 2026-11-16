@@ -15,6 +15,7 @@ import { turret } from "./turret/index.js";
 import { teleporter } from "./teleporter/index.js";
 import { livingWall } from "./living-wall/index.js";
 import { gloom } from "./gloom/index.js";
+import { recall } from "./recall/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -46,6 +47,7 @@ const ENTITIES = [
   giantSnail,
   livingWall,
   gloom,
+  recall,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

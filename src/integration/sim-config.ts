@@ -273,6 +273,13 @@ export const testEntitiesConfig = {
     sounds: { beep: 400, warp: 500 },
     volume: 1,
   },
+  recall: {
+    seconds: 3,
+    spread: 100,
+    flash: 30,
+    sounds: { hum: 400, zap: 500, fizzle: 200 },
+    volume: 1,
+  },
   snail: {
     spawning: { ...NEVER, unseenDistance: 1100 },
     radius: 12,

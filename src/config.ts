@@ -450,6 +450,18 @@ export const config = {
       sounds: { beep: CELL * 8, warp: CELL * 10 },
       volume: 0.8,
     },
+    // The cruiser's teleporter locks on a body and takes it 3s later to within 2 cells of the
+    // cruiser, as a revival or a new arrival lands, leaving what it carried where it stood. Its
+    // charging hum is heard 8 cells round the body, as far as a teleporter pad's beep, warning it
+    // and drawing what hunts it; a zap heard 10 cells off and a flash a body wide at both ends, as
+    // a pad's warp; a fizzle heard 4 cells off if it loses the body.
+    recall: {
+      seconds: 3,
+      spread: CELL * 2,
+      flash: 30,
+      sounds: { hum: CELL * 8, zap: CELL * 10, fizzle: CELL * 4 },
+      volume: 0.8,
+    },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
     // player it picks, standing while there is none, at a fifth of a player's walk, kills
     // whatever it touches, at most once a second, and replans its way every 2 seconds. No monster

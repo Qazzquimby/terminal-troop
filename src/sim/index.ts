@@ -36,9 +36,10 @@ export type {
   VehicleSpec,
   Ware,
 } from "./driving.js";
-export { cabinShop, cabinStorage, unseat } from "./vehicle.js";
+export { cabinShop, cabinStorage, cabinTeleporter, unseat } from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
+export type { CabinTeleporter } from "./vehicle.js";
 export type { Playing } from "./item-sounds.js";
 export { destroyedWalls, destroyWalls, wallCellsIn } from "./walls.js";
 export type { WallArea } from "./walls.js";
@@ -131,7 +132,14 @@ export type { Corrections } from "./steering.js";
 
 export { Health, hurtPlayer } from "./health.js";
 export { isGhost, livingPlayers } from "./ghosts.js";
-export { CORPSE_ITEM, isRevivable, itemName, revive } from "./death.js";
+export {
+  CORPSE_ITEM,
+  dropAll,
+  isRevivable,
+  itemName,
+  revive,
+} from "./death.js";
+export { arrivalPoint } from "./arrival.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export {
