@@ -363,6 +363,7 @@ export const testEntitiesConfig = {
     maxHealth: 75,
     sightRange: 400,
     wakeRange: 250,
+    runShare: 0.9,
     warnSeconds: 1,
     rageSeconds: 10,
     wanderRange: 200,
