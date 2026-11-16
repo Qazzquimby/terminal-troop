@@ -262,3 +262,49 @@ export function strikeIf<
   if (!attacking) return { ...state, attacking };
   return { ...state, attacking, attackAt: now + cooldown };
 }
+
+/** How a body flees: to the best of `tries` spots `leg` off, as `fleeRoute` scores them. */
+export interface Fleeing {
+  readonly leg: number;
+  readonly tries: number;
+  /** How much each pixel from home costs a spot, against each pixel from what it fears; 0 none. */
+  readonly homePull?: number;
+}
+
+/** How far `at` is from the nearest of `threats`; Infinity with none. */
+function clearance(threats: readonly Point[], at: Point): number {
+  const body = nearest(at, threats);
+  return body === null ? Infinity : Math.hypot(body.x - at.x, body.y - at.y);
+}
+
+/**
+ * A way for `self` from `threats`: to the spot a leg off, of those tried evenly round it, that best
+ * keeps it far from them and, with a home and a pull to it, near home, that a route reaches. None
+ * when no spot does.
+ */
+export function fleeRoute(
+  map: TileMap,
+  self: Point & { readonly radius: number },
+  threats: readonly Point[],
+  { leg, tries, homePull = 0 }: Fleeing,
+  home: Point = self,
+): Point[] {
+  const spots: { at: Point; score: number }[] = [];
+  const offset = Math.random() * Math.PI * 2;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const angle = offset + (attempt / tries) * Math.PI * 2;
+    const at = {
+      x: self.x + Math.cos(angle) * leg,
+      y: self.y + Math.sin(angle) * leg,
+    };
+    if (!isAreaFree(map, at.x, at.y, self.radius)) continue;
+    const fromHome = Math.hypot(home.x - at.x, home.y - at.y);
+    spots.push({ at, score: clearance(threats, at) - homePull * fromHome });
+  }
+  spots.sort((a, b) => b.score - a.score);
+  for (const { at } of spots) {
+    const route = planRoute(map, self.radius, self, at);
+    if (route !== null && route.length > 0) return route;
+  }
+  return [];
+}

@@ -1,4 +1,10 @@
-import { eyesOf, hasKindTag, inView, livingBodies } from "../sim/index.js";
+import {
+  eyesOf,
+  hasKindTag,
+  inCone,
+  inView,
+  livingBodies,
+} from "../sim/index.js";
 import type { Body, Point, Session, WorldEntity } from "../sim/index.js";
 import { NEVER_PREY, preyNear } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
@@ -131,4 +137,44 @@ export function drawRing(
   ctx.beginPath();
   ctx.arc(body.x, body.y, body.radius + 2 + gap, 0, Math.PI * 2);
   ctx.stroke();
+}
+
+/** Whose gaze holds a kind back, and how far down a body's view cone it reaches. */
+export interface Watching extends Hunting {
+  /**
+   * When given, the only kind tags whose gaze it heeds: "player" heeds players' eyes alone.
+   * Absent, any body's gaze but the kinds it ignores.
+   */
+  readonly watchedBy?: readonly string[];
+  /**
+   * How far down a body's view cone it counts as watched, light or no light: as far as that body
+   * looks, but never past this.
+   */
+  readonly watchRange: number;
+}
+
+/**
+ * Whether any living body whose gaze `self` heeds watches a point: it lies within that body's view
+ * cone, as far as it looks but no further than the watch range, with nothing in the way. It heeds
+ * the kinds `watchedBy` names, or with none named any body but the kinds it ignores. Light plays
+ * no part, nor what lies behind a body. A stunned or blind body watches nothing. Make one per
+ * step: the bodies' eyes are taken as they stand when it is made.
+ */
+export function gazeOn(
+  game: Session,
+  self: { readonly id: string },
+  watching: Watching,
+): (at: Point) => boolean {
+  const sights = livingBodies(game)
+    .filter(
+      (body) =>
+        body.id !== self.id &&
+        !hasKindTag(game, body.id, watching.ignores) &&
+        (watching.watchedBy === undefined ||
+          hasKindTag(game, body.id, watching.watchedBy)),
+    )
+    .map((body) => eyesOf(game, body))
+    .filter((sight) => (sight?.cone ?? null) !== null);
+  return (at) =>
+    sights.some((sight) => inCone(game, sight, at, watching.watchRange));
 }

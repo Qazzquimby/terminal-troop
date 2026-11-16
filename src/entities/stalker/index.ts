@@ -4,11 +4,7 @@ import {
   defineEntity,
   distanceToWall,
   effect,
-  eyesOf,
-  hasKindTag,
   hurtSinceLastStep,
-  inCone,
-  livingBodies,
   livingBody,
   rounded,
   sound,
@@ -21,7 +17,6 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import type { Hunting } from "../hunt.js";
 import {
   nearest,
   Route,
@@ -34,11 +29,13 @@ import {
 } from "../hunt.js";
 import {
   drawRing,
+  gazeOn,
   nearestPrey,
   preyFor,
   seenPrey,
   touching,
 } from "../bodies.js";
+import type { Watching } from "../bodies.js";
 import { avoidingWhere, planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -53,7 +50,7 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
  * of everyone's sight, backs off when looked at, and goes wild when hurt. Distances in pixels,
  * times in sim seconds.
  */
-export interface StalkerConfig extends Hunting {
+export interface StalkerConfig extends Watching {
   /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -62,20 +59,10 @@ export interface StalkerConfig extends Hunting {
   readonly speed: number;
   /** Its speed while hunting with a body it hunts in its own sight, in pixels a second. */
   readonly creepSpeed: number;
-  /**
-   * When given, the only kind tags whose gaze it heeds: "player" backs off from players' eyes
-   * alone. Absent, any body's gaze but the kinds it ignores.
-   */
-  readonly watchedBy?: readonly string[];
   /** Damage dealt to each body it touches. */
   readonly damage: number;
   /** Seconds between two touches' damage. */
   readonly attackCooldown: number;
-  /**
-   * How far down a body's view cone it counts as watched, light or no light: as far as that body
-   * looks, but never past this.
-   */
-  readonly watchRange: number;
   /** Least distance a retreat keeps from every body it hunts, where it can. */
   readonly retreatDistance: number;
   /** Seconds a retreat lasts before it hunts again. */
@@ -155,31 +142,6 @@ export function freshStalker(now: number): StalkerState {
   };
 }
 
-/**
- * Whether any living body whose gaze it heeds watches a point: it lies within that body's view
- * cone, as far as it looks but no further than the watch range, with nothing in the way. It heeds
- * the kinds `watchedBy` names, or with none named any body but the kinds it ignores. Light plays
- * no part, nor what lies behind a body. A stunned or blind body watches nothing.
- */
-function watcher(
-  game: Session,
-  self: WorldEntity,
-  config: StalkerConfig,
-): (at: Point) => boolean {
-  const sights = livingBodies(game)
-    .filter(
-      (body) =>
-        body.id !== self.id &&
-        !hasKindTag(game, body.id, config.ignores) &&
-        (config.watchedBy === undefined ||
-          hasKindTag(game, body.id, config.watchedBy)),
-    )
-    .map((body) => eyesOf(game, body))
-    .filter((sight) => (sight?.cone ?? null) !== null);
-  return (at) =>
-    sights.some((sight) => inCone(game, sight, at, config.watchRange));
-}
-
 /** How far `at` is from the nearest of `bodies`; Infinity with none. */
 function distanceFrom(bodies: readonly Point[], at: Point): number {
   const body = nearest(at, bodies);
@@ -225,7 +187,7 @@ function plan(
     case "hunt": {
       const quarry = nearestPrey(game, self, config);
       if (quarry === null) return [];
-      const watched = watcher(game, self, config);
+      const watched = gazeOn(game, self, config);
       // A cell any part of which is watched, its middle or near any corner, is kept out of, so
       // a body heading through the cells left never steps into view. The last cell or so up to
       // its quarry it takes whatever way, to reach it at all.
@@ -286,7 +248,7 @@ function think(
   }
   if (state.mode !== "hunt" && now >= state.until)
     return enter(state, "hunt", now, now);
-  if (state.mode === "hunt" && watcher(game, self, config)(self))
+  if (state.mode === "hunt" && gazeOn(game, self, config)(self))
     return enter(state, "retreat", now, now + config.retreatSeconds);
   return state;
 }

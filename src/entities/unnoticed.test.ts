@@ -20,6 +20,11 @@ import type { Session, WorldContent, WorldEntity } from "../sim/index.js";
 import { blindDog, freshBlindDog } from "./blind-dog/index.js";
 import { exploder, ExploderState, freshExploder } from "./exploder/index.js";
 import { freshHoarder, hoarder, HoarderState } from "./hoarder/index.js";
+import {
+  freshLivingWall,
+  livingWall,
+  LivingWallState,
+} from "./living-wall/index.js";
 import { freshSleeper, sleeper, SleeperState } from "./sleeper/index.js";
 import { freshSnail, snail } from "./snail/index.js";
 import { freshStalker, stalker } from "./stalker/index.js";
@@ -153,6 +158,15 @@ const CASES: readonly Case[] = [
     },
     seconds: 2,
     grudge: (monster) => HoarderState.parse(monster.data).quarry,
+  },
+  {
+    name: "living wall",
+    content: livingWall,
+    spawn: (game) =>
+      spawnEntity(game, "livingWall", AT.x, AT.y, freshLivingWall(0)),
+    seconds: 2,
+    // It flees from whatever hurt it.
+    grudge: (monster) => LivingWallState.parse(monster.data).foe,
   },
 ];
 

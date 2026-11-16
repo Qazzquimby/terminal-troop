@@ -33,6 +33,7 @@ import {
   drawHealthBar,
   drawHeldItem,
   drawLitWalls,
+  drawWallBlock,
   drawRemembered,
   interpolatedView,
 } from "./render.js";
@@ -79,6 +80,45 @@ test("lit walls draw a shallow band into the wall instead of a whole tile", () =
     [100, 150],
   ]);
   expect(ctx.closePath).toHaveBeenCalledOnce();
+});
+
+test("a wall block is drawn dark, with a lit band only along open faces on the viewer's side", () => {
+  const game = createSession(
+    "me",
+    "ME",
+    "BLOCK",
+    "dev",
+    testSfx(),
+    testSimConfig,
+  );
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    fillRect: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+  };
+
+  // The cell at x 400-450 in the top row, against the world's edge, seen from below: its top
+  // face is against a wall and its sides face away, so only its bottom face shows.
+  drawWallBlock(ctx, game.world.map, { x: 430, y: 20 }, { x: 425, y: 325 });
+
+  expect(ctx.fillRect).toHaveBeenCalledWith(400, 0, 50, 50);
+  expect(ctx.moveTo.mock.calls).toEqual([
+    [400, 50],
+    [400, 50],
+  ]);
+  expect(ctx.lineTo.mock.calls).toEqual([
+    [450, 50],
+    [450, 46],
+    [400, 46],
+    [450, 50],
+  ]);
 });
 
 const FIXED_DT = 1 / 60;
