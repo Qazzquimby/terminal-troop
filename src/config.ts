@@ -462,12 +462,37 @@ export const config = {
         unseenDistance: CELL * 14,
       },
       radius: 12,
-      ignores: ["snail"],
+      ignores: ["snail", "giantSnail"],
       targets: ["player"],
       speedShare: 0.2,
       damage: 500,
       attackCooldown: 1,
       repathInterval: 2,
+    },
+    // The snail's big sister, rarer and later: none in the first 8 minutes of a world. Two cells
+    // by two, as the blind dog is, and at 0.3 of a player's walk somewhat faster. Where breaking
+    // a wall is quicker than going round it presses into the wall, and after 5 seconds of it the
+    // wall comes down. Its grind, once a second as it presses, carries 8 cells; the crumble 16,
+    // short of the noise that wakes a sleeper.
+    giantSnail: {
+      spawning: {
+        weight: 5,
+        after: 480,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      radius: CELL - 3,
+      ignores: ["snail", "giantSnail"],
+      targets: ["player"],
+      speedShare: 0.3,
+      damage: 500,
+      attackCooldown: 1,
+      repathInterval: 2,
+      breaksWalls: {
+        seconds: 5,
+        grindGap: 1,
+        sounds: { grind: CELL * 8, crumble: CELL * 16 },
+      },
     },
     // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.

@@ -95,7 +95,7 @@ function reachOf(map: TileMap, half: number): number {
  * `map` as a body filling `reach` cells round its own sees it: a cell is blocked where any cell
  * within `reach` of it, or the world's edge, is a wall. The map itself for a reach of 0.
  */
-function inflated(map: TileMap, reach: number): Grid {
+function inflated(map: Grid, reach: number): Grid {
   if (reach === 0) return map;
   const { cols, rows } = map;
   const solid = new Uint8Array(cols * rows);
@@ -112,6 +112,44 @@ function inflated(map: TileMap, reach: number): Grid {
           if (c >= 0 && r >= 0 && c < cols && r < rows) solid[r * cols + c] = 1;
     }
   return { cols, rows, solid };
+}
+
+/** `map` with every wall gone, its size alone kept: as a body that breaks walls plans on it. */
+function unwalled(map: Grid): Grid {
+  return {
+    cols: map.cols,
+    rows: map.rows,
+    solid: new Uint8Array(map.solid.length),
+  };
+}
+
+/**
+ * The toll a body filling `reach` cells round its own pays for each step on `map` that brings a
+ * wall into what it fills: `wallCost`, once a step however many walls it brings in, as the body
+ * breaks the whole face it presses at once. Its first step, from `start`, pays for any wall at
+ * all: the body standing there is up against those walls at most, not through them, though the
+ * cells round its own take them in.
+ */
+function breakingToll(
+  map: Grid,
+  reach: number,
+  wallCost: number,
+  start: Cell,
+): (from: Cell, to: Cell) => number {
+  const { cols, rows, solid } = map;
+  return (from, to) => {
+    const first = from.col === start.col && from.row === start.row;
+    for (let row = to.row - reach; row <= to.row + reach; row++)
+      for (let col = to.col - reach; col <= to.col + reach; col++) {
+        if (col < 0 || row < 0 || col >= cols || row >= rows) continue;
+        const filled =
+          !first &&
+          Math.abs(col - from.col) <= reach &&
+          Math.abs(row - from.row) <= reach;
+        if (!filled && solid[row * cols + col] === 1) return wallCost;
+      }
+    return 0;
+  };
 }
 
 /** The open cell of `grid` nearest `cell`, searched out `rings` cells round it; null for none. */
@@ -138,6 +176,10 @@ function nearestOpen(grid: Grid, cell: Cell, rings: number): Cell | null {
  * cell it fits in. A body wider than a cell starts and ends at the nearest cells it fits in,
  * searched out a cell further than it fills. Null when no path joins them, or it needs more than
  * MAX_WAYPOINTS.
+ *
+ * A body that breaks walls gives `wallCost`: how many cells it could walk in the time it takes to
+ * break through the walls in its way. Its route then goes through a wall wherever breaking it is
+ * quicker than walking round, the world's edge alone stopping it, and leaves the breaking to it.
  */
 export function planRoute(
   map: TileMap,
@@ -145,14 +187,19 @@ export function planRoute(
   from: Point,
   to: Point,
   avoid?: Avoid,
+  wallCost?: number,
 ): Point[] | null {
   const reach = reachOf(map, half);
-  const grid = inflated(map, reach);
+  const grid = inflated(wallCost === undefined ? map : unwalled(map), reach);
   const rings = reach === 0 ? 0 : reach + 1;
   const start = nearestOpen(grid, cellOf(map, from), rings);
   const goal = nearestOpen(grid, cellOf(map, to), rings);
   if (start === null || goal === null) return null;
-  const cells = findPath(grid, start, goal, avoid);
+  const toll =
+    wallCost === undefined
+      ? undefined
+      : breakingToll(map, reach, wallCost, start);
+  const cells = findPath(grid, start, goal, avoid, toll);
   const last = cells?.at(-1);
   if (cells === null || last === undefined) return null;
   const end = isAreaFree(map, to.x, to.y, half)

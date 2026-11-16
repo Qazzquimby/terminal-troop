@@ -1,7 +1,7 @@
 import type { ContentConfig, WorldContent } from "../sim/index.js";
 import { zombie } from "./zombie/index.js";
 import { cruiser } from "./cruiser/index.js";
-import { snail } from "./snail/index.js";
+import { giantSnail, snail } from "./snail/index.js";
 import { stunTrap } from "./stun-trap/index.js";
 import { blindDog } from "./blind-dog/index.js";
 import { exploder } from "./exploder/index.js";
@@ -41,6 +41,7 @@ const ENTITIES = [
   mineLayer,
   turret,
   teleporter,
+  giantSnail,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;
