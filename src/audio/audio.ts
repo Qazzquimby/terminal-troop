@@ -29,6 +29,11 @@ interface PlayOptions {
    * falloff's own distance.
    */
   range?: number;
+  /**
+   * Whether the decoded sound is kept for the next time its url plays; true when left out. False
+   * for a sound played once, such as a clip of a player's voice sent as a data url.
+   */
+  cache?: boolean;
 }
 
 interface StreamOptions extends PlayOptions {
@@ -191,8 +196,8 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
    * The decoded sound at `url`, fetched once. A sound that fails to load or decode resolves to
    * null, warned about once, and is not fetched again: assets can lag behind the code using them.
    */
-  function loadBuffer(url: string): Promise<AudioBuffer | null> {
-    const cached = buffers.get(url);
+  function loadBuffer(url: string, cache = true): Promise<AudioBuffer | null> {
+    const cached = cache ? buffers.get(url) : undefined;
     if (cached !== undefined) return cached;
 
     const promise = fetchBuffer(getAudioContext(), url).catch(
@@ -202,7 +207,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
       },
     );
 
-    buffers.set(url, promise);
+    if (cache) buffers.set(url, promise);
     return promise;
   }
 
@@ -210,11 +215,11 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     url: string,
     origin: Point | null,
     listener: Point | null,
-    { volume = 1, loop = false, range }: PlayOptions = {},
+    { volume = 1, loop = false, range, cache = true }: PlayOptions = {},
   ): Promise<SoundHandle> {
     const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
-    const buffer = await loadBuffer(url);
+    const buffer = await loadBuffer(url, cache);
     if (buffer === null) return silentHandle;
 
     // Browsers usually require an AudioContext to be resumed after a user interaction.

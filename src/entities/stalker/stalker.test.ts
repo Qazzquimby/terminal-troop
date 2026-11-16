@@ -199,7 +199,7 @@ test("its hunt goes round another player's gaze, never stepping into it", () => 
   expect(game.local.health).toBe(0);
 });
 
-test("hurt, it shrieks and rages at the nearest living thing, watched or not, then hunts again", () => {
+test("hurt, it shrieks and rages at the nearest living thing, watched or not, then, with none left to hunt, heads home", () => {
   const game = world(700, 300);
   const stalker = stalkerAt(game, 400, 300);
   run(game, DT, { x: 0, y: 300 });
@@ -213,7 +213,7 @@ test("hurt, it shrieks and rages at the nearest living thing, watched or not, th
   expect(game.local.health).toBe(0);
 
   run(game, config.enragedSeconds, { x: 0, y: 300 });
-  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(["home", "wander"]).toContain(stateOf(stalker).mode);
 });
 
 test("hurt by a zombie, it rages at the player it targets rather than the zombie", () => {
@@ -268,17 +268,112 @@ function lookoutAt(
   return spawnEntity(game, "lookout", x, y, { range });
 }
 
-test("with no player about, it leaves other bodies be, but strikes one it touches", () => {
+test("with no player about, it wanders round home, leaving other bodies be, but strikes one it touches", () => {
   const game = world(100, 550);
   hurtPlayer(game, game.local, Infinity);
   const stalker = stalkerAt(game, 650, 300);
   const far = lookoutAt(game, 200, 300, 0);
   const touched = lookoutAt(game, 670, 300, 0);
-  run(game, 2.5, { x: 900, y: 300 });
-  expect(stateOf(stalker).mode).toBe("hunt");
-  expect(Math.abs(stalker.x - 650)).toBeLessThan(10);
+  let furthest = 0;
+  for (let i = 0; i < 60; i++) {
+    run(game, 0.2, { x: 900, y: 300 });
+    const out = Math.hypot(stalker.x - 650, stalker.y - 300);
+    furthest = Math.max(furthest, out);
+    expect(out).toBeLessThanOrEqual(config.wander.range + config.radius);
+  }
+  expect(stateOf(stalker).mode).toBe("wander");
+  expect(furthest).toBeGreaterThan(10);
   expect(far.health).toBe(1000);
   expect(touched.health).toBeLessThan(1000);
+});
+
+/** Lights `at` with a lamp, out to `range`. */
+function lampAt(game: Session, at: Point, range = 100): WorldEntity {
+  if (!game.kindIds.has("lamp"))
+    registerEntityType(game, "lamp", {
+      radius: 5,
+      maxHealth: 1,
+      collides: false,
+      data: z.object({}),
+      light: () => ({ range }),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "lamp", at.x, at.y, {});
+}
+
+test("it passes over a player standing in the light", () => {
+  const game = world(700, 300);
+  lampAt(game, { x: 700, y: 300 });
+  const stalker = stalkerAt(game, 300, 300);
+  run(game, 1, { x: 900, y: 300 });
+  expect(["home", "wander"]).toContain(stateOf(stalker).mode);
+  expect(Math.hypot(stalker.x - 300, stalker.y - 300)).toBeLessThanOrEqual(
+    config.wander.range,
+  );
+});
+
+test("its quarry stepping into the light, it heads home, then wanders there", () => {
+  const game = world(700, 300);
+  const stalker = stalkerAt(game, 200, 300);
+  run(game, 1, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stalker.x).toBeGreaterThan(300);
+
+  lampAt(game, { x: 700, y: 300 });
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("home");
+  run(game, 0.2, { x: 900, y: 300 });
+  expect(stalker.vx).toBeLessThan(0);
+  run(game, 2, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("wander");
+  expect(Math.hypot(stalker.x - 200, stalker.y - 300)).toBeLessThan(
+    config.radius * 2,
+  );
+});
+
+test("a body glancing just past it still has it in view, out to the watch margin", () => {
+  // Down and to the left of a player looking left, 50 degrees off its aim: past the cone's 45,
+  // within the margin's 10 more.
+  const off = (50 * Math.PI) / 180;
+  const at = {
+    x: 700 + Math.cos(Math.PI - off) * 200,
+    y: 300 + Math.sin(Math.PI - off) * 200,
+  };
+  const margined = world(700, 300);
+  const glanced = stalkerAt(margined, at.x, at.y);
+  run(margined, DT, { x: 0, y: 300 });
+  expect(stateOf(glanced).mode).toBe("retreat");
+
+  const bare = world(700, 300, { ...config, watchMargin: 0 });
+  const missed = stalkerAt(bare, at.x, at.y);
+  run(bare, DT, { x: 0, y: 300 });
+  expect(stateOf(missed).mode).toBe("hunt");
+});
+
+test("seen, it ducks out of sight by the quickest way rather than running home in the open", () => {
+  // A wall across row 5 from column 7 to 13; the player above it, at its right, looks left
+  // along the open row 3 at the stalker, whose home lies further along that row.
+  const game = world(750, 150, { ...config, watchRange: 1000 });
+  const { map } = game.world;
+  for (let col = 7; col <= 13; col++) map.solid[5 * map.cols + col] = 1;
+  const stalker = stalkerAt(game, 450, 150);
+  stalker.data = { ...stateOf(stalker), home: { x: 50, y: 150 } };
+  run(game, DT, { x: 0, y: 150 });
+  expect(stateOf(stalker).mode).toBe("retreat");
+
+  let hidden = false;
+  for (let i = 0; i < 90 && !hidden; i++) {
+    run(game, DT, { x: 0, y: 150 });
+    hidden = !canSeeFrom(map, { x: game.local.x, y: game.local.y }, stalker);
+  }
+  // Round the wall's near end, below its top, not along the row home.
+  expect(hidden).toBe(true);
+  expect(stalker.y).toBeGreaterThan(250);
+  expect(stalker.x).toBeGreaterThan(250);
+  run(game, 1, { x: 0, y: 150 });
+  expect(canSeeFrom(map, { x: game.local.x, y: game.local.y }, stalker)).toBe(
+    false,
+  );
 });
 
 test("a body that is not a player looking at it does not send it back", () => {
@@ -287,7 +382,7 @@ test("a body that is not a player looking at it does not send it back", () => {
   const stalker = stalkerAt(game, 500, 300);
   lookoutAt(game, 700, 300, 300);
   run(game, DT, { x: 900, y: 300 });
-  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stateOf(stalker).mode).not.toBe("retreat");
 });
 
 test("heeding any body's gaze, any body's sends it back, as far as that body looks", () => {
@@ -299,7 +394,7 @@ test("heeding any body's gaze, any body's sends it back, as far as that body loo
   lookoutAt(game, 700, 100, 300);
   run(game, DT, { x: 900, y: 300 });
   expect(stateOf(near).mode).toBe("retreat");
-  expect(stateOf(far).mode).toBe("hunt");
+  expect(stateOf(far).mode).not.toBe("retreat");
 });
 
 test("its own kind's gaze does not send it back", () => {
@@ -309,5 +404,5 @@ test("its own kind's gaze does not send it back", () => {
   const other = stalkerAt(game, 600, 300);
   other.data = { ...stateOf(other), facing: Math.PI };
   run(game, DT, { x: 900, y: 300 });
-  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stateOf(stalker).mode).not.toBe("retreat");
 });

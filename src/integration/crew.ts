@@ -12,6 +12,7 @@ import type {
   WorldContent,
 } from "../sim/index.js";
 import { createNullVoice } from "../voice/index.js";
+import type { Voice } from "../voice/index.js";
 import {
   createHub,
   createManualClock,
@@ -21,6 +22,15 @@ import {
 import { testSfx, testSimConfig } from "./sim-config.js";
 
 const DT = 1 / 60;
+
+/** Voice that does nothing, on open mic at full volume. */
+export const nullVoice = (): Voice =>
+  createNullVoice({
+    mode: "open",
+    muted: false,
+    volume: 1,
+    inputDevice: null,
+  });
 
 export const idle: Controls = {
   move: { x: 0, y: 0 },
@@ -91,6 +101,8 @@ interface CrewSetup {
   readonly delay?: () => number;
   /** Each client's sound effects, by client id; none play when left out. */
   readonly sfx?: (id: string) => Sfx;
+  /** Each client's voice, by client id; a null voice when left out. */
+  readonly voice?: (id: string) => Voice;
 }
 
 /** Sends arriving 60 to 180ms later, in a fixed jittered sequence. */
@@ -101,7 +113,13 @@ export function jitter(): () => number {
 
 /** Clients `ids` joined to one room on a JSON hub, the first hosting, each at its spot. */
 export async function crew(setup: CrewSetup, ...ids: string[]) {
-  const { spots, content = [], delay, sfx = testSfx } = setup;
+  const {
+    spots,
+    content = [],
+    delay,
+    sfx = testSfx,
+    voice = nullVoice,
+  } = setup;
   const hub = createHub();
   const clock = createManualClock();
   const nets = new Map<string, ReturnType<typeof delayed>>();
@@ -117,12 +135,7 @@ export async function crew(setup: CrewSetup, ...ids: string[]) {
       localId: id,
       world: "dev",
       transport: port(id),
-      voice: createNullVoice({
-        mode: "open",
-        muted: false,
-        volume: 1,
-        inputDevice: null,
-      }),
+      voice: voice(id),
       sfx: sfx(id),
       scope: createScope(),
       clock,

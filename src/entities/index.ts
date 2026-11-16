@@ -17,6 +17,8 @@ import { livingWall } from "./living-wall/index.js";
 import { gloom } from "./gloom/index.js";
 import { recall } from "./recall/index.js";
 import { pocketball } from "./pocketball/index.js";
+import { ghostGirl } from "./ghost-girl/index.js";
+import { doppelganger } from "./doppelganger/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -56,6 +58,8 @@ const ENTITIES = [
   gloom,
   recall,
   pocketball,
+  ghostGirl,
+  doppelganger,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

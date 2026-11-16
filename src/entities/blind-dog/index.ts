@@ -10,6 +10,7 @@ import {
   sound,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Point,
   Session,
@@ -68,7 +69,7 @@ interface PounceConfig {
  * How a blind dog roams, listens and charges, and how often they come. Distances are in pixels,
  * speeds in pixels per second, times in seconds.
  */
-export interface BlindDogConfig extends Hunting {
+export interface BlindDogConfig extends Hunting, Dormancy {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   readonly maxHealth: number;
@@ -843,6 +844,7 @@ function definition(config: BlindDogConfig): EntityDefinition<BlindDogState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
     data: BlindDogState,
     update(entity, state, dt, game) {
       const next = bark(

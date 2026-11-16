@@ -91,6 +91,7 @@ describe("content events", () => {
     expect(
       [...game.events].map(([name, events]) => [name, [...events.keys()]]),
     ).toEqual([
+      ["core/echoes", ["ask", "echo"]],
       ["core/steering", ["steer", "resume"]],
       ["core/world-items", ["pickUp", "drop"]],
       [

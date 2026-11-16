@@ -113,8 +113,16 @@ test("a new world's danger is its layout's: none where nothing is dangerous, som
   expect(laid(populated(40)).length).toBeGreaterThan(45);
 });
 
-/** A world with no rolled loot and `count` of `item` guaranteed, spread across its width. */
-function guaranteed(count: number, room = "LOOT", item = "can"): Session {
+/**
+ * A world with no rolled loot and `count` of `item` guaranteed, spread across its width, each
+ * drawn within its band by danger weight raised to `danger`.
+ */
+function guaranteed(
+  count: number,
+  room = "LOOT",
+  item = "can",
+  danger = 0,
+): Session {
   const game = createSession(
     "me",
     "ME",
@@ -126,7 +134,7 @@ function guaranteed(count: number, room = "LOOT", item = "can"): Session {
   const loot = lootContent({
     scatter: { count: 0, seed: 1, clearance: 0 },
     guaranteed: [
-      { item, scatter: { count, seed: 2, clearance: 0, spread: "x" } },
+      { item, scatter: { count, seed: 2, clearance: 0, spread: "x", danger } },
     ],
     danger: DANGER,
   });
@@ -163,6 +171,18 @@ test("guaranteed items lie only where a body of their size is free", () => {
 test("the same room lays its guaranteed items at the same spots; another room elsewhere", () => {
   expect(spots(guaranteed(15))).toEqual(spots(guaranteed(15)));
   expect(spots(guaranteed(15, "OTHER"))).not.toEqual(spots(guaranteed(15)));
+});
+
+test("guaranteed items favouring danger still lie one to each band, but further from the road", () => {
+  const game = guaranteed(30, "LOOT", "can", 2);
+  const band = game.world.W / 30;
+  const bands = spots(game)
+    .map(({ x }) => Math.floor(x / band))
+    .sort((a, b) => a - b);
+  expect(bands).toEqual([...Array(30).keys()]);
+  expect(meanDanger(game)).toBeGreaterThan(
+    meanDanger(guaranteed(30, "LOOT", "can", 0)) + 0.05,
+  );
 });
 
 test("guaranteed loot naming no item is an error", () => {

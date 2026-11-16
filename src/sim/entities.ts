@@ -8,7 +8,9 @@ import { isDead } from "./entity.js";
 import { dealDamage, pruneHurts, settleHurts } from "./hurts.js";
 import type { Interpolated, Tracked } from "./interpolation.js";
 import { follow, glideToTarget } from "./interpolation.js";
+import { livingPlayers } from "./ghosts.js";
 import { isAreaFree } from "./map.js";
+import type { Point } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
 import { isStunned, pruneStatuses } from "./status.js";
@@ -103,6 +105,31 @@ export interface EntityDefinition<S> {
    * whatever this says; `eyesOf` sees to that.
    */
   readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
+  /**
+   * The one body that perceives it, by id, given its state; null for no body at all. Only that
+   * body finds it among the living bodies (to hunt, strike, trap, shoot or bump into), hears the
+   * noise it makes and, on that body's own client, sees it drawn and hears its sounds; the world
+   * log of every other client leaves it out. Every body perceives a kind without it; `perceives`
+   * judges it for every rule.
+   */
+  readonly perceivedBy?: (entity: WorldEntity, data: S) => string | null;
+  /**
+   * Whether it shows wherever whoever sees it has a clear line to it, down its view cone however
+   * far, or within what it sees all round it, light or no light. Left out, it shows only where it
+   * is lit, as any body does.
+   */
+  readonly seenInDark?: boolean;
+  /**
+   * Draws whatever of it shows over the cabin's minimap, `size` pixels square, on the client of
+   * each player that perceives it. The minimap shows no entity otherwise.
+   */
+  readonly minimap?: (
+    ctx: CanvasRenderingContext2D,
+    entity: WorldEntity,
+    data: S,
+    size: number,
+    now: number,
+  ) => void;
   /** What makes it a vehicle a player can drive, if it is one. */
   readonly vehicle?: VehicleSpec;
   /**
@@ -122,6 +149,19 @@ export interface EntityDefinition<S> {
   readonly box?: BoxSize & {
     heading(entity: WorldEntity, data: S): number;
   };
+  /**
+   * How near, in pixels, a living player must be for it to stir. With none that near it lies
+   * dormant, as a stun holds it: its kind is not run, so it stands still, sees nothing and strikes
+   * nothing, and goes on from the state it had once one comes near. It can still be hurt, pushed
+   * and killed, and every client still sees it. Run whoever is near when left out: for a kind that
+   * roams far, or that moves without players, as one that relocates does.
+   */
+  readonly dormantBeyond?: number | undefined;
+  /**
+   * Whether it stays awake though no player is near enough, as one set on a body far off or with
+   * a lit fuse; never when left out.
+   */
+  readonly wakeful?: (entity: WorldEntity, data: S, game: Session) => boolean;
   /** Steers the entity before it moves, and returns its next state. Runs only while hosting. */
   readonly update?: (
     entity: WorldEntity,
@@ -149,6 +189,14 @@ export interface EntityDefinition<S> {
   ) => void;
 }
 
+/**
+ * A kind's config part saying how far off a player keeps it stirring, as `dormantBeyond` on its
+ * definition has it: in pixels; always stirring when left out.
+ */
+export interface Dormancy {
+  readonly dormantBeyond?: number;
+}
+
 /** A registered kind, its state parsed from an entity's `data` at each call. */
 export interface EntityType {
   readonly radius: number;
@@ -166,7 +214,27 @@ export interface EntityType {
   /** How far round it it gives off darkness, in pixels; 0 for none. */
   darkness(entity: WorldEntity): number;
   eyes(entity: WorldEntity, game: Session): Eyes | null;
+  /** Whether only one body perceives it, the one `perceiver` names. */
+  readonly restricted: boolean;
+  /** The one body that perceives it, when `restricted`; null for none. */
+  perceiver(entity: WorldEntity): string | null;
+  readonly seenInDark: boolean;
+  minimap(
+    ctx: CanvasRenderingContext2D,
+    entity: WorldEntity,
+    size: number,
+    now: number,
+  ): void;
   plays(entity: WorldEntity, game: Session): Playing | null;
+  /**
+   * Whether it lies dormant this step: its kind has a dormant range, none of `players` stands
+   * within it, and it is not wakeful.
+   */
+  dormant(
+    entity: WorldEntity,
+    players: readonly Point[],
+    game: Session,
+  ): boolean;
   update(entity: WorldEntity, dt: number, game: Session): void;
   strikes(entity: WorldEntity, game: Session): readonly Strike[];
   dies(entity: WorldEntity, game: Session): void;
@@ -226,10 +294,34 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       if (!parsed.success) return null;
       return definition.eyes?.(entity, parsed.data, game) ?? null;
     },
+    restricted: definition.perceivedBy !== undefined,
+    perceiver(entity) {
+      const { perceivedBy } = definition;
+      if (perceivedBy === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      return parsed.success ? perceivedBy(entity, parsed.data) : null;
+    },
+    seenInDark: definition.seenInDark ?? false,
+    minimap(ctx, entity, size, now) {
+      const parsed = schema.safeParse(entity.data);
+      if (parsed.success)
+        definition.minimap?.(ctx, entity, parsed.data, size, now);
+    },
     plays(entity, game) {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return null;
       return definition.plays?.(entity, parsed.data, game) ?? null;
+    },
+    dormant(entity, players, game) {
+      const range = definition.dormantBeyond;
+      if (range === undefined) return false;
+      for (const player of players)
+        if (Math.hypot(player.x - entity.x, player.y - entity.y) <= range)
+          return false;
+      const { wakeful } = definition;
+      if (wakeful === undefined) return true;
+      const parsed = schema.safeParse(entity.data);
+      return !(parsed.success && wakeful(entity, parsed.data, game));
     },
     update(entity, dt, game) {
       const parsed = schema.safeParse(entity.data);
@@ -346,17 +438,22 @@ function runKind(game: Session, entity: WorldEntity, dt: number): void {
  * Runs each entity's kind, then moves it. An entity's target follows it, so a client that
  * stops hosting eases on from where the entity is. A stunned entity's kind is not run, so it
  * stands still, sees nothing and strikes nothing, whatever its kind, and goes on from the state
- * it had once the stun ends.
+ * it had once the stun ends. A dormant one, with no player near enough to stir it, stands as a
+ * stunned one does.
  */
 export function updateEntities(game: Session, dt: number): void {
   cullDeadEntities(game);
   pruneStatuses(game);
   pruneHurts(game);
+  const players = livingPlayers(game);
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
 
-    if (isStunned(game, entity.id)) {
+    if (
+      isStunned(game, entity.id) ||
+      game.entityTypes.get(entity.kind)?.dormant(entity, players, game) === true
+    ) {
       entity.vx = 0;
       entity.vy = 0;
     } else {
@@ -415,7 +512,7 @@ export function entitySnapshot(game: Session): EntitySnapshot[] {
 /**
  * Takes the entities a host sent: known ones ease towards their new positions and take the new
  * health and state, and new ones appear where the entry puts them. An entry of an unregistered
- * kind, with data its kind rejects, or inside a wall is left out. Returns the ids taken.
+ * kind, with data its kind rejects, or inside a wall that would stop it is left out. Returns the ids taken.
  */
 function takeEntries(
   game: Session,
@@ -424,7 +521,11 @@ function takeEntries(
   const taken = new Set<string>();
   for (const { id, kind, x, y, health, data } of entries) {
     const type = game.entityTypes.get(kind);
-    if (type === undefined || !isAreaFree(game.world.map, x, y, type.radius))
+    // A kind walls do not stop may stand in one, or off the map.
+    if (
+      type === undefined ||
+      (type.collides && !isAreaFree(game.world.map, x, y, type.radius))
+    )
       continue;
     const parsed = type.data.safeParse(data);
     if (!parsed.success) continue;

@@ -15,9 +15,11 @@ import type { WallArea } from "./walls.js";
 /**
  * A player inside a vehicle: which, and whether it is at the wheel. Inside, the player is where
  * the vehicle is, shut in it: nothing out in the world sees, targets, strikes or bumps into it,
- * though what it says is still heard from there. Any number may be inside; one at a time drives.
- * At the wheel, its steps drive the vehicle rather than walk, on every client that runs it, and
- * the host puts the vehicle where the driver is; the others sit where the vehicle is.
+ * though what it says is still heard from there. Any number may be inside, and any number of
+ * those at the wheel at once. Their steers add up, each way clamped to full (see `wheelOf`), and
+ * the one leading them (see `driverOf`) drives the vehicle on that sum, on every client that runs
+ * it; the host puts the vehicle where the lead is. The others at the wheel go along with the lead,
+ * so whichever of them leads next goes on as it went; those off the wheel sit where the vehicle is.
  */
 export interface Ride {
   /** The vehicle's entity id. */
@@ -130,7 +132,7 @@ export interface Impact {
 
 /**
  * What makes a kind of entity a vehicle players ride in: get in with interact beside it, any
- * number at once; take the wheel while no one else has it; and get out again.
+ * number at once; take the wheel, any number at once; and get out again.
  */
 export interface VehicleSpec {
   readonly handling: Handling;
@@ -191,11 +193,47 @@ export function vehicleOf(
   return { entity, spec };
 }
 
-/** The player driving the vehicle `id`, as this client has it; null for none. */
+/**
+ * Every player at the wheel of the vehicle `id`, as this client has it, in the order of their ids:
+ * the same order on every client, whatever order each heard of them in.
+ */
+export function driversOf(game: Session, id: string): Player[] {
+  return [...game.players.values()]
+    .filter((player) => player.ride?.vehicle === id && player.ride.driving)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * The player leading those at the wheel of the vehicle `id`, as this client has it: the first by
+ * id, whose steps drive the vehicle on everyone's steer. Null for no one at the wheel.
+ */
 export function driverOf(game: Session, id: string): Player | null {
-  for (const player of game.players.values())
-    if (player.ride?.vehicle === id && player.ride.driving) return player;
-  return null;
+  return driversOf(game, id)[0] ?? null;
+}
+
+/**
+ * How the wheel of `player`'s vehicle is worked this step: what everyone at it steers, added up
+ * and clamped each way to full. One alone steers it fully; two steering alike get no more than
+ * one, and two against each other cancel out. `own` is `player`'s own steer, which its step runs
+ * on; `steerOf` gives every other driver's, as this client last heard it.
+ */
+export function wheelOf(
+  game: Session,
+  player: Player,
+  own: Point,
+  steerOf: (other: Player) => Point,
+): Point {
+  const { ride } = player;
+  if (ride === null) return own;
+  let x = own.x;
+  let y = own.y;
+  for (const driver of driversOf(game, ride.vehicle)) {
+    if (driver === player) continue;
+    const move = steerOf(driver);
+    x += move.x;
+    y += move.y;
+  }
+  return { x: clamp(x, 1), y: clamp(y, 1) };
 }
 
 /** Every player inside the vehicle `id`, as this client has it, its driver among them. */
@@ -263,7 +301,9 @@ const UNSTICK = 0.25;
 
 /**
  * One step of `player` inside its vehicle: off the wheel, it sits where the vehicle is. At the
- * wheel it drives on `move`: up throttles, down brakes and reverses, and sideways turns it, the
+ * wheel behind another who leads (see `driverOf`), it goes along with the lead: where it is,
+ * pointing and going as it does. Leading, it drives on `move`, the wheel as everyone at it works
+ * it (see `wheelOf`): up throttles, down brakes and reverses, and sideways turns it, the
  * more the faster it goes. It stops at walls, sliding along one it only
  * grazes, and a wall hit hard enough is a crash: it stops dead, and on a live run on the host the
  * vehicle's `crash` runs. `live` is false while a client runs again a step it has run before.
@@ -290,6 +330,20 @@ export function drive(
       player.x = found.entity.x;
       player.y = found.entity.y;
     }
+    return;
+  }
+  const lead = driverOf(game, ride.vehicle);
+  if (lead !== null && lead !== player && lead.ride !== null) {
+    player.x = lead.x;
+    player.y = lead.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.ride = {
+      ...ride,
+      heading: lead.ride.heading,
+      speed: lead.ride.speed,
+      turn: lead.ride.turn,
+    };
     return;
   }
   const { entity, spec } = found;

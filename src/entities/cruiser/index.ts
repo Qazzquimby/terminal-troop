@@ -181,14 +181,15 @@ export const nearCruiser = (
  * A car that starts where new players arrive, its two headlights always shining ahead. Anyone
  * beside it may get in, any number at once, fuel or none: inside, nothing out in the world sees
  * or strikes them, though they are heard from it, its horn too. It starts without fuel; once
- * fuelled its engine runs, and one of those inside can take the wheel and drive it, burning fuel
- * as it moves, ramming what it drives into and knocking down the walls it crashes into, until it
- * breaks down. Those inside share a storage, and buy items at its shop with the team's credit.
+ * fuelled its engine runs, and those inside take the wheel, any number together, and drive it,
+ * burning fuel as it moves, ramming what it drives into and knocking down the walls it crashes
+ * into, until it breaks down. Those inside share a storage, and buy items at its shop with the team's credit.
  * Those outside walk through it. Once it reaches the world's exit, it takes everyone there out
  * after a delay. It carries a set on the walkie band, which those inside hear every transmission
  * on and transmit from, and a radio anyone inside tunes, which plays its station from the car and
  * draws whatever hears it. Its teleporter, worked from the cabin, sends for a body out in the
- * world, one at a time, and a recall brings it beside the car, as the recall kind has it.
+ * world, one at a time, and a recall brings it to the car, a player into it, as the recall kind
+ * has it.
  */
 export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   radius: config.length / 2,

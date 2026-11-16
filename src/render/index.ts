@@ -12,6 +12,7 @@ export {
   drawEmoji,
   drawFacing,
   drawHeldItem,
+  drawLikePlayer,
   drawWallBlock,
 } from "./render.js";
 export { createRipples } from "./ripples.js";

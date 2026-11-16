@@ -1,4 +1,4 @@
-import { findPath } from "../lib/astar/index.js";
+import { findNearest, findPath } from "../lib/astar/index.js";
 import type { Cell, Grid } from "../lib/astar/index.js";
 import {
   darkSources,
@@ -218,6 +218,34 @@ export function planRoute(
     .slice(moved ? 0 : 1, -1)
     .map((cell) => centreOf(map, cell));
   const route = straighten(map, half, from, [...between, end], avoid);
+  return route.length > MAX_WAYPOINTS ? null : route;
+}
+
+/**
+ * Waypoints that take a body of half-size `half` from `from`, by the cheapest walk round the
+ * walls, to the middle of the nearest cell it fits in whose middle `wanted` names: the first such
+ * cell it can reach, so the soonest it can be there at any speed. `from` left out; empty when the
+ * cell it starts in is wanted. Null when it reaches none, or the way needs more than MAX_WAYPOINTS.
+ * `wanted` is asked of each cell once at most, nearest first, so it may be costly.
+ */
+export function routeToNearest(
+  map: TileMap,
+  half: number,
+  from: Point,
+  wanted: (middle: Point) => boolean,
+): Point[] | null {
+  const reach = reachOf(map, half);
+  const grid = inflated(map, reach);
+  const rings = reach === 0 ? 0 : reach + 1;
+  const start = nearestOpen(grid, cellOf(map, from), rings);
+  if (start === null) return null;
+  const cells = findNearest(grid, start, (cell) => wanted(centreOf(map, cell)));
+  if (cells === null) return null;
+  const own = cellOf(map, from);
+  const moved = own.col !== start.col || own.row !== start.row;
+  const points = cells.slice(moved ? 0 : 1).map((cell) => centreOf(map, cell));
+  if (points.length === 0) return [];
+  const route = straighten(map, half, from, points, undefined);
   return route.length > MAX_WAYPOINTS ? null : route;
 }
 

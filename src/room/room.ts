@@ -28,6 +28,7 @@ import type {
   Point,
   Session,
   SimConfig,
+  VoiceClips,
   WorldContent,
   WorldKind,
 } from "../sim/index.js";
@@ -231,6 +232,17 @@ interface Link {
    */
   origin: string | null;
 }
+
+/**
+ * The local player's recorded speech as `voice` holds it, and how it hears others: a voice the
+ * player muted, or turned down, is muted or turned down when something speaks in it too.
+ */
+const clipsOf = (voice: Voice): VoiceClips => ({
+  count: () => voice.clipCount(),
+  clip: (index) => voice.clip(index),
+  muted: (id) => voice.status().mutedPeers.includes(id),
+  volume: () => voice.status().volume,
+});
 
 const ALREADY_CONNECTING = "Already connecting.";
 const LEFT_WHILE_CONNECTING = "Left before the room was joined.";
@@ -684,6 +696,7 @@ export function createRoom(deps: RoomDeps): Room {
           world: deps.world,
           seed,
         }),
+        clips: clipsOf(deps.voice),
       },
     );
     registerContent(session, deps.content);

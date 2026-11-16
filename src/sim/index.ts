@@ -17,6 +17,7 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type {
+  Dormancy,
   EntityDefinition,
   EntitySnapshot,
   Strike,
@@ -27,6 +28,7 @@ export { rounded } from "./rounded.js";
 export { soundDrop, spawnWorldItem } from "./world-items.js";
 export {
   driverOf,
+  driversOf,
   liveTransceivers,
   occupantsOf,
   transceiverOf,
@@ -41,7 +43,13 @@ export type {
   VehicleSpec,
   Ware,
 } from "./driving.js";
-export { cabinShop, cabinStorage, cabinTeleporter, unseat } from "./vehicle.js";
+export {
+  cabinShop,
+  cabinStorage,
+  cabinTeleporter,
+  putIn,
+  unseat,
+} from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
 export type { CabinTeleporter } from "./vehicle.js";
@@ -143,9 +151,11 @@ export { Health, hurtPlayer } from "./health.js";
 export { isGhost, livingPlayers } from "./ghosts.js";
 export {
   CORPSE_ITEM,
+  corpseAt,
   dropAll,
   isRevivable,
   itemName,
+  layCorpse,
   revive,
 } from "./death.js";
 export { arrivalPoint } from "./arrival.js";
@@ -153,10 +163,12 @@ export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export {
   bodyById,
+  engages,
   footprintOf,
   isGone,
   livingBodies,
   livingBody,
+  perceives,
 } from "./bodies.js";
 export { axesOf, gapTo, isBoxFree, reachAlong, touches } from "./shape.js";
 export type { BoxSize, Footprint } from "./shape.js";
@@ -170,7 +182,7 @@ export {
   looksAt,
   notices,
 } from "./eyes.js";
-export type { Eyes } from "./eyes.js";
+export type { Eyes, Sight } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
 export { entityWho, falls, rises, who } from "./fallen.js";
@@ -185,9 +197,12 @@ export {
   worldData,
 } from "./world-data.js";
 export { movement } from "./movement.js";
+export { FOOTSTEP_TAG } from "./footsteps.js";
 export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
+export { echoVoice } from "./echoes.js";
+export type { VoiceClips } from "./echoes.js";
 export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";
-export type { Heard } from "./noise.js";
+export type { Heard, Noise } from "./noise.js";
 export { declaredSounds, sound } from "./sound.js";
 export type { Sound } from "./sound.js";
 export type { Controls, Player } from "./player.js";
@@ -217,6 +232,7 @@ export {
   directionalVision,
   distanceToWall,
   emittedLights,
+  footprintPoints,
   isBodyVisible,
   isVisible,
   lightSources,

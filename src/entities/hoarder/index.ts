@@ -22,6 +22,7 @@ import {
   spawnWorldItem,
 } from "../../sim/index.js";
 import type {
+  Dormancy,
   EntityDefinition,
   Eyes,
   HurtRecord,
@@ -63,7 +64,7 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
  * How hoarders nest, forage for scrap and defend their hoard. Distances in pixels, times in
  * sim seconds.
  */
-export interface HoarderConfig extends Hunting {
+export interface HoarderConfig extends Hunting, Dormancy {
   /** How the world's spawner brings groups; each group shares one nest. */
   readonly spawning: SpawningConfig;
   readonly radius: number;
@@ -682,6 +683,9 @@ function definition(config: HoarderConfig): EntityDefinition<HoarderState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    dormantBeyond: config.dormantBeyond,
+    // Its revenge hunts the thief down however far off.
+    wakeful: (_entity, state) => state.mode === "revenge",
     tags: [SHUNS_LIGHT_TAG],
     data: HoarderState,
     eyes: (_entity, state, game) => hoarderEyes(state, game, config),

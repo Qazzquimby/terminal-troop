@@ -5,7 +5,7 @@ import {
   inView,
   livingBodies,
 } from "../sim/index.js";
-import type { Body, Point, Session, WorldEntity } from "../sim/index.js";
+import type { Body, Point, Session, Sight, WorldEntity } from "../sim/index.js";
 import { NEVER_PREY, preyNear } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
 
@@ -14,7 +14,8 @@ import type { Hunting, Prey } from "./hunt.js";
  * strikes any living body, player or world entity, but itself, what `NEVER_PREY` names (inert
  * things, items lying about, unnoticed bodies such as the snail), and the kinds its config tells it
  * to ignore, its own kind by default. A kind whose config names `targets` hunts only bodies of
- * those kind tags, though it still strikes whatever it touches.
+ * those kind tags, though it still strikes whatever it touches. Nor does it find a body only some
+ * other body perceives, as the ghost girl, there to hunt or strike at all.
  */
 
 /**
@@ -29,7 +30,7 @@ export function preyFor(
 ): Body[] {
   const passed = [...hunting.ignores, ...NEVER_PREY];
   const { targets } = hunting;
-  return livingBodies(game).filter(
+  return livingBodies(game, self?.id ?? null).filter(
     (body) =>
       body.id !== self?.id &&
       !hasKindTag(game, body.id, passed) &&
@@ -151,30 +152,57 @@ export interface Watching extends Hunting {
    * looks, but never past this.
    */
   readonly watchRange: number;
+  /**
+   * How far past either edge of a body's view cone it still counts as watched, in radians: a
+   * body glancing just off it still has it, so it does not start and stop at the cone's edge.
+   */
+  readonly watchMargin: number;
 }
 
 /**
- * Whether any living body whose gaze `self` heeds watches a point: it lies within that body's view
- * cone, as far as it looks but no further than the watch range, with nothing in the way. It heeds
- * the kinds `watchedBy` names, or with none named any body but the kinds it ignores. Light plays
- * no part, nor what lies behind a body. A stunned or blind body watches nothing. Make one per
- * step: the bodies' eyes are taken as they stand when it is made.
+ * The eyes of every living body whose gaze `self` heeds, as they are now: those of the kinds
+ * `watchedBy` names, or with none named any body but the kinds it ignores. A stunned or blind body
+ * has none, nor one with no view cone.
+ */
+export function watchers(
+  game: Session,
+  self: { readonly id: string },
+  watching: Watching,
+): Sight[] {
+  const { ignores, watchedBy } = watching;
+  const sights: Sight[] = [];
+  for (const body of livingBodies(game)) {
+    if (body.id === self.id || hasKindTag(game, body.id, ignores)) continue;
+    if (watchedBy !== undefined && !hasKindTag(game, body.id, watchedBy))
+      continue;
+    const sight = eyesOf(game, body);
+    if (sight !== null && sight.cone !== null) sights.push(sight);
+  }
+  return sights;
+}
+
+/**
+ * Whether any living body whose gaze `self` heeds, as `watchers` has them, watches a point: it
+ * lies within that body's view cone, widened by the watch margin each side, as far as it looks but
+ * no further than the watch range, with nothing in the way. Light plays no part, nor what lies
+ * behind a body. Make one per step: the bodies' eyes are taken as they stand when it is made.
  */
 export function gazeOn(
   game: Session,
   self: { readonly id: string },
   watching: Watching,
 ): (at: Point) => boolean {
-  const sights = livingBodies(game)
-    .filter(
-      (body) =>
-        body.id !== self.id &&
-        !hasKindTag(game, body.id, watching.ignores) &&
-        (watching.watchedBy === undefined ||
-          hasKindTag(game, body.id, watching.watchedBy)),
-    )
-    .map((body) => eyesOf(game, body))
-    .filter((sight) => (sight?.cone ?? null) !== null);
+  const widened = watchers(game, self, watching).map((sight) =>
+    sight.cone === null
+      ? sight
+      : {
+          ...sight,
+          cone: {
+            ...sight.cone,
+            angle: sight.cone.angle + watching.watchMargin * 2,
+          },
+        },
+  );
   return (at) =>
-    sights.some((sight) => inCone(game, sight, at, watching.watchRange));
+    widened.some((sight) => inCone(game, sight, at, watching.watchRange));
 }

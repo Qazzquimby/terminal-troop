@@ -38,6 +38,7 @@ const warpUrl = new URL("./sfx/warp.mp3", import.meta.url).href;
  * whatever steps on it is sent off the way it is aimed. Distances in pixels, times in sim seconds.
  */
 export interface TeleporterConfig {
+  /** Its size, and so how near a body must step to ride it. */
   readonly radius: number;
   /** Seconds from being put down until it has charged. */
   readonly armSeconds: number;

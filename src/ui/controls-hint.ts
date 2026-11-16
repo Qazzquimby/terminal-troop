@@ -17,6 +17,11 @@ const SETTINGS: HintEntry = {
   actions: ["toggleSettings"],
   does: "for settings",
 };
+/** Inside a vehicle, the settings key gets out instead; see `escapeLeavesVehicle`. */
+const GET_OUT: HintEntry = {
+  actions: ["toggleSettings"],
+  does: "to get out",
+};
 
 /** What the controls hint shows in each mode, in order. Adding or removing a control is one line. */
 export const CONTROLS_HINT: Readonly<Record<HintMode, readonly HintEntry[]>> = {
@@ -34,13 +39,13 @@ export const CONTROLS_HINT: Readonly<Record<HintMode, readonly HintEntry[]>> = {
   cabin: [
     { actions: ["interact"], does: "to take the wheel" },
     { actions: ["transmit"], does: "(hold) to transmit" },
-    SETTINGS,
+    GET_OUT,
   ],
   driving: [
     { actions: MOVE, does: "to drive" },
     { actions: ["honk"], does: "to honk" },
     { actions: ["interact"], does: "to let go of the wheel" },
-    SETTINGS,
+    GET_OUT,
   ],
   ghost: [
     { actions: ["useItem"], does: "to watch next" },
@@ -76,6 +81,13 @@ export function hintMode(player: Pick<Player, "health" | "ride">): HintMode {
   if (player.ride === null) return "foot";
   return player.ride.driving ? "driving" : "cabin";
 }
+
+/**
+ * Whether the settings key (Esc) gets the player out of the vehicle it is in, rather than opening
+ * settings: in the cabin or at the wheel. Settings stay a click away on their button.
+ */
+export const escapeLeavesVehicle = (mode: HintMode): boolean =>
+  mode === "cabin" || mode === "driving";
 
 /** The hint for `mode`, with the talk key when push to talk is on. */
 export function controlsHintFor(mode: HintMode, pushToTalk: boolean): string {

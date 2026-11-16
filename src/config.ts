@@ -18,6 +18,7 @@ import type { WheelConfig } from "./input/index.js";
 
 import type {
   RadioSoundConfig,
+  VoiceClipConfig,
   VoiceConnectionConfig,
   VoiceFalloff,
 } from "./voice/index.js";
@@ -41,6 +42,7 @@ interface AppConfig extends SimConfig {
   readonly voice: VoiceFalloff;
   readonly voiceConnections: VoiceConnectionConfig;
   readonly voiceRadio: RadioSoundConfig;
+  readonly voiceClips: VoiceClipConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
@@ -57,6 +59,12 @@ const SHOVEL_DAMAGE = 15;
 const PLAYER_SPEED = 120;
 const SPRINT = 1.8;
 /**
+ * How far past either edge of a body's view cone a kind held back by being looked at still counts
+ * as looked at, so it does not stutter in and out at the edge: 10 degrees, in radians. Each such
+ * kind takes it as its `watchMargin`, and may be given its own.
+ */
+const WATCH_MARGIN = (10 * Math.PI) / 180;
+/**
  * Seconds into a world at which it reaches its end game: the spawner is at full pace, and groups
  * that grow with the world have grown to their full size. A world has no fixed length, so this
  * is where its threat stops rising.
@@ -64,6 +72,14 @@ const SPRINT = 1.8;
 const END_GAME = 20 * 60;
 /** Cells out from the exit that are dark by day and most dangerous. */
 const EXIT_REACH = 20;
+/**
+ * How near a living player must be for a monster that keeps to its own patch to stir: 50 cells,
+ * past any sight, hearing or noise that reaches a player. Farther off, it lies dormant, standing as
+ * if stunned, so a big world's far monsters cost the host nothing. Kinds that roam the whole world
+ * (the stalker, statue and snails), move with no player near (the sleeper as she relocates, the
+ * ghost girl) or are placed rather than living (mines, turrets) never lie dormant.
+ */
+const DORMANT_BEYOND = CELL * 50;
 
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
@@ -205,6 +221,10 @@ export const config = {
   // A player who falls drops what it carried within a cell of where it fell. Revived, it comes
   // back on half its health, near whatever revived it.
   death: { scatter: CELL, reviveHealth: 50 },
+  // World entities act on one another, hunting, striking, setting off or catching, only while
+  // both are within 15 cells of a living player: about a screen and a half across, so a fight a
+  // player could see or hear plays out, and none wipes the world out off-screen (#360).
+  engagement: { range: CELL * 15 },
   // A stunned player sees next to nothing, its view clearing over the last second of the stun,
   // its ears ringing at half volume until then, the ring fading out over a second.
   stunned: {
@@ -263,6 +283,9 @@ export const config = {
     step: CELL,
     interval: 0.5,
   },
+  // A clip of a player's speech goes out at most 64,000 base64 characters, about 47KB: a
+  // recorder's 5s at 32kbps fits with room to spare, well inside a broadcast's 256KB.
+  echoes: { maxChars: 64_000 },
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {
@@ -281,6 +304,7 @@ export const config = {
   greeting: { replayMs: 10_000 },
   entities: {
     zombie: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 100,
         tries: 24,
@@ -398,11 +422,14 @@ export const config = {
         switchRange: CELL * 2,
       },
     },
-    // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it sets it
-    // off: a bang heard 12 cells off, and a flash that stuns for 5s every body, players included,
-    // whose eyes catch it within 5 cells, lighting 8 cells round it for half a second.
+    // Arms 3s after it is put down, then beeps, heard 8 cells off. Whatever steps on it, anywhere
+    // within its 30px radius, sets it off: a bang heard 12 cells off, a flash drawn 60px round, and
+    // a flash that stuns for 5s every body, players included, whose eyes catch it within 5 cells,
+    // lighting 8 cells round it for half a second. Its radius, its size and so how near a body must
+    // step to set it off, was 10px; tripled so it is easier to walk into.
     stunTrap: {
-      radius: 10,
+      radius: 30,
+      flash: 60,
       armSeconds: 3,
       stunRange: CELL * 5,
       stunSeconds: 5,
@@ -414,11 +441,13 @@ export const config = {
     // laser is a 10 degree beam out 12 cells, a handgun's reach, sweeping round once every 3s. It
     // locks on any living body it catches but players, inert things and items, chirping 4 cells
     // out, and half a second later fires a handgun's shot at it, then one every 2s, as loud as a
-    // handgun. Two handgun shots or four shovel hits break it, with a crunch heard 10 cells off; a
-    // kick shoves it as it would a player.
+    // handgun. It holds 30 shots; spent, it still sweeps and locks on, but clicks dry, heard 2
+    // cells off, where it would shoot. It has 100 health, four handgun shots or seven shovel hits,
+    // and breaks with a crunch heard 10 cells off; a kick shoves it as it would a player.
     turret: {
       radius: 14,
-      maxHealth: SHOVEL_DAMAGE * 4,
+      maxHealth: 100,
+      ammo: 30,
       mass: 1,
       ignores: ["player"],
       armSeconds: 3,
@@ -436,14 +465,17 @@ export const config = {
         lock: CELL * 4,
         shot: CELL * 30,
         break: CELL * 10,
+        click: CELL * 2,
       },
       volume: 0.8,
     },
-    // Charges 3s after it is laid, then beeps, heard 8 cells off. It sends whatever steps on it 8
-    // to 30 cells the way it is aimed, to the first clear spot of 24 drawn, with a flash a body
-    // wide and a warp heard 10 cells off at both ends; it charges again over 3s and beeps.
+    // Charges 3s after it is laid, then beeps, heard 8 cells off. It sends whatever steps on it,
+    // anywhere within its 48px radius, 8 to 30 cells the way it is aimed, to the first clear spot
+    // of 24 drawn, with a flash a body wide and a warp heard 10 cells off at both ends; it charges
+    // again over 3s and beeps. Its radius, its size and so how near a body must step to ride it,
+    // was 16px; tripled so it is easier to walk onto.
     teleporter: {
-      radius: 16,
+      radius: 48,
       armSeconds: 3,
       rearmSeconds: 3,
       distance: { min: CELL * 8, max: CELL * 30 },
@@ -478,13 +510,16 @@ export const config = {
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
     // player it picks, standing while there is none, at a fifth of a player's walk, kills
     // whatever it touches, at most once a second, and replans its way every 2 seconds. No monster
-    // hunts or strikes it: its kind carries the unnoticed tag.
+    // hunts or strikes it: its kind carries the unnoticed tag. It would rather arrive far from
+    // any snail, giant or not: a spot within 40 cells of one, over a quarter of the world's width,
+    // is that much less likely, falling to never touching one.
     snail: {
       spawning: {
         weight: 10,
         after: 240,
         tries: 24,
         unseenDistance: CELL * 14,
+        apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
       },
       radius: 12,
       ignores: ["snail", "giantSnail"],
@@ -498,13 +533,14 @@ export const config = {
     // by two, as the blind dog is, and at 0.3 of a player's walk somewhat faster. Where breaking
     // a wall is quicker than going round it presses into the wall, and after 5 seconds of it the
     // wall comes down. Its grind, once a second as it presses, carries 8 cells; the crumble 16,
-    // short of the noise that wakes a sleeper.
+    // short of the noise that wakes a sleeper. It keeps apart from other snails as the snail does.
     giantSnail: {
       spawning: {
         weight: 5,
         after: 480,
         tries: 24,
         unseenDistance: CELL * 14,
+        apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
       },
       radius: CELL - 3,
       ignores: ["snail", "giantSnail"],
@@ -519,9 +555,59 @@ export const config = {
         sounds: { grind: CELL * 8, crumble: CELL * 16 },
       },
     },
+    // The ghost girl haunts one player, picked at random, rare and none in the first 5 minutes.
+    // She stays away 20s to 3min, then appears 4 to 12 cells off, at least 90 degrees past the
+    // edge of her target's view cone (so within the 90 degrees straight behind it), with a clear
+    // line to it; trying 24 spots, then again half a second later. She stares with 15 patience,
+    // losing 1 a second, gaining 2 while unseen and 1 while looked at. From 3 anger a look sets
+    // her on her target 30% of the time, 10% more for each anger past 3. She chases at half a
+    // sprint, a tenth of a sprint faster per anger past 3, never past 1.2 sprints, for 5 to 10s,
+    // then flickers for 0.8s and vanishes. Touching her costs 20 health a second, 5 every 0.25s.
+    // Slipping away, she walks at half a sprint to a spot within 8 cells her target cannot see,
+    // trying 12 a step for 2s before making for the nearest wall; after 10s she is gone anyway.
+    // Her sounds carry 16 cells, past the furthest she appears.
+    ghostGirl: {
+      spawning: {
+        weight: 3,
+        after: 300,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      radius: 14,
+      targets: ["player"],
+      absent: { min: 20, max: 180 },
+      appear: {
+        near: CELL * 4,
+        far: CELL * 12,
+        behind: Math.PI / 2,
+        tries: 24,
+        retry: 0.5,
+      },
+      patience: { start: 15, drain: 1, unseen: 2, watched: 1 },
+      chase: {
+        from: 3,
+        chance: 0.3,
+        chancePerAnger: 0.1,
+        speed: 0.5,
+        speedPerAnger: 0.1,
+        maxSpeed: 1.2,
+        seconds: { min: 5, max: 10 },
+      },
+      hide: {
+        range: CELL * 8,
+        tries: 12,
+        search: 2,
+        speed: 0.5,
+        giveUp: 10,
+      },
+      flicker: 0.8,
+      contact: { damage: 5, interval: 0.25 },
+      soundRange: CELL * 16,
+    },
     // A blind hound, can spawn in light or darkness, never arriving within 30 cells of a
     // player. Five shovel hits fell it; touching it costs 100 health, once a second.
     blindDog: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         tries: 24,
@@ -584,6 +670,7 @@ export const config = {
     // begins, in groups of 2 to 4, 3 on average, by its end game, up to 3 cells apart. It feels
     // prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
     exploder: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 70,
         tries: 24,
@@ -697,12 +784,14 @@ export const config = {
     },
     // Alone, in the dark: none in the first 4 minutes of a world, never within 30 cells of a
     // player. Five shovel hits fell it; it moves at 1.2 times a walk, creeping at 0.1 times a walk
-    // once it sees a player it hunts, and touching it costs 100 health, once a second. Only a
-    // player's gaze counts: a player sees it down its view cone as far as it looks, 10 cells, but
-    // never past 14, as far as a flashlight reaches. Seen, it
-    // backs off for 25s, keeping 12 cells from every body it hunts where it can; hurt, it rages for
-    // 10s. It replans twice a second. Its hiss as it backs off carries 6 cells, its shriek of rage
-    // 16, its strike 8.
+    // once it sees a player in the dark it hunts, and touching it costs 100 health, once a second.
+    // Only a player's gaze counts: a player sees it down its view cone, 10 degrees wider each side,
+    // as far as it looks, 10 cells, but never past 14, as far as a flashlight reaches. Seen, it
+    // backs off for 25s, out of every player's sight within 14 cells by the quickest way, or where
+    // none is out of sight keeping 12 cells from every body it hunts; hurt, it rages for 10s. With
+    // no player in the dark it heads home and wanders up to 6 cells round it, standing 2 to 5s
+    // between legs. It replans twice a second. Its hiss as it backs off carries 6 cells, its
+    // shriek of rage 16, its strike 8.
     stalker: {
       spawning: {
         weight: 10,
@@ -720,10 +809,12 @@ export const config = {
       damage: 100,
       attackCooldown: 1,
       watchRange: CELL * 14,
+      watchMargin: WATCH_MARGIN,
       retreatDistance: CELL * 12,
       retreatSeconds: 25,
       enragedSeconds: 10,
       repathInterval: 0.5,
+      wander: { range: CELL * 6, pause: { min: 2, max: 5 } },
       sounds: { retreat: CELL * 6, enraged: CELL * 16, attack: CELL * 8 },
     },
     // Groups of 3 to 5 sharing a nest, never arriving within 14 cells of a player. Three shovel hits fell one. It forages at 0.8 times a walk and chases at 1.1, sees 6 cells,
@@ -732,6 +823,7 @@ export const config = {
     // nest's revenge lasts until the thief is 5 cells from what it stole. Its chitter carries 4
     // cells every 5 to 10s, its alarm 10, its pick-up 3, its bite 5.
     hoarder: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 50,
         tries: 24,
@@ -793,6 +885,7 @@ export const config = {
     // it fears, replanning twice a second and laying a mine every 3s, until it has seen none for
     // 10s. Laying a mine clicks 3 cells off.
     mineLayer: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 120,
@@ -826,6 +919,7 @@ export const config = {
     // for 3s, 6 cells a leg, the best of 12. It replans twice a second. Its blow carries 8 cells,
     // its grinding flight 10, its crumbling death 10.
     livingWall: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 120,
@@ -842,6 +936,7 @@ export const config = {
       fleeSeconds: 3,
       flee: { leg: CELL * 6, tries: 12 },
       watchRange: CELL * 14,
+      watchMargin: WATCH_MARGIN,
       damage: 80,
       attackCooldown: 1,
       repathInterval: 0.5,
@@ -855,6 +950,7 @@ export const config = {
     // drifts up to 8 cells a leg, hanging 1 to 3s between legs. Its hum carries 6 cells, at 0.6;
     // its breath as it takes someone up 6, its sigh as it breaks 8.
     gloom: {
+      dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
         after: 180,
@@ -874,6 +970,45 @@ export const config = {
       wanderPause: { min: 1, max: 3 },
       humVolume: 0.6,
       sounds: { hum: CELL * 6, latch: CELL * 6, disperse: CELL * 8 },
+    },
+    // Alone, in the dark: none in the first 3 minutes of a world, never within 14 cells of a
+    // player; as rare as the stalker. A player's size, health and walk. Watched by any body within
+    // 14 cells, the stalker's watch range, it wanders up to 6 cells a leg, looking round 2s at
+    // each stop, its head turning up to about 70 degrees either way. Unwatched for 2s, it heads for
+    // where it last saw or heard a body. Any body within 1.5 cells it runs at and bites as a zombie
+    // does: 35 within 30px, every 2s, heard 5 cells off. It speaks every 6 to 12s, heard 4 cells
+    // off, as far as talking carries. Three in ten arrive holding a shovel, a bandage, a walkie or
+    // scrap.
+    doppelganger: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      ignores: ["doppelganger"],
+      watchRange: CELL * 14,
+      watchMargin: WATCH_MARGIN,
+      radius: 14,
+      maxHealth: 100,
+      speed: PLAYER_SPEED,
+      attackRange: CELL * 1.5,
+      reach: 30,
+      damage: 35,
+      attackCooldown: 2,
+      unwatchedSeconds: 2,
+      wanderRange: CELL * 6,
+      lookSeconds: 2,
+      lookSweep: 1.2,
+      repathDistance: CELL / 2,
+      barkGap: { min: 6, max: 12 },
+      barkRange: CELL * 4,
+      holds: {
+        chance: 0.3,
+        items: ["shovel", "bandage", "walkie", "scrap"],
+      },
+      sounds: { attack: CELL * 5 },
     },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
@@ -1076,13 +1211,22 @@ export const config = {
     // monsters do, so loot lies where they spawn. At the most dangerous spot there is an even
     // chance of a second, an uncommon item is twice as likely, a rare one four times. On top of
     // those it always lays 15 cans of fuel, one in each fifteenth of its width from start to exit,
-    // so the cruiser can always be driven out; fuel may still be picked as loot besides.
+    // so the cruiser can always be driven out; fuel may still be picked as loot besides. Within
+    // its band each can lies by danger weight squared, as a rare item favours danger, so it is
+    // found off the road where monsters spawn. The bands keep the exit, the most dangerous place,
+    // from drawing more than its own band's can.
     loot: {
       scatter: { count: 40, seed: 4, clearance: CELL * 3, danger: 1 },
       guaranteed: [
         {
           item: "fuel",
-          scatter: { count: 15, seed: 5, clearance: CELL * 3, spread: "x" },
+          scatter: {
+            count: 15,
+            seed: 5,
+            clearance: CELL * 3,
+            spread: "x",
+            danger: 2,
+          },
         },
       ],
       danger: { extra: 0.5, rarity: { common: 1, uncommon: 2, rare: 4 } },
@@ -1139,6 +1283,20 @@ export const config = {
       length: { min: 0.01, max: 0.04 },
       volume: 0.7,
     },
+  },
+  // A clip of a player's own speech starts once what goes out reaches 0.4, past a quiet room's
+  // 0.35 and short of talking's 0.5, and ends after 0.6s under it, longer than the gap between
+  // words; under 0.8s of speech is dropped, so a cough or a "yeah" is not kept, and 5s is the
+  // most a clip runs. The newest 8 are held, at 32kbps: 20KB each. The mic is looked at 20 times
+  // a second.
+  voiceClips: {
+    threshold: 0.4,
+    quietSeconds: 0.6,
+    minSeconds: 0.8,
+    maxSeconds: 5,
+    keep: 8,
+    bitsPerSecond: 32_000,
+    pollMs: 50,
   },
   voiceConnections: {
     levelRampS: 0.05,

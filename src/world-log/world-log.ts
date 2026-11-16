@@ -5,6 +5,7 @@ import {
   falls,
   isGhost,
   ITEM_TAG,
+  perceives,
   PLAYER_TAG,
   rises,
   stunLeft,
@@ -38,7 +39,8 @@ function nameEntity(game: Session, entity: WorldEntity): Who {
  * each already holds: entities appearing in and going from its snapshots, players turning ghost
  * and back, the statuses record, and the host's record of the latest falls (`falls`), which names
  * each body and its killer as it fell, so a body gone before any snapshot showed it dead is still
- * told. Nothing here sends anything.
+ * told. An entity only some other body perceives, as a haunting, is not logged here at all.
+ * Nothing here sends anything.
  */
 
 /**
@@ -302,7 +304,10 @@ export function createWorldLog(
     if (!game.hosting && game.heard.size === 0) return;
     w.primed = true;
     const held = new Map<string, number>();
-    for (const entity of game.entities.values()) {
+    const perceived = [...game.entities.values()].filter((entity) =>
+      perceives(game, game.localId, entity.id),
+    );
+    for (const entity of perceived) {
       const named = nameEntity(game, entity);
       w.entities.set(entity.id, named);
       bump(held, named.kind);
@@ -314,7 +319,7 @@ export function createWorldLog(
     log(game, {
       category: "world",
       subject: null,
-      text: `world holds ${String(game.entities.size)} entities${list === "" ? "" : `: ${list}`}`,
+      text: `world holds ${String(perceived.length)} entities${list === "" ? "" : `: ${list}`}`,
     });
   }
 
@@ -326,6 +331,8 @@ export function createWorldLog(
     }
     for (const entity of game.entities.values()) {
       if (w.entities.has(entity.id)) continue;
+      // What only some other body perceives is not there for this client to log.
+      if (!perceives(game, game.localId, entity.id)) continue;
       const named = nameEntity(game, entity);
       w.entities.set(entity.id, named);
       bump(w.spawned, named.kind);
