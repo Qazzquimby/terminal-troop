@@ -110,6 +110,7 @@ async function hearHerOut(
     attacking: false,
     foe: null,
     victim: null,
+    nearAt: now,
   });
   for (let frame = 0; frame < 60 * 8; frame++) {
     watch(watching(sleeper));

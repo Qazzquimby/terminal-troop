@@ -22,6 +22,7 @@ import { drawRing, nearestSeenBody, preyFor, touching } from "../bodies.js";
 import type { Hunting } from "../hunt.js";
 import {
   between,
+  bigNoise,
   Route,
   strikeEach,
   Time,
@@ -30,7 +31,7 @@ import {
   avenged,
 } from "../hunt.js";
 import { avoidingLight, planRoute, steer } from "../route.js";
-import { arrivals } from "../spawning.js";
+import { arrivalPoint, arrivals, watchedAt } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
@@ -39,6 +40,7 @@ const growlUrl = new URL("./sfx/growl.mp3", import.meta.url).href;
 const enrageUrl = new URL("./sfx/enrage.mp3", import.meta.url).href;
 const rageBarkUrl = new URL("./sfx/rage-bark.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
+const vanishUrl = new URL("./sfx/vanish.mp3", import.meta.url).href;
 
 /** Seconds between two sounds of one kind, drawn between the two. */
 interface Gap {
@@ -78,6 +80,22 @@ export interface SleeperConfig extends Hunting {
     readonly clearance: number;
     readonly tries: number;
   };
+  /**
+   * Least distance, in pixels, a noise she hears must carry from where it was made to rouse her.
+   * At one that big, a gunshot, a blast, a horn, whoever made it, she screams if not enraged
+   * already and runs at it enraged, unless she has a body to run down.
+   */
+  readonly alarmRadius: number;
+  /**
+   * Asleep with no body she hunts within `range` for `after` seconds, she leaves for somewhere
+   * she might have arrived, as the spawner picks it, unseen by any player at either end. When she
+   * is watched or there is nowhere to go, she tries again `retry` seconds on.
+   */
+  readonly relocate: {
+    readonly after: number;
+    readonly range: number;
+    readonly retry: number;
+  };
   /** How far, in pixels, each of her sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly bark: number;
@@ -85,6 +103,8 @@ export interface SleeperConfig extends Hunting {
     readonly enrage: number;
     readonly rageBark: number;
     readonly attack: number;
+    /** The whisper as she leaves one place, and again as she comes to the next. */
+    readonly vanish: number;
   };
 }
 
@@ -115,6 +135,8 @@ export const SleeperState = z.object({
   foe: z.string().nullable(),
   /** The body she last struck, to tell when she has killed. */
   victim: z.string().nullable(),
+  /** When a body she hunts was last within her relocate range. */
+  nearAt: Time,
 });
 
 export type SleeperState = z.output<typeof SleeperState>;
@@ -142,6 +164,7 @@ export function freshSleeper(now: number, config: SleeperConfig): SleeperState {
     attacking: false,
     foe: null,
     victim: null,
+    nearAt: now,
   };
 }
 
@@ -240,7 +263,8 @@ function pursue(
 
 /**
  * Enraged: runs down whatever body hurt her, wherever it is, while it lives; otherwise the nearest
- * body she sees, to where she last saw it; with neither, she wanders fast. Light is nothing to her
+ * body she sees, to where she last saw it; otherwise where she heard an `alarm`, a noise big
+ * enough to rouse her, this step; with none of those, she wanders fast. Light is nothing to her
  * now.
  */
 function rage(
@@ -248,10 +272,12 @@ function rage(
   self: WorldEntity,
   game: Session,
   config: SleeperConfig,
+  alarm: Point | null = null,
 ): SleeperState {
   const seen =
     livingBody(game, state.foe) ??
-    nearestSeenBody(game, self, config, config.sightRange);
+    nearestSeenBody(game, self, config, config.sightRange) ??
+    alarm;
   if (seen !== null) return pursue(state, self, seen, game, config);
   if (state.route.length > 0) return state;
   const { map } = game.world;
@@ -286,18 +312,36 @@ function think(
   const by = avenged(game, self, hurt?.by ?? null, config);
   const marked =
     by === null || state.mode === "retreat" ? state : { ...state, foe: by };
-  return respond(marked, self, game, config, hurt !== null, now);
+  const alarm = bigNoise(
+    game,
+    { at: self, rng: Math.random, ignores: config.ignores },
+    config.alarmRadius,
+  );
+  return respond(marked, self, game, config, {
+    hurt: hurt !== null,
+    alarm: alarm?.at ?? null,
+    now,
+  });
 }
 
-/** What she does in her mode, `hurt` or not since her last step, at world time `now`. */
+/** What roused her since her last step, at world time `now`. */
+interface Stirred {
+  readonly hurt: boolean;
+  /** Where she heard a noise big enough to rouse her this step; null for none. */
+  readonly alarm: Point | null;
+  readonly now: number;
+}
+
+/** What she does in her mode, as what `stirred` her says. */
 function respond(
   state: SleeperState,
   self: WorldEntity,
   game: Session,
   config: SleeperConfig,
-  hurt: boolean,
-  now: number,
+  { hurt, alarm, now }: Stirred,
 ): SleeperState {
+  if (alarm !== null && state.mode !== "enraged")
+    return rage(enrage(state, game, config), self, game, config, alarm);
   switch (state.mode) {
     case "dormant":
     case "warning": {
@@ -314,6 +358,11 @@ function respond(
       return close ? enrage(state, game, config) : sleep(state);
     }
     case "enraged": {
+      // Another big noise keeps her raging, and draws her if she has no one to run down.
+      if (alarm !== null) {
+        const until = Math.max(state.until, now + config.rageSeconds);
+        return rage({ ...state, until }, self, game, config, alarm);
+      }
       const killed = state.victim !== null && isGone(game, state.victim);
       if (killed || now >= state.until)
         return retreat(
@@ -367,6 +416,47 @@ interface Sounds {
   readonly enrage: Sound;
   readonly rageBark: Sound;
   readonly attack: Sound;
+  readonly vanish: Sound;
+}
+
+/** Whether a body she hunts stands within her relocate range. */
+function bodyNear(
+  self: WorldEntity,
+  game: Session,
+  config: SleeperConfig,
+): boolean {
+  const { range } = config.relocate;
+  return preyFor(game, self, config).some(
+    (body) => Math.hypot(body.x - self.x, body.y - self.y) <= range,
+  );
+}
+
+/**
+ * Notes when a body she hunts was last near her, and once she has slept long enough with none,
+ * moves `self` to wherever she might have arrived, as the spawner picks it, out of every player's
+ * sight, whispering as she goes and again as she comes. Watched where she lies, or with nowhere to
+ * go, she waits a little and tries again.
+ */
+function relocate(
+  state: SleeperState,
+  self: WorldEntity,
+  game: Session,
+  config: SleeperConfig,
+  sounds: Sounds,
+): SleeperState {
+  const now = game.worldTime;
+  const { after, retry } = config.relocate;
+  if (bodyNear(self, game, config)) return { ...state, nearAt: now };
+  if (state.mode !== "dormant" || now - state.nearAt < after) return state;
+  const to = watchedAt(game, NAME, self) ? null : arrivalPoint(game, NAME);
+  if (to === null) return { ...state, nearAt: now - after + retry };
+  effect(game, { at: { x: self.x, y: self.y }, sound: sounds.vanish }, self);
+  self.x = self.prevX = to.x;
+  self.y = self.prevY = to.y;
+  self.vx = 0;
+  self.vy = 0;
+  effect(game, { at: to, sound: sounds.vanish }, self);
+  return { ...state, route: [], target: null, nearAt: now };
 }
 
 /**
@@ -398,6 +488,7 @@ function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
     enrage: sound({ url: enrageUrl, range: config.sounds.enrage }),
     rageBark: sound({ url: rageBarkUrl, range: config.sounds.rageBark }),
     attack: sound({ url: attackUrl, range: config.sounds.attack }),
+    vanish: sound({ url: vanishUrl, range: config.sounds.vanish }),
   };
   return {
     radius: config.radius,
@@ -410,7 +501,12 @@ function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
     }),
     update(entity, state, dt, game) {
       const acted = attack(
-        think(state, entity, game, config),
+        think(
+          relocate(state, entity, game, config, sounds),
+          entity,
+          game,
+          config,
+        ),
         entity,
         game,
         config,
@@ -442,8 +538,10 @@ function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
  * close by for a moment after her growl, a player or a monster alike, wakes her enraged: she
  * screams, then for a while runs at a player's sprint after whoever she sees, or whoever hurts her,
  * to where she last saw them, wandering fast with no one in sight. Once she kills, or her rage runs
- * out, she runs for a dark spot away from what she hunts and sleeps there. She arrives now and
- * then, out of the world's start, of the light and of every player's sight.
+ * out, she runs for a dark spot away from what she hunts and sleeps there. A big enough noise,
+ * whoever made it, wakes her screaming and draws her to it enraged. She arrives now and then, out
+ * of the world's start, of the light and of every player's sight; left asleep long enough with no
+ * body near, she leaves, unseen, for another such spot.
  */
 export const sleeper = defineEntity(NAME, (config: SleeperConfig) => ({
   ...definition(config),

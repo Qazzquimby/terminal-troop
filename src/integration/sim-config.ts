@@ -87,7 +87,7 @@ export const testSimConfig: SimConfig = {
     footprintSpacing: 12.5,
   },
   light: { range: 200 },
-  net: { smoothing: 12, glide: 0.15, predictionHold: 0.5 },
+  net: { smoothing: 12, glide: 0.15, predictionHold: 0.5, snap: 500 },
   noise: { blur: 0.2 },
   footsteps: {
     walk: { interval: 0.5, radius: 150 },
@@ -308,7 +308,16 @@ export const testEntitiesConfig = {
       clearance: 300,
       tries: 16,
     },
-    sounds: { bark: 400, growl: 300, enrage: 800, rageBark: 600, attack: 300 },
+    alarmRadius: 900,
+    relocate: { after: 120, range: 700, retry: 5 },
+    sounds: {
+      bark: 400,
+      growl: 300,
+      enrage: 800,
+      rageBark: 600,
+      attack: 300,
+      vanish: 800,
+    },
   },
   statue: {
     spawning: { ...NEVER, unseenDistance: 1100 },

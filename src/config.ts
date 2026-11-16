@@ -205,8 +205,10 @@ export const config = {
   light: { range: CELL * 6 },
   // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
   // follows take 0.15s, one and a half snapshots at 10 a second, to reach each reported position,
-  // so a late snapshot does not stop them.
-  net: { smoothing: 12, glide: 0.15, predictionHold: 1 },
+  // so a late snapshot does not stop them. One reported 10 cells from its last, further than a
+  // sprint carries in two seconds, was moved there, as by a teleport, and is placed there at once
+  // rather than streaking across.
+  net: { smoothing: 12, glide: 0.15, predictionHold: 1, snap: CELL * 10 },
   // A noise 10 cells off seems to come from anywhere within 2.5 cells of it.
   noise: { blur: 0.25 },
   // Each step is heard by anything within its radius: a sprint carries well past a zombie's
@@ -477,7 +479,12 @@ export const config = {
     // rages 10s; she runs at a player's sprint. Enraged, she hits as hard as the shovel does
     // thrice, once a second, and wanders 8 cells at a time. She sleeps again 10 to 20 cells off,
     // at least 12 from every body she hunts. Her bark carries 8 cells every 3 to 6s while dormant;
-    // enraged, every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16.
+    // enraged, every 1.5 to 3s, 12 cells; her growl 6, her scream as she wakes 16. Any noise she
+    // hears that carries 18 cells (a cell taken as a metre), a horn, a gunshot, a crash, a blast,
+    // wakes her screaming and draws her to it. Asleep 2 minutes with no body she hunts within 14
+    // cells, she moves to wherever she might have arrived, trying again every 5s while a player
+    // stands within 14 cells to watch her go or she finds nowhere; her whisper as she goes and
+    // comes carries 16 cells, just past where anyone could see it.
     sleeper: {
       spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
       ignores: ["sleeper"],
@@ -500,12 +507,15 @@ export const config = {
         clearance: CELL * 12,
         tries: 16,
       },
+      alarmRadius: CELL * 18,
+      relocate: { after: 120, range: CELL * 14, retry: 5 },
       sounds: {
         bark: CELL * 8,
         growl: CELL * 6,
         enrage: CELL * 16,
         rageBark: CELL * 12,
         attack: CELL * 6,
+        vanish: CELL * 16,
       },
     },
     // None in the first 3 minutes of a world; it arrives in the dark, never within 14 cells of a

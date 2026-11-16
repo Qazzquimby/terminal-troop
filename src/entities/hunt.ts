@@ -158,6 +158,24 @@ export function clearestNoise(game: Session, listener: Listener): Heard | null {
   return clearest;
 }
 
+/**
+ * The loudest, where `listener` stands, of the noises it hears this step that carry at least
+ * `radius` from where they were made: a gunshot, a blast, a horn, whatever its maker. Null for
+ * none. For a kind that rouses at a noise big enough, however far off.
+ */
+export function bigNoise(
+  game: Session,
+  listener: Listener,
+  radius: number,
+): Heard | null {
+  let loudest: Heard | null = null;
+  for (const heard of noisesHeardBy(game, listener)) {
+    if (heard.radius < radius) continue;
+    if (loudest === null || heard.loudness > loudest.loudness) loudest = heard;
+  }
+  return loudest;
+}
+
 /** Of `bodies`, the one nearest `at`; null for none. */
 export function nearest<T extends Point>(
   at: Point,

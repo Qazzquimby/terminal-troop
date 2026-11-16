@@ -180,6 +180,24 @@ describe("hosting", () => {
     expect(entity?.data).toEqual({ steps: 5 });
   });
 
+  test("an entity reported further off than a body runs between reports is placed there at once", () => {
+    const game = session();
+    game.hosting = false;
+    const entry = {
+      id: "h:1",
+      kind: KIND_ID,
+      x: 100,
+      y: 300,
+      health: 10,
+      data: { steps: 0 },
+    };
+    applyEntitySnapshot(game, [entry]);
+    const far = 100 + testSimConfig.net.snap + 1;
+    applyEntitySnapshot(game, [{ ...entry, x: far }]);
+    const entity = game.entities.get("h:1");
+    expect(entity).toMatchObject({ x: far, prevX: far, tx: far });
+  });
+
   test("a hosting session removes entities whose health has run out, before running them", () => {
     const game = session();
     const dead = spawnEntity(game, KIND, 100, 300, { steps: 0 });
