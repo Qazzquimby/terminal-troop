@@ -860,7 +860,7 @@ export const config = {
       attackDamage: SHOVEL_DAMAGE * 3,
       attackCooldown: 1,
       barkGap: {
-        dormant: { min: 3, max: 8 },
+        dormant: { min: 1, max: 5 },
         enraged: { min: 1.5, max: 3 },
       },
       retreat: {
@@ -876,7 +876,7 @@ export const config = {
         enrage: CELL * 16,
         rageBark: CELL * 12,
         attack: CELL * 6,
-        vanish: CELL * 16,
+        vanish: 0,
       },
     },
     // None in the first 3 minutes of a world; it arrives in the dark, never within 14 cells of a
