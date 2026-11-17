@@ -107,6 +107,7 @@ describe("content events", () => {
           "buy",
           "tune",
           "teleport",
+          "door",
         ],
       ],
       ["core/actions", ["effects"]],

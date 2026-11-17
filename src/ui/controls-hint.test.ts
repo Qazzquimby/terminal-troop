@@ -5,7 +5,6 @@ import {
   CONTROLS_HINT,
   controlsHintFor,
   controlsHintText,
-  escapeLeavesVehicle,
   hintMode,
 } from "./controls-hint.js";
 
@@ -23,13 +22,13 @@ test("the hint matches the default bindings", () => {
 
 test("at the wheel it shows driving controls", () => {
   expect(controlsHintFor("driving", false)).toBe(
-    "WASD / ↑←↓→ to drive · Space to honk · E to let go of the wheel · Esc to get out",
+    "WASD / ↑←↓→ to drive · Space to honk · E to let go of the wheel · F to get out · Esc for settings",
   );
 });
 
 test("in the cabin it shows how to take the wheel and transmit", () => {
   expect(controlsHintFor("cabin", false)).toBe(
-    "E to take the wheel · T (hold) to transmit · Esc to get out",
+    "E to take the wheel · T (hold) to transmit · F to get out · Esc for settings",
   );
 });
 
@@ -79,11 +78,4 @@ test("an action missing from the list does not appear", () => {
   expect(text).toBe("Shift to sprint");
   for (const entries of Object.values(CONTROLS_HINT))
     expect(controlsHintText(entries)).not.toMatch(/F3|debug/);
-});
-
-test("Esc gets out of a vehicle, from the cabin or the wheel, and opens settings elsewhere", () => {
-  expect(escapeLeavesVehicle("cabin")).toBe(true);
-  expect(escapeLeavesVehicle("driving")).toBe(true);
-  expect(escapeLeavesVehicle("foot")).toBe(false);
-  expect(escapeLeavesVehicle("ghost")).toBe(false);
 });

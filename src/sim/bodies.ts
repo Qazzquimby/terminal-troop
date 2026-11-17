@@ -1,5 +1,5 @@
 import type { WorldEntity } from "./entities.js";
-import { isAboard, playersOutside } from "./aboard.js";
+import { isShutIn, playersExposed } from "./aboard.js";
 import { isGhost, livingPlayers } from "./ghosts.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
@@ -122,8 +122,8 @@ export function engages(game: Session, by: string | null, body: Body): boolean {
 
 /**
  * Every body out in the world that is not dead: each living player, then each world entity with
- * health left, items lying about included. Ghosts are left out, and so is every body inside a
- * vehicle: nothing out in the world sees, strikes or targets it. So is every body that only some
+ * health left, items lying about included. Ghosts are left out, and so is every body shut away
+ * inside a vehicle (see `isShutIn`): nothing out in the world sees, strikes or targets it. So is every body that only some
  * other body than `by`, by id, perceives, and with `by` left out, every body only one perceives.
  * When `by` is a world entity, so is every other world entity it does not engage, as `engages`
  * has it; it keeps itself.
@@ -137,11 +137,11 @@ export function livingBodies(game: Session, by: string | null = null): Body[] {
         ? (entity: WorldEntity) => entity === actor || inPlayAt(game, entity)
         : (entity: WorldEntity) => entity === actor;
   return [
-    ...playersOutside(game),
+    ...playersExposed(game),
     ...[...game.entities.values()].filter(
       (entity) =>
         entity.health > 0 &&
-        !isAboard(entity) &&
+        !isShutIn(game, entity) &&
         perceives(game, by, entity.id) &&
         engaged(entity),
     ),
@@ -157,15 +157,17 @@ export function isGone(game: Session, id: string): boolean {
 }
 
 /**
- * The body `id` while it is out in the world and not dead or a ghost; null otherwise, inside a
- * vehicle too, so a monster after it loses it there.
+ * The body `id` while it is out in the world and not dead or a ghost; null otherwise, shut away
+ * inside a vehicle too, so a monster after it loses it there.
  */
 export function livingBody(
   game: Session,
   id: string | null | undefined,
 ): Body | null {
   const body = bodyById(game, id);
-  return body === null || isGone(game, body.id) || isAboard(body) ? null : body;
+  return body === null || isGone(game, body.id) || isShutIn(game, body)
+    ? null
+    : body;
 }
 
 /**

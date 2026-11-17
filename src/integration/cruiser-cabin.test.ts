@@ -5,6 +5,7 @@ import { itemContent } from "../items/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import {
   bodiesIn,
+  cabinDoor,
   createSession,
   driverOf,
   driversOf,
@@ -189,10 +190,11 @@ test("three players get in one cruiser, unfuelled; any number take its wheel at 
   expect(occupantsOf(host, cruiser.id)).toHaveLength(2);
 });
 
-test("a body inside is out of the world: not seen, looked at, struck, bumped into or hunted", () => {
+test("a body inside behind the shut door is out of the world: not seen, looked at, struck, bumped into or hunted", () => {
   const game = world(1);
   const zombie = kindOf(game, "zombie");
   const cruiser = inside(game, { x: 450, y: 300 });
+  press(game, { cabin: "door" });
   put(zombie, { x: 450, y: 300 + 24 + zombie.radius + 2 });
   play(game, 0.1);
 
@@ -213,10 +215,55 @@ test("a body inside is out of the world: not seen, looked at, struck, bumped int
   expect(local).toMatchObject({ x: cruiser.x, y: cruiser.y });
 });
 
+test("through the open door a body inside is in reach: seen, hunted and struck where the cruiser is", () => {
+  const game = world(1);
+  const zombie = kindOf(game, "zombie");
+  const cruiser = inside(game, { x: 450, y: 300 });
+  expect(cabinDoor(game, cruiser.id)?.closed).toBe(false);
+  put(zombie, { x: 450, y: 300 + 24 + zombie.radius + 2 });
+  play(game, 0.1);
+
+  const { local } = game;
+  expect(livingBodies(game)).toContain(local);
+  expect(livingBody(game, local.id)).toBe(local);
+  expect(bodiesIn(game, { center: local, radius: 50 })).toContain(local);
+  play(game, 3);
+  expect(local.health).toBeLessThan(local.maxHealth);
+});
+
+test("shutting the door takes power, shut it burns more and swings open with none left, open it charges back", () => {
+  const game = world();
+  const cruiser = inside(game, { x: 450, y: 300 });
+  const { door } = config;
+  const now = () => cabinDoor(game, cruiser.id);
+  expect(now()).toEqual({ closed: false, canClose: true, charge: 1 });
+
+  press(game, { cabin: "door" });
+  expect(now()?.closed).toBe(true);
+  expect(now()?.charge).toBeCloseTo(1 - door.close - door.drain * DT, 3);
+
+  play(game, (1 - door.close) / door.drain + 0.1);
+  expect(now()).toMatchObject({ closed: false, canClose: false });
+  expect(now()?.charge).toBeLessThan(0.01);
+  // Too little power to shut it again.
+  play(game, 0.5);
+  press(game, { cabin: "door" });
+  expect(now()?.closed).toBe(false);
+
+  play(game, door.close / door.recharge);
+  expect(now()?.canClose).toBe(true);
+  press(game, { cabin: "door" });
+  expect(now()?.closed).toBe(true);
+  play(game, 0.5);
+  press(game, { cabin: "door" });
+  expect(now()?.closed).toBe(false);
+});
+
 test("what a body inside says is heard from the cruiser, and draws a zombie to it", () => {
   const game = world(1);
   const zombie = kindOf(game, "zombie");
   const cruiser = inside(game, { x: 450, y: 300 });
+  press(game, { cabin: "door" });
   const from = { x: 450, y: 300 + 220 };
   put(zombie, from);
   const listener = { at: zombie, rng: () => 0.5, ignores: ["zombie"] };
@@ -280,7 +327,7 @@ test("the horn, from the cabin or Space at the wheel, is heard across its radius
   expect(honks({ honk: true })).toHaveLength(1);
 });
 
-test("from the cabin: Drive takes the wheel, interact at the wheel goes back to the cabin, Exit gets out", () => {
+test("from the cabin: Drive takes the wheel, interact at the wheel goes back to the cabin, F gets out", () => {
   const game = world();
   const cruiser = inside(game, { x: 450, y: 300 }, 10);
   press(game, { cabin: "drive" });
@@ -295,12 +342,13 @@ test("from the cabin: Drive takes the wheel, interact at the wheel goes back to 
     driving: false,
     turn: 0,
   });
-  // In the cabin its hands are inside: nothing is used, kicked or dropped.
-  press(game, { use: true, secondary: true, drop: true });
+  // In the cabin its hands are inside: nothing is used or kicked.
+  press(game, { use: true, secondary: true });
   expect(game.local.ride?.vehicle).toBe(cruiser.id);
 
   play(game, 0.5);
-  press(game, { cabin: "exit" });
+  // The drop key gets out; there is nothing to drop in there.
+  press(game, { drop: true });
   expect(game.local.ride).toBeNull();
   const gap = Math.hypot(game.local.x - cruiser.x, game.local.y - cruiser.y);
   expect(gap).toBeGreaterThan(24);

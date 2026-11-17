@@ -6,11 +6,7 @@ export type { DebugInfo, UiConfig } from "./debug-overlay.js";
 export { element } from "./dom.js";
 export { createHud } from "./hud.js";
 export type { HudConfig } from "./hud.js";
-export {
-  controlsHintFor,
-  escapeLeavesVehicle,
-  hintMode,
-} from "./controls-hint.js";
+export { controlsHintFor, hintMode } from "./controls-hint.js";
 export { createMicIndicatorView } from "./mic-indicator-view.js";
 export { createSettingsMenu, menuPeers } from "./settings-menu.js";
 export { voiceDebugLines } from "./voice-diagnostics.js";
@@ -25,3 +21,4 @@ export {
 } from "./cabin-minimap.js";
 export type { MinimapConfig } from "./cabin-minimap.js";
 export { radioPanel, transmitPanel } from "./cabin-radio.js";
+export { doorPanel } from "./cabin-door.js";

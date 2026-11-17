@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import type { Inventory } from "../sim/index.js";
 import {
+  bankedText,
   createHud,
   creditText,
   departureText,
@@ -63,6 +64,12 @@ test("weight reads as whole pounds", () => {
 test("credit reads as a count of dollars after the number", () => {
   expect(creditText(0)).toBe("0$");
   expect(creditText(12)).toBe("12$");
+  expect(creditText(-4)).toBe("-4$");
+});
+
+test("the credit shows with the quota to bank beside it", () => {
+  expect(bankedText(12, 30)).toBe("12$ / 30$");
+  expect(bankedText(-4, 30)).toBe("-4$ / 30$");
 });
 
 test("the departure counts down in whole seconds, says when the player escaped, and is blank otherwise", () => {
@@ -71,6 +78,8 @@ test("the departure counts down in whole seconds, says when the player escaped, 
   expect(departureText(false, 12.2)).toBe("Leaving in 13s");
   expect(departureText(true, 5)).toBe("Escaped");
   expect(departureText(true, null)).toBe("Escaped");
+  expect(departureText(false, null, 5)).toBe("Need 5$ more to leave");
+  expect(departureText(true, null, 5)).toBe("Escaped");
 });
 
 test("an item switched on shows as on; one with no state, or off, does not", () => {

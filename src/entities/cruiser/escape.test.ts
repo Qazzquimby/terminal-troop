@@ -6,6 +6,7 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createPlayer,
+  credit,
   createSession,
   inRect,
   registerContent,
@@ -14,7 +15,7 @@ import {
 import type { Controls, Point, Session } from "../../sim/index.js";
 import type { EntitiesConfig } from "../index.js";
 import { entityContent } from "../index.js";
-import { departingIn, departure, hasEscaped } from "./index.js";
+import { departingIn, departure, hasEscaped, shortOfQuota } from "./index.js";
 
 const DT = 1 / 60;
 const DELAY = testEntitiesConfig.cruiser.escape.delay;
@@ -33,10 +34,15 @@ const still: Controls = {
   holdingUse: false,
 };
 
-/** The dev square with its cruiser and no zombies; its exit is its rightmost three columns. */
-function world(): Session {
+/**
+ * The dev square with its cruiser and no zombies; its exit is its rightmost three columns. The
+ * cruiser leaves only with `quota` credit banked.
+ */
+function world(quota = 0): Session {
+  const { cruiser } = testEntitiesConfig;
   const entities: EntitiesConfig = {
     ...testEntitiesConfig,
+    cruiser: { ...cruiser, escape: { ...cruiser.escape, quota } },
     zombie: {
       ...testEntitiesConfig.zombie,
       spawn: { ...testEntitiesConfig.zombie.spawn, count: 0 },
@@ -141,4 +147,28 @@ test("only the host decides who escapes", () => {
   play(game, DELAY + 1);
   expect(departingIn(game, DELAY)).toBeNull();
   expect(hasEscaped(game, game.local)).toBe(false);
+});
+
+test("the cruiser waits in the exit until the team has its quota banked, and keeps it", () => {
+  const game = world(30);
+  Object.assign(game.local, IN_EXIT);
+  credit.set(game, 25);
+  expect(shortOfQuota(game, 30)).toBeNull();
+  placeCruiser(game, IN_EXIT);
+  play(game, DELAY + 1);
+  expect(departingIn(game, DELAY)).toBeNull();
+  expect(shortOfQuota(game, 30)).toBe(5);
+  expect(hasEscaped(game, game.local)).toBe(false);
+
+  credit.set(game, 30);
+  expect(shortOfQuota(game, 30)).toBeNull();
+  play(game, DELAY - 1);
+  // Dropping short again, as a revival into debt would, stops the countdown.
+  credit.set(game, 29);
+  play(game, DT);
+  expect(departingIn(game, DELAY)).toBeNull();
+  credit.set(game, 30);
+  play(game, DELAY + 0.5);
+  expect(hasEscaped(game, game.local)).toBe(true);
+  expect(credit.get(game)).toBe(30);
 });
