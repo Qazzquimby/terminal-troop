@@ -694,8 +694,9 @@ export const config = {
     ghostGirl: {
       spawning: {
         weight: 3,
-        after: 300,
+        after: 0,
         tries: 24,
+        most: 1,
         unseenDistance: CELL * 14,
       },
       radius: 14,

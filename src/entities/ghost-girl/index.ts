@@ -34,9 +34,7 @@ import type { SpawningConfig } from "../spawning.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
 const stareUrls = [
-  new URL("./sfx/stare-1.mp3", import.meta.url).href,
-  new URL("./sfx/stare-2.mp3", import.meta.url).href,
-  new URL("./sfx/stare-3.mp3", import.meta.url).href,
+  new URL("./sfx/stare.mp3", import.meta.url).href,
 ];
 const chaseUrl = new URL("./sfx/chase.mp3", import.meta.url).href;
 const appearUrl = new URL("./sfx/appear.mp3", import.meta.url).href;
@@ -77,9 +75,9 @@ export interface GhostGirlConfig {
     readonly start: number;
     /** Lost every second. */
     readonly drain: number;
-    /** Gained every second her target has no clear line to her. */
+    /** Lost every second her target has no clear line to her. */
     readonly unseen: number;
-    /** Gained every second her target looks at her. */
+    /** Lost every second her target looks at her. */
     readonly watched: number;
   };
   /** When and how she runs her target down. */
@@ -402,7 +400,7 @@ function staring(
   const sight = sightOf(game, target);
   const clear = !isAboard(target) && canSeeFrom(game.world.map, target, self);
   const looking = inCone(game, sight, self);
-  const rate = -drain + (clear ? 0 : unseen) + (looking ? watched : 0);
+  const rate = -drain - (clear ? 0 : unseen) - (looking ? watched : 0);
   const next = { ...state, patience: state.patience + rate * dt };
   if (looking && !state.seen) {
     const angered = lookedAt(next, self, target, game, config, sounds);
@@ -612,7 +610,7 @@ function drawStatic(ctx: CanvasRenderingContext2D, size: number): void {
 
 function definition(config: GhostGirlConfig): EntityDefinition<GhostGirlState> {
   const sounds: Sounds = {
-    stare: stareUrls.map((url) => sound({ url, range: config.soundRange })),
+    stare: stareUrls.map((url) => sound({ url, volume: 0.5, range: config.soundRange })),
     chase: sound({ url: chaseUrl, range: config.soundRange }),
     appear: sound({ url: appearUrl, range: config.soundRange }),
     vanish: sound({ url: vanishUrl, range: config.soundRange }),
