@@ -6,7 +6,6 @@ import {
   revive, sound,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
-// The revival's sound, once its asset lands; importing a missing file breaks the build.
 import reviveUrl from "./sfx/revive.mp3";
 
 /** How a corpse brought to the cruiser comes back to life. */

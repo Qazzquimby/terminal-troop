@@ -240,8 +240,7 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
     heading: (_entity, state) => state.heading,
   },
   maxHealth: Infinity,
-  // Immovable: a kick, a swing or another cruiser's ram thuds off it.
-  mass: Infinity,
+  mass: 4,
   collides: false,
   tags: [INERT_TAG],
   data: CruiserState,
