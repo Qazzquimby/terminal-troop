@@ -532,26 +532,32 @@ export function drawLitWalls(
   ctx.stroke();
 }
 
+/** A cell of the map, by column and row. */
+export interface Cell {
+  readonly col: number;
+  readonly row: number;
+}
+
+/** The cell of `map` holding `at`. */
+export function cellAt(map: TileMap, at: Point): Cell {
+  return { col: Math.floor(at.x / map.cell), row: Math.floor(at.y / map.cell) };
+}
+
 /**
- * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
- * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
- * real wall's. For a body passing itself off as a wall.
+ * The faces of `cell`, taken as a wall, that `viewer` sees lit as a real wall's would be: each
+ * that looks onto open floor, neither solid nor `walled`, on the viewer's side.
  */
-export function drawWallBlock(
-  ctx: PathContext & Pick<CanvasRenderingContext2D, "fillRect">,
+function wallBlockFaces(
   map: TileMap,
-  at: Point,
+  { col, row }: Cell,
   viewer: Point,
-): void {
+  walled: (col: number, row: number) => boolean = () => false,
+): WallFace[] {
   const { cell } = map;
-  const col = Math.floor(at.x / cell);
-  const row = Math.floor(at.y / cell);
   const left = col * cell;
   const top = row * cell;
   const right = left + cell;
   const bottom = top + cell;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(left, top, cell, cell);
   const sides = [
     {
       normal: { x: -1, y: 0 },
@@ -574,12 +580,70 @@ export function drawWallBlock(
       to: { x: right, y: bottom },
     },
   ];
-  const faces = sides.filter(
-    ({ normal, from }) =>
-      !isSolid(map, col + normal.x, row + normal.y) &&
-      normal.x * (viewer.x - from.x) + normal.y * (viewer.y - from.y) > 0,
-  );
-  drawLitWalls(ctx, new Map([[0, faces]]));
+  return sides.filter(({ normal, from }) => {
+    const c = col + normal.x;
+    const r = row + normal.y;
+    return (
+      !isSolid(map, c, r) &&
+      !walled(c, r) &&
+      normal.x * (viewer.x - from.x) + normal.y * (viewer.y - from.y) > 0
+    );
+  });
+}
+
+/**
+ * `walls`, lit wall faces, as they would be were each of `cells` a wall: the faces real walls show
+ * onto those cells gone, as a wall shows no face onto a wall, and each cell's own faces that
+ * `viewer` sees added, so the cells join the walls round them seamlessly.
+ */
+export function poseAsWalls(
+  map: TileMap,
+  walls: VisibilityPolygon["walls"],
+  cells: readonly Cell[],
+  viewer: Point,
+): VisibilityPolygon["walls"] {
+  if (cells.length === 0) return walls;
+  const { cell, cols } = map;
+  const index = (col: number, row: number): number => row * cols + col;
+  const posed = new Set(cells.map(({ col, row }) => index(col, row)));
+  const walled = (col: number, row: number): boolean =>
+    col >= 0 && col < cols && posed.has(index(col, row));
+  const result = new Map<number, readonly WallFace[]>();
+  for (const [key, faces] of walls) {
+    // The cell a face looks onto: half a cell out from its middle along its normal.
+    const kept = faces.filter(({ from, to, normal }) => {
+      const onto = cellAt(map, {
+        x: (from.x + to.x) / 2 + (normal.x * cell) / 2,
+        y: (from.y + to.y) / 2 + (normal.y * cell) / 2,
+      });
+      return !walled(onto.col, onto.row);
+    });
+    if (kept.length > 0) result.set(key, kept);
+  }
+  // Keyed apart from every real wall's key, which is never negative.
+  for (const at of cells) {
+    const faces = wallBlockFaces(map, at, viewer, walled);
+    if (faces.length > 0) result.set(-1 - index(at.col, at.row), faces);
+  }
+  return result;
+}
+
+/**
+ * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
+ * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
+ * real wall's. For a body passing itself off as a wall.
+ */
+export function drawWallBlock(
+  ctx: PathContext & Pick<CanvasRenderingContext2D, "fillRect">,
+  map: TileMap,
+  at: Point,
+  viewer: Point,
+): void {
+  const { cell } = map;
+  const block = cellAt(map, at);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(block.col * cell, block.row * cell, cell, cell);
+  drawLitWalls(ctx, new Map([[0, wallBlockFaces(map, block, viewer)]]));
 }
 
 /**
@@ -1137,6 +1201,25 @@ function drawBodies(
 }
 
 /**
+ * The cells of every body in view posing as a wall that `by` perceives and `shows` says shows.
+ */
+function posingCells(
+  game: Session,
+  camera: Camera,
+  by: string,
+  shows: (body: Footprint) => boolean,
+): Cell[] {
+  const cells: Cell[] = [];
+  game.entities.forEach((entity) => {
+    if (game.entityTypes.get(entity.kind)?.posesAsWall !== true) return;
+    if (!perceives(game, by, entity.id) || !inView(entity, camera)) return;
+    if (!shows(footprintOf(game, entity))) return;
+    cells.push(cellAt(game.world.map, entity));
+  });
+  return cells;
+}
+
+/**
  * Every world entity in view of a kind seen in the dark that `viewer` perceives and that any of
  * `sources`, its sight, reaches some part of, light or no light. Drawn over the darkness, so
  * nothing masks it.
@@ -1334,10 +1417,24 @@ export function draw(
     ...sunlit,
     ...fixtureLit,
   ];
-  const walls = outOfDarkness(litWalls(seen, lit), dark);
+  const realWalls = outOfDarkness(litWalls(seen, lit), dark);
   // A stunned viewer sees nothing, so learns nothing of the map.
   const blind = blindness(game, viewer);
-  if (blind === 0) memory.see({ seen, lit, walls }, area, now);
+  if (blind === 0) memory.see({ seen, lit, walls: realWalls }, area, now);
+  const shows = (body: Footprint): boolean =>
+    isBodyVisible(
+      map,
+      sources,
+      lights,
+      body,
+      game.config.vision.footprintSpacing,
+      ambient,
+      dark,
+    );
+  // Bodies passing themselves off as walls, drawn as the walls they pose as: their cells join the
+  // real walls round them, lit and banded as those are.
+  const posing = posingCells(game, camera, viewer.id, shows);
+  const walls = poseAsWalls(map, realWalls, posing, viewer);
 
   const { width, height } = camera.view;
   ctx.fillStyle = "#000";
@@ -1381,16 +1478,7 @@ export function draw(
       now,
       isAway,
       viewer,
-      (body) =>
-        isBodyVisible(
-          map,
-          sources,
-          lights,
-          body,
-          game.config.vision.footprintSpacing,
-          ambient,
-          dark,
-        ),
+      shows,
       viewer.id,
       false,
     );
@@ -1463,6 +1551,9 @@ export function draw(
   // Above the darkness: lit wall faces; a stunned viewer's blindness over all it would see;
   // then rings, the player and its HUD, then edge glows.
   applyCamera(ctx, camera, () => {
+    ctx.fillStyle = "#000";
+    for (const { col, row } of posing)
+      ctx.fillRect(col * cell, row * cell, cell, cell);
     drawLitWalls(ctx, walls);
     drawSeenInDark(ctx, game, camera, now, viewer, sources);
   });

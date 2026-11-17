@@ -36,6 +36,8 @@ import {
   drawLitWalls,
   drawWallBlock,
   drawRemembered,
+  cellAt,
+  poseAsWalls,
   interpolatedView,
 } from "./render.js";
 
@@ -120,6 +122,69 @@ test("a wall block is drawn dark, with a lit band only along open faces on the v
     [400, 46],
     [450, 50],
   ]);
+});
+
+/** A 3 by 3 map of 10px cells, its left column solid: a wall running down beside two open columns. */
+function wallBesideOpen() {
+  const solid = new Uint8Array(9);
+  for (const row of [0, 1, 2]) solid[row * 3] = 1;
+  return { cell: 10, cols: 3, rows: 3, solid };
+}
+
+test("a body's cell is the cell it stands in, wherever in it it stands", () => {
+  const map = wallBesideOpen();
+  expect(cellAt(map, { x: 15, y: 15 })).toEqual({ col: 1, row: 1 });
+  expect(cellAt(map, { x: 10, y: 19.9 })).toEqual({ col: 1, row: 1 });
+  expect(cellAt(map, { x: 20, y: 15 })).toEqual({ col: 2, row: 1 });
+});
+
+test("a cell posing as a wall joins the wall beside it: the wall shows it no face, and it shows its own onto open floor", () => {
+  const map = wallBesideOpen();
+  // The real wall's lit faces onto the middle column, one per row.
+  const face = (row: number) => ({
+    from: { x: 10, y: row * 10 },
+    to: { x: 10, y: row * 10 + 10 },
+    normal: { x: 1, y: 0 },
+  });
+  const walls = new Map([
+    [1, [face(0)]],
+    [2, [face(1)]],
+    [3, [face(2)]],
+  ]);
+
+  // Seen from the right, below: its right and bottom faces look onto open floor towards the viewer.
+  const posed = poseAsWalls(map, walls, [{ col: 1, row: 1 }], { x: 28, y: 28 });
+
+  expect(posed.get(1)).toEqual([face(0)]);
+  expect(posed.has(2)).toBe(false);
+  expect(posed.get(3)).toEqual([face(2)]);
+  expect(posed.get(-1 - 4)).toEqual([
+    { normal: { x: 1, y: 0 }, from: { x: 20, y: 10 }, to: { x: 20, y: 20 } },
+    { normal: { x: 0, y: 1 }, from: { x: 10, y: 20 }, to: { x: 20, y: 20 } },
+  ]);
+});
+
+test("cells posing as walls side by side show one another no face, as walls do", () => {
+  const map = wallBesideOpen();
+  const posed = poseAsWalls(
+    map,
+    new Map(),
+    [
+      { col: 1, row: 1 },
+      { col: 2, row: 1 },
+    ],
+    { x: 15, y: 28 },
+  );
+  // Only their bottom faces show: their shared side is between walls, and their tops face away.
+  expect([...posed.values()].flat().map(({ normal }) => normal)).toEqual([
+    { x: 0, y: 1 },
+    { x: 0, y: 1 },
+  ]);
+});
+
+test("with no cell posing as a wall, the lit walls are left as they are", () => {
+  const walls = new Map();
+  expect(poseAsWalls(wallBesideOpen(), walls, [], { x: 0, y: 0 })).toBe(walls);
 });
 
 const FIXED_DT = 1 / 60;
