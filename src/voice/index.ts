@@ -19,4 +19,5 @@ export type {
   VoiceSettings,
   VoiceClip,
   VoiceClipConfig,
+  VoiceDetectorConfig,
 } from "./voice.js";

@@ -3,7 +3,8 @@ import type { VoiceClip, VoiceClipConfig } from "../../voice/index.js";
 /*
  * Clips of the player's own speech, cut between pauses, for monsters that speak in its voice.
  * A clip is only ever what the mic sent out live to at least one connected player: recording
- * starts once speech going out crosses a level, and a clip is cut as soon as the mic stops going
+ * starts once speech going out crosses a level (only what the voice detector hears as a voice
+ * counts, so a room's hum or keys clacking never start or hold one), and a clip is cut as soon as the mic stops going
  * out (muted, push-to-talk let go) or after a pause. Nothing is recorded while the player is
  * muted, has no mic, is testing it, or talks to no one, and the clips are forgotten on leaving the
  * room.

@@ -20,6 +20,7 @@ import type {
   RadioSoundConfig,
   VoiceClipConfig,
   VoiceConnectionConfig,
+  VoiceDetectorConfig,
   VoiceFalloff,
 } from "./voice/index.js";
 import type { WorldLogConfig } from "./world-log/index.js";
@@ -43,6 +44,7 @@ interface AppConfig extends SimConfig {
   readonly voiceConnections: VoiceConnectionConfig;
   readonly voiceRadio: RadioSoundConfig;
   readonly voiceClips: VoiceClipConfig;
+  readonly voiceDetector: VoiceDetectorConfig;
   readonly audio: SpatialFalloff;
   readonly ui: UiConfig;
   readonly hud: HudConfig;
@@ -1286,17 +1288,33 @@ export const config = {
   },
   // A clip of a player's own speech starts once what goes out reaches 0.4, past a quiet room's
   // 0.35 and short of talking's 0.5, and ends after 0.6s under it, longer than the gap between
-  // words; under 0.8s of speech is dropped, so a cough or a "yeah" is not kept, and 5s is the
-  // most a clip runs. The newest 8 are held, at 32kbps: 20KB each. The mic is looked at 20 times
+  // words; under 1.5s of speech is dropped, so a cough, a "yeah" or a lone word is not kept, and
+  // 5s is the most a clip runs. The newest 8 are held, at 32kbps: 20KB each. The mic is looked at 20 times
   // a second.
   voiceClips: {
     threshold: 0.4,
     quietSeconds: 0.6,
-    minSeconds: 0.8,
+    minSeconds: 1.5,
     maxSeconds: 5,
     keep: 8,
     bitsPerSecond: 32_000,
     pollMs: 50,
+  },
+  // What counts as speech, for the noise a mic makes in the world and the clips cut from it: a
+  // frame past a quiet room's level (0.3, -42 dBFS) with at least 40% of its power between 300
+  // and 3400 Hz (white noise has 13%; a man's pitch sits under 300 Hz, its harmonics over),
+  // peaky rather than flat (a voice's harmonics sit well under 0.3, white noise near 0.56), and
+  // crossing zero no more than once in 5 samples (a voice about once in 20 at 48 kHz, noise once
+  // in 2). Frames must look like speech for 0.1s before it counts, twice a key's clack as the
+  // mic's 43ms window sees it, and it counts on 0.35s past the last, through a syllable's dip.
+  voiceDetector: {
+    minLevel: 0.3,
+    band: { low: 300, high: 3400 },
+    minBandShare: 0.4,
+    maxFlatness: 0.3,
+    maxZeroCrossings: 0.2,
+    onsetSeconds: 0.1,
+    hangoverSeconds: 0.35,
   },
   voiceConnections: {
     levelRampS: 0.05,

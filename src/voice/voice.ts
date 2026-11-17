@@ -182,6 +182,27 @@ export interface VoiceClipConfig {
   readonly pollMs: number;
 }
 
+/**
+ * What counts as speech in what the mic hears, rather than a room's hum or keys clacking: frames
+ * that look like a voice, for long enough, and a little past the last of them.
+ */
+export interface VoiceDetectorConfig {
+  /** Level (0..1, as the mic meter has it) under which a frame is never speech. */
+  readonly minLevel: number;
+  /** Lowest and highest frequency of the speech band, in Hz. */
+  readonly band: { readonly low: number; readonly high: number };
+  /** Least share of a frame's power that must lie in the speech band. */
+  readonly minBandShare: number;
+  /** Most spectral flatness (0 a pure tone, near 0.56 white noise) over the speech band. */
+  readonly maxFlatness: number;
+  /** Most zero crossings per sample. */
+  readonly maxZeroCrossings: number;
+  /** How long frames must keep looking like speech before it counts, in seconds. */
+  readonly onsetSeconds: number;
+  /** How long speech counts on after the last frame that looked like it, in seconds. */
+  readonly hangoverSeconds: number;
+}
+
 /** One wanted peer. Its state is "pending" while it waits for its next connection attempt. */
 interface VoiceConnection {
   id: string;
@@ -263,8 +284,9 @@ export interface Voice {
   /** Cheap enough to call every frame; connection statistics refresh in the background. */
   diagnostics(): VoiceDiagnostics;
   /**
-   * How loud the mic goes out to the other players now, 0..1: 0 while muted, while push-to-talk
-   * is not held, and without a mic. Cheap enough to call every frame.
+   * How loud the mic goes out to the other players now as speech, 0..1: 0 while muted, while
+   * push-to-talk is not held, without a mic, and while what it hears is not a voice (a room's hum,
+   * keys clacking). Cheap enough to call every frame.
    */
   speakingLevel(): number;
   /**
