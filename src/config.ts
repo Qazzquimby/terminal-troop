@@ -1246,7 +1246,6 @@ export const config = {
         weight: 15,
         tries: 24,
         unseenDistance: CELL * 14,
-        most: 6,
       },
       ignores: ["apexPredator"],
       radius: 11,
@@ -1271,10 +1270,10 @@ export const config = {
     // `spawning.weight`. A new world starts with 5 minutes of rolls at the starting chance:
     // about 15 spawns.
     spawner: {
-      period: 2,
-      nothing: 0.7,
+      period: 10,
+      nothing: 0.5,
       certainAfter: END_GAME,
-      headStart: 300,
+      headStart: 600,
     },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
