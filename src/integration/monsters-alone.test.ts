@@ -107,6 +107,7 @@ const entities: EntitiesConfig = {
   doppelganger: weighed(testEntitiesConfig.doppelganger, 10, 180),
   thumper: weighed(testEntitiesConfig.thumper, 20, 120),
   tricycle: weighed(testEntitiesConfig.tricycle, 10, 180),
+  birthdayBoy: weighed(testEntitiesConfig.birthdayBoy, 10, 180),
 };
 
 /** The test config, but with no extra danger nor darkness round the exit. */

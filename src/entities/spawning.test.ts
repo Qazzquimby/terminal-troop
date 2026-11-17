@@ -217,6 +217,22 @@ test("a kind whose time has not come is left out of the picks", () => {
   );
 });
 
+test("a kind with a most comes no more while that many are about, groups stopping short of it", () => {
+  // A head start of 50 sure rolls, so no step of the world need be run.
+  const game = world({
+    spawner: { ...CERTAIN, period: 1, headStart: 50 },
+    zombie: {
+      ...ZOMBIES,
+      weight: 1000,
+      most: 4,
+      group: { min: 3, max: 3, spread: 100 },
+    },
+    exploder: { ...ZOMBIES, weight: 1 },
+  });
+  expect(count(game, "zombie")).toBe(4);
+  expect(count(game, "exploder")).toBeGreaterThan(40);
+});
+
 test("a kind with nowhere to appear gives way to another", () => {
   const game = world({
     zombie: { ...ZOMBIES, weight: 1000, unseenDistance: 1_000_000 },

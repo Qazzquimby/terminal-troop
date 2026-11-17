@@ -1168,6 +1168,47 @@ export const config = {
       creakInterval: 0.8,
       sounds: { bell: CELL * 10, creak: CELL * 3, hit: CELL * 6 },
     },
+    // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker,
+    // and never more than 8 about, one to each colour. Player-sized; six shovel hits fell it. It
+    // wanders legs of up to 5 cells at 0.6 times a walk, leaving a balloon every 10s, at most 10
+    // of its own about and none within a cell of another. One popping sends it at 0.8 times a
+    // sprint to the spot, where it looks round 10s; any killable body it sees within 10 cells of
+    // the spot, or whatever hurts it, enrages it, and it chases where it last saw one at 0.8 times
+    // a sprint, replanning every 0.5s, striking what it touches for 30 a second, until 10s pass
+    // with none seen. It sees 8 cells down its facing, as a zombie does. A balloon set down is
+    // heard 3 cells off, its rage cry 12, a blow 5.
+    birthdayBoy: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        most: 8,
+      },
+      ignores: ["birthdayBoy"],
+      radius: 14,
+      maxHealth: SHOVEL_DAMAGE * 6,
+      wanderShare: 0.6,
+      chaseShare: 0.8,
+      wanderRange: CELL * 5,
+      balloonGap: 10,
+      maxBalloons: 10,
+      balloonSpacing: CELL,
+      sightRange: CELL * 8,
+      guardRadius: CELL * 10,
+      lingerSeconds: 10,
+      calmSeconds: 10,
+      repathInterval: 0.5,
+      damage: 30,
+      attackCooldown: 1,
+      sounds: { place: CELL * 3, enrage: CELL * 12, attack: CELL * 5 },
+    },
+    // A birthday boy's balloon, small; its pop is heard 20 cells round.
+    balloon: {
+      radius: 8,
+      sounds: { pop: CELL * 20 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its

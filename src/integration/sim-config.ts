@@ -642,6 +642,29 @@ export const testEntitiesConfig = {
     creakInterval: 0.8,
     sounds: { bell: 500, creak: 150, hit: 300 },
   },
+  birthdayBoy: {
+    spawning: { ...NEVER, unseenDistance: 700, most: 8 },
+    ignores: ["birthdayBoy"],
+    radius: 14,
+    // Six test shovel hits, as the shipped one falls to six.
+    maxHealth: 150,
+    wanderShare: 0.6,
+    chaseShare: 0.8,
+    wanderRange: 250,
+    balloonGap: 10,
+    maxBalloons: 10,
+    balloonSpacing: 50,
+    sightRange: 400,
+    guardRadius: 500,
+    lingerSeconds: 10,
+    calmSeconds: 10,
+    repathInterval: 0.5,
+    damage: 30,
+    attackCooldown: 1,
+    sounds: { place: 150, enrage: 600, attack: 250 },
+  },
+  // Its pop carries 20 test cells.
+  balloon: { radius: 8, sounds: { pop: 1000 } },
 } satisfies EntitiesConfig;
 
 /** A scanner sensing 1000px out, beeping every 2s at the edge down to 10 times a second. */
