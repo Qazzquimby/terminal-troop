@@ -237,7 +237,7 @@ export const config = {
   vision: {
     coneAngle: Math.PI / 2,
     rays: 360,
-    surroundingsRadius: CELL * 1.4,
+    surroundingsRadius: CELL * 0.7,
     lookRange: CELL * 7,
     // Any part of a body in sight shows it, checked every quarter cell over its footprint: a
     // cruiser 4 cells across stays drawn while its nose is in view.
@@ -702,7 +702,7 @@ export const config = {
       // too, but another exploder's burst, so one burst does not set off every exploder near it.
       fuseRange: CELL * 1.5,
       fuseOnHurt: { minDamage: 0, except: ["exploder"] },
-      fuse: 2.5, // seconds
+      fuse: 2.0, // seconds
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
       blast: { radius: CELL * 3, centre: 100, edge: 30 },
@@ -727,7 +727,7 @@ export const config = {
       maxHealth: SHOVEL_DAMAGE * 10,
       sightRange: CELL * 8,
       wakeRange: CELL * 5,
-      runShare: 0.9,
+      runShare: 1.1,
       warnSeconds: 1,
       rageSeconds: 10,
       wanderRange: CELL * 8,
@@ -803,7 +803,7 @@ export const config = {
       targets: ["player"],
       radius: 14,
       maxHealth: SHOVEL_DAMAGE * 5,
-      speed: PLAYER_SPEED * 1.2,
+      speed: PLAYER_SPEED * 2.0,
       creepSpeed: PLAYER_SPEED * 0.1,
       watchedBy: ["player"],
       damage: 100,
