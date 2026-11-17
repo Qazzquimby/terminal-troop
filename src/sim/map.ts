@@ -328,13 +328,21 @@ export function remoteness(
   world: World,
   at: Point,
 ): { readonly road: number; readonly across: number } {
-  const index = cellIndex(world, at);
-  const { farthest, roadDistance } = world.layout;
-  const distance = index < 0 ? 0 : (roadDistance[index] ?? 0);
+  const { farthest } = world.layout;
+  const distance = roadDistanceAt(world, at);
   return {
     road: farthest === 0 ? 0 : Math.min(1, distance / farthest),
     across: Math.min(1, Math.max(0, at.x / world.W)),
   };
+}
+
+/**
+ * How many cells the cell holding `at` is from the nearest road cell, diagonals counting one: 0 on
+ * the road, and outside the world.
+ */
+export function roadDistanceAt(world: World, at: Point): number {
+  const index = cellIndex(world, at);
+  return index < 0 ? 0 : (world.layout.roadDistance[index] ?? 0);
 }
 
 /** How far `at` is from the world's exit, in cells: 0 inside it. */
@@ -371,10 +379,14 @@ function exitNearness(world: World, at: Point, config: DangerConfig): number {
 
 /**
  * How much more dangerous `at` is than the safest spot, as a factor: 1 at the safest. Monsters
- * spawn in proportion to it.
+ * spawn in proportion to it. With `config`, the same weight by other terms, such as a scatter's
+ * own; by the world's danger when left out.
  */
-export function dangerWeight(world: World, at: Point): number {
-  const config = world.layout.danger;
+export function dangerWeight(
+  world: World,
+  at: Point,
+  config: DangerConfig = world.layout.danger,
+): number {
   const far = remoteness(world, at);
   return (
     (1 + config.road * far.road) * (1 + config.right * far.across) +

@@ -2,7 +2,7 @@ import { findLast, sumBy } from "lodash-es";
 import { scatterEach } from "./content.js";
 import type { Scatter, WorldContent } from "./content.js";
 import type { ItemDefinition } from "./inventory.js";
-import { isAreaFree } from "./map.js";
+import { isAreaFree, roadDistanceAt } from "./map.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
 import { spawnWorldItem } from "./world-items.js";
@@ -128,11 +128,10 @@ export function lootContent(config: LootConfig): WorldContent {
         lay(at, danger, rng);
         if (rng() >= config.danger.extra * danger) return;
         const beside = { x: at.x + radius * 2, y: at.y };
-        lay(
-          isAreaFree(game.world.map, beside.x, beside.y, radius) ? beside : at,
-          danger,
-          rng,
-        );
+        const fits =
+          isAreaFree(game.world.map, beside.x, beside.y, radius) &&
+          roadDistanceAt(game.world, beside) >= (config.scatter.offRoad ?? 0);
+        lay(fits ? beside : at, danger, rng);
       });
       for (const { item, scatter } of config.guaranteed) {
         if (!game.itemDefinitions.has(item))
