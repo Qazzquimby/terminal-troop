@@ -25,7 +25,7 @@ export type {
 } from "./entities.js";
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
-export { soundDrop, spawnWorldItem } from "./world-items.js";
+export { pickupTarget, soundDrop, spawnWorldItem } from "./world-items.js";
 export {
   driverOf,
   driversOf,
@@ -83,7 +83,7 @@ export {
   teleport,
   usesAt,
 } from "./actions.js";
-export type { Action } from "./actions.js";
+export type { Action, Effect } from "./actions.js";
 export type { OutgoingEvent } from "./content-event.js";
 export type {
   Content,
@@ -193,6 +193,7 @@ export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
+export type { PlayerData } from "./player-data.js";
 export {
   applyWorldEntries,
   takeWorldEntries,
@@ -217,7 +218,7 @@ export {
   itemsOf,
   takeItem,
 } from "./inventories.js";
-export type { ItemUse } from "./use.js";
+export type { ItemUse, UseSpec } from "./use.js";
 
 export {
   createSession,

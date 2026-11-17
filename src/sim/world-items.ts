@@ -289,17 +289,27 @@ function nearestTouching(game: Session): WorldEntity | null {
 }
 
 /**
+ * The lying item the local player's interaction would pick up now, if any: the nearest it touches,
+ * on foot and with room for it. `interact` picks up exactly this, so what is shown as the target
+ * and what is taken never disagree.
+ */
+export function pickupTarget(game: Session): WorldEntity | null {
+  const { local } = game;
+  if (local.ride !== null || isFull(local.inventory)) return null;
+  return nearestTouching(game);
+}
+
+/**
  * The local player's interaction: at the wheel, gets out. On foot, picks up the nearest lying
  * item it touches, if it has room; failing that gets in a vehicle beside it, if it may; otherwise
  * works the item it holds, if that item has a control.
  */
 export function interact(game: Session): void {
-  const { local } = game;
-  if (local.ride !== null) {
+  if (game.local.ride !== null) {
     useVehicle(game);
     return;
   }
-  const nearest = isFull(local.inventory) ? null : nearestTouching(game);
+  const nearest = pickupTarget(game);
   if (nearest !== null) {
     pickUp.perform(game, { id: nearest.id });
     return;
