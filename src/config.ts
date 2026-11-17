@@ -1071,7 +1071,9 @@ export const config = {
     },
     // Alone, in the dark, none in the first 3 minutes of a world, never within 14 cells of a
     // player; as rare as the stalker. Any blow breaks it: 1 health. It moves at twice a walk and
-    // sees 10 cells all round it. Its darkness reaches 5 cells. It keeps within 2 cells of whom it
+    // sees 10 cells all round it. Its darkness reaches 5 cells. Weighing rarity, it counts a kind
+    // that ignores light as 100 more than live, so it takes a kind that shuns light first, and one
+    // that ignores light only with none of those in sight. It keeps within 2 cells of whom it
     // follows, chooses anew and replans twice a second, and keeps following one it has lost sight
     // of within 16 cells. Its shroud lasts 1s past its last renewal. With no one to follow it
     // drifts up to 8 cells a leg, hanging 1 to 3s between legs. Its hum carries 6 cells, at 0.6;
@@ -1089,6 +1091,7 @@ export const config = {
       speed: PLAYER_SPEED * 2,
       sightRange: CELL * 10,
       darkRadius: CELL * 5,
+      lightBlindHandicap: 100,
       followDistance: CELL * 2,
       leash: CELL * 16,
       repathInterval: 0.5,

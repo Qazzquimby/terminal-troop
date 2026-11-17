@@ -4,7 +4,9 @@ import {
   effect,
   eyesOf,
   hasKindTag,
+  INERT_TAG,
   inView,
+  ITEM_TAG,
   livingBody,
   rounded,
   shroud,
@@ -44,6 +46,12 @@ export interface GloomConfig extends Dormancy {
   readonly sightRange: number;
   /** How far round it its darkness reaches, along a clear line: no light lights any of it. */
   readonly darkRadius: number;
+  /**
+   * Added to the headcount of a kind that pays light no mind when weighing which kind is rarest,
+   * so it prefers kinds that shun light: it follows one that ignores light over one that shuns it
+   * only when this many more of the shunning kind live.
+   */
+  readonly lightBlindHandicap: number;
   /** How close it keeps to whom it follows, centre to centre; within it, it hangs still. */
   readonly followDistance: number;
   /** It keeps following a body it has lost sight of while it is within this. */
@@ -117,9 +125,11 @@ function headcounts(game: Session): Map<number, number> {
 }
 
 /**
- * Whom `self` follows now: of the living bodies of kinds that shun light that it sees, and the one
- * it already follows while that one is within its leash, the one of the kind fewest of which live
- * in the world; of those, the nearest, the one it already follows winning a tie. Null for none.
+ * Whom `self` follows now: of the living bodies it sees, and the one it already follows while that
+ * one is within its leash, the one of the kind fewest of which live in the world, a kind that pays
+ * light no mind counting `lightBlindHandicap` more than live; of those, the nearest, the one it
+ * already follows winning a tie. It never follows its own kind, items or inert things. Null for
+ * none.
  */
 function chooseFollowee(
   game: Session,
@@ -131,15 +141,20 @@ function chooseFollowee(
   const counts = headcounts(game);
   let best: { entity: WorldEntity; count: number; far: number } | null = null;
   for (const entity of game.entities.values()) {
-    if (entity.id === self.id || livingBody(game, entity.id) === null) continue;
-    if (!hasKindTag(game, entity.id, [SHUNS_LIGHT_TAG])) continue;
+    if (entity.kind === self.kind || livingBody(game, entity.id) === null)
+      continue;
+    if (hasKindTag(game, entity.id, [ITEM_TAG, INERT_TAG])) continue;
     const far = distance(entity, self);
     const followed =
       entity.id === current
         ? far <= config.leash
         : inView(game, sight, entity, config.sightRange);
     if (!followed) continue;
-    const count = counts.get(entity.kind) ?? 0;
+    const count =
+      (counts.get(entity.kind) ?? 0) +
+      (hasKindTag(game, entity.id, [SHUNS_LIGHT_TAG])
+        ? 0
+        : config.lightBlindHandicap);
     const better =
       best === null ||
       count < best.count ||
@@ -282,7 +297,7 @@ function definition(
 /**
  * The gloom: a knot of living darkness, moving at twice a player's walk, that one blow breaks. It
  * gives off darkness all round it that no light lights, and follows, close behind, the body it
- * sees of the rarest kind that shuns light, the one nearest among kinds as rare: whomever it
+ * sees of the rarest kind, kinds that shun light first, the one nearest among kinds as rare: whomever it
  * follows it shrouds, so that one takes the whole world for dark, steering round no light and
  * waking to none. With no one to follow it drifts. Monsters leave it be. It hums low wherever it
  * is, breathes as it takes up someone new and sighs as it is struck apart. It arrives through the
