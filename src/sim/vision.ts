@@ -52,9 +52,17 @@ export interface LightEmission {
   readonly range: number;
   /** Where it shines from, relative to the centre of what gives it off; that centre when left out. */
   readonly from?: Point;
+  /**
+   * The colour it tints the ground it lights, a CSS colour with its own alpha, such as a flare's
+   * red; the warm yellow of a flashlight when left out. Only how it looks: lit is lit.
+   */
+  readonly tint?: string;
 }
 
-export interface LightSource extends Point, LightEmission {}
+export interface LightSource extends Point, LightEmission {
+  /** How far it reaches into deepdark, in pixels; its whole range when left out. */
+  readonly deepRange?: number;
+}
 
 interface Viewer extends Point {
   readonly id: string;
@@ -256,10 +264,18 @@ export function visionOrigins(game: Session, viewer: Viewer): VisionSource[] {
   ];
 }
 
-/** `emission` given off by something standing at `at`. */
-function placed(at: Point, emission: LightEmission): LightSource {
+/**
+ * `emission` given off by something standing at `at`, reaching `deep` of its range into
+ * deepdark.
+ */
+function placed(at: Point, emission: LightEmission, deep: number): LightSource {
   const { from, ...light } = emission;
-  return { ...light, x: at.x + (from?.x ?? 0), y: at.y + (from?.y ?? 0) };
+  return {
+    ...light,
+    x: at.x + (from?.x ?? 0),
+    y: at.y + (from?.y ?? 0),
+    deepRange: light.range * deep,
+  };
 }
 
 /**
@@ -268,29 +284,37 @@ function placed(at: Point, emission: LightEmission): LightSource {
  */
 export function emittedLights(game: Session): LightSource[] {
   const lights: LightSource[] = [];
+  const deep = game.config.deepdark.light;
   game.entities.forEach((entity) => {
     const emissions = game.entityTypes.get(entity.kind)?.light(entity) ?? [];
-    for (const emission of emissions) lights.push(placed(entity, emission));
+    for (const emission of emissions)
+      lights.push(placed(entity, emission, deep));
   });
   game.players.forEach((player) => {
     const item = heldItemOf(game, player);
     if (item === null) return;
     const emission = game.items.get(item.id)?.light?.(game, player);
     if (emission === undefined || emission === null) return;
-    lights.push(placed(player, emission));
+    lights.push(placed(player, emission, deep));
   });
   return lights;
 }
 
+/**
+ * The lights `viewer` sees by: its own sight, down its cone and round it, reaching into deepdark
+ * only the deepdark config's `sight` of its range, and every light given off.
+ */
 export function lightSources(game: Session, viewer: Viewer): LightSource[] {
   const [cone, surroundings] = directionalVision(
     viewer,
     viewer.aim,
     game.config.vision,
   );
+  const { sight } = game.config.deepdark;
+  const { range } = game.config.light;
   return [
-    { ...cone, range: game.config.light.range },
-    surroundings,
+    { ...cone, range, deepRange: range * sight },
+    { ...surroundings, deepRange: surroundings.range * sight },
     ...emittedLights(game),
   ];
 }
@@ -298,7 +322,9 @@ export function lightSources(game: Session, viewer: Viewer): LightSource[] {
 /**
  * Whether `point` is both seen from some source and lit: by some light that reaches it, or where
  * `ambient` says the place's own light does, such as sunlight out of doors; and not where `dark`
- * says darkness something gives off reaches it, which no light lights.
+ * says darkness something gives off reaches it, which no light lights. Where `deep` says it is
+ * deepdark, no place's own light lights it, and each light reaches it only out to its
+ * `deepRange`.
  */
 export function isVisible(
   map: TileMap,
@@ -307,11 +333,18 @@ export function isVisible(
   point: Point,
   ambient: (point: Point) => boolean = () => false,
   dark: (point: Point) => boolean = () => false,
+  deep: (point: Point) => boolean = () => false,
 ): boolean {
-  return (
-    !dark(point) &&
-    sources.some((source) => canSeeFrom(map, source, point)) &&
-    (ambient(point) || lights.some((light) => canSeeFrom(map, light, point)))
+  if (dark(point) || !sources.some((source) => canSeeFrom(map, source, point)))
+    return false;
+  const deepdark = deep(point);
+  if (!deepdark && ambient(point)) return true;
+  return lights.some((light) =>
+    canSeeFrom(
+      map,
+      deepdark ? { ...light, range: light.deepRange ?? light.range } : light,
+      point,
+    ),
   );
 }
 
@@ -328,9 +361,10 @@ export function isBodyVisible(
   spacing: number,
   ambient: (point: Point) => boolean = () => false,
   dark: (point: Point) => boolean = () => false,
+  deep: (point: Point) => boolean = () => false,
 ): boolean {
   return footprintPoints(body, spacing).some((point) =>
-    isVisible(map, sources, lights, point, ambient, dark),
+    isVisible(map, sources, lights, point, ambient, dark, deep),
   );
 }
 

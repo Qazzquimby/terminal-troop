@@ -10,6 +10,7 @@ import { setPlayerHealth } from "./health.js";
 import { itemsOf, takeItem } from "./inventories.js";
 import type { ItemState } from "./inventory.js";
 import { itemInstances } from "./item-instances.js";
+import type { ItemInstance } from "./item-instances.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -323,11 +324,20 @@ export function revive(
 
 /**
  * How ghosts are heard: a ghost hears every other ghost wherever it is, as if beside it, and no
- * living player hears a ghost at all. A ghost hears the living through the air as anyone does.
+ * living player hears a ghost where it stands, only through a ghost ear (see ghost-ears.ts). A
+ * ghost hears the living through the air as anyone does.
  */
 export const ghostVoices: VoiceChannel = {
   routes: (_game, speaker, listener) =>
     isGhost(speaker) && isGhost(listener) ? [{ at: null, via: "air" }] : [],
-  silences: (_game, speaker, listener) =>
-    isGhost(speaker) && !isGhost(listener),
+  hides: (_game, speaker, listener) => isGhost(speaker) && !isGhost(listener),
 };
+
+/**
+ * The corpses lying or carried anywhere whose players are ghosts in the session, and so can be
+ * brought back with `revive`.
+ */
+export const ghostCorpses = (game: Session): ItemInstance[] =>
+  itemInstances(game, CORPSE_ITEM).filter(
+    (instance) => ghostOf(game, instance.state) !== null,
+  );

@@ -253,6 +253,8 @@ function definition(
     mass: config.mass,
     // A bar over it would give it away.
     healthBar: false,
+    // Wherever it shows, its cell is drawn as a wall, joined to the real walls round it.
+    posesAsWall: true,
     data: LivingWallState,
     // It has no eyes: it feels where bodies are, and knows when one looks at it.
     update(entity, state, dt, game) {

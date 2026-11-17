@@ -19,6 +19,8 @@ import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
 import type { Playing } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
+import { pressDoors } from "./doors.js";
+import type { DoorHinge, Hinge } from "./doors.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
@@ -77,6 +79,13 @@ export interface EntityDefinition<S> {
    */
   readonly mass?: number | undefined;
   readonly collides?: boolean;
+  /** Its hinge, for a kind that is a door: shut, it makes its cell a wall; see doors.ts. */
+  readonly door?: Hinge<S>;
+  /**
+   * Whether it opens the closed doors it presses into, as a stalker does, rather than bashing
+   * them; false when left out.
+   */
+  readonly opensDoors?: boolean;
   /**
    * Whether a bar over it shows its health once it is hurt; true when left out. False for a kind
    * that must not give itself away, such as one passing for part of the world.
@@ -119,6 +128,21 @@ export interface EntityDefinition<S> {
    * is lit, as any body does.
    */
   readonly seenInDark?: boolean;
+  /**
+   * Whether it passes itself off as a wall: wherever it shows, the cell it stands in is drawn as
+   * a wall cell, joined to the walls round it as they join one another.
+   */
+  readonly posesAsWall?: boolean;
+  /**
+   * Whether, given its state, no body perceives it but while it lies in deepdark: out of it, it
+   * is neither drawn, found among bodies, heard nor picked up. Every body perceives a kind without
+   * it wherever it is; `perceives` judges it for every rule.
+   */
+  readonly onlyInDeepdark?: (
+    entity: WorldEntity,
+    data: S,
+    game: Session,
+  ) => boolean;
   /**
    * Draws whatever of it shows over the cabin's minimap, `size` pixels square, on the client of
    * each player that perceives it. The minimap shows no entity otherwise.
@@ -208,6 +232,9 @@ export interface EntityType {
   readonly tags: readonly string[];
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
+  /** Its hinge, for a kind that is a door; null for any other. */
+  readonly door: DoorHinge | null;
+  readonly opensDoors: boolean;
   /** Its body's box, turned the way it points now; null for a kind whose body is its disc. */
   box(entity: WorldEntity): BoxPose | null;
   light(entity: WorldEntity): readonly LightEmission[];
@@ -219,6 +246,10 @@ export interface EntityType {
   /** The one body that perceives it, when `restricted`; null for none. */
   perceiver(entity: WorldEntity): string | null;
   readonly seenInDark: boolean;
+  /** Whether the cell it stands in is drawn as a wall wherever it shows. */
+  readonly posesAsWall: boolean;
+  /** Whether it is perceived only while it lies in deepdark. */
+  onlyInDeepdark(entity: WorldEntity, game: Session): boolean;
   minimap(
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -256,7 +287,26 @@ export interface EntitySnapshot {
   readonly data: unknown;
 }
 
+/** The hinge of a door kind, parsing each door's state; null for a kind that is no door. */
+function hinge<S>(definition: EntityDefinition<S>): DoorHinge | null {
+  const { door, data } = definition;
+  if (door === undefined) return null;
+  return {
+    reach: door.reach,
+    openSeconds: door.openSeconds,
+    bash: door.bash,
+    toll: door.toll,
+    swing: door.swing.bind(door),
+    closed(entity) {
+      const parsed = data.safeParse(entity.data);
+      return parsed.success && door.closed(parsed.data);
+    },
+  };
+}
+
 function entityType<S>(definition: EntityDefinition<S>): EntityType {
+  // Whether each state an entity of the kind has taken is perceived only in deepdark.
+  const deepdarkOnly = new WeakMap<object, boolean>();
   const { data: schema } = definition;
   return {
     radius: definition.radius,
@@ -267,6 +317,8 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     tags: definition.tags ?? [],
     data: schema,
     vehicle: definition.vehicle ?? null,
+    door: hinge(definition),
+    opensDoors: definition.opensDoors ?? false,
     box(entity) {
       const { box } = definition;
       if (box === undefined) return null;
@@ -302,6 +354,21 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       return parsed.success ? perceivedBy(entity, parsed.data) : null;
     },
     seenInDark: definition.seenInDark ?? false,
+    posesAsWall: definition.posesAsWall ?? false,
+    onlyInDeepdark(entity, game) {
+      const { onlyInDeepdark } = definition;
+      // Most kinds show anywhere, and pay nothing to parse their state for it.
+      if (onlyInDeepdark === undefined) return false;
+      // Asked of every body many times a step, so judged once for each state an entity takes.
+      const { data } = entity;
+      const keyed = typeof data === "object" && data !== null;
+      const known = keyed ? deepdarkOnly.get(data) : undefined;
+      if (known !== undefined) return known;
+      const parsed = schema.safeParse(data);
+      const only = parsed.success && onlyInDeepdark(entity, parsed.data, game);
+      if (keyed) deepdarkOnly.set(data, only);
+      return only;
+    },
     minimap(ctx, entity, size, now) {
       const parsed = schema.safeParse(entity.data);
       if (parsed.success)
@@ -462,6 +529,8 @@ export function updateEntities(game: Session, dt: number): void {
     }
 
     if (entity.collides) {
+      const type = game.entityTypes.get(entity.kind);
+      if (type?.door === null) pressDoors(game, entity, type.opensDoors, dt);
       moveWithCollision(
         entity,
         entity.radius,

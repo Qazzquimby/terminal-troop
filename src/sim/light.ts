@@ -1,5 +1,6 @@
 import type { Point, Rng, Room, TileMap, World } from "./map.js";
 import { daylightNow } from "./day.js";
+import { darkFront, deepFront } from "./deepdark.js";
 import { AREA, exitDistance, isSolid } from "./map.js";
 import type { Session } from "./session.js";
 import { isShrouded } from "./status.js";
@@ -94,6 +95,25 @@ function sunReach(world: World): SunReach {
 }
 
 /**
+ * How far across the world, in pixels from its left edge, the fronts sweeping it have come: no
+ * sunlight falls left of `dark`, and all left of `deep` is deepdark, which no place's own light
+ * lights.
+ */
+export interface Fronts {
+  readonly dark: number;
+  readonly deep: number;
+}
+
+/** Fronts that have not set out: a world as it starts. */
+const NO_FRONTS: Fronts = { dark: -Infinity, deep: -Infinity };
+
+/** How far `game`'s fronts have come now, by its world clock. */
+export const frontsNow = (game: Session): Fronts => ({
+  dark: darkFront(game),
+  deep: deepFront(game),
+});
+
+/**
  * Whether the sun lights the cell at `index` with `daylight` (0..1) left: out of doors, away
  * from the exit, and, as daylight recedes, near enough the road's centre line. The line is the
  * last to stay lit, and with none left nothing is.
@@ -106,37 +126,45 @@ function sunlit(world: World, index: number, daylight: number): boolean {
 }
 
 /**
- * The light of the cell at `index` of itself with `daylight` (0..1) left, or null for a dark
- * one.
+ * The light of the cell at `index` of itself with `daylight` (0..1) left and the fronts as
+ * `fronts` has them, or null for a dark one. Judged by the cell's centre, a cell the deepdark
+ * front has passed has none, and one the darkness front has passed no sunlight.
  */
 function cellLight(
   world: World,
   index: number,
   daylight: number,
+  fronts: Fronts,
 ): AmbientLight | null {
   const { area, room, rooms } = world.layout;
+  const centre = ((index % world.map.cols) + 0.5) * world.map.cell;
+  if (centre < fronts.deep) return null;
   const code = area[index];
   if (code === AREA.road || code === AREA.yard)
-    return sunlit(world, index, daylight) ? "sun" : null;
+    return centre >= fronts.dark && sunlit(world, index, daylight)
+      ? "sun"
+      : null;
   if (code !== AREA.room) return null;
   const lit = rooms[room[index] ?? -1];
   return lit !== undefined && roomLit(lit) ? "fixture" : null;
 }
 
 /**
- * The light the place at `at` has of itself with `daylight` (0..1) left, whole by default, or
- * null where it is dark without other light.
+ * The light the place at `at` has of itself with `daylight` (0..1) left, whole by default, and
+ * the fronts as `fronts` has them, none set out by default; or null where it is dark without
+ * other light.
  */
 export function ambientLightAt(
   world: World,
   at: Point,
   daylight = 1,
+  fronts: Fronts = NO_FRONTS,
 ): AmbientLight | null {
   const { cell, cols, rows } = world.map;
   const col = Math.floor(at.x / cell);
   const row = Math.floor(at.y / cell);
   if (!(col >= 0 && row >= 0 && col < cols && row < rows)) return null;
-  return cellLight(world, row * cols + col, daylight);
+  return cellLight(world, row * cols + col, daylight, fronts);
 }
 
 /**
@@ -156,6 +184,67 @@ export function darkSources(game: Session): DarkSource[] {
   });
   return darks;
 }
+
+/** Each session's darkness given off, as of the step, world time and headcount it was found at. */
+const darksFound = new WeakMap<
+  Session,
+  { step: number; time: number; count: number; darks: DarkSource[] }
+>();
+
+/**
+ * The darkness every world entity gives off now, as `darkSources`, found once a step for rules
+ * asked many times a step, such as every body's eyes.
+ */
+function darksNow(game: Session): DarkSource[] {
+  const found = darksFound.get(game);
+  if (
+    found?.step === game.step &&
+    found.time === game.worldTime &&
+    found.count === game.entities.size
+  )
+    return found.darks;
+  const darks = darkSources(game);
+  darksFound.set(game, {
+    step: game.step,
+    time: game.worldTime,
+    count: game.entities.size,
+    darks,
+  });
+  return darks;
+}
+
+/**
+ * Whether `at` is deepdark: the deepdark front has passed it, or darkness something gives off,
+ * such as a gloom's, reaches it along a clear line. See `DeepdarkConfig`.
+ */
+export function isDeepdark(
+  game: Session,
+  at: Point,
+  darks: readonly DarkSource[] = darksNow(game),
+): boolean {
+  return at.x < deepFront(game) || inDarkness(game.world.map, darks, at);
+}
+
+/**
+ * Whether `at` is deepdark or by it: as `isDeepdark`, but darkness given off counts out to its
+ * range, along a clear line or not, so a wall in it counts. For whole cells, walls among them.
+ */
+export function nearDeepdark(
+  game: Session,
+  at: Point,
+  darks: readonly DarkSource[] = darksNow(game),
+): boolean {
+  return (
+    at.x < deepFront(game) ||
+    darks.some((dark) => Math.hypot(at.x - dark.x, at.y - dark.y) <= dark.range)
+  );
+}
+
+/** `light` as it reaches into deepdark: out to its `deepRange`, or its whole range without one. */
+export const intoDeepdark = (light: LightSource): LightSource => ({
+  ...light,
+  range: light.deepRange ?? light.range,
+});
 
 /** Whether any of `darks` reaches `at` along a clear line, so no light there lights it. */
 export function inDarkness(
@@ -181,8 +270,13 @@ export function isLit(
 ): boolean {
   const { world } = game;
   if (inDarkness(world.map, darks, at)) return false;
-  if (ambientLightAt(world, at, daylightNow(game)) !== null) return true;
-  return lights.some((light) => canSeeFrom(world.map, light, at));
+  const fronts = frontsNow(game);
+  if (ambientLightAt(world, at, daylightNow(game), fronts) !== null)
+    return true;
+  const deep = at.x < fronts.deep;
+  return lights.some((light) =>
+    canSeeFrom(world.map, deep ? intoDeepdark(light) : light, at),
+  );
 }
 
 /**
@@ -267,6 +361,7 @@ export function ambientPolygons(
   bounds: Bounds,
   kind: AmbientLight,
   daylight = 1,
+  fronts: Fronts = NO_FRONTS,
 ): VisibilityPolygon[] {
   const { cell, cols, rows } = world.map;
   const minCol = Math.max(0, Math.floor(bounds.x / cell));
@@ -283,7 +378,7 @@ export function ambientPolygons(
   for (let row = minRow; row <= maxRow; row++) {
     let col = minCol;
     while (col <= maxCol) {
-      if (cellLight(world, row * cols + col, daylight) !== kind) {
+      if (cellLight(world, row * cols + col, daylight, fronts) !== kind) {
         col++;
         continue;
       }
@@ -291,7 +386,7 @@ export function ambientPolygons(
       const walls = new Map<number, WallFace[]>();
       while (
         col <= maxCol &&
-        cellLight(world, row * cols + col, daylight) === kind
+        cellLight(world, row * cols + col, daylight, fronts) === kind
       ) {
         for (const [key, face] of facesInto(world, col, row))
           walls.set(key, [...(walls.get(key) ?? []), face]);

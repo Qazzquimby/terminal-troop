@@ -9,7 +9,7 @@ import type { Session } from "./session.js";
  * - air: as spoken, from where the speaker stands or wherever a route puts it
  * - radio: through a small speaker, a walkie talkie's say
  */
-type VoiceVia = "air" | "radio";
+export type VoiceVia = "air" | "radio";
 
 /** One way a speaker's voice reaches a listener: where it is heard from, and how it sounds. */
 export interface VoiceRoute {
@@ -36,6 +36,11 @@ export interface VoiceChannel {
    * hearing a ghost, say. Never when left out.
    */
   silences?(game: Session, speaker: Player, listener: Player): boolean;
+  /**
+   * Whether `listener` cannot hear `speaker` where it stands, though other routes may still carry
+   * it: a ghost, heard by the living only through what hears ghosts. Never when left out.
+   */
+  hides?(game: Session, speaker: Player, listener: Player): boolean;
 }
 
 /**
@@ -58,8 +63,9 @@ export function addVoiceChannel(game: Session, channel: VoiceChannel): void {
 }
 
 /**
- * Every way `listener` hears `speaker`: through the air from where the speaker stands, and by
- * every channel that carries its voice; none when a channel silences it.
+ * Every way `listener` hears `speaker`: through the air from where the speaker stands, unless a
+ * channel hides it there, and by every channel that carries its voice; none when a channel
+ * silences it.
  */
 export function voiceRoutes(
   game: Session,
@@ -73,8 +79,13 @@ export function voiceRoutes(
     )
   )
     return [];
-  return [
-    { at: { x: speaker.x, y: speaker.y }, via: "air" },
-    ...added.flatMap((channel) => channel.routes(game, speaker, listener)),
-  ];
+  const carried = added.flatMap((channel) =>
+    channel.routes(game, speaker, listener),
+  );
+  const hidden = added.some(
+    (channel) => channel.hides?.(game, speaker, listener) ?? false,
+  );
+  return hidden
+    ? carried
+    : [{ at: { x: speaker.x, y: speaker.y }, via: "air" }, ...carried];
 }

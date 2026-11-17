@@ -19,17 +19,29 @@ import { recall } from "./recall/index.js";
 import { pocketball } from "./pocketball/index.js";
 import { ghostGirl } from "./ghost-girl/index.js";
 import { doppelganger } from "./doppelganger/index.js";
+import { bomb } from "./bomb/index.js";
+import { flare } from "./flare/index.js";
+import { thumper } from "./thumper/index.js";
+import { tricycle } from "./tricycle/index.js";
+import { door } from "./door/index.js";
+import { balloon, birthdayBoy } from "./birthday-boy/index.js";
+import { shrine } from "./shrine/index.js";
+import { apexPredator } from "./apex-predator/index.js";
 import { spawner } from "./spawning.js";
 
 export {
   departingIn,
   hasEscaped,
+  shortOfQuota,
   nearCruiser,
   refuel,
+  sales,
 } from "./cruiser/index.js";
 export { placeStunTrap } from "./stun-trap/index.js";
 export { placeTurret } from "./turret/index.js";
 export { placeTeleporter } from "./teleporter/index.js";
+export { placeBomb } from "./bomb/index.js";
+export { fireFlare } from "./flare/index.js";
 export {
   POCKETBALL_ITEM,
   pocketballGlyph,
@@ -60,6 +72,15 @@ const ENTITIES = [
   pocketball,
   ghostGirl,
   doppelganger,
+  bomb,
+  flare,
+  thumper,
+  tricycle,
+  door,
+  birthdayBoy,
+  balloon,
+  shrine,
+  apexPredator,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

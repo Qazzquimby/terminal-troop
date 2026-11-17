@@ -9,6 +9,7 @@ import {
   take,
   usesAt,
 } from "./actions.js";
+import { perceives } from "./bodies.js";
 import type { WorldEntity } from "./entities.js";
 import {
   ITEM_TAG,
@@ -28,6 +29,7 @@ import {
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { controlHeldItem } from "./use.js";
+import { useDoor } from "./door-actions.js";
 import { useVehicle } from "./vehicle.js";
 
 /** How items lie in the world. Distances in pixels, times in sim seconds. */
@@ -108,6 +110,8 @@ export function registerWorldItems(game: Session): void {
     collides: false,
     tags: [ITEM_TAG],
     data: WorldItemData,
+    onlyInDeepdark: (_entity, { item }, view) =>
+      view.itemDefinitions.get(item)?.onlyInDeepdark === true,
     draw(ctx, entity, { item, state }, now, view) {
       const definition = view.itemDefinitions.get(item);
       if (definition === undefined) return;
@@ -232,7 +236,11 @@ export const pickUp = defineAction("pickUp", {
   check(game, player, { id }) {
     const entity = game.entities.get(id);
     if (entity === undefined || lyingItem(game, entity) === null) return false;
-    return touches(player, entity) && hasRoom(game, player.id);
+    return (
+      perceives(game, player.id, id) &&
+      touches(player, entity) &&
+      hasRoom(game, player.id)
+    );
   },
   apply(game, player, { id }) {
     const entity = game.entities.get(id);
@@ -282,22 +290,33 @@ function nearestTouching(game: Session): WorldEntity | null {
 }
 
 /**
+ * The lying item the local player's interaction would pick up now, if any: the nearest it touches,
+ * on foot and with room for it. `interact` picks up exactly this, so what is shown as the target
+ * and what is taken never disagree.
+ */
+export function pickupTarget(game: Session): WorldEntity | null {
+  const { local } = game;
+  if (local.ride !== null || isFull(local.inventory)) return null;
+  return nearestTouching(game);
+}
+
+/**
  * The local player's interaction: at the wheel, gets out. On foot, picks up the nearest lying
  * item it touches, if it has room; failing that gets in a vehicle beside it, if it may; otherwise
  * works the item it holds, if that item has a control.
  */
 export function interact(game: Session): void {
-  const { local } = game;
-  if (local.ride !== null) {
+  if (game.local.ride !== null) {
     useVehicle(game);
     return;
   }
-  const nearest = isFull(local.inventory) ? null : nearestTouching(game);
+  const nearest = pickupTarget(game);
   if (nearest !== null) {
     pickUp.perform(game, { id: nearest.id });
     return;
   }
   if (useVehicle(game)) return;
+  if (useDoor(game)) return;
   controlHeldItem(game);
 }
 

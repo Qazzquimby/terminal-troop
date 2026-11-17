@@ -5,6 +5,7 @@ import { fuel } from "./fuel/index.js";
 import { handgun } from "./handgun/index.js";
 import { scrap } from "./scrap/index.js";
 import { goldenScrap } from "./golden-scrap/index.js";
+import { darkScrap } from "./dark-scrap/index.js";
 import { shotgun } from "./shotgun/index.js";
 import { radio } from "./radio/index.js";
 import { shovel } from "./shovel/index.js";
@@ -15,6 +16,11 @@ import { bandage } from "./bandage/index.js";
 import { turret } from "./turret/index.js";
 import { teleporter } from "./teleporter/index.js";
 import { pocketball } from "./pocketball/index.js";
+import { bomb } from "./bomb/index.js";
+import { flareGun } from "./flare-gun/index.js";
+import { itemScanner, monsterScanner } from "./scanner/index.js";
+import { heart } from "./heart/index.js";
+import { ghostWalkie } from "./ghost-walkie/index.js";
 
 export { credit } from "./scrap/index.js";
 
@@ -26,6 +32,7 @@ const ITEMS = [
   shovel,
   scrap,
   goldenScrap,
+  darkScrap,
   handgun,
   shotgun,
   flashlight,
@@ -38,6 +45,12 @@ const ITEMS = [
   turret,
   teleporter,
   pocketball,
+  bomb,
+  flareGun,
+  itemScanner,
+  monsterScanner,
+  heart,
+  ghostWalkie,
 ] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */

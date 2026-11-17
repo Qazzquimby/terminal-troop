@@ -1,9 +1,11 @@
 import type {
   AmbientLight,
+  Body,
   DarkSource,
   Entity,
   Footprint,
   Interpolated,
+  LightSource,
   Player,
   Point,
   Session,
@@ -22,6 +24,11 @@ import {
   ambientPolygons,
   canSeeFrom,
   darkSources,
+  eyesOf,
+  frontsNow,
+  intoDeepdark,
+  isDeepdark,
+  nearDeepdark,
   daylightNow,
   emittedLights,
   inDarkness,
@@ -35,6 +42,7 @@ import {
   isSolid,
   isVisible,
   perceives,
+  pickupTarget,
   stunLeft,
   lightSources,
   litWalls,
@@ -382,6 +390,31 @@ function drawStamina(
   ctx.fillRect(x, y, (width * value) / max, 4);
 }
 
+/** The colour of the ring round the item interacting would pick up. */
+const TARGET_RING = "#ffe37a";
+
+/**
+ * A pulsing ring round `item`, the lying item interacting would pick up now, so the player sees
+ * which of several at its feet it would take.
+ */
+function drawPickupTarget(
+  ctx: CanvasRenderingContext2D,
+  item: Point & { readonly radius: number },
+  now: number,
+): void {
+  const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 3);
+  ctx.save();
+  ctx.strokeStyle = TARGET_RING;
+  ctx.globalAlpha = 0.55 + 0.35 * pulse;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = TARGET_RING;
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(item.x, item.y, item.radius + 3 + pulse * 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** A red health bar at `barY`, shown only once a body that can fall has taken damage. */
 export function drawHealthBar(
   ctx: Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
@@ -499,26 +532,32 @@ export function drawLitWalls(
   ctx.stroke();
 }
 
+/** A cell of the map, by column and row. */
+export interface Cell {
+  readonly col: number;
+  readonly row: number;
+}
+
+/** The cell of `map` holding `at`. */
+export function cellAt(map: TileMap, at: Point): Cell {
+  return { col: Math.floor(at.x / map.cell), row: Math.floor(at.y / map.cell) };
+}
+
 /**
- * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
- * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
- * real wall's. For a body passing itself off as a wall.
+ * The faces of `cell`, taken as a wall, that `viewer` sees lit as a real wall's would be: each
+ * that looks onto open floor, neither solid nor `walled`, on the viewer's side.
  */
-export function drawWallBlock(
-  ctx: PathContext & Pick<CanvasRenderingContext2D, "fillRect">,
+function wallBlockFaces(
   map: TileMap,
-  at: Point,
+  { col, row }: Cell,
   viewer: Point,
-): void {
+  walled: (col: number, row: number) => boolean = () => false,
+): WallFace[] {
   const { cell } = map;
-  const col = Math.floor(at.x / cell);
-  const row = Math.floor(at.y / cell);
   const left = col * cell;
   const top = row * cell;
   const right = left + cell;
   const bottom = top + cell;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(left, top, cell, cell);
   const sides = [
     {
       normal: { x: -1, y: 0 },
@@ -541,12 +580,70 @@ export function drawWallBlock(
       to: { x: right, y: bottom },
     },
   ];
-  const faces = sides.filter(
-    ({ normal, from }) =>
-      !isSolid(map, col + normal.x, row + normal.y) &&
-      normal.x * (viewer.x - from.x) + normal.y * (viewer.y - from.y) > 0,
-  );
-  drawLitWalls(ctx, new Map([[0, faces]]));
+  return sides.filter(({ normal, from }) => {
+    const c = col + normal.x;
+    const r = row + normal.y;
+    return (
+      !isSolid(map, c, r) &&
+      !walled(c, r) &&
+      normal.x * (viewer.x - from.x) + normal.y * (viewer.y - from.y) > 0
+    );
+  });
+}
+
+/**
+ * `walls`, lit wall faces, as they would be were each of `cells` a wall: the faces real walls show
+ * onto those cells gone, as a wall shows no face onto a wall, and each cell's own faces that
+ * `viewer` sees added, so the cells join the walls round them seamlessly.
+ */
+export function poseAsWalls(
+  map: TileMap,
+  walls: VisibilityPolygon["walls"],
+  cells: readonly Cell[],
+  viewer: Point,
+): VisibilityPolygon["walls"] {
+  if (cells.length === 0) return walls;
+  const { cell, cols } = map;
+  const index = (col: number, row: number): number => row * cols + col;
+  const posed = new Set(cells.map(({ col, row }) => index(col, row)));
+  const walled = (col: number, row: number): boolean =>
+    col >= 0 && col < cols && posed.has(index(col, row));
+  const result = new Map<number, readonly WallFace[]>();
+  for (const [key, faces] of walls) {
+    // The cell a face looks onto: half a cell out from its middle along its normal.
+    const kept = faces.filter(({ from, to, normal }) => {
+      const onto = cellAt(map, {
+        x: (from.x + to.x) / 2 + (normal.x * cell) / 2,
+        y: (from.y + to.y) / 2 + (normal.y * cell) / 2,
+      });
+      return !walled(onto.col, onto.row);
+    });
+    if (kept.length > 0) result.set(key, kept);
+  }
+  // Keyed apart from every real wall's key, which is never negative.
+  for (const at of cells) {
+    const faces = wallBlockFaces(map, at, viewer, walled);
+    if (faces.length > 0) result.set(-1 - index(at.col, at.row), faces);
+  }
+  return result;
+}
+
+/**
+ * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
+ * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
+ * real wall's. For a body passing itself off as a wall.
+ */
+export function drawWallBlock(
+  ctx: PathContext & Pick<CanvasRenderingContext2D, "fillRect">,
+  map: TileMap,
+  at: Point,
+  viewer: Point,
+): void {
+  const { cell } = map;
+  const block = cellAt(map, at);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(block.col * cell, block.row * cell, cell, cell);
+  drawLitWalls(ctx, new Map([[0, wallBlockFaces(map, block, viewer)]]));
 }
 
 /**
@@ -822,6 +919,23 @@ function featheredMask(
   height: number,
   colour: string,
 ): Layer {
+  const mask = startMask(layer, camera, width, height);
+  mask.ctx.fillStyle = colour;
+  fillPolygons(mask.ctx, polygons);
+  mask.ctx.restore();
+  return mask;
+}
+
+/**
+ * `layer` sized to the view padded by `EDGE_FADE` all round and cleared, its context saved, then
+ * set to blur what is drawn over the fade and to draw in world space. The caller restores it.
+ */
+function startMask(
+  layer: Layer,
+  camera: Camera,
+  width: number,
+  height: number,
+): Layer {
   const pad = EDGE_FADE;
   const mask = sized(layer, width + pad * 2, height + pad * 2);
   const { ctx } = mask;
@@ -831,9 +945,6 @@ function featheredMask(
   ctx.translate(pad, pad);
   ctx.scale(1 / camera.zoom, 1 / camera.zoom);
   ctx.translate(-camera.x, -camera.y);
-  ctx.fillStyle = colour;
-  fillPolygons(ctx, polygons);
-  ctx.restore();
   return mask;
 }
 
@@ -929,6 +1040,102 @@ function drawShrouds(
   }
 }
 
+/**
+ * A mask of the deepdark behind its front, at `front` pixels across the world, but where `lit`,
+ * lights traced out to their reach into deepdark, reaches; edges soft, as `featheredMask`'s.
+ */
+function deepdarkMask(
+  layer: Layer,
+  front: number,
+  lit: readonly VisibilityPolygon[],
+  camera: Camera,
+): Layer {
+  const { width, height } = camera.view;
+  const pad = EDGE_FADE;
+  const mask = startMask(layer, camera, width, height);
+  const { ctx } = mask;
+  ctx.fillStyle = "#000";
+  const left = camera.x - pad * camera.zoom;
+  ctx.fillRect(
+    left,
+    camera.y - pad * camera.zoom,
+    front - left,
+    viewHeight(camera) + pad * 2 * camera.zoom,
+  );
+  ctx.globalCompositeOperation = "destination-out";
+  fillPolygons(ctx, lit);
+  ctx.restore();
+  return mask;
+}
+
+/**
+ * Whether the eyes of a body at `at` glow now, glimpsed for the deepdark config's `eyes.for`
+ * seconds in each `eyes.every`, each body at a moment set by its id, so a pack does not blink
+ * as one.
+ */
+function eyesGlow(game: Session, id: string, now: number): boolean {
+  const { every, for: lasting } = game.config.deepdark.eyes;
+  if (every <= 0) return false;
+  let offset = 0;
+  for (let i = 0; i < id.length; i++)
+    offset = (offset * 31 + id.charCodeAt(i)) % 1000;
+  const phase = (now / 1000 + (offset / 1000) * every) % every;
+  return phase < lasting;
+}
+
+/**
+ * The eyes of every body in deepdark that the viewer's sight reaches but no light shows, glowing
+ * now and then: two points of the deepdark config's eye colour, set the way the body faces.
+ * Drawn over the darkness, so the black gives away that something lurks there, and no more.
+ */
+function drawDeepdarkEyes(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  viewer: Player,
+  sources: readonly VisionSource[],
+  darks: readonly DarkSource[],
+): void {
+  const { map } = game.world;
+  const { colour } = game.config.deepdark.eyes;
+  const bodies: Body[] = [
+    ...game.entities.values(),
+    ...[...game.players.values()].filter(
+      (player) => player !== viewer && !isGhost(player) && !isAboard(player),
+    ),
+  ];
+  ctx.save();
+  ctx.fillStyle = colour;
+  ctx.shadowColor = colour;
+  for (const body of bodies) {
+    if (!inView(body, camera) || !eyesGlow(game, body.id, now)) continue;
+    if (!perceives(game, viewer.id, body.id)) continue;
+    const sight = eyesOf(game, body);
+    if (sight === null || !isDeepdark(game, body, darks)) continue;
+    if (!sources.some((source) => canSeeFrom(map, source, body))) continue;
+    const facing = sight.cone?.direction ?? Math.PI / 2;
+    const ahead = body.radius * 0.45;
+    const apart = body.radius * 0.3;
+    const size = Math.max(1.5, body.radius * 0.12);
+    ctx.shadowBlur = size * 4;
+    for (const side of [-1, 1]) {
+      const x =
+        body.x +
+        Math.cos(facing) * ahead +
+        Math.cos(facing + Math.PI / 2) * apart * side;
+      const y =
+        body.y +
+        Math.sin(facing) * ahead +
+        Math.sin(facing + Math.PI / 2) * apart * side;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 /** Lays `mask`'s warm shapes over the scene, only where the scene still shows. */
 function layLight(scene: Layer, mask: Layer): void {
   scene.ctx.save();
@@ -991,6 +1198,25 @@ function drawBodies(
     if (isStunned(game, player.id))
       drawStunned(ctx, player, now, STUN_ABOVE.player);
   });
+}
+
+/**
+ * The cells of every body in view posing as a wall that `by` perceives and `shows` says shows.
+ */
+function posingCells(
+  game: Session,
+  camera: Camera,
+  by: string,
+  shows: (body: Footprint) => boolean,
+): Cell[] {
+  const cells: Cell[] = [];
+  game.entities.forEach((entity) => {
+    if (game.entityTypes.get(entity.kind)?.posesAsWall !== true) return;
+    if (!perceives(game, by, entity.id) || !inView(entity, camera)) return;
+    if (!shows(footprintOf(game, entity))) return;
+    cells.push(cellAt(game.world.map, entity));
+  });
+  return cells;
 }
 
 /**
@@ -1171,33 +1397,58 @@ export function draw(
   const { rays } = game.config.vision;
   const area = viewArea(camera);
   const daylight = daylightNow(game);
+  const fronts = frontsNow(game);
   const ambient = (point: Point) =>
-    ambientLightAt(game.world, point, daylight) !== null;
+    ambientLightAt(game.world, point, daylight, fronts) !== null;
   // Darkness something gives off, which no light lights: nothing in it shows.
   const darks = darkSources(game);
-  const dark =
-    darks.length === 0
-      ? undefined
-      : (point: Point) => inDarkness(map, darks, point);
-  const sunlit = ambientPolygons(game.world, area, "sun", daylight);
-  const fixtureLit = ambientPolygons(game.world, area, "fixture");
+  const deep = (point: Point) => isDeepdark(game, point, darks);
+  // Deepdark no light lights but out to its reach into it.
+  const unlitDeep = (point: Point) =>
+    deep(point) &&
+    !lights.some((light) => canSeeFrom(map, intoDeepdark(light), point));
+  const dark = (point: Point) =>
+    (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
+  const sunlit = ambientPolygons(game.world, area, "sun", daylight, fronts);
+  const fixtureLit = ambientPolygons(game.world, area, "fixture", 1, fronts);
   const seen = tracePolygons(map, sources, camera, rays);
   const lit = [
     ...tracePolygons(map, lights, camera, rays),
     ...sunlit,
     ...fixtureLit,
   ];
-  const walls = outOfDarkness(litWalls(seen, lit), dark);
+  const realWalls = outOfDarkness(litWalls(seen, lit), dark);
   // A stunned viewer sees nothing, so learns nothing of the map.
   const blind = blindness(game, viewer);
-  if (blind === 0) memory.see({ seen, lit, walls }, area, now);
+  if (blind === 0) memory.see({ seen, lit, walls: realWalls }, area, now);
+  const shows = (body: Footprint): boolean =>
+    isBodyVisible(
+      map,
+      sources,
+      lights,
+      body,
+      game.config.vision.footprintSpacing,
+      ambient,
+      dark,
+    );
+  // Bodies passing themselves off as walls, drawn as the walls they pose as: their cells join the
+  // real walls round them, lit and banded as those are.
+  const posing = posingCells(game, camera, viewer.id, shows);
+  const walls = poseAsWalls(map, realWalls, posing, viewer);
 
   const { width, height } = camera.view;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
 
-  // Remembered terrain, drawn on its own layer so the ink fading it eats into it alone.
-  const remembered = memory.within(area, now, viewer);
+  // Remembered terrain, drawn on its own layer so the ink fading it eats into it alone; in
+  // deepdark it fades faster.
+  const { cell } = map;
+  const { memoryFade } = game.config.deepdark;
+  const remembered = memory.within(area, now, viewer, (col, row) =>
+    nearDeepdark(game, { x: (col + 0.5) * cell, y: (row + 0.5) * cell }, darks)
+      ? memoryFade
+      : 1,
+  );
   const recall = sized((memoryCache ??= createLayer()), width, height);
   recall.ctx.clearRect(0, 0, width, height);
   applyCamera(recall.ctx, camera, () => {
@@ -1227,16 +1478,7 @@ export function draw(
       now,
       isAway,
       viewer,
-      (body) =>
-        isBodyVisible(
-          map,
-          sources,
-          lights,
-          body,
-          game.config.vision.footprintSpacing,
-          ambient,
-          dark,
-        ),
+      shows,
       viewer.id,
       false,
     );
@@ -1256,15 +1498,20 @@ export function draw(
       featheredMask(mask, polygons, camera, width, height, colour),
     );
   }
-  const emitted = emittedLights(game);
-  if (emitted.length > 0) {
+  // Each colour of emitted light laid on its own, a flare's red apart from a flashlight's yellow.
+  const byTint = new Map<string, LightSource[]>();
+  for (const light of emittedLights(game)) {
+    const colour = light.tint ?? LIGHT_TINT;
+    byTint.set(colour, [...(byTint.get(colour) ?? []), light]);
+  }
+  for (const [colour, emitted] of byTint) {
     const tint = featheredMask(
       mask,
       tracePolygons(map, emitted, camera, rays),
       camera,
       width,
       height,
-      LIGHT_TINT,
+      colour,
     );
     layLight(scene, tint);
   }
@@ -1273,9 +1520,22 @@ export function draw(
     if (shade.length > 0)
       unlight(scene, featheredMask(mask, shade, camera, width, height, "#000"));
   }
+  // Behind the deepdark front, all is black but what lights reach, out to their reach into it.
+  if (fronts.deep > camera.x)
+    unlight(
+      scene,
+      deepdarkMask(
+        mask,
+        fronts.deep,
+        tracePolygons(map, lights.map(intoDeepdark), camera, rays),
+        camera,
+      ),
+    );
   ctx.drawImage(scene.canvas, 0, 0);
   applyCamera(ctx, camera, () => {
     drawShrouds(ctx, darks, sources, map, camera, now);
+    if (blind === 0)
+      drawDeepdarkEyes(ctx, game, camera, now, viewer, sources, darks);
   });
 
   // What the local player hears: a ring for a player's noise or one whose maker it can see, a
@@ -1291,6 +1551,9 @@ export function draw(
   // Above the darkness: lit wall faces; a stunned viewer's blindness over all it would see;
   // then rings, the player and its HUD, then edge glows.
   applyCamera(ctx, camera, () => {
+    ctx.fillStyle = "#000";
+    for (const { col, row } of posing)
+      ctx.fillRect(col * cell, row * cell, cell, cell);
     drawLitWalls(ctx, walls);
     drawSeenInDark(ctx, game, camera, now, viewer, sources);
   });
@@ -1300,6 +1563,11 @@ export function draw(
   }
   applyCamera(ctx, camera, () => {
     drawRipples(ctx, ripples.config, rings, now, camera);
+    // The item E would pick up, chosen as the interaction chooses it, on the simulation proper,
+    // and drawn where the view shows it.
+    const target = eye.kind === "self" ? pickupTarget(simulation) : null;
+    const shown = target === null ? undefined : game.entities.get(target.id);
+    if (shown !== undefined) drawPickupTarget(ctx, shown, now);
     // Inside a vehicle, the viewer is out of sight in it, as every other occupant is.
     if (!isAboard(viewer)) drawPlayer(ctx, game, viewer, viewer === game.local);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - PLAYER_BAR_ABOVE);

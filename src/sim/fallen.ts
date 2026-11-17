@@ -71,8 +71,29 @@ export const falls = worldData({
   initial: [],
 });
 
-/** As the host, notes that `victim`'s health has just run out, the last of it dealt by `by`. */
+/**
+ * Something content runs on the host as any body's health runs out, players and world entities
+ * alike, while the body still stands where it fell: to leave something there, say.
+ */
+export type FallWatcher = (
+  game: Session,
+  victim: Body,
+  by: string | null,
+) => void;
+
+const watchers = new WeakMap<Session, FallWatcher[]>();
+
+/** Adds `watcher` to what runs as each body falls in `game`. */
+export function watchFalls(game: Session, watcher: FallWatcher): void {
+  watchers.set(game, [...(watchers.get(game) ?? []), watcher]);
+}
+
+/**
+ * As the host, notes that `victim`'s health has just run out, the last of it dealt by `by`, and
+ * runs every fall watcher.
+ */
 export function noteFall(game: Session, victim: Body, by: string | null): void {
+  for (const watcher of watchers.get(game) ?? []) watcher(game, victim, by);
   const held = falls.get(game);
   const entity = asEntity(game, victim);
   const fall: Fall = {

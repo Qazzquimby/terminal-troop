@@ -218,10 +218,27 @@ export function wanderLeg(
       y: around.y + Math.sin(angle) * distance,
     };
     if (!isAreaFree(map, to.x, to.y, half)) continue;
-    const route = planRoute(map, half, at, to);
+    // A wanderer keeps to the open ways: it has no need of the other side of a door.
+    const route = planRoute(map, half, at, to, undefined, undefined, false);
     if (route !== null && route.length > 0) return route;
   }
   return null;
+}
+
+/**
+ * `state` as is while its route lasts; once spent, with a fresh wander leg of up to `range` round
+ * where `self` stands, or none when no leg is found. For any kind that ambles about between
+ * errands.
+ */
+export function wanderOn<S extends { readonly route: Point[] }>(
+  state: S,
+  self: Point & { readonly radius: number },
+  map: TileMap,
+  range: number,
+): S {
+  if (state.route.length > 0) return state;
+  const leg = wanderLeg(map, self, Math.random, self.radius, range);
+  return { ...state, route: leg ?? [] };
 }
 
 /**
@@ -306,7 +323,16 @@ export function fleeRoute(
   }
   spots.sort((a, b) => b.score - a.score);
   for (const { at } of spots) {
-    const route = planRoute(map, self.radius, self, at);
+    // A body in flight has no time to get through a door.
+    const route = planRoute(
+      map,
+      self.radius,
+      self,
+      at,
+      undefined,
+      undefined,
+      false,
+    );
     if (route !== null && route.length > 0) return route;
   }
   return [];

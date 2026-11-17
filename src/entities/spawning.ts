@@ -45,6 +45,11 @@ export interface SpawningConfig {
   readonly group?: GroupConfig;
   /** Kinds it would rather appear far from; it minds none when left out. */
   readonly apart?: ApartConfig;
+  /**
+   * The most of it the world may hold at once: while that many are about, the spawner does not
+   * pick it, and a group stops short of it. No limit when left out.
+   */
+  readonly most?: number;
 }
 
 /**
@@ -326,14 +331,33 @@ function bring(game: Session, arrival: Arrival, starting: boolean): boolean {
     unseen,
     group,
   );
-  for (const at of members) arrival.spawn(game, at);
+  for (const at of members) if (roomFor(game, arrival)) arrival.spawn(game, at);
   return true;
 }
 
-/** Whether `arrival` may be picked now: it has weight, and its time has come. */
+/** How many of the kind `kind` the world holds now. */
+function countOf(game: Session, kind: string): number {
+  const id = game.kindIds.get(kind);
+  let count = 0;
+  for (const entity of game.entities.values()) if (entity.kind === id) count++;
+  return count;
+}
+
+/** Whether the world has room for another of `arrival`, under its most. */
+function roomFor(game: Session, arrival: Arrival): boolean {
+  const { most } = arrival.config;
+  return most === undefined || countOf(game, arrival.kind) < most;
+}
+
+/**
+ * Whether `arrival` may be picked now: it has weight, its time has come, and the world holds fewer
+ * of it than its most.
+ */
 function eligible(game: Session, arrival: Arrival): boolean {
   const { weight, after = 0 } = arrival.config;
-  return Math.round(weight) > 0 && game.worldTime >= after;
+  return (
+    Math.round(weight) > 0 && game.worldTime >= after && roomFor(game, arrival)
+  );
 }
 
 /** One of `arrivals`, drawn in proportion to their weights; null when there are none. */

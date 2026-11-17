@@ -1,13 +1,78 @@
 import {
+  asEntity,
+  effect,
   eyesOf,
   hasKindTag,
   inCone,
   inView,
   livingBodies,
 } from "../sim/index.js";
-import type { Body, Point, Session, Sight, WorldEntity } from "../sim/index.js";
-import { NEVER_PREY, preyNear } from "./hunt.js";
+import type {
+  Body,
+  Eyes,
+  Point,
+  Session,
+  Sight,
+  Sound,
+  Strike,
+  WorldEntity,
+} from "../sim/index.js";
+import { NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
+
+/**
+ * Eyes as a player's, down `facing`: its view cone and surroundings, both out to `range`. For a
+ * kind that sees as a person does, only not as far.
+ */
+export function facingEyes(facing: number, game: Session, range: number): Eyes {
+  const { coneAngle, surroundingsRadius } = game.config.vision;
+  return {
+    cone: { direction: facing, angle: coneAngle, range },
+    around: Math.min(surroundingsRadius, range),
+  };
+}
+
+/** A blow of `damage` on whatever `self` touches that it does not ignore, when it is `attacking`. */
+export function touchStrikes(
+  game: Session,
+  self: WorldEntity,
+  attacking: boolean,
+  ignores: readonly string[],
+  damage: number,
+): Strike[] {
+  if (!attacking) return [];
+  return strikeEach(touching(game, self, ignores), damage);
+}
+
+/**
+ * A kind's `strikes`: a blow of its config's `damage` on whatever it touches that it does not
+ * ignore, on each step its state is `attacking`. For any kind that strikes by touch alone.
+ */
+export function strikesOnTouch(config: {
+  readonly ignores: readonly string[];
+  readonly damage: number;
+}): (
+  self: WorldEntity,
+  state: { readonly attacking: boolean },
+  game: Session,
+) => Strike[] {
+  return (self, state, game) =>
+    touchStrikes(game, self, state.attacking, config.ignores, config.damage);
+}
+
+/**
+ * Plays, as the host, on every client, each of `made` that is a sound, where `self` stands; each
+ * also makes its noise. For a kind's cue, which lists its sounds as `step && sound`.
+ */
+export function playEach(
+  game: Session,
+  self: WorldEntity,
+  made: readonly (Sound | false)[],
+): void {
+  for (const sound of made)
+    if (sound !== false)
+      effect(game, { at: { x: self.x, y: self.y }, sound }, self);
+}
 
 /*
  * Who a monster hunts. Players are bodies like any other: a monster hunts, notices, chases and
@@ -205,4 +270,15 @@ export function gazeOn(
   );
   return (at) =>
     widened.some((sight) => inCone(game, sight, at, watching.watchRange));
+}
+
+/**
+ * Whether `body` can be killed: a player, or a world entity whose kind has a finite health. Not the
+ * snail, the statue, the cruiser nor anything else nothing can wear down.
+ */
+export function isKillable(game: Session, body: Body): boolean {
+  const entity = asEntity(game, body);
+  if (entity === null) return true;
+  const kind = game.entityTypes.get(entity.kind);
+  return kind !== undefined && Number.isFinite(kind.maxHealth);
 }

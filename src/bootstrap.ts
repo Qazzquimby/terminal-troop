@@ -16,9 +16,10 @@ import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
   cabinView,
+  coinTossPanel,
   controlsHintFor,
   createCabin,
-  escapeLeavesVehicle,
+  doorPanel,
   hintMode,
   minimapPanel,
   radioPanel,
@@ -67,7 +68,12 @@ import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-tr
 import { createTrysteroTransport } from "./adapters/trystero-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
 import { createScope } from "./lib/scope/index.js";
-import { departingIn, entityContent, hasEscaped } from "./entities/index.js";
+import {
+  departingIn,
+  entityContent,
+  hasEscaped,
+  shortOfQuota,
+} from "./entities/index.js";
 import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 import { createWorldLog, logsWorld } from "./world-log/index.js";
@@ -113,7 +119,8 @@ const sendCabin = (command: CabinCommand): void => {
 };
 const cabin = createCabin(element("#cabin", HTMLDivElement), sendCabin);
 cabin.addPanel(storagePanel(sendCabin));
-cabin.addPanel(shopPanel(sendCabin));
+cabin.addPanel(coinTossPanel(sendCabin), "finances");
+cabin.addPanel(shopPanel(sendCabin), "finances");
 /** Whether the cabin's transmit button is held down with the mouse. */
 let cabinTransmit = false;
 cabin.addPanel(minimapPanel(config.minimap, sendCabin));
@@ -123,6 +130,7 @@ cabin.addPanel(
   }),
 );
 cabin.addPanel(radioPanel(sendCabin));
+cabin.addPanel(doorPanel(sendCabin));
 
 const context = canvas.getContext("2d");
 if (context === null) throw new Error("Canvas 2D context unavailable.");
@@ -178,6 +186,7 @@ function selectVoice(initial: VoiceSettings): Voice {
     config.voiceConnections,
     config.voiceRadio,
     config.voiceClips,
+    config.voiceDetector,
   );
 }
 
@@ -324,16 +333,6 @@ const input = createInput(
   {
     toggleSettings: {
       press(time) {
-        // Inside a vehicle, Esc gets out, wheel or cabin; settings are a click on their button.
-        const session = joinedSession(room.state());
-        if (
-          !settingsMenu.isOpen() &&
-          session !== null &&
-          escapeLeavesVehicle(hintMode(session.local))
-        ) {
-          sendCabin("exit");
-          return;
-        }
         settingsMenu.toggle(time);
       },
     },
@@ -499,6 +498,8 @@ function frame(): void {
       ),
       held: session.local.held,
       credit: credit.get(session),
+      quota: config.entities.cruiser.escape.quota,
+      shortOfQuota: shortOfQuota(session, config.entities.cruiser.escape.quota),
       escaped: hasEscaped(session, session.local),
       departingIn: departingIn(session, config.entities.cruiser.escape.delay),
     });

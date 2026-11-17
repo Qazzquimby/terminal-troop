@@ -9,6 +9,7 @@ import {
   take,
   usesAt,
 } from "./actions.js";
+import { isAboard } from "./aboard.js";
 import { footprintOf, livingBody } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { nearestFreePoint } from "./collision.js";
@@ -18,6 +19,9 @@ import type {
   CabinCommand,
   Ride,
   Storage,
+  Toss,
+  Tossed,
+  VehicleGamble,
   VehicleShop,
   VehicleTeleporter,
   Ware,
@@ -230,6 +234,20 @@ function shopFor(game: Session, player: Player): VehicleShop | null {
   return found?.spec.shop ?? null;
 }
 
+/**
+ * What `price` comes to with `off` percent off: whole credit, rounded down, but never under 1 for
+ * something that costs anything.
+ */
+export function salePrice(price: number, off: number): number {
+  if (off <= 0) return price;
+  return Math.max(Math.min(price, 1), Math.floor((price * (100 - off)) / 100));
+}
+
+/** What `shop` asks for `ware` now, its sale taken off. */
+function priceNow(game: Session, shop: VehicleShop, ware: Ware): number {
+  return salePrice(ware.price, shop.sale?.(game, ware.item) ?? 0);
+}
+
 /** `slot` of `items` if it is empty, or with `slot` left out, the first empty one; null for none. */
 function emptySlot(items: Inventory, slot?: number): number | null {
   if (slot !== undefined) return items[slot] === null ? slot : null;
@@ -321,8 +339,10 @@ const buy = defineAction("buy", {
     const ware = shopFor(game, player)?.wares.find(
       (each) => each.item === item,
     );
-    if (ware === undefined || fresh(game, item) === null) return false;
-    if (credit.get(game) < ware.price) return false;
+    const shop = shopFor(game, player);
+    if (shop === null || ware === undefined || fresh(game, item) === null)
+      return false;
+    if (credit.get(game) < priceNow(game, shop, ware)) return false;
     const storage = storageFor(game, player);
     return (
       hasRoom(game, player.id) ||
@@ -334,7 +354,8 @@ const buy = defineAction("buy", {
     const ware = shop?.wares.find((each) => each.item === item);
     const bought = fresh(game, item);
     if (shop === null || ware === undefined || bought === null) return;
-    if (credit.get(game) < ware.price) return;
+    const price = priceNow(game, shop, ware);
+    if (credit.get(game) < price) return;
     if (!give(game, player, item)) {
       const storage = storageFor(game, player);
       const at = storage === null ? null : emptySlot(storage.items);
@@ -343,7 +364,7 @@ const buy = defineAction("buy", {
         storesWith(game, storage.id, storage.spec.slots, at, bought),
       );
     }
-    changeWorld(game, credit, (value) => value - ware.price);
+    changeWorld(game, credit, (value) => value - price);
     sounds(game, player, shop);
   },
 });
@@ -354,18 +375,94 @@ export function cabinStorage(game: Session, vehicle: string): Inventory | null {
   return spec === undefined ? null : storeOf(game, vehicle, spec.slots);
 }
 
+/** A ware as the cabin shows it: its price now, and `was` its price before `off` percent off. */
+interface CabinWare extends Ware {
+  readonly was: number;
+  readonly off: number;
+}
+
 /** A vehicle's shop as its cabin shows it: what it sells, and the team's credit to buy with. */
 export interface CabinShop {
-  readonly wares: readonly Ware[];
+  readonly wares: readonly CabinWare[];
   readonly credit: number;
 }
 
 /** The vehicle `vehicle`'s shop; null for one without a shop. */
 export function cabinShop(game: Session, vehicle: string): CabinShop | null {
   const shop = vehicleOf(game, vehicle)?.spec.shop;
-  return shop === undefined
-    ? null
-    : { wares: shop.wares, credit: credit.get(game) };
+  if (shop === undefined) return null;
+  return {
+    wares: shop.wares.map((ware) => {
+      const off = shop.sale?.(game, ware.item) ?? 0;
+      return {
+        ...ware,
+        price: salePrice(ware.price, off),
+        was: ware.price,
+        off,
+      };
+    }),
+    credit: credit.get(game),
+  };
+}
+
+/** Least time between two of one player's coin tosses, in sim seconds. */
+const TOSS_COOLDOWN = 0.3;
+
+/** The vehicle `player` is in and its coin toss; null without either. */
+function gambleFor(
+  game: Session,
+  player: Player,
+): { readonly entity: WorldEntity; readonly gamble: VehicleGamble } | null {
+  const found =
+    player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+  const gamble = found?.spec.gamble;
+  if (found === null || gamble === undefined) return null;
+  return { entity: found.entity, gamble };
+}
+
+/**
+ * A player inside a vehicle staking `bet` of the team's credit on its coin toss, double or
+ * nothing: the bet is spent as the coin goes up, while the team has it and no other coin is in
+ * the air, and the vehicle's rule pays it back doubled, or not, as it comes down.
+ */
+const toss = defineAction("toss", {
+  input: z.object({ bet: z.number().int().min(1).max(1_000_000) }),
+  cooldown: TOSS_COOLDOWN,
+  check(game, player, { bet }) {
+    const found = gambleFor(game, player);
+    return (
+      found !== null &&
+      found.gamble.tossing(game, found.entity) === null &&
+      credit.get(game) >= bet
+    );
+  },
+  apply(game, player, { bet }) {
+    const found = gambleFor(game, player);
+    if (found === null || credit.get(game) < bet) return;
+    if (found.gamble.tossing(game, found.entity) !== null) return;
+    changeWorld(game, credit, (value) => value - bet);
+    found.gamble.toss(game, found.entity, player, bet);
+  },
+});
+
+/** A vehicle's coin toss as its cabin shows it: the coin in the air, and the last to come down. */
+export interface CabinGamble {
+  readonly tossing: Toss | null;
+  readonly last: Tossed | null;
+}
+
+/** The vehicle `vehicle`'s coin toss; null for one without one. */
+export function cabinGamble(
+  game: Session,
+  vehicle: string,
+): CabinGamble | null {
+  const found = vehicleOf(game, vehicle);
+  const gamble = found?.spec.gamble;
+  if (found === null || gamble === undefined) return null;
+  return {
+    tossing: gamble.tossing(game, found.entity),
+    last: gamble.last(game, found.entity),
+  };
 }
 
 /** A player inside a vehicle turning its radio: to the next station, switching it on, or off. */
@@ -381,12 +478,58 @@ const tune = defineAction("tune", {
   },
 });
 
+/** Least time between two swings of a vehicle's door by one player, in sim seconds. */
+const DOOR_COOLDOWN = 0.3;
+
+/**
+ * A player inside a vehicle opening its door when it is closed, or closing it when it is open
+ * and it may be closed.
+ */
+const swingDoor = defineAction("door", {
+  input: z.object({}),
+  cooldown: DOOR_COOLDOWN,
+  check(game, player) {
+    const found =
+      player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+    const door = found?.spec.door;
+    if (found === null || door === undefined) return false;
+    return door.closed(found.entity) || door.canClose(found.entity);
+  },
+  apply(game, player) {
+    const found =
+      player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+    const door = found?.spec.door;
+    if (found === null || door === undefined) return;
+    door.swing(game, found.entity, player, !door.closed(found.entity));
+  },
+});
+
+/** A vehicle's door as its cabin shows it: whether it is closed, may be closed, and its power. */
+export interface CabinDoor {
+  readonly closed: boolean;
+  readonly canClose: boolean;
+  /** 0..1. */
+  readonly charge: number;
+}
+
+/** The vehicle `vehicle`'s door; null for one without a door. */
+export function cabinDoor(game: Session, vehicle: string): CabinDoor | null {
+  const found = vehicleOf(game, vehicle);
+  const door = found?.spec.door;
+  if (found === null || door === undefined) return null;
+  return {
+    closed: door.closed(found.entity),
+    canClose: door.canClose(found.entity),
+    charge: door.charge(found.entity),
+  };
+}
+
 /** Least time between two of one player's sending for a body with a vehicle's teleporter, in sim seconds. */
 const TELEPORT_COOLDOWN = 0.5;
 
 /**
  * The vehicle `player` is in, its teleporter, and `target` to send for with it: a living body out
- * in the world, not the vehicle itself, while the teleporter is free. Null when any of that fails.
+ * in the world, in no vehicle, not the vehicle itself, while the teleporter is free. Null when any of that fails.
  */
 function teleportFor(
   game: Session,
@@ -402,7 +545,8 @@ function teleportFor(
   const teleporter = found?.spec.teleporter;
   if (found === null || teleporter === undefined) return null;
   const body = livingBody(game, target);
-  if (body === null || body.id === found.entity.id) return null;
+  if (body === null || isAboard(body) || body.id === found.entity.id)
+    return null;
   if (teleporter.sending(game, found.entity) !== null) return null;
   return { entity: found.entity, teleporter, body };
 }
@@ -453,6 +597,8 @@ export const vehicleActions = [
   buy,
   tune,
   teleport,
+  swingDoor,
+  toss,
 ] as const;
 
 /**
@@ -537,6 +683,7 @@ export function cabinCommand(game: Session, command: CabinCommand): void {
       unstow.perform(game, { slot: command.unstow });
     else if ("teleport" in command)
       teleport.perform(game, { target: command.teleport });
+    else if ("toss" in command) toss.perform(game, { bet: command.toss });
     else buy.perform(game, { item: command.buy });
     return;
   }
@@ -555,6 +702,9 @@ export function cabinCommand(game: Session, command: CabinCommand): void {
       return;
     case "radioOff":
       tune.perform(game, { to: "off" });
+      return;
+    case "door":
+      swingDoor.perform(game, {});
       return;
   }
 }

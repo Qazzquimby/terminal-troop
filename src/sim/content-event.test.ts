@@ -107,9 +107,12 @@ describe("content events", () => {
           "buy",
           "tune",
           "teleport",
+          "door",
+          "toss",
         ],
       ],
       ["core/actions", ["effects"]],
+      ["core/doors", ["swing"]],
     ]);
   });
 

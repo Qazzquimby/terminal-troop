@@ -1,6 +1,7 @@
 import type { WorldEntity } from "./entities.js";
-import { isAboard, playersOutside } from "./aboard.js";
+import { isShutIn, playersExposed } from "./aboard.js";
 import { isGhost, livingPlayers } from "./ghosts.js";
+import { isDeepdark } from "./light.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -45,13 +46,16 @@ export const isPlayer = (game: Session, body: Body): boolean =>
  * Most bodies are there for every body to perceive. A kind can name the one body that perceives
  * one of it instead (`perceivedBy`), as a haunting only its victim sees: to every other body it is
  * not there at all. Nothing sees, hears, hunts, strikes, traps or bumps into it, and no other
- * player's client draws it, plays its sounds or logs it. `perceives` is the one rule they all ask.
+ * player's client draws it, plays its sounds or logs it. A kind can also be perceived only while
+ * one of it lies in deepdark (`onlyInDeepdark`), as dark scrap: out of it, it is not there to
+ * anybody. `perceives` is the one rule they all ask.
  */
 
 /**
  * Whether the body `by`, by id, perceives the body `id`: always, unless `id` is of a kind that
- * names the one body perceiving it, which must then be `by`. Null for `by` is no body at all,
- * as a dead player's free camera, which perceives only what every body does.
+ * names the one body perceiving it, which must then be `by`, or of a kind perceived only in
+ * deepdark lying out of it. Null for `by` is no body at all, as a dead player's free camera,
+ * which perceives only what every body does.
  */
 export function perceives(
   game: Session,
@@ -62,7 +66,10 @@ export function perceives(
   const entity = game.entities.get(id);
   if (entity === undefined) return true;
   const type = game.entityTypes.get(entity.kind);
-  if (type?.restricted !== true) return true;
+  if (type === undefined) return true;
+  if (type.onlyInDeepdark(entity, game) && !isDeepdark(game, entity))
+    return false;
+  if (!type.restricted) return true;
   return by !== null && type.perceiver(entity) === by;
 }
 
@@ -122,8 +129,8 @@ export function engages(game: Session, by: string | null, body: Body): boolean {
 
 /**
  * Every body out in the world that is not dead: each living player, then each world entity with
- * health left, items lying about included. Ghosts are left out, and so is every body inside a
- * vehicle: nothing out in the world sees, strikes or targets it. So is every body that only some
+ * health left, items lying about included. Ghosts are left out, and so is every body shut away
+ * inside a vehicle (see `isShutIn`): nothing out in the world sees, strikes or targets it. So is every body that only some
  * other body than `by`, by id, perceives, and with `by` left out, every body only one perceives.
  * When `by` is a world entity, so is every other world entity it does not engage, as `engages`
  * has it; it keeps itself.
@@ -137,11 +144,11 @@ export function livingBodies(game: Session, by: string | null = null): Body[] {
         ? (entity: WorldEntity) => entity === actor || inPlayAt(game, entity)
         : (entity: WorldEntity) => entity === actor;
   return [
-    ...playersOutside(game),
+    ...playersExposed(game),
     ...[...game.entities.values()].filter(
       (entity) =>
         entity.health > 0 &&
-        !isAboard(entity) &&
+        !isShutIn(game, entity) &&
         perceives(game, by, entity.id) &&
         engaged(entity),
     ),
@@ -157,15 +164,17 @@ export function isGone(game: Session, id: string): boolean {
 }
 
 /**
- * The body `id` while it is out in the world and not dead or a ghost; null otherwise, inside a
- * vehicle too, so a monster after it loses it there.
+ * The body `id` while it is out in the world and not dead or a ghost; null otherwise, shut away
+ * inside a vehicle too, so a monster after it loses it there.
  */
 export function livingBody(
   game: Session,
   id: string | null | undefined,
 ): Body | null {
   const body = bodyById(game, id);
-  return body === null || isGone(game, body.id) || isAboard(body) ? null : body;
+  return body === null || isGone(game, body.id) || isShutIn(game, body)
+    ? null
+    : body;
 }
 
 /**

@@ -14,8 +14,9 @@ import {
   mulberry32,
   randomFreePosition,
   randomFreePositionIn,
+  roadDistanceAt,
 } from "./map.js";
-import type { Point, Rect, Rng } from "./map.js";
+import type { DangerConfig, Point, Rect, Rng } from "./map.js";
 import { registerPlayerData } from "./player-data.js";
 import type { PlayerData } from "./player-data.js";
 import type { LightEmission } from "./vision.js";
@@ -168,6 +169,18 @@ export interface Scatter {
    * drawing it within its band by danger the same way.
    */
   readonly danger?: number;
+  /**
+   * The scatter's own danger terms, each in place of the world's term of the same name, so it can
+   * favour distance from the road, the exit's side of the world or the exit itself more or less
+   * than monsters do; see `DangerConfig`. Given without `danger`, its spots favour that weight
+   * to the power 1. The world's terms when left out.
+   */
+  readonly terms?: Partial<DangerConfig>;
+  /**
+   * Fewest cells from the road a spot's cell must be, as `roadDistanceAt` counts them: 1 keeps
+   * every spot off the road. Anywhere when 0 or left out.
+   */
+  readonly offRoad?: number;
 }
 
 /**
@@ -221,27 +234,38 @@ function distanceToPlayers(game: Session, point: Point): number {
   return nearest;
 }
 
+/** Whether a scatter may take the spot `at` at all. */
+type SpotAllowed = (at: Point) => boolean;
+
+const anywhere: SpotAllowed = () => true;
+
+/**
+ * A free spot `allowed` takes, preferring one at least `clearance` from every player; any free
+ * spot when none of its draws is allowed.
+ */
 function scatterPoint(
   game: Session,
   rng: Rng,
   radius: number,
   clearance: number,
+  allowed: SpotAllowed = anywhere,
 ): Point {
-  let best = randomFreePosition(game.world, radius, rng);
-  let bestDistance = distanceToPlayers(game, best);
+  let best: Point | null = null;
+  let bestDistance = -Infinity;
   for (
-    let attempt = 1;
+    let attempt = 0;
     attempt < SPAWN_ATTEMPTS && bestDistance < clearance;
     attempt++
   ) {
     const point = randomFreePosition(game.world, radius, rng);
+    if (!allowed(point)) continue;
     const distance = distanceToPlayers(game, point);
     if (distance > bestDistance) {
       best = point;
       bestDistance = distance;
     }
   }
-  return best;
+  return best ?? randomFreePosition(game.world, radius, rng);
 }
 
 /** The `index`th of `count` equal bands across the world's width, its full height. */
@@ -260,6 +284,7 @@ function bandPoint(
   radius: number,
   clearance: number,
   band: Rect,
+  allowed: SpotAllowed = anywhere,
 ): Point {
   let best: Point | null = null;
   let bestDistance = -Infinity;
@@ -270,13 +295,14 @@ function bandPoint(
   ) {
     const point = randomFreePositionIn(game.world, band, radius, rng);
     if (point === null) break;
+    if (!allowed(point)) continue;
     const distance = distanceToPlayers(game, point);
     if (distance > bestDistance) {
       best = point;
       bestDistance = distance;
     }
   }
-  return best ?? scatterPoint(game, rng, radius, clearance);
+  return best ?? scatterPoint(game, rng, radius, clearance, allowed);
 }
 
 /** Spots drawn for each entity of a weighted scatter, among which it picks by weight. */
@@ -294,6 +320,7 @@ function weighedPoint(
   clearance: number,
   weight: SpotWeight,
   band?: Rect,
+  allowed: SpotAllowed = anywhere,
 ): Point {
   let chosen: Point | null = null;
   let total = 0;
@@ -303,15 +330,15 @@ function weighedPoint(
         ? randomFreePosition(game.world, radius, rng)
         : randomFreePositionIn(game.world, band, radius, rng);
     if (point === null) break;
-    if (distanceToPlayers(game, point) < clearance) continue;
+    if (!allowed(point) || distanceToPlayers(game, point) < clearance) continue;
     const share = Math.max(0, weight(game, point));
     total += share;
     if (share > 0 && rng() * total < share) chosen = point;
   }
   if (chosen !== null) return chosen;
   return band === undefined
-    ? scatterPoint(game, rng, radius, clearance)
-    : bandPoint(game, rng, radius, clearance, band);
+    ? scatterPoint(game, rng, radius, clearance, allowed)
+    : bandPoint(game, rng, radius, clearance, band, allowed);
 }
 
 function scatterCount(game: Session, count: SpawnCount): number {
@@ -321,16 +348,24 @@ function scatterCount(game: Session, count: SpawnCount): number {
 }
 
 /**
- * `weight` times each spot's danger weight, the one monsters spawn by, raised to `danger`;
- * `weight` as it is when `danger` is 0.
+ * `weight` times each spot's danger weight raised to `danger`: the one monsters spawn by, with
+ * any of its terms `terms` sets in place of the world's. `weight` as it is when `danger` is 0.
  */
 function withDanger(
   weight: SpotWeight | undefined,
   danger: number,
+  terms: Partial<DangerConfig> | undefined,
 ): SpotWeight | undefined {
   if (danger === 0) return weight;
-  return (game, at) =>
-    (weight?.(game, at) ?? 1) * dangerWeight(game.world, at) ** danger;
+  return (game, at) => {
+    const config =
+      terms === undefined
+        ? game.world.layout.danger
+        : { ...game.world.layout.danger, ...terms };
+    return (
+      (weight?.(game, at) ?? 1) * dangerWeight(game.world, at, config) ** danger
+    );
+  };
 }
 
 /**
@@ -346,7 +381,14 @@ export function scatterEach(
 ): void {
   const rng = mulberry32(game.seed ^ scatter.seed);
   const count = scatterCount(game, scatter.count);
-  const weight = withDanger(scatter.weight, scatter.danger ?? 0);
+  const weight = withDanger(
+    scatter.weight,
+    scatter.danger ?? (scatter.terms === undefined ? 0 : 1),
+    scatter.terms,
+  );
+  const offRoad = scatter.offRoad ?? 0;
+  const allowed: SpotAllowed =
+    offRoad <= 0 ? anywhere : (at) => roadDistanceAt(game.world, at) >= offRoad;
   for (let i = 0; i < count; i++) {
     const { clearance } = scatter;
     let at: Point;
@@ -354,12 +396,20 @@ export function scatterEach(
       const band = xBand(game, i, count);
       at =
         weight === undefined
-          ? bandPoint(game, rng, radius, clearance, band)
-          : weighedPoint(game, rng, radius, clearance, weight, band);
+          ? bandPoint(game, rng, radius, clearance, band, allowed)
+          : weighedPoint(game, rng, radius, clearance, weight, band, allowed);
     } else if (weight === undefined) {
-      at = scatterPoint(game, rng, radius, clearance);
+      at = scatterPoint(game, rng, radius, clearance, allowed);
     } else {
-      at = weighedPoint(game, rng, radius, clearance, weight);
+      at = weighedPoint(
+        game,
+        rng,
+        radius,
+        clearance,
+        weight,
+        undefined,
+        allowed,
+      );
     }
     place(at, rng);
   }
@@ -463,6 +513,11 @@ interface ItemBase extends Omit<
   readonly plays?: ItemPlays;
   /** A way it carries voice between players past the air, if any: a walkie talkie, say. */
   readonly voice?: VoiceChannel;
+  /**
+   * Runs as the item is registered with a new session: to enlist it with what the world does for
+   * every body, such as watching bodies fall.
+   */
+  register?(game: Session): void;
   /** Runs on the host, each step, once the entities have moved: for the rules the item keeps. */
   step?(game: Session, dt: number): void;
   /**
@@ -516,6 +571,7 @@ export function defineItem<N extends string, C>(
         emoji: spec.emoji,
         ...(spec.emojiFor !== undefined && { emojiFor: spec.emojiFor }),
         ...(spec.glint !== undefined && { glint: spec.glint }),
+        ...(spec.onlyInDeepdark === true && { onlyInDeepdark: true }),
         ...(traits.weight !== undefined && { weight: traits.weight }),
         ...(spec.drop !== undefined && { drop: spec.drop }),
         ...(spec.breaks !== undefined && { breaks: spec.breaks }),
@@ -556,6 +612,7 @@ export function defineItem<N extends string, C>(
           registerItem(game, item, behaviour);
           registerWorldItems(game);
           if (voice !== undefined) addVoiceChannel(game, voice);
+          spec.register?.(game);
           if (spec.startingSlot === undefined) return;
           placeItem(game.starting, spec.startingSlot, item);
           placeItem(game.local.inventory, spec.startingSlot, item);

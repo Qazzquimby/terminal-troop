@@ -7,7 +7,13 @@ import { lootContent, pickLoot } from "./loot.js";
 import type { LootConfig } from "./loot.js";
 import { createSession } from "./session.js";
 import type { Session } from "./session.js";
-import { danger as dangerOf, isAreaFree } from "./map.js";
+import {
+  danger as dangerOf,
+  isAreaFree,
+  remoteness,
+  roadDistanceAt,
+} from "./map.js";
+import type { Scatter } from "./content.js";
 import type { WorldConfig } from "./map.js";
 
 const DANGER: LootConfig["danger"] = {
@@ -247,4 +253,56 @@ test("an item scattered by itself, as scrap is, favours dangerous spots by its s
   expect(meanDanger(bolts(200, 1))).toBeGreaterThan(
     meanDanger(bolts(200, 0)) + 0.1,
   );
+});
+
+/** A world of only `count` nuts, laid by their own scatter, `extra` added to it. */
+function nuts(count: number, extra: Partial<Scatter> = {}): Session {
+  const game = createSession(
+    "me",
+    "ME",
+    "LOOT",
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  const nut = defineItem("nut", () => ({
+    name: "Nut",
+    emoji: "?",
+    scatter: { count, seed: 5, clearance: 0, ...extra },
+  })).create({ nut: undefined });
+  registerContent(game, [nut]);
+  nut.populate(game);
+  return game;
+}
+
+const onRoad = (game: Session) =>
+  spots(game).filter((spot) => roadDistanceAt(game.world, spot) === 0).length;
+
+test("a scatter kept off the road never lays on it, spread, weighted or not", () => {
+  // Unweighted, some land on the road, so the test can see the rule at work.
+  expect(onRoad(nuts(300))).toBeGreaterThan(0);
+  expect(onRoad(nuts(300, { offRoad: 1 }))).toBe(0);
+  expect(onRoad(nuts(300, { offRoad: 1, danger: 1 }))).toBe(0);
+  expect(onRoad(nuts(60, { offRoad: 1, spread: "x" }))).toBe(0);
+  expect(spots(nuts(300, { offRoad: 1 }))).toHaveLength(300);
+});
+
+test("a scatter kept further off the road keeps at least that many cells from it", () => {
+  const game = nuts(200, { offRoad: 3 });
+  for (const spot of spots(game))
+    expect(roadDistanceAt(game.world, spot)).toBeGreaterThanOrEqual(3);
+});
+
+test("a scatter's own terms weigh distance from the road and across the world as it says", () => {
+  const meanRoad = (game: Session) =>
+    meanBy(spots(game), (spot) => remoteness(game.world, spot).road);
+  const meanAcross = (game: Session) =>
+    meanBy(spots(game), (spot) => remoteness(game.world, spot).across);
+  const flat = { road: 0, right: 0, exit: 0 };
+  const even = nuts(300, { terms: flat });
+  const roadward = nuts(300, { terms: { ...flat, road: 20 } });
+  const rightward = nuts(300, { terms: { ...flat, right: 20 } });
+  expect(meanRoad(roadward)).toBeGreaterThan(meanRoad(even) + 0.05);
+  expect(meanAcross(rightward)).toBeGreaterThan(meanAcross(even) + 0.1);
+  expect(meanAcross(roadward)).toBeLessThan(meanAcross(rightward));
 });

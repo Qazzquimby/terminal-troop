@@ -25,7 +25,7 @@ export type {
 } from "./entities.js";
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
-export { soundDrop, spawnWorldItem } from "./world-items.js";
+export { pickupTarget, soundDrop, spawnWorldItem } from "./world-items.js";
 export {
   driverOf,
   driversOf,
@@ -34,28 +34,35 @@ export {
   transceiverOf,
   vehicleOf,
 } from "./driving.js";
-export { isAboard, playersOutside } from "./aboard.js";
+export { isAboard, isShutIn, playersOutside } from "./aboard.js";
 export type {
   Handling,
   Impact,
   Storage,
+  VehicleDoor,
+  VehicleGamble,
   VehicleShop,
   VehicleSpec,
   Ware,
 } from "./driving.js";
 export {
+  cabinDoor,
+  cabinGamble,
   cabinShop,
   cabinStorage,
   cabinTeleporter,
   putIn,
+  salePrice,
   unseat,
 } from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
-export type { CabinTeleporter } from "./vehicle.js";
+export type { CabinDoor, CabinGamble, CabinTeleporter } from "./vehicle.js";
 export type { Playing } from "./item-sounds.js";
 export { destroyedWalls, destroyWalls, wallCellsIn } from "./walls.js";
 export type { WallArea } from "./walls.js";
+export { closedDoors } from "./doors.js";
+export type { ClosedDoor, Hinge } from "./doors.js";
 export {
   defineEntity,
   defineItem,
@@ -81,7 +88,7 @@ export {
   teleport,
   usesAt,
 } from "./actions.js";
-export type { Action } from "./actions.js";
+export type { Action, Effect } from "./actions.js";
 export type { OutgoingEvent } from "./content-event.js";
 export type {
   Content,
@@ -99,7 +106,8 @@ export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
 export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";
 export { itemInstances, makerOf, spendInstanceUses } from "./item-instances.js";
 export type { ItemInstance } from "./item-instances.js";
-export { onAir, voiceRoutes } from "./voice-routes.js";
+export { addVoiceChannel, onAir, voiceRoutes } from "./voice-routes.js";
+export { ghostEarChannel } from "./ghost-ears.js";
 export type { VoiceChannel, VoiceRoute } from "./voice-routes.js";
 export { lootContent, setDanger } from "./loot.js";
 export type { LootConfig } from "./loot.js";
@@ -152,6 +160,7 @@ export { isGhost, livingPlayers } from "./ghosts.js";
 export {
   CORPSE_ITEM,
   corpseAt,
+  ghostCorpses,
   dropAll,
   isRevivable,
   itemName,
@@ -162,6 +171,7 @@ export { arrivalPoint } from "./arrival.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export {
+  asEntity,
   bodyById,
   engages,
   footprintOf,
@@ -185,12 +195,13 @@ export {
 export type { Eyes, Sight } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
-export { entityWho, falls, rises, who } from "./fallen.js";
+export { entityWho, falls, rises, watchFalls, who } from "./fallen.js";
 export type { Fall, Rise, Who } from "./fallen.js";
 export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
+export type { PlayerData } from "./player-data.js";
 export {
   applyWorldEntries,
   takeWorldEntries,
@@ -215,7 +226,7 @@ export {
   itemsOf,
   takeItem,
 } from "./inventories.js";
-export type { ItemUse } from "./use.js";
+export type { ItemUse, UseSpec } from "./use.js";
 
 export {
   createSession,
@@ -242,6 +253,7 @@ export {
 } from "./vision.js";
 export type {
   LightEmission,
+  LightSource,
   VisibilityPolygon,
   VisionSource,
   WallFace,
@@ -259,11 +271,16 @@ export {
   ambientLightAt,
   ambientPolygons,
   darkSources,
+  frontsNow,
   inDarkness,
+  intoDeepdark,
+  isDeepdark,
+  nearDeepdark,
   isLit,
   isLitTo,
 } from "./light.js";
 export type { DarkSource } from "./light.js";
+export { darkFront, deepFront, frontAt, hearFronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
 export { areaAt } from "./map.js";
 export type { AmbientLight } from "./light.js";

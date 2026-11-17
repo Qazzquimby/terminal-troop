@@ -46,10 +46,18 @@ interface ScrapLook {
   readonly emoji: string;
   /** The colour it glows and glints in, if any. */
   readonly glint?: string;
+  /** Whether, lying in the world, it is perceived only in deepdark. */
+  readonly onlyInDeepdark?: boolean;
   /** Its sale's sound file. */
   readonly cashoutUrl: string;
   /** Its clatter's sound file. */
   readonly dropUrl: string;
+}
+
+/** What a kind of scrap does past selling: its own rules, run with the scrap's on the host. */
+export interface ScrapExtras {
+  register?(game: Session): void;
+  step?(game: Session, dt: number): void;
 }
 
 /** The kind of entity scrap sells at. */
@@ -100,14 +108,19 @@ function saleSlot(game: Session, seller: Player, item: string): number | null {
  * player's items and adds the credit to the world, which reach every client with the world state,
  * and every client plays the sale's sound.
  */
-export function defineScrap<N extends string>(id: N, look: ScrapLook) {
+export function defineScrap<
+  N extends string,
+  C extends ScrapConfig = ScrapConfig,
+>(id: N, look: ScrapLook, more?: (config: C) => ScrapExtras) {
   KINDS.add(id);
-  return defineItem(id, (config: ScrapConfig) => {
+  return defineItem(id, (config: C) => {
+    const extras = more?.(config) ?? {};
     const cashout = sound({ url: look.cashoutUrl, volume: config.volume });
     return {
       name: look.name,
       emoji: look.emoji,
       ...(look.glint !== undefined && { glint: look.glint }),
+      ...(look.onlyInDeepdark === true && { onlyInDeepdark: true }),
       drop: sound({
         url: look.dropUrl,
         volume: config.volume,
@@ -115,7 +128,11 @@ export function defineScrap<N extends string>(id: N, look: ScrapLook) {
       }),
       traits: config,
       scatter: config.scatter,
-      step(game) {
+      register(game) {
+        extras.register?.(game);
+      },
+      step(game, dt) {
+        extras.step?.(game, dt);
         const due = nextSale.get(game) ?? new Map<string, number>();
         nextSale.set(game, due);
         for (const seller of game.players.values()) {

@@ -62,6 +62,8 @@ const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 export interface StalkerConfig extends Watching {
   /** How the world's spawner brings them. */
   readonly spawning: SpawningConfig;
+  /** Whether it opens the closed doors in its way rather than bashing them down. */
+  readonly opensDoors?: boolean;
   readonly radius: number;
   readonly maxHealth: number;
   /** Its speed, in pixels a second. */
@@ -446,6 +448,7 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
+    opensDoors: config.opensDoors ?? false,
     data: StalkerState,
     // It needs no eyes to know where bodies are, but it has them: it sees as a player does,
     // down its facing.
