@@ -42,6 +42,7 @@ import {
   isSolid,
   isVisible,
   perceives,
+  pickupTarget,
   stunLeft,
   lightSources,
   litWalls,
@@ -387,6 +388,31 @@ function drawStamina(
   ctx.fillRect(x - 1, y - 1, width + 2, 6);
   ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
   ctx.fillRect(x, y, (width * value) / max, 4);
+}
+
+/** The colour of the ring round the item interacting would pick up. */
+const TARGET_RING = "#ffe37a";
+
+/**
+ * A pulsing ring round `item`, the lying item interacting would pick up now, so the player sees
+ * which of several at its feet it would take.
+ */
+function drawPickupTarget(
+  ctx: CanvasRenderingContext2D,
+  item: Point & { readonly radius: number },
+  now: number,
+): void {
+  const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 3);
+  ctx.save();
+  ctx.strokeStyle = TARGET_RING;
+  ctx.globalAlpha = 0.55 + 0.35 * pulse;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = TARGET_RING;
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(item.x, item.y, item.radius + 3 + pulse * 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** A red health bar at `barY`, shown only once a body that can fall has taken damage. */
@@ -1446,6 +1472,11 @@ export function draw(
   }
   applyCamera(ctx, camera, () => {
     drawRipples(ctx, ripples.config, rings, now, camera);
+    // The item E would pick up, chosen as the interaction chooses it, on the simulation proper,
+    // and drawn where the view shows it.
+    const target = eye.kind === "self" ? pickupTarget(simulation) : null;
+    const shown = target === null ? undefined : game.entities.get(target.id);
+    if (shown !== undefined) drawPickupTarget(ctx, shown, now);
     // Inside a vehicle, the viewer is out of sight in it, as every other occupant is.
     if (!isAboard(viewer)) drawPlayer(ctx, game, viewer, viewer === game.local);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - PLAYER_BAR_ABOVE);

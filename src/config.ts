@@ -83,6 +83,26 @@ const EXIT_REACH = 20;
  */
 const DORMANT_BEYOND = CELL * 50;
 
+// Scanners keep a flashlight's power: five minutes of battery, a use a second switched on.
+// Each senses its targets 20 cells out, past a flashlight's 14, beeping every 1.5s for one at
+// the edge of that, down to 8 times a second for one at its feet dead ahead; behind its
+// holder a target counts a quarter as much as ahead. Its beep is heard, and is a noise, 4
+// cells round; its click a cell. Uncommon, a little rarer than a flare gun, and light.
+const SCANNER = {
+  weight: 2,
+  uses: 300,
+  loot: { weight: 5, rarity: "uncommon" },
+  range: CELL * 20,
+  slowest: 1.5,
+  fastest: 0.125,
+  behind: 0.25,
+  drain: 1,
+  cooldown: 0.25,
+  volume: 0.5,
+  beepRange: CELL * 4,
+  clickRange: CELL,
+} as const;
+
 export const config = {
   // A road 8 to 24 cells wide meanders left to right, bending every 16 columns by up to 8 rows,
   // with 3 to 7 cells of yard either side: clutter by a tenth of the tries by the road, nine
@@ -433,6 +453,8 @@ export const config = {
           { item: "flashlight", price: 3 },
           { item: "shovel", price: 3 },
           { item: "flareGun", price: 4 },
+          { item: "itemScanner", price: 4 },
+          { item: "monsterScanner", price: 4 },
           { item: "teleporter", price: 5 },
           { item: "bomb", price: 6 },
           { item: "pocketball", price: 6 },
@@ -1325,6 +1347,8 @@ export const config = {
       volume: 0.7,
       placeNoiseRadius: CELL * 1.5,
     },
+    itemScanner: SCANNER,
+    monsterScanner: SCANNER,
     // Three flares, each shot 10 cells, at most one a second. Its pop is heard 12 cells off, quieter
     // than a handgun. As common as a stun trap, and light.
     flareGun: {

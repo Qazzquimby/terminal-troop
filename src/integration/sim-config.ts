@@ -628,6 +628,21 @@ export const testEntitiesConfig = {
   },
 } satisfies EntitiesConfig;
 
+/** A scanner sensing 1000px out, beeping every 2s at the edge down to 10 times a second. */
+const TEST_SCANNER = {
+  weight: 0,
+  uses: 100,
+  range: 1000,
+  slowest: 2,
+  fastest: 0.1,
+  behind: 0.25,
+  drain: 1,
+  cooldown: 0.25,
+  volume: 1,
+  beepRange: 200,
+  clickRange: 50,
+};
+
 /**
  * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
  * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
@@ -723,6 +738,8 @@ export const testItemsConfig: ItemsConfig = {
     volume: 1,
     clickNoiseRadius: 50,
   },
+  itemScanner: TEST_SCANNER,
+  monsterScanner: TEST_SCANNER,
   corpse: { weight: 50, volume: 1 },
   bandage: {
     weight: 0,

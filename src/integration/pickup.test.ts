@@ -7,6 +7,7 @@ import {
   defineItem,
   giveItem,
   itemIn,
+  pickupTarget,
   remotePlayers,
   removeEntity,
   sound,
@@ -212,12 +213,13 @@ test("the host picks up a bolt of its own the same way", async () => {
   expect(carried(host)).toEqual(["bolt", null, null, null]);
 });
 
-test("the nearest bolt touching the player is the one picked up", async () => {
+test("the nearest bolt touching the player is the one highlighted, and the one picked up", async () => {
   const { get, host, exchange } = await crew("a", "b");
   const far = layBolt(host, exchange, { x: SPOT.x + 18, y: SPOT.y });
   const near = layBolt(host, exchange, { x: SPOT.x - 6, y: SPOT.y });
   place(get("b"), SPOT);
   exchange();
+  expect(pickupTarget(sessionOf(get("b")))?.id).toBe(near.id);
   exchange({ b: reach });
   expect(sessionOf(host).entities.has(near.id)).toBe(false);
   expect(sessionOf(host).entities.has(far.id)).toBe(true);
@@ -237,6 +239,22 @@ test("two guests reaching for one bolt in the same step: exactly one gets it", a
   expect(bolts.sort((x, y) => x - y)).toEqual([0, 1]);
   for (const id of ["a", "b", "c"])
     expect(sessionOf(get(id)).entities.has(lying.id)).toBe(false);
+});
+
+test("nothing is highlighted out of reach, or with a full inventory", async () => {
+  const { get, host, exchange } = await crew("a", "b");
+  const b = get("b");
+  layBolt(host, exchange);
+  expect(pickupTarget(sessionOf(b))).toBeNull();
+  place(b, SPOT);
+  exchange();
+  expect(pickupTarget(sessionOf(b))).not.toBeNull();
+  sessionOf(b).local.inventory = sessionOf(b).local.inventory.map(() => ({
+    id: "bolt",
+    name: "Bolt",
+    emoji: "🔩",
+  }));
+  expect(pickupTarget(sessionOf(b))).toBeNull();
 });
 
 test("a guest reaching for nothing it touches picks up nothing", async () => {
