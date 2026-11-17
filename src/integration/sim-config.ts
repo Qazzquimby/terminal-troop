@@ -592,6 +592,7 @@ export const testEntitiesConfig = {
     speed: 240,
     sightRange: 500,
     darkRadius: 250,
+    lightBlindHandicap: 100,
     followDistance: 100,
     leash: 800,
     repathInterval: 0.5,

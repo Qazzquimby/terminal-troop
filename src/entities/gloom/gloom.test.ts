@@ -118,7 +118,7 @@ const distance = (a: Point, b: Point): number =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
 describe("gloom", () => {
-  test("it follows the body it sees of the rarest kind that shuns light, never one that pays light no mind", () => {
+  test("it follows the body it sees of the rarest kind that shuns light over one that pays light no mind", () => {
     const game = world();
     const self = gloomAt(game, { x: 450, y: 300 });
     // Nearest of all, but light is nothing to a mine layer.
@@ -141,6 +141,21 @@ describe("gloom", () => {
     run(game, DT);
     expect(stateOf(self).followee).toBe(rare.id);
     expect(sounded(game, "latch.mp3")).toBe(true);
+  });
+
+  test("with no kind that shuns light in sight, it follows one that pays light no mind, never another gloom", () => {
+    const game = world();
+    const self = gloomAt(game, { x: 450, y: 300 });
+    gloomAt(game, { x: 470, y: 300 });
+    const layer = spawnEntity(
+      game,
+      "mineLayer",
+      550,
+      300,
+      freshMineLayer(game.worldTime, layerConfig),
+    );
+    run(game, DT);
+    expect(stateOf(self).followee).toBe(layer.id);
   });
 
   test("among kinds as rare, it follows the nearest", () => {
