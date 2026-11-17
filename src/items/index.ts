@@ -19,6 +19,8 @@ import { pocketball } from "./pocketball/index.js";
 import { bomb } from "./bomb/index.js";
 import { flareGun } from "./flare-gun/index.js";
 import { itemScanner, monsterScanner } from "./scanner/index.js";
+import { heart } from "./heart/index.js";
+import { ghostWalkie } from "./ghost-walkie/index.js";
 
 export { credit } from "./scrap/index.js";
 
@@ -47,6 +49,8 @@ const ITEMS = [
   flareGun,
   itemScanner,
   monsterScanner,
+  heart,
+  ghostWalkie,
 ] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */
