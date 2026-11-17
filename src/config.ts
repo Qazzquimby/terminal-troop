@@ -1584,7 +1584,7 @@ export const config = {
       radius: 18,
       damage: 8,
       knockback: 1.6,
-      cooldown: 0.8,
+      cooldown: 1.2,
       stamina: STAMINA_MAX * 0.2,
       lunge: { lengths: 1, seconds: 0.08 },
       noiseRadius: CELL * 6,
