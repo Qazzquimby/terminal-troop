@@ -129,6 +129,11 @@ export interface EntityDefinition<S> {
    */
   readonly seenInDark?: boolean;
   /**
+   * Whether it passes itself off as a wall: wherever it shows, the cell it stands in is drawn as
+   * a wall cell, joined to the walls round it as they join one another.
+   */
+  readonly posesAsWall?: boolean;
+  /**
    * Whether, given its state, no body perceives it but while it lies in deepdark: out of it, it
    * is neither drawn, found among bodies, heard nor picked up. Every body perceives a kind without
    * it wherever it is; `perceives` judges it for every rule.
@@ -241,6 +246,8 @@ export interface EntityType {
   /** The one body that perceives it, when `restricted`; null for none. */
   perceiver(entity: WorldEntity): string | null;
   readonly seenInDark: boolean;
+  /** Whether the cell it stands in is drawn as a wall wherever it shows. */
+  readonly posesAsWall: boolean;
   /** Whether it is perceived only while it lies in deepdark. */
   onlyInDeepdark(entity: WorldEntity, game: Session): boolean;
   minimap(
@@ -347,6 +354,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       return parsed.success ? perceivedBy(entity, parsed.data) : null;
     },
     seenInDark: definition.seenInDark ?? false,
+    posesAsWall: definition.posesAsWall ?? false,
     onlyInDeepdark(entity, game) {
       const { onlyInDeepdark } = definition;
       // Most kinds show anywhere, and pay nothing to parse their state for it.
