@@ -14,7 +14,7 @@ import {
   playersOutside,
   push,
   reachAlong,
-  rounded,
+  rounded, sound,
   touches,
   unseat,
 } from "../../sim/index.js";
@@ -31,12 +31,34 @@ import type {
 } from "../../sim/index.js";
 // Its engine, crash and breakdown sounds, once their assets land; importing a missing file breaks
 // the build. Until then each makes its noise without a sound.
-// import idleUrl from "./sfx/idle.mp3";
-// import engineUrl from "./sfx/engine.mp3";
-// import crashUrl from "./sfx/crash.mp3";
-// import ramUrl from "./sfx/ram.mp3";
+import idleUrl from "./sfx/idle.mp3";
+import engineUrl from "./sfx/engine.mp3";
+import crashUrl from "./sfx/crash.mp3";
+import ramUrl from "./sfx/ram.mp3";
 // import breakdownUrl from "./sfx/breakdown.mp3";
-// import hornUrl from "./sfx/horn.mp3";
+import hornUrl from "./sfx/horn.mp3";
+
+const idleSound = sound({
+  url: idleUrl,
+  volume: 0.2,
+  range: 6,
+  noise: false,
+});
+const engineSound = sound({
+  url: engineUrl,
+  volume: 0.4,
+  range: 20,
+});
+const crashSound = sound({
+  url: crashUrl,
+  volume: 0.8,
+  range: 34
+})
+const ramSound = sound({
+  url: ramUrl,
+  volume: 0.5,
+  range: 22
+})
 
 /** How often the engine is heard, and how far. Seconds, pixels. */
 interface EngineBeat {
@@ -135,7 +157,7 @@ const isPowered = (vehicle: WorldEntity): boolean => stateOf(vehicle).fuel > 0;
  * down the walls it crashes into, and has a horn.
  */
 export function vehicle(config: DrivingConfig): VehicleSpec {
-  // const hornSound = sound({ url: hornUrl, volume: config.horn.volume, range: config.horn.noiseRadius });
+  const hornSound = sound({ url: hornUrl, volume: config.horn.volume, range: config.horn.noiseRadius });
   return {
     handling: config.handling,
     reach: config.reach,
@@ -150,7 +172,7 @@ export function vehicle(config: DrivingConfig): VehicleSpec {
         at: { x: entity.x, y: entity.y },
         noise: config.horn.noiseRadius,
         tags: [HORN_TAG],
-        // sound: hornSound,
+        sound: hornSound,
       });
     },
   };
@@ -181,7 +203,7 @@ function crash(
       at: impact.area.center,
       flash: { radius: entity.radius, hit: true },
       noise: config.crash.noiseRadius,
-      // sound: crashSound,
+      sound: crashSound,
     },
     driver,
   );
@@ -266,7 +288,7 @@ function ram(
         at: { x: body.x, y: body.y },
         flash: { radius: body.radius * 2, hit: true },
         noise: config.ram.noiseRadius,
-        // sound: ramSound,
+        sound: ramSound,
       },
       driver,
     );
@@ -302,7 +324,7 @@ function runEngine(
       at: { x: entity.x, y: entity.y },
       noise: beat.radius,
       tags: [ENGINE_TAG],
-      // sound: driving === null ? idleSound : engineSound,
+      sound: driving === null ? idleSound : engineSound,
     },
     driving ?? entity,
   );
