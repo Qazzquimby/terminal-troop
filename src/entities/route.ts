@@ -1,6 +1,7 @@
 import { findNearest, findPath } from "../lib/astar/index.js";
 import type { Cell, Grid } from "../lib/astar/index.js";
 import {
+  closedDoors,
   darkSources,
   emittedLights,
   isAreaFree,
@@ -8,7 +9,7 @@ import {
   isShrouded,
   isSweepFree,
 } from "../sim/index.js";
-import type { Point, Session, TileMap } from "../sim/index.js";
+import type { ClosedDoor, Point, Session, TileMap } from "../sim/index.js";
 
 /** Longest route a monster keeps; a longer one is not taken. */
 export const MAX_WAYPOINTS = 32;
@@ -159,6 +160,43 @@ function breakingToll(
   };
 }
 
+/** `map` with the cells of `doors` open: as a body that would get through them plans on it. */
+function doorsOpen(map: Grid, doors: ReadonlyMap<number, ClosedDoor>): Grid {
+  if (doors.size === 0) return map;
+  const solid = map.solid.slice();
+  for (const index of doors.keys()) solid[index] = 0;
+  return { cols: map.cols, rows: map.rows, solid };
+}
+
+/**
+ * The toll a body filling `reach` cells round its own pays for each step that brings a closed door
+ * of `doors` into what it fills: that door's toll, the dearest of them if more than one. Its first
+ * step, from `start`, pays for any it fills at all, as `breakingToll` has it.
+ */
+function doorToll(
+  cols: number,
+  doors: ReadonlyMap<number, ClosedDoor>,
+  reach: number,
+  start: Cell,
+): (from: Cell, to: Cell) => number {
+  return (from, to) => {
+    const first = from.col === start.col && from.row === start.row;
+    let toll = 0;
+    for (let row = to.row - reach; row <= to.row + reach; row++)
+      for (let col = to.col - reach; col <= to.col + reach; col++) {
+        if (col < 0 || row < 0 || col >= cols) continue;
+        const door = doors.get(row * cols + col);
+        if (door === undefined) continue;
+        const filled =
+          !first &&
+          Math.abs(col - from.col) <= reach &&
+          Math.abs(row - from.row) <= reach;
+        if (!filled) toll = Math.max(toll, door.toll);
+      }
+    return toll;
+  };
+}
+
 /** The open cell of `grid` nearest `cell`, searched out `rings` cells round it; null for none. */
 function nearestOpen(grid: Grid, cell: Cell, rings: number): Cell | null {
   let best: Cell | null = null;
@@ -187,6 +225,11 @@ function nearestOpen(grid: Grid, cell: Cell, rings: number): Cell | null {
  * A body that breaks walls gives `wallCost`: how many cells it could walk in the time it takes to
  * break through the walls in its way. Its route then goes through a wall wherever breaking it is
  * quicker than walking round, the world's edge alone stopping it, and leaves the breaking to it.
+ * A closed door is one of those walls to it.
+ *
+ * Any other body's route goes through a closed door `throughDoors`, as a body that wants to be on
+ * the other side does, wherever the door's toll is less than the walk round; it ends up pressing the
+ * door, which opens or bashes it. A wanderer passes false, and keeps to the open ways.
  */
 export function planRoute(
   map: TileMap,
@@ -195,17 +238,27 @@ export function planRoute(
   to: Point,
   avoid?: Avoid,
   wallCost?: number,
+  throughDoors = true,
 ): Point[] | null {
   const reach = reachOf(map, half);
-  const grid = inflated(wallCost === undefined ? map : unwalled(map), reach);
+  const doors =
+    throughDoors && wallCost === undefined
+      ? closedDoors(map)
+      : new Map<number, ClosedDoor>();
+  const grid = inflated(
+    wallCost === undefined ? doorsOpen(map, doors) : unwalled(map),
+    reach,
+  );
   const rings = reach === 0 ? 0 : reach + 1;
   const start = nearestOpen(grid, cellOf(map, from), rings);
   const goal = nearestOpen(grid, cellOf(map, to), rings);
   if (start === null || goal === null) return null;
   const toll =
-    wallCost === undefined
-      ? undefined
-      : breakingToll(map, reach, wallCost, start);
+    wallCost !== undefined
+      ? breakingToll(map, reach, wallCost, start)
+      : doors.size > 0
+        ? doorToll(map.cols, doors, reach, start)
+        : undefined;
   const cells = findPath(grid, start, goal, avoid, toll);
   const last = cells?.at(-1);
   if (cells === null || last === undefined) return null;

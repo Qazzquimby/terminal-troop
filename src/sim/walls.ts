@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Point, TileMap } from "./map.js";
 import type { Session } from "./session.js";
+import { isDoorCell } from "./doors.js";
 import { worldData } from "./world-data.js";
 
 /**
@@ -58,7 +59,12 @@ export function wallCellsIn(map: TileMap, area: WallArea): number[] {
   for (let row = minRow; row <= maxRow; row++)
     for (let col = minCol; col <= maxCol; col++) {
       const index = row * cols + col;
-      if (map.solid[index] === 1 && cellOverlaps(map, col, row, area))
+      // A door's cell comes down by the door's health alone.
+      if (
+        map.solid[index] === 1 &&
+        !isDoorCell(map, index) &&
+        cellOverlaps(map, col, row, area)
+      )
         cells.push(index);
     }
   return cells;

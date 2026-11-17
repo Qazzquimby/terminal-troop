@@ -111,6 +111,7 @@ describe("content events", () => {
         ],
       ],
       ["core/actions", ["effects"]],
+      ["core/doors", ["swing"]],
     ]);
   });
 

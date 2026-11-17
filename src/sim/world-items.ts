@@ -29,6 +29,7 @@ import {
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { controlHeldItem } from "./use.js";
+import { useDoor } from "./door-actions.js";
 import { useVehicle } from "./vehicle.js";
 
 /** How items lie in the world. Distances in pixels, times in sim seconds. */
@@ -315,6 +316,7 @@ export function interact(game: Session): void {
     return;
   }
   if (useVehicle(game)) return;
+  if (useDoor(game)) return;
   controlHeldItem(game);
 }
 
