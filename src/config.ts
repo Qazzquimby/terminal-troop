@@ -527,7 +527,7 @@ export const config = {
       ignores: ["player"],
       armSeconds: 3,
       sight: { angle: Math.PI / 18, range: CELL * 12 },
-      turnSeconds: 3,
+      turnSeconds: 5,
       shot: {
         damage: SHOVEL_DAMAGE * 2,
         range: CELL * 12,
