@@ -20,10 +20,10 @@ import type {
 import type { SpawnRule } from "../../sim/index.js";
 
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
-const openUrl = new URL("./sfx/open.mp3", import.meta.url).href;
-const closeUrl = new URL("./sfx/close.mp3", import.meta.url).href;
-const hitUrl = new URL("./sfx/hit.mp3", import.meta.url).href;
-const breakUrl = new URL("./sfx/break.mp3", import.meta.url).href;
+const openUrl = new URL("./sfx/open.wav", import.meta.url).href;
+const closeUrl = new URL("./sfx/close.wav", import.meta.url).href;
+const hitUrl = new URL("./sfx/hit.wav", import.meta.url).href;
+const breakUrl = new URL("./sfx/break.wav", import.meta.url).href;
 
 /** How doors are laid in a new world, and how they stand up to the bodies that meet them. */
 export interface DoorConfig {
