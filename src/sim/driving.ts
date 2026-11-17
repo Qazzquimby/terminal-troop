@@ -14,8 +14,9 @@ import type { WallArea } from "./walls.js";
 
 /**
  * A player inside a vehicle: which, and whether it is at the wheel. Inside, the player is where
- * the vehicle is, shut in it: nothing out in the world sees, targets, strikes or bumps into it,
- * though what it says is still heard from there. Any number may be inside, and any number of
+ * the vehicle is: nothing out in the world bumps into it, and behind a closed door (see
+ * `VehicleDoor`) nothing sees, targets or strikes it either, though what it says is still heard
+ * from there. Any number may be inside, and any number of
  * those at the wheel at once. Their steers add up, each way clamped to full (see `wheelOf`), and
  * the one leading them (see `driverOf`) drives the vehicle on that sum, on every client that runs
  * it; the host puts the vehicle where the lead is. The others at the wheel go along with the lead,
@@ -46,7 +47,8 @@ export const RideWire = z
 
 /**
  * What a player inside a vehicle asks of it from its cabin: to take the wheel, sound the horn,
- * get out, tune its radio to the next station (switching it on), or switch its radio off; to stow
+ * get out, tune its radio to the next station (switching it on), switch its radio off, or open or
+ * close its door; to stow
  * the item in its own slot `stow` in the vehicle's storage, in its slot `into` or the first empty
  * one; to take the item in the storage's slot `unstow`; to buy the item `buy` at the vehicle's
  * shop; or to teleport the body `teleport` to the vehicle.
@@ -57,6 +59,7 @@ export type CabinCommand =
   | "exit"
   | "radio"
   | "radioOff"
+  | "door"
   | { readonly stow: number; readonly into?: number }
   | { readonly unstow: number }
   | { readonly buy: string }
@@ -77,6 +80,22 @@ export interface VehicleTeleporter {
   sending(game: Session, vehicle: WorldEntity): string | null;
   /** Sends for `target`, out in the world, by `by` inside `vehicle`, as part of an action. */
   send(game: Session, vehicle: WorldEntity, by: Player, target: Body): void;
+}
+
+/**
+ * A vehicle's door, which anyone inside opens or closes. Open, those inside are in reach of the
+ * world, seen, targeted and struck where the vehicle is like any body out there; closed, they are
+ * shut away from it. Closing it may cost the vehicle something, by whatever rule it has.
+ */
+export interface VehicleDoor {
+  /** Whether it is closed now, as this client has it. Read on every client. */
+  closed(vehicle: WorldEntity): boolean;
+  /** Whether it may be closed now; read on every client to check the action. */
+  canClose(vehicle: WorldEntity): boolean;
+  /** How much of its power it has left, 0..1, as this client has it, for the cabin to show. */
+  charge(vehicle: WorldEntity): number;
+  /** Opens it, or closes it with `close`, by `by` inside `vehicle`, as part of an action. */
+  swing(game: Session, vehicle: WorldEntity, by: Player, close: boolean): void;
 }
 
 /** A vehicle's storage: items anyone inside may leave in it, or take out. */
@@ -161,6 +180,10 @@ export interface VehicleSpec {
    * inside may transmit on it. Never when left out.
    */
   readonly transceiver?: boolean;
+  /**
+   * Its door; when left out it has none, and those inside are always shut away from the world.
+   */
+  readonly door?: VehicleDoor;
   /** Its teleporter, which brings bodies to it; none when left out. */
   readonly teleporter?: VehicleTeleporter;
   /** Its radio, turned by `by` inside it, as part of an action. None when left out. */

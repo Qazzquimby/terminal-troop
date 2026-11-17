@@ -10,6 +10,7 @@ import {
   inCone,
   inView,
   isAboard,
+  isShutIn,
   isAreaFree,
   isGone,
   livingPlayers,
@@ -486,8 +487,12 @@ function disappearing(
 }
 
 /** Whether she touches `target`, out in the world. */
-const touchesTarget = (self: WorldEntity, target: Body): boolean =>
-  !isAboard(target) &&
+const touchesTarget = (
+  game: Session,
+  self: WorldEntity,
+  target: Body,
+): boolean =>
+  !isShutIn(game, target) &&
   Math.hypot(target.x - self.x, target.y - self.y) <=
     self.radius + target.radius + 1;
 
@@ -534,7 +539,7 @@ function chasing(
   return strikeIf(
     state,
     now,
-    touchesTarget(self, target),
+    touchesTarget(game, self, target),
     config.contact.interval,
   );
 }

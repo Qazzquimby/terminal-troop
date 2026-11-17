@@ -365,6 +365,8 @@ export function updateSession(
     if (acting.use) useHeldItem(game);
     if (acting.interact) interact(game);
     if (acting.drop) dropHeld(game);
+    // Inside, with nothing to drop, the drop key gets out of the vehicle, wheel or cabin.
+    if (controls.drop && isAboard(game.local)) cabinCommand(game, "exit");
     if (acting.honk === true && game.local.ride?.driving === true)
       cabinCommand(game, "honk");
     if (acting.cabin !== undefined && acting.cabin !== null)

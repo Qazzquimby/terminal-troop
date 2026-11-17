@@ -392,10 +392,22 @@ export const config = {
       // Two headlights at its front, one each side 38px from its middle, by the lamps drawn on
       // it, each a 40 degree cone reaching 12 cells.
       headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 38 },
-      // Everyone in the exit escapes once the cruiser has waited there 20s.
-      escape: { delay: 20, volume: 0.8 },
-      // A corpse carried within a cell of the cruiser's body brings its player back beside it.
-      revive: { reach: CELL, volume: 0.8 },
+      // Everyone in the exit escapes once the cruiser has waited there 20s, and only while the
+      // team has 30$ banked (#402): 30 scrap, about five of the shop's dearer wares. It keeps it.
+      escape: { delay: 20, volume: 0.8, quota: 30 },
+      // A corpse carried within a cell of the cruiser's body brings its player back beside it,
+      // for 6$ of the team's credit, a pocketball's price, into debt if need be (#403).
+      revive: { reach: CELL, volume: 0.8, cost: 6 },
+      // Its door stands open: those inside are seen and struck like anyone where the car is.
+      // Shutting it takes a fifth of its power, and shut it burns a twentieth a second, so a full
+      // door stays shut 16s; open, it charges back to full in 50s. It thunks 3 cells out (#377).
+      door: {
+        close: 0.2,
+        drain: 0.05,
+        recharge: 0.02,
+        volume: 0.8,
+        range: CELL * 3,
+      },
       // Its cabin stores 6 items, 2 rows of 3; an item going in or out clunks a cell off, inside
       // its body, so only something pressed against it hears.
       storage: { slots: 6, noiseRadius: CELL, volume: 0.7 },

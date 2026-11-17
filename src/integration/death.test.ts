@@ -8,6 +8,7 @@ import type { Room } from "../room/index.js";
 import {
   alter,
   CORPSE_ITEM,
+  credit,
   driverOf,
   giveItem,
   hurtPlayer,
@@ -195,7 +196,7 @@ test("ghosts hear each other wherever they are; the living hear no ghost", async
   expect(voiceRoutes(onB, playerOn(room("b"), "a"), onB.local)).toHaveLength(1);
 });
 
-test("a corpse carried to the cruiser brings its player back beside it, alive, on every client", async () => {
+test("a corpse carried to the cruiser brings its player back beside it, alive, on every client, for credit the team may not have", async () => {
   const { rooms, room, run, place } = await crew("a", "b");
   const host = sessionOf(room("a"));
   const reach = testEntitiesConfig.cruiser.revive.reach;
@@ -210,10 +211,15 @@ test("a corpse carried to the cruiser brings its player back beside it, alive, o
   ).toBe(true);
   run(500);
   expect(isGhost(playerOn(room("a"), "b"))).toBe(true);
+  credit.set(host, 2);
   place("a", byCruiser(host, cruiserOf(host).radius + reach / 2));
   run(1000);
   const cruiser = cruiserOf(host);
   for (const each of rooms.values()) {
+    // The revival costs what it costs, into debt.
+    expect(credit.get(sessionOf(each))).toBe(
+      2 - testEntitiesConfig.cruiser.revive.cost,
+    );
     const b = playerOn(each, "b");
     expect(isGhost(b)).toBe(false);
     expect(b.health).toBe(testSimConfig.death.reviveHealth);

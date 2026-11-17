@@ -230,8 +230,9 @@ export const testEntitiesConfig = {
     ram: { speed: 100, damage: 20, cooldown: 0.5, noiseRadius: 500 },
     horn: { noiseRadius: 900, volume: 1 },
     headlights: { range: 400, angle: Math.PI / 4, spread: 7 },
-    escape: { delay: 20, volume: 1 },
-    revive: { reach: 50, volume: 1 },
+    escape: { delay: 20, volume: 1, quota: 0 },
+    revive: { reach: 50, volume: 1, cost: 6 },
+    door: { close: 0.2, drain: 0.05, recharge: 0.02, volume: 1, range: 150 },
     storage: { slots: 6, noiseRadius: 50, volume: 1 },
     shop: {
       wares: [

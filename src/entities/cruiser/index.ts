@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  credit,
   defineEntity,
   effect,
   INERT_TAG,
@@ -23,6 +24,8 @@ import {
 } from "./drive.js";
 import type { DrivingConfig } from "./drive.js";
 import { drawCruiser } from "./draw.js";
+import { door, stepDoor } from "./door.js";
+import type { CruiserDoorConfig } from "./door.js";
 import { stepRevival } from "./revive.js";
 import type { ReviveConfig } from "./revive.js";
 import { stock } from "./stock.js";
@@ -42,6 +45,8 @@ interface EscapeConfig {
   readonly delay: number;
   /** Volume of the departure's sounds, 0..1. */
   readonly volume: number;
+  /** Credit the team must have banked for the cruiser to leave; it keeps it. */
+  readonly quota: number;
 }
 
 /** The cruiser's two headlights, one each side of its front, each a cone like a flashlight's. */
@@ -69,6 +74,7 @@ export interface CruiserConfig extends DrivingConfig, StockConfig {
   readonly escape: EscapeConfig;
   readonly revive: ReviveConfig;
   readonly radio: CruiserRadioConfig;
+  readonly door: CruiserDoorConfig;
 }
 
 const NAME = "cruiser";
@@ -133,15 +139,16 @@ export function departingIn(game: Session, delay: number): number | null {
 }
 
 /**
- * The exit's rule, run on the host each step: once the cruiser comes to the exit a countdown
- * starts, and when it runs out every player in the exit escapes, and the countdown starts afresh
- * for whoever is left. Leaving the exit stops it. Nothing else follows an escape yet.
+ * The exit's rule, run on the host each step: once the cruiser comes to the exit with the team's
+ * quota banked a countdown starts, and when it runs out every player in the exit escapes, and the
+ * countdown starts afresh for whoever is left. Leaving the exit, or the credit dropping short of
+ * the quota, stops it. Nothing else follows an escape yet.
  */
 function stepDeparture(game: Session, config: EscapeConfig): void {
   const held = departure.get(game);
   const at = cruiserAt(game);
   const { exit } = game.world.layout;
-  if (at === null || !inRect(exit, at)) {
+  if (at === null || !inRect(exit, at) || credit.get(game) < config.quota) {
     if (held.since !== null) departure.set(game, { ...held, since: null });
     return;
   }
@@ -170,6 +177,17 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
     );
 }
 
+/**
+ * How much more credit the team needs banked before the cruiser leaves, while it stands in the
+ * exit short of the quota; null while it is away from the exit, or the quota is met.
+ */
+export function shortOfQuota(game: Session, quota: number): number | null {
+  const at = cruiserAt(game);
+  if (at === null || !inRect(game.world.layout.exit, at)) return null;
+  const short = quota - credit.get(game);
+  return short > 0 ? short : null;
+}
+
 /** The cruiser nearest `at`, within `reach` of touching its body; null for none. */
 export const nearCruiser = (
   game: Session,
@@ -180,7 +198,9 @@ export const nearCruiser = (
 /**
  * A car that starts where new players arrive, its two headlights always shining ahead. Anyone
  * beside it may get in, any number at once, fuel or none: inside, nothing out in the world sees
- * or strikes them, though they are heard from it, its horn too. It starts without fuel; once
+ * or strikes them while its door is shut, though they are heard from it, its horn too. Its door
+ * stands open until someone inside shuts it, which takes power, burns more while shut, and swings
+ * open when the power runs out; open, the power charges back up. It starts without fuel; once
  * fuelled its engine runs, and those inside take the wheel, any number together, and drive it,
  * burning fuel as it moves, ramming what it drives into and knocking down the walls it crashes
  * into, until it breaks down. Those inside share a storage, and buy items at its shop with the team's credit.
@@ -210,6 +230,7 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
     ...vehicle(config),
     ...stock(config),
     transceiver: true,
+    door: door(config.door),
     tune: tuner(config.radio),
     station: stationOf,
     teleporter: {
@@ -221,7 +242,8 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   },
   plays: (_entity, state) => radioPlaying(state, config.radio),
   update(entity, state, dt, game) {
-    const next = stepCruiser(game, entity, state, dt, config);
+    const driven = stepCruiser(game, entity, state, dt, config);
+    const next = stepDoor(game, entity, driven, dt, config.door);
     playRadio(game, entity, next, config.radio);
     return next;
   },
@@ -235,6 +257,8 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
   world: { departure },
   step(game) {
     stepDeparture(game, config.escape);
-    stepRevival(game, (at) => nearCruiser(game, at, config.revive.reach));
+    stepRevival(game, config.revive, (at) =>
+      nearCruiser(game, at, config.revive.reach),
+    );
   },
 }));

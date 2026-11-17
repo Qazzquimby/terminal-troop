@@ -26,6 +26,7 @@ import { spawner } from "./spawning.js";
 export {
   departingIn,
   hasEscaped,
+  shortOfQuota,
   nearCruiser,
   refuel,
 } from "./cruiser/index.js";

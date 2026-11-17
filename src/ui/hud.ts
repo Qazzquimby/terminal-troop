@@ -11,8 +11,12 @@ export interface HudConfig {
 export interface HudState {
   readonly inventory: Inventory;
   readonly held: HeldSlot;
-  /** The team's credit. */
+  /** The team's credit; below 0 in debt. */
   readonly credit: number;
+  /** The credit the team must have banked for the cruiser to leave. */
+  readonly quota: number;
+  /** How much more credit the cruiser waits on in the exit; null while it waits on none. */
+  readonly shortOfQuota: number | null;
   /** Whether the local player has escaped. */
   readonly escaped: boolean;
   /** Seconds until the cruiser leaves the exit, while it waits there; null otherwise. */
@@ -86,15 +90,22 @@ export function creditText(credit: number): string {
   return `${String(credit)}$`;
 }
 
+/** The team's credit with the quota it must bank to leave beside it. */
+export const bankedText = (credit: number, quota: number): string =>
+  `${creditText(credit)} / ${creditText(quota)}`;
+
 /**
  * What the departure shows: that the local player escaped, else a countdown to the cruiser leaving
- * the exit, in whole seconds rounded up, else nothing.
+ * the exit, in whole seconds rounded up, else how much more credit it waits on there, else nothing.
  */
 export function departureText(
   escaped: boolean,
   departingIn: number | null,
+  shortOfQuota: number | null = null,
 ): string {
   if (escaped) return "Escaped";
+  if (shortOfQuota !== null)
+    return `Need ${creditText(shortOfQuota)} more to leave`;
   if (departingIn === null) return "";
   return `Leaving in ${String(Math.ceil(departingIn))}s`;
 }
@@ -160,7 +171,7 @@ function slotElement(view: SlotView): HTMLLIElement {
 
 /**
  * The bottom toolbar: every inventory slot, the held one highlighted, with each item's weight and
- * uses left; what everything carried weighs together, the team's credit beside them, and the
+ * uses left; what everything carried weighs together, the team's credit and quota beside them, the
  * departure's countdown, or that the local player escaped. Shown while in a room; hidden by
  * showing null.
  */
@@ -179,7 +190,7 @@ export function createHud(elements: HudElements, config: HudConfig) {
         shownSlots = signature;
         elements.slots.replaceChildren(...views.map(slotElement));
       }
-      const credit = creditText(state.credit);
+      const credit = bankedText(state.credit, state.quota);
       if (credit !== shownCredit) {
         shownCredit = credit;
         elements.credit.textContent = credit;
@@ -189,7 +200,11 @@ export function createHud(elements: HudElements, config: HudConfig) {
         shownWeight = weight;
         elements.weight.textContent = weight;
       }
-      const departure = departureText(state.escaped, state.departingIn);
+      const departure = departureText(
+        state.escaped,
+        state.departingIn,
+        state.shortOfQuota,
+      );
       if (departure !== shownDeparture) {
         shownDeparture = departure;
         elements.departure.textContent = departure;

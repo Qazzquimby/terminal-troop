@@ -34,16 +34,18 @@ export {
   transceiverOf,
   vehicleOf,
 } from "./driving.js";
-export { isAboard, playersOutside } from "./aboard.js";
+export { isAboard, isShutIn, playersOutside } from "./aboard.js";
 export type {
   Handling,
   Impact,
   Storage,
+  VehicleDoor,
   VehicleShop,
   VehicleSpec,
   Ware,
 } from "./driving.js";
 export {
+  cabinDoor,
   cabinShop,
   cabinStorage,
   cabinTeleporter,
@@ -52,7 +54,7 @@ export {
 } from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
-export type { CabinTeleporter } from "./vehicle.js";
+export type { CabinDoor, CabinTeleporter } from "./vehicle.js";
 export type { Playing } from "./item-sounds.js";
 export { destroyedWalls, destroyWalls, wallCellsIn } from "./walls.js";
 export type { WallArea } from "./walls.js";

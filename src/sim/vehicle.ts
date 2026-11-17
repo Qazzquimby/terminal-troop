@@ -9,6 +9,7 @@ import {
   take,
   usesAt,
 } from "./actions.js";
+import { isAboard } from "./aboard.js";
 import { footprintOf, livingBody } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { nearestFreePoint } from "./collision.js";
@@ -381,12 +382,58 @@ const tune = defineAction("tune", {
   },
 });
 
+/** Least time between two swings of a vehicle's door by one player, in sim seconds. */
+const DOOR_COOLDOWN = 0.3;
+
+/**
+ * A player inside a vehicle opening its door when it is closed, or closing it when it is open
+ * and it may be closed.
+ */
+const swingDoor = defineAction("door", {
+  input: z.object({}),
+  cooldown: DOOR_COOLDOWN,
+  check(game, player) {
+    const found =
+      player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+    const door = found?.spec.door;
+    if (found === null || door === undefined) return false;
+    return door.closed(found.entity) || door.canClose(found.entity);
+  },
+  apply(game, player) {
+    const found =
+      player.ride === null ? null : vehicleOf(game, player.ride.vehicle);
+    const door = found?.spec.door;
+    if (found === null || door === undefined) return;
+    door.swing(game, found.entity, player, !door.closed(found.entity));
+  },
+});
+
+/** A vehicle's door as its cabin shows it: whether it is closed, may be closed, and its power. */
+export interface CabinDoor {
+  readonly closed: boolean;
+  readonly canClose: boolean;
+  /** 0..1. */
+  readonly charge: number;
+}
+
+/** The vehicle `vehicle`'s door; null for one without a door. */
+export function cabinDoor(game: Session, vehicle: string): CabinDoor | null {
+  const found = vehicleOf(game, vehicle);
+  const door = found?.spec.door;
+  if (found === null || door === undefined) return null;
+  return {
+    closed: door.closed(found.entity),
+    canClose: door.canClose(found.entity),
+    charge: door.charge(found.entity),
+  };
+}
+
 /** Least time between two of one player's sending for a body with a vehicle's teleporter, in sim seconds. */
 const TELEPORT_COOLDOWN = 0.5;
 
 /**
  * The vehicle `player` is in, its teleporter, and `target` to send for with it: a living body out
- * in the world, not the vehicle itself, while the teleporter is free. Null when any of that fails.
+ * in the world, in no vehicle, not the vehicle itself, while the teleporter is free. Null when any of that fails.
  */
 function teleportFor(
   game: Session,
@@ -402,7 +449,8 @@ function teleportFor(
   const teleporter = found?.spec.teleporter;
   if (found === null || teleporter === undefined) return null;
   const body = livingBody(game, target);
-  if (body === null || body.id === found.entity.id) return null;
+  if (body === null || isAboard(body) || body.id === found.entity.id)
+    return null;
   if (teleporter.sending(game, found.entity) !== null) return null;
   return { entity: found.entity, teleporter, body };
 }
@@ -453,6 +501,7 @@ export const vehicleActions = [
   buy,
   tune,
   teleport,
+  swingDoor,
 ] as const;
 
 /**
@@ -555,6 +604,9 @@ export function cabinCommand(game: Session, command: CabinCommand): void {
       return;
     case "radioOff":
       tune.perform(game, { to: "off" });
+      return;
+    case "door":
+      swingDoor.perform(game, {});
       return;
   }
 }
