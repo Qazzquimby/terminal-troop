@@ -226,6 +226,22 @@ export function wanderLeg(
 }
 
 /**
+ * `state` as is while its route lasts; once spent, with a fresh wander leg of up to `range` round
+ * where `self` stands, or none when no leg is found. For any kind that ambles about between
+ * errands.
+ */
+export function wanderOn<S extends { readonly route: Point[] }>(
+  state: S,
+  self: Point & { readonly radius: number },
+  map: TileMap,
+  range: number,
+): S {
+  if (state.route.length > 0) return state;
+  const leg = wanderLeg(map, self, Math.random, self.radius, range);
+  return { ...state, route: leg ?? [] };
+}
+
+/**
  * Steps `body` along `state`'s route at `speed` for `dt`, and returns `state` with the route left
  * and the way the body now faces.
  */

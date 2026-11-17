@@ -1240,6 +1240,38 @@ export const config = {
       radius: 8,
       sounds: { pop: CELL * 20 },
     },
+    // The apex predator, a duck, light and small. Calm, it goes at 1.1 times a walk to stand a
+    // quarter cell in front of the nearest body it notices within 6 cells, quacking every 4 to 10s
+    // heard 4 cells off; with no one about it ambles legs of up to 4 cells at half a walk. Hurt, it
+    // chases whatever hurt it, then any killable body it sees, at 1.1 times a walk, so a sprint
+    // outruns it, pecking for 15 a second, an angry quack every 1 to 3s heard 10 cells off, until
+    // 8s pass with none seen. Three shovel hits fell it; a fifth of a player's mass, a blow sends
+    // it five times as far.
+    apexPredator: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 15,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        most: 6,
+      },
+      ignores: ["apexPredator"],
+      radius: 11,
+      mass: 0.2,
+      maxHealth: SHOVEL_DAMAGE * 3,
+      speedShare: 1.1,
+      wanderShare: 0.5,
+      wanderRange: CELL * 4,
+      sightRange: CELL * 6,
+      standGap: CELL / 4,
+      repathInterval: 0.3,
+      calmSeconds: 8,
+      damage: 15,
+      attackCooldown: 1,
+      quackGap: { min: 4, max: 10 },
+      angryGap: { min: 1, max: 3 },
+      sounds: { quack: CELL * 4, angry: CELL * 10, attack: CELL * 4 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its

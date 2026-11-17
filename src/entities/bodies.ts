@@ -45,6 +45,22 @@ export function touchStrikes(
 }
 
 /**
+ * A kind's `strikes`: a blow of its config's `damage` on whatever it touches that it does not
+ * ignore, on each step its state is `attacking`. For any kind that strikes by touch alone.
+ */
+export function strikesOnTouch(config: {
+  readonly ignores: readonly string[];
+  readonly damage: number;
+}): (
+  self: WorldEntity,
+  state: { readonly attacking: boolean },
+  game: Session,
+) => Strike[] {
+  return (self, state, game) =>
+    touchStrikes(game, self, state.attacking, config.ignores, config.damage);
+}
+
+/**
  * Plays, as the host, on every client, each of `made` that is a sound, where `self` stands; each
  * also makes its noise. For a kind's cue, which lists its sounds as `step && sound`.
  */

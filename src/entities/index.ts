@@ -26,6 +26,7 @@ import { tricycle } from "./tricycle/index.js";
 import { door } from "./door/index.js";
 import { balloon, birthdayBoy } from "./birthday-boy/index.js";
 import { shrine } from "./shrine/index.js";
+import { apexPredator } from "./apex-predator/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -79,6 +80,7 @@ const ENTITIES = [
   birthdayBoy,
   balloon,
   shrine,
+  apexPredator,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;
