@@ -463,6 +463,11 @@ interface ItemBase extends Omit<
   readonly plays?: ItemPlays;
   /** A way it carries voice between players past the air, if any: a walkie talkie, say. */
   readonly voice?: VoiceChannel;
+  /**
+   * Runs as the item is registered with a new session: to enlist it with what the world does for
+   * every body, such as watching bodies fall.
+   */
+  register?(game: Session): void;
   /** Runs on the host, each step, once the entities have moved: for the rules the item keeps. */
   step?(game: Session, dt: number): void;
   /**
@@ -557,6 +562,7 @@ export function defineItem<N extends string, C>(
           registerItem(game, item, behaviour);
           registerWorldItems(game);
           if (voice !== undefined) addVoiceChannel(game, voice);
+          spec.register?.(game);
           if (spec.startingSlot === undefined) return;
           placeItem(game.starting, spec.startingSlot, item);
           placeItem(game.local.inventory, spec.startingSlot, item);

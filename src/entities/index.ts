@@ -25,6 +25,7 @@ import { thumper } from "./thumper/index.js";
 import { tricycle } from "./tricycle/index.js";
 import { door } from "./door/index.js";
 import { balloon, birthdayBoy } from "./birthday-boy/index.js";
+import { shrine } from "./shrine/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -77,6 +78,7 @@ const ENTITIES = [
   door,
   birthdayBoy,
   balloon,
+  shrine,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

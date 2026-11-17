@@ -57,6 +57,8 @@ const CELL = 50;
 const STAMINA_MAX = 100;
 /** What one shovel hit deals; a gun's shot deals two. */
 const SHOVEL_DAMAGE = 15;
+/** The sleeper's full health: ten shovel hits. A body this hard to kill or harder drops a heart. */
+const SLEEPER_HEALTH = SHOVEL_DAMAGE * 10;
 /** A player's walking pace, in pixels a second, and how much faster it sprints. */
 const PLAYER_SPEED = 120;
 const SPRINT = 1.8;
@@ -604,6 +606,32 @@ export const config = {
       sounds: { land: CELL * 4, out: CELL * 2 },
       volume: 0.7,
     },
+    // A new world lays 2, by danger weight to the fifth, so they lie far off the road, rarer and
+    // further out than golden scrap (cubed). An item counts as laid on one within a cell of its
+    // middle, a step from where a player stands beside it; ghosts hear whoever speaks within 3
+    // cells of it, about a conversation's distance. A heart brings a ghost back; a walkie becomes a
+    // ghost walkie. The first offering is safe; each after it crumbles the shrine 1 time in 3. It
+    // whispers every 6 to 14s, heard 4 cells off and making no noise, and glows a cell and a half
+    // round. Its revival and transformation carry 6 cells, its crumbling 12.
+    shrine: {
+      radius: 14,
+      scatter: { count: 2, seed: 7, clearance: CELL * 20, danger: 5 },
+      reach: CELL,
+      earReach: CELL * 3,
+      revives: "heart",
+      transforms: { walkie: "ghostWalkie" },
+      safeOfferings: 1,
+      crumbleChance: 1 / 3,
+      whisperGap: { min: 6, max: 14 },
+      glow: CELL * 1.5,
+      volume: 0.7,
+      sounds: {
+        whisper: CELL * 4,
+        revive: CELL * 6,
+        transform: CELL * 6,
+        crumble: CELL * 12,
+      },
+    },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
     // player it picks, standing while there is none, at a fifth of a player's walk, kills
     // whatever it touches, at most once a second, and replans its way every 2 seconds. No monster
@@ -821,7 +849,7 @@ export const config = {
       spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
       ignores: ["sleeper"],
       radius: 15,
-      maxHealth: SHOVEL_DAMAGE * 10,
+      maxHealth: SLEEPER_HEALTH,
       sightRange: CELL * 8,
       wakeRange: CELL * 5,
       runShare: 0.9,
@@ -1319,6 +1347,28 @@ export const config = {
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
       scatter: { count: 25, seed: 4, clearance: CELL * 3, danger: 1 },
+    },
+    // Torn from any body as hard to kill as the sleeper or harder as it falls, with a wet thud heard
+    // 4 cells off. Worth 3, sold, carried and dropped as scrap is; never laid as loot.
+    heart: {
+      weight: 2,
+      value: 3,
+      cashoutRadius: CELL * 3,
+      sellInterval: 0.25,
+      volume: 0.8,
+      dropNoiseRadius: CELL * 4,
+      scatter: { count: 0, seed: 8, clearance: CELL * 3 },
+      toughness: SLEEPER_HEALTH,
+      tearRange: CELL * 4,
+    },
+    // Made only at a shrine. Never runs down. Ghosts hear whoever speaks within a cell and a half,
+    // the walkie's key range, so its holder. Its switch clicks 2 cells out, as a walkie's.
+    ghostWalkie: {
+      weight: 0,
+      cooldown: 0.3,
+      volume: 0.6,
+      switchRange: CELL * 2,
+      reach: CELL * 1.5,
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
     // cells, past a player's own 6 cells of sight in the dark. Its click carries a cell.

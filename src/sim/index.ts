@@ -106,7 +106,8 @@ export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
 export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";
 export { itemInstances, makerOf, spendInstanceUses } from "./item-instances.js";
 export type { ItemInstance } from "./item-instances.js";
-export { onAir, voiceRoutes } from "./voice-routes.js";
+export { addVoiceChannel, onAir, voiceRoutes } from "./voice-routes.js";
+export { ghostEarChannel } from "./ghost-ears.js";
 export type { VoiceChannel, VoiceRoute } from "./voice-routes.js";
 export { lootContent, setDanger } from "./loot.js";
 export type { LootConfig } from "./loot.js";
@@ -159,6 +160,7 @@ export { isGhost, livingPlayers } from "./ghosts.js";
 export {
   CORPSE_ITEM,
   corpseAt,
+  ghostCorpses,
   dropAll,
   isRevivable,
   itemName,
@@ -193,7 +195,7 @@ export {
 export type { Eyes, Sight } from "./eyes.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
-export { entityWho, falls, rises, who } from "./fallen.js";
+export { entityWho, falls, rises, watchFalls, who } from "./fallen.js";
 export type { Fall, Rise, Who } from "./fallen.js";
 export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
