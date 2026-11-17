@@ -39,14 +39,14 @@ import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
-const roarUrl = new URL("./sfx/roar.mp3", import.meta.url).href;
-const snarlUrl = new URL("./sfx/snarl.mp3", import.meta.url).href;
-const biteUrl = new URL("./sfx/bite.mp3", import.meta.url).href;
+const roarUrl = new URL("./sfx/roar.ogg", import.meta.url).href;
+const snarlUrl = new URL("./sfx/growl.ogg", import.meta.url).href;
+const biteUrl = new URL("./sfx/bite.wav", import.meta.url).href;
 const huffUrl = new URL("./sfx/huff.mp3", import.meta.url).href;
 const growlUrl = new URL("./sfx/growl.mp3", import.meta.url).href;
-const pounceUrl = new URL("./sfx/pounce.mp3", import.meta.url).href;
+const pounceUrl = new URL("./sfx/lunge.wav", import.meta.url).href;
 const skidUrl = new URL("./sfx/skid.mp3", import.meta.url).href;
-const barkUrl = new URL("./sfx/bark.mp3", import.meta.url).href;
+const barkUrl = new URL("./sfx/breathe.mp3", import.meta.url).href;
 
 /**
  * How it pounces once it commits: a crouch, a straight dash through its target and on past it that
