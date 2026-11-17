@@ -264,6 +264,9 @@ export const testEntitiesConfig = {
       noiseRadius: 100,
       volume: 1,
     },
+    // No sales, so the shop asks its list prices; tests that want sales set a chance.
+    sales: { chance: 0, minOff: 25, maxOff: 75, every: 120 },
+    coinToss: { flight: 1, odds: 0.5, volume: 1, range: 100 },
     radio: {
       volume: 0.7,
       range: 1250,

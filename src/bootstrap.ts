@@ -16,6 +16,7 @@ import type { RoomState } from "./room/index.js";
 import { createInput, actionKeyLabel } from "./input/index.js";
 import {
   cabinView,
+  coinTossPanel,
   controlsHintFor,
   createCabin,
   doorPanel,
@@ -118,7 +119,8 @@ const sendCabin = (command: CabinCommand): void => {
 };
 const cabin = createCabin(element("#cabin", HTMLDivElement), sendCabin);
 cabin.addPanel(storagePanel(sendCabin));
-cabin.addPanel(shopPanel(sendCabin));
+cabin.addPanel(coinTossPanel(sendCabin), "finances");
+cabin.addPanel(shopPanel(sendCabin), "finances");
 /** Whether the cabin's transmit button is held down with the mouse. */
 let cabinTransmit = false;
 cabin.addPanel(minimapPanel(config.minimap, sendCabin));

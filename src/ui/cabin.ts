@@ -220,28 +220,56 @@ function exitPanel(send: CabinSend): CabinPanel {
   return { element };
 }
 
+/** The cabin's tabs, in the order their buttons stand: the car itself, and the team's money. */
+const CABIN_TABS = ["home", "finances"] as const;
+export type CabinTab = (typeof CABIN_TABS)[number];
+
+/** What each tab's button says. */
+const TAB_LABELS: Readonly<Record<CabinTab, string>> = {
+  home: "⌂ HOME",
+  finances: "$ FINANCES",
+};
+
 /**
  * The cabin modal in `root`, holding the panels part of every vehicle's cabin: the wheel, Drive
- * and Honk, who is inside, and the exit sign. Shown while `show` is given a view, hidden by null.
- * More panels go in with `addPanel`.
+ * and Honk, who is inside, and the exit sign. Its panels are split between tabs, one shown at a
+ * time, picked from a strip of buttons under its header; the exit sign shows under every tab.
+ * Shown while `show` is given a view, hidden by null. More panels go in with `addPanel`, under
+ * the home tab unless it names another.
  */
 export function createCabin(root: HTMLElement, send: CabinSend) {
   const header = make("h2", "cabin-header", "CRUISER CABIN // CREW ONLY");
-  const panels = make("div", "cabin-panels");
-  root.replaceChildren(header, panels);
-  root.hidden = true;
-  const added: CabinPanel[] = [];
-  const addPanel = (panel: CabinPanel): void => {
-    added.push(panel);
-    panels.append(panel.element);
+  const strip = make("nav", "cabin-tabs");
+  const panes = new Map<CabinTab, HTMLElement>();
+  const buttons = new Map<CabinTab, HTMLButtonElement>();
+  let current: CabinTab = "home";
+  const pick = (tab: CabinTab): void => {
+    current = tab;
+    for (const [each, pane] of panes) pane.hidden = each !== tab;
+    for (const [each, tabButton] of buttons)
+      tabButton.classList.toggle("cabin-tab-current", each === tab);
   };
-  for (const panel of [
-    wheelPanel(),
-    controlsPanel(send),
-    occupantsPanel(),
-    exitPanel(send),
-  ])
+  for (const tab of CABIN_TABS) {
+    panes.set(tab, make("div", "cabin-panels"));
+    const tabButton = button("cabin-tab", TAB_LABELS[tab], () => {
+      pick(tab);
+    });
+    buttons.set(tab, tabButton);
+    strip.append(tabButton);
+  }
+  const dock = make("div", "cabin-dock");
+  root.replaceChildren(header, strip, ...panes.values(), dock);
+  root.hidden = true;
+  pick(current);
+  const added: CabinPanel[] = [];
+  const addPanel = (panel: CabinPanel, tab: CabinTab = "home"): void => {
+    added.push(panel);
+    panes.get(tab)?.append(panel.element);
+  };
+  for (const panel of [wheelPanel(), controlsPanel(send), occupantsPanel()])
     addPanel(panel);
+  const exit = exitPanel(send);
+  dock.append(exit.element);
   return {
     addPanel,
     /** Shows the cabin as `view` has it, from `game`; hides it for null. */
