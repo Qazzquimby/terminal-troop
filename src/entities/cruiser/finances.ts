@@ -8,10 +8,10 @@ import type {
 } from "../../sim/index.js";
 // The coin's flip and its landing, once their assets land; importing a missing file breaks the
 // build. Until then the toss makes its noise without a sound.
-// import { sound } from "../../sim/index.js";
-// import flipUrl from "./sfx/coin-flip.mp3";
-// import winUrl from "./sfx/coin-win.mp3";
-// import loseUrl from "./sfx/coin-lose.mp3";
+import { sound } from "../../sim/index.js";
+import flipUrl from "./sfx/coin-flip.mp3";
+import winUrl from "./sfx/coin-win.mp3";
+import loseUrl from "./sfx/coin-lose.mp3";
 // import saleUrl from "./sfx/sale.mp3";
 
 /** A draw in [0, 1), as `Math.random` makes. */
@@ -139,7 +139,7 @@ export function gamble(config: FinancesConfig): VehicleGamble {
       effect(game, {
         at: { x: vehicle.x, y: vehicle.y },
         noise: config.coinToss.range,
-        // sound: sound({ url: flipUrl, volume: config.coinToss.volume, range: config.coinToss.range }),
+        sound: sound({ url: flipUrl, volume: config.coinToss.volume, range: config.coinToss.range }),
       });
     },
   };
@@ -176,7 +176,7 @@ export function stepCoinToss(
       at: { x: cruiser.x, y: cruiser.y },
       noise: config.range,
       ...(won && { flash: { radius: WIN_FLASH, hit: true } }),
-      // sound: sound({ url: won ? winUrl : loseUrl, volume: config.volume, range: config.range }),
+      sound: sound({ url: won ? winUrl : loseUrl, volume: config.volume, range: config.range }),
     },
     cruiser,
   );

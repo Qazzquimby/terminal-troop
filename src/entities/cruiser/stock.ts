@@ -1,9 +1,8 @@
-import type { Storage, VehicleShop, Ware } from "../../sim/index.js";
+import {sound, type Storage, type VehicleShop, type Ware} from "../../sim/index.js";
 // The storage's clunk and the shop's cash register, once their assets land; importing a missing
 // file breaks the build. Until then each makes its noise without a sound.
-// import { sound } from "../../sim/index.js";
-// import clunkUrl from "./sfx/clunk.mp3";
-// import registerUrl from "./sfx/register.mp3";
+import clunkUrl from "./sfx/clunk.mp3";
+import registerUrl from "./sfx/register.mp3";
 
 /** What the cruiser keeps in its cabin: a storage those inside share, and a shop. */
 export interface StockConfig {
@@ -34,12 +33,12 @@ export function stock(config: StockConfig): {
     storage: {
       slots: config.storage.slots,
       noise: config.storage.noiseRadius,
-      // sound: sound({ url: clunkUrl, volume: config.storage.volume, range: config.storage.noiseRadius }),
+      sound: sound({ url: clunkUrl, volume: config.storage.volume, range: config.storage.noiseRadius }),
     },
     shop: {
       wares: config.shop.wares,
       noise: config.shop.noiseRadius,
-      // sound: sound({ url: registerUrl, volume: config.shop.volume, range: config.shop.noiseRadius }),
+      sound: sound({ url: registerUrl, volume: config.shop.volume, range: config.shop.noiseRadius }),
     },
   };
 }

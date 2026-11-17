@@ -448,7 +448,7 @@ export const config = {
       escape: { delay: 20, volume: 0.8, quota: 30 },
       // A corpse carried within a cell of the cruiser's body brings its player back beside it,
       // for 6$ of the team's credit, a pocketball's price, into debt if need be (#403).
-      revive: { reach: CELL, volume: 0.8, cost: 6 },
+      revive: { reach: CELL, volume: 0.3, cost: 6 },
       // Its door stands open: those inside are seen and struck like anyone where the car is.
       // Shutting it takes a fifth of its power, and shut it burns a twentieth a second, so a full
       // door stays shut 16s; open, it charges back to full in 50s. It thunks 3 cells out (#377).
@@ -483,7 +483,7 @@ export const config = {
       },
       // Each ware is on sale with a 15% chance, 25 to 75% off (#404), drawn afresh by the host every
       // 2 minutes of world time, so a run sees a few rounds of sales without them churning.
-      sales: { chance: 0.15, minOff: 25, maxOff: 75, every: 120 },
+      sales: { chance: 0.15, minOff: 25, maxOff: 75, every: 9999 },
       // The coin toss in the cabin's finances (#404): a fair coin, a second in the air, heard as
       // far as the shop's register.
       coinToss: { flight: 1.2, odds: 0.5, volume: 0.7, range: CELL * 2 },
@@ -624,7 +624,7 @@ export const config = {
       crumbleChance: 1 / 3,
       whisperGap: { min: 6, max: 14 },
       glow: CELL * 1.5,
-      volume: 0.7,
+      volume: 0.3,
       sounds: {
         whisper: CELL * 4,
         revive: CELL * 6,

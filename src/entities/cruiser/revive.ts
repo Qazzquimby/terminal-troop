@@ -3,11 +3,11 @@ import {
   credit,
   effect,
   itemInstances,
-  revive,
+  revive, sound,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
 // The revival's sound, once its asset lands; importing a missing file breaks the build.
-// import reviveUrl from "./sfx/revive.mp3";
+import reviveUrl from "./sfx/revive.mp3";
 
 /** How a corpse brought to the cruiser comes back to life. */
 export interface ReviveConfig {
@@ -47,7 +47,7 @@ export function stepRevival(
       {
         at: { x: revived.x, y: revived.y },
         flash: { radius: revived.radius * REVIVE_FLASH, hit: false },
-        // sound: sound({ url: reviveUrl, volume: config.volume }),
+        sound: sound({ url: reviveUrl, volume: config.volume }),
       },
       cruiser,
     );
