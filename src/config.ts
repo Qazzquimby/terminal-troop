@@ -668,7 +668,7 @@ export const config = {
     },
     // A swollen thing out of the dark, never within 14 cells of a player. It comes alone as a world
     // begins, in groups of 2 to 4, 3 on average, by its end game, up to 3 cells apart. It feels
-    // prey through walls 12 cells round. A gun's shot sets it off; two kill it outright.
+    // prey through walls 12 cells round.
     exploder: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -687,10 +687,10 @@ export const config = {
       // walls round it on the first it felt; players and the rarer monsters it hunts.
       ignores: ["exploder", "zombie", "hoarder"],
       maxHealth: SHOVEL_DAMAGE * 2,
-      wanderSpeed: PLAYER_SPEED * 0.8,
-      chaseSpeed: PLAYER_SPEED * 1.1,
+      wanderSpeed: PLAYER_SPEED,
+      chaseSpeed: PLAYER_SPEED,
       // Once its fuse is lit it slows to half a player's walk, so whoever it chases can get clear.
-      litSpeed: PLAYER_SPEED * 0.5,
+      litSpeed: PLAYER_SPEED * 0.65,
       senseRange: CELL * 12,
       wanderRange: CELL * 5,
       wanderPause: { min: 0.5, max: 2 },
@@ -700,9 +700,9 @@ export const config = {
       detour: { factor: 2, slack: CELL * 2 },
       // Within 2 cells of a body it hunts it lights a 1s fuse, and keeps coming. Any hurt lights it
       // too, but another exploder's burst, so one burst does not set off every exploder near it.
-      fuseRange: CELL * 3,
+      fuseRange: CELL * 1.5,
       fuseOnHurt: { minDamage: 0, except: ["exploder"] },
-      fuse: 2.5,
+      fuse: 2.5, // seconds
       // Bursts 3 cells round, knocking the walls there down: 100 damage where it stands, 30 at
       // the edge. The fuse hisses 6 cells out; the burst is heard 40 cells off.
       blast: { radius: CELL * 3, centre: 100, edge: 30 },
