@@ -688,13 +688,13 @@ export const config = {
     // her on her target 30% of the time, 10% more for each anger past 3. She chases at half a
     // sprint, a tenth of a sprint faster per anger past 3, never past 1.2 sprints, for 5 to 10s,
     // then flickers for 0.8s and vanishes. Touching her costs 20 health a second, 5 every 0.25s.
-    // Slipping away, she walks at half a sprint to a spot within 8 cells her target cannot see,
+    // Slipping away, she walks at sprint to a spot within 8 cells her target cannot see,
     // trying 12 a step for 2s before making for the nearest wall; after 10s she is gone anyway.
     // Her sounds carry 16 cells, past the furthest she appears.
     ghostGirl: {
       spawning: {
         weight: 3,
-        after: 0,
+        after: 60*3,
         tries: 24,
         most: 1,
         unseenDistance: CELL * 14,
@@ -723,7 +723,7 @@ export const config = {
         range: CELL * 8,
         tries: 12,
         search: 2,
-        speed: 0.5,
+        speed: 1,
         giveUp: 10,
       },
       flicker: 0.8,
@@ -922,7 +922,6 @@ export const config = {
     stalker: {
       spawning: {
         weight: 10,
-        after: 0,
         tries: 24,
         unseenDistance: CELL * 30,
       },
@@ -1016,7 +1015,6 @@ export const config = {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
-        after: 120,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -1050,7 +1048,6 @@ export const config = {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
-        after: 120,
         tries: 48,
         unseenDistance: CELL * 14,
       },
@@ -1083,7 +1080,6 @@ export const config = {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
-        after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -1114,7 +1110,6 @@ export const config = {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
-        after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -1153,7 +1148,6 @@ export const config = {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 20,
-        after: 120,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -1180,8 +1174,7 @@ export const config = {
     tricycle: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
-        weight: 10,
-        after: 180,
+        weight: 40,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -1213,7 +1206,6 @@ export const config = {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
         weight: 10,
-        after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
         most: 8,
