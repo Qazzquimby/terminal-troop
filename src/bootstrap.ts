@@ -178,6 +178,7 @@ function selectVoice(initial: VoiceSettings): Voice {
     config.voiceConnections,
     config.voiceRadio,
     config.voiceClips,
+    config.voiceDetector,
   );
 }
 

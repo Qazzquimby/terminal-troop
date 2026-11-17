@@ -53,7 +53,11 @@ export function micLevel(samples: Float32Array): number {
   if (samples.length === 0) return 0;
   let sum = 0;
   for (const sample of samples) sum += sample * sample;
-  const rms = Math.sqrt(sum / samples.length);
+  return rmsLevel(Math.sqrt(sum / samples.length));
+}
+
+/** An RMS loudness `rms` (-1..1 samples) on the meter's scale: 0 at -60 dBFS or below, 1 at full scale. */
+export function rmsLevel(rms: number): number {
   if (rms === 0) return 0;
   const db = 20 * Math.log10(rms);
   return Math.min(1, Math.max(0, (db - FLOOR_DB) / -FLOOR_DB));

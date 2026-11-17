@@ -1,8 +1,10 @@
 import type {
   MicDevice,
   MicState,
+  VoiceDetectorConfig,
   VoiceDiagnostics,
 } from "../../voice/index.js";
+import { createVoiceDetector } from "./voice-detector.js";
 import { createScope } from "../../lib/scope/index.js";
 import type { Scope } from "../../lib/scope/index.js";
 import { disposeQuietly } from "./scopes.js";
@@ -19,12 +21,14 @@ function errorName(error: unknown): string {
 
 /**
  * The player's microphone: one captured track at a time, on the chosen device, with a level
- * meter on it. `onTrack` hears each time the track is replaced or lost.
+ * meter on it. `onTrack` hears each time the track is replaced or lost. With `detector`, it also
+ * tells whether what the mic hears now is speech, rather than a room's hum or keys clacking.
  */
 export function createMicCapture(
   audioContext: () => AudioContext,
   initialDevice: string | null,
   onTrack: () => void,
+  detector?: VoiceDetectorConfig,
 ) {
   // Absent outside secure contexts (plain http on a LAN address).
   const supported = "mediaDevices" in navigator;
@@ -150,6 +154,31 @@ export function createMicCapture(
     return micLevel(samples);
   }
 
+  const voice = detector === undefined ? null : createVoiceDetector(detector);
+  /** When the detector last heard a frame, in seconds, and what it made of it. */
+  let heardAt = -Infinity;
+  let heard = false;
+
+  /**
+   * Whether the mic hears speech now: always without a detector, never while the track is off.
+   * The detector looks at most once every 10ms, however often this is asked.
+   */
+  function voiced(): boolean {
+    if (voice === null) return true;
+    if (meter === null || track?.enabled !== true) {
+      voice.reset();
+      heard = false;
+      return false;
+    }
+    const now = performance.now() / 1000;
+    if (now - heardAt < 0.01) return heard;
+    heardAt = now;
+    samples ??= new Float32Array(meter.fftSize);
+    meter.getFloatTimeDomainData(samples);
+    heard = voice.hear(samples, meter.context.sampleRate, now);
+    return heard;
+  }
+
   return {
     /** Captures the mic unless it is captured or being asked for already. */
     request(): void {
@@ -165,6 +194,7 @@ export function createMicCapture(
     track: (): MediaStreamTrack | null => track,
     /** Loudness of the captured track, 0..1, while it is enabled; 0 otherwise. */
     level,
+    voiced,
     state: (): MicState => state,
     report(): Omit<VoiceDiagnostics["mic"], "testing"> {
       return {

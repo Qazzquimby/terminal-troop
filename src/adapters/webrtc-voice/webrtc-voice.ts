@@ -11,6 +11,7 @@ import type {
   RadioSoundConfig,
   VoiceConnectionConfig,
   VoiceClipConfig,
+  VoiceDetectorConfig,
   VoiceRoom,
   VoiceSettings,
 } from "../../voice/index.js";
@@ -113,6 +114,7 @@ export function createWebRtcVoice(
   config: VoiceConnectionConfig,
   radio: RadioSoundConfig,
   clipConfig?: VoiceClipConfig,
+  detectorConfig?: VoiceDetectorConfig,
 ): Voice {
   /** The clips of the player's speech in the room joined now; null outside one or unrecorded. */
   let clips: ClipRecorder | null = null;
@@ -126,9 +128,14 @@ export function createWebRtcVoice(
   let { mode, muted, volume } = initial;
   let voiceVolume: GainNode | null = null;
   let room: JoinedRoom | null = null;
-  const mic = createMicCapture(audioContext, initial.inputDevice, () => {
-    applyTransmit();
-  });
+  const mic = createMicCapture(
+    audioContext,
+    initial.inputDevice,
+    () => {
+      applyTransmit();
+    },
+    detectorConfig,
+  );
 
   function volumeGain(): GainNode {
     if (voiceVolume === null) {
@@ -137,6 +144,15 @@ export function createWebRtcVoice(
       voiceVolume.connect(audio.output());
     }
     return voiceVolume;
+  }
+
+  /**
+   * How loud the mic goes out as speech: its level while it goes out and the detector hears a
+   * voice in it, 0 otherwise. A room's hum or keys clacking go out to the other players all the
+   * same, but make no noise in the world and are never cut into clips.
+   */
+  function speakingLevel(): number {
+    return transmitting() && mic.voiced() ? mic.level() : 0;
   }
 
   function transmitting(): boolean {
@@ -268,7 +284,7 @@ export function createWebRtcVoice(
       const recorder = createClipRecorder(
         {
           track: () => mic.track(),
-          level: () => (transmitting() ? mic.level() : 0),
+          level: speakingLevel,
           live: () =>
             transmitting() &&
             [...own.values()].some(
@@ -659,9 +675,7 @@ export function createWebRtcVoice(
       return { mic: { ...mic.report(), testing }, peers: diagnosed };
     },
 
-    speakingLevel() {
-      return transmitting() ? mic.level() : 0;
-    },
+    speakingLevel,
 
     clipCount: () => clips?.count() ?? 0,
 

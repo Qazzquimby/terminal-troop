@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { RADIO_SOUND } from "./radio-sound.fixture.js";
+import { VOICE_DETECTOR } from "./voice-detector.fixture.js";
 import type {
   VoiceConnectionConfig,
   VoiceSettings,
@@ -114,7 +115,7 @@ function fakeNode() {
     disconnect: vi.fn(),
     gain: param(),
     pan: param(),
-    context: { currentTime: 0 },
+    context: { currentTime: 0, sampleRate: 48_000 },
   };
 }
 
@@ -207,6 +208,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -307,6 +309,37 @@ describe("the local mic", () => {
     voice.configure(OPEN_MIC);
     expect(voice.speakingLevel()).toBeGreaterThan(0);
     voice.configure({ ...OPEN_MIC, muted: true });
+    expect(voice.speakingLevel()).toBe(0);
+  });
+
+  test("with a voice detector, a mic hearing only noise goes out but speaks at nothing", async () => {
+    let next = 1;
+    vi.spyOn(FakeAudioContext.prototype, "createAnalyser").mockImplementation(
+      () => ({
+        ...fakeNode(),
+        fftSize: 2048,
+        getFloatTimeDomainData(samples: Float32Array) {
+          for (let i = 0; i < samples.length; i++) {
+            next = (next * 1_103_515_245 + 12_345) % 2_147_483_648;
+            samples[i] = 0.6 * (next / 2_147_483_648) - 0.3;
+          }
+        },
+      }),
+    );
+    const context = new AudioContext();
+    const output = context.createGain();
+    const voice = createWebRtcVoice(
+      { audioContext: () => context, output: () => output },
+      OPEN_MIC,
+      CONFIG,
+      RADIO_SOUND,
+      undefined,
+      VOICE_DETECTOR,
+    );
+    voice.join(ME, () => undefined, { peerFailed: () => undefined });
+    await settle();
+    expect(voice.status().transmitting).toBe(true);
+    expect(voice.diagnostics().mic.level).toBeGreaterThan(0);
     expect(voice.speakingLevel()).toBe(0);
   });
 
