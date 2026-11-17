@@ -194,6 +194,19 @@ const NEVER = { weight: 0, tries: 24 } as const;
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
+  // No world laid by a test gets doors; a test of doors lays its own.
+  door: {
+    radius: 25,
+    maxHealth: 300,
+    seed: 4,
+    frequency: 0,
+    closedShare: 0.5,
+    reach: 60,
+    openSeconds: 0.5,
+    bash: { damage: 20, cooldown: 1 },
+    toll: 10,
+    sounds: { swing: 400, hit: 500, break: 800 },
+  },
   zombie: {
     spawn: { count: { density: 0.25, min: 2 }, seed: 3, clearance: 400 },
     spawning: { ...NEVER, unseenDistance: 1100 },

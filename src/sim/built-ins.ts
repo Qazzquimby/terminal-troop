@@ -1,6 +1,7 @@
 import { actionEvents, registerActions } from "./actions.js";
 import type { Action } from "./actions.js";
 import { registerEvents } from "./content-event.js";
+import { doorActions } from "./door-actions.js";
 import type { ContentEvents } from "./content-event.js";
 import { playerHealth } from "./health.js";
 import { falls, rises } from "./fallen.js";
@@ -89,6 +90,8 @@ const BUILT_INS: Readonly<Record<`core/${string}`, BuiltIn>> = {
    * noise it makes.
    */
   "core/actions": { events: actionEvents },
+  /** Opening and closing doors. */
+  "core/doors": { actions: doorActions },
 };
 
 /** Registers the engine's own state, events and actions with a new session. */

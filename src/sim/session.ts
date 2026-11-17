@@ -19,6 +19,7 @@ import type { DayConfig } from "./day.js";
 import type { DeepdarkConfig } from "./deepdark.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
+import { followDoors } from "./doors.js";
 import { emitFootsteps } from "./footsteps.js";
 import { layBodies } from "./death.js";
 import type { EngagementConfig } from "./bodies.js";
@@ -363,6 +364,7 @@ export function updateSession(
   game.flashes.length = 0;
   movingBodies(game).forEach(storePrevious);
   followWalls(game);
+  followDoors(game);
   steerLocal(game, controls, dt);
   const acting = isAboard(game.local) ? handsInside(controls) : controls;
   if (!isGhost(game.local)) {

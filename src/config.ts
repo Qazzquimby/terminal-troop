@@ -338,6 +338,22 @@ export const config = {
   // Peers connect a second or two after joining; past this, a HELLO is news to no one.
   greeting: { replayMs: 10_000 },
   entities: {
+    // A door in half the world's doorways, every cell of the doorway one; half of them left shut.
+    // 300 health. A player within a cell and a bit of one works it; its swing carries 8 cells.
+    // A body that opens doors takes half a second to; any other bashes it for 20 every second,
+    // 15s to break one, and a route goes through one shut where that saves more than 10 cells.
+    door: {
+      radius: CELL / 2,
+      maxHealth: 300,
+      seed: 4,
+      frequency: 0.5,
+      closedShare: 0.5,
+      reach: CELL * 1.2,
+      openSeconds: 0.5,
+      bash: { damage: 20, cooldown: 1 },
+      toll: 10,
+      sounds: { swing: CELL * 8, hit: CELL * 10, break: CELL * 16 },
+    },
     zombie: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -866,7 +882,8 @@ export const config = {
     // none is out of sight keeping 12 cells from every body it hunts; hurt, it rages for 10s. With
     // no player in the dark it heads home and wanders up to 6 cells round it, standing 2 to 5s
     // between legs. It replans twice a second. Its hiss as it backs off carries 6 cells, its
-    // shriek of rage 16, its strike 8.
+    // shriek of rage 16, its strike 8. It opens the closed doors in its way, in half a second
+    // (see `door`), rather than bashing them.
     stalker: {
       spawning: {
         weight: 10,
@@ -874,6 +891,7 @@ export const config = {
         tries: 24,
         unseenDistance: CELL * 30,
       },
+      opensDoors: true,
       ignores: ["stalker"],
       targets: ["player"],
       radius: 14,

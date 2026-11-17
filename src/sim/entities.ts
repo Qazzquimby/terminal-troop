@@ -19,6 +19,8 @@ import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
 import type { Playing } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
+import { pressDoors } from "./doors.js";
+import type { DoorHinge, Hinge } from "./doors.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
@@ -77,6 +79,13 @@ export interface EntityDefinition<S> {
    */
   readonly mass?: number | undefined;
   readonly collides?: boolean;
+  /** Its hinge, for a kind that is a door: shut, it makes its cell a wall; see doors.ts. */
+  readonly door?: Hinge<S>;
+  /**
+   * Whether it opens the closed doors it presses into, as a stalker does, rather than bashing
+   * them; false when left out.
+   */
+  readonly opensDoors?: boolean;
   /**
    * Whether a bar over it shows its health once it is hurt; true when left out. False for a kind
    * that must not give itself away, such as one passing for part of the world.
@@ -218,6 +227,9 @@ export interface EntityType {
   readonly tags: readonly string[];
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
+  /** Its hinge, for a kind that is a door; null for any other. */
+  readonly door: DoorHinge | null;
+  readonly opensDoors: boolean;
   /** Its body's box, turned the way it points now; null for a kind whose body is its disc. */
   box(entity: WorldEntity): BoxPose | null;
   light(entity: WorldEntity): readonly LightEmission[];
@@ -268,6 +280,23 @@ export interface EntitySnapshot {
   readonly data: unknown;
 }
 
+/** The hinge of a door kind, parsing each door's state; null for a kind that is no door. */
+function hinge<S>(definition: EntityDefinition<S>): DoorHinge | null {
+  const { door, data } = definition;
+  if (door === undefined) return null;
+  return {
+    reach: door.reach,
+    openSeconds: door.openSeconds,
+    bash: door.bash,
+    toll: door.toll,
+    swing: door.swing.bind(door),
+    closed(entity) {
+      const parsed = data.safeParse(entity.data);
+      return parsed.success && door.closed(parsed.data);
+    },
+  };
+}
+
 function entityType<S>(definition: EntityDefinition<S>): EntityType {
   // Whether each state an entity of the kind has taken is perceived only in deepdark.
   const deepdarkOnly = new WeakMap<object, boolean>();
@@ -281,6 +310,8 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     tags: definition.tags ?? [],
     data: schema,
     vehicle: definition.vehicle ?? null,
+    door: hinge(definition),
+    opensDoors: definition.opensDoors ?? false,
     box(entity) {
       const { box } = definition;
       if (box === undefined) return null;
@@ -490,6 +521,8 @@ export function updateEntities(game: Session, dt: number): void {
     }
 
     if (entity.collides) {
+      const type = game.entityTypes.get(entity.kind);
+      if (type?.door === null) pressDoors(game, entity, type.opensDoors, dt);
       moveWithCollision(
         entity,
         entity.radius,

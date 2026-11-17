@@ -218,7 +218,8 @@ export function wanderLeg(
       y: around.y + Math.sin(angle) * distance,
     };
     if (!isAreaFree(map, to.x, to.y, half)) continue;
-    const route = planRoute(map, half, at, to);
+    // A wanderer keeps to the open ways: it has no need of the other side of a door.
+    const route = planRoute(map, half, at, to, undefined, undefined, false);
     if (route !== null && route.length > 0) return route;
   }
   return null;
@@ -306,7 +307,16 @@ export function fleeRoute(
   }
   spots.sort((a, b) => b.score - a.score);
   for (const { at } of spots) {
-    const route = planRoute(map, self.radius, self, at);
+    // A body in flight has no time to get through a door.
+    const route = planRoute(
+      map,
+      self.radius,
+      self,
+      at,
+      undefined,
+      undefined,
+      false,
+    );
     if (route !== null && route.length > 0) return route;
   }
   return [];

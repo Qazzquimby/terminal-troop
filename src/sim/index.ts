@@ -58,6 +58,8 @@ export type { CabinDoor, CabinTeleporter } from "./vehicle.js";
 export type { Playing } from "./item-sounds.js";
 export { destroyedWalls, destroyWalls, wallCellsIn } from "./walls.js";
 export type { WallArea } from "./walls.js";
+export { closedDoors } from "./doors.js";
+export type { ClosedDoor, Hinge } from "./doors.js";
 export {
   defineEntity,
   defineItem,
