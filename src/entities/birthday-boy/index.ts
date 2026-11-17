@@ -469,14 +469,25 @@ function burst(
   });
 }
 
-/** The first body touching `balloon` that pops it, any but those `SPARES` names; null for none. */
+/**
+ * The first body touching `balloon` that pops it, null for none: any but those `SPARES` names,
+ * and but an inert thing standing still, as a door or a mine, which it may be left against.
+ */
 function popper(game: Session, balloon: WorldEntity): Body | null {
   return (
     bodiesIn(
       game,
       { center: balloon, radius: balloon.radius },
       balloon.id,
-    ).find((body) => !hasKindTag(game, body.id, SPARES)) ?? null
+    ).find(
+      (body) =>
+        !hasKindTag(game, body.id, SPARES) &&
+        !(
+          hasKindTag(game, body.id, [INERT_TAG]) &&
+          body.vx === 0 &&
+          body.vy === 0
+        ),
+    ) ?? null
   );
 }
 
