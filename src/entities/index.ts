@@ -24,6 +24,7 @@ import { flare } from "./flare/index.js";
 import { thumper } from "./thumper/index.js";
 import { tricycle } from "./tricycle/index.js";
 import { door } from "./door/index.js";
+import { balloon, birthdayBoy } from "./birthday-boy/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -74,6 +75,8 @@ const ENTITIES = [
   thumper,
   tricycle,
   door,
+  birthdayBoy,
+  balloon,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

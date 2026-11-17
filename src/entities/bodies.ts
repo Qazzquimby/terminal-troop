@@ -1,4 +1,5 @@
 import {
+  asEntity,
   effect,
   eyesOf,
   hasKindTag,
@@ -253,4 +254,15 @@ export function gazeOn(
   );
   return (at) =>
     widened.some((sight) => inCone(game, sight, at, watching.watchRange));
+}
+
+/**
+ * Whether `body` can be killed: a player, or a world entity whose kind has a finite health. Not the
+ * snail, the statue, the cruiser nor anything else nothing can wear down.
+ */
+export function isKillable(game: Session, body: Body): boolean {
+  const entity = asEntity(game, body);
+  if (entity === null) return true;
+  const kind = game.entityTypes.get(entity.kind);
+  return kind !== undefined && Number.isFinite(kind.maxHealth);
 }

@@ -169,6 +169,7 @@ export { arrivalPoint } from "./arrival.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
 export {
+  asEntity,
   bodyById,
   engages,
   footprintOf,
