@@ -400,14 +400,16 @@ export const config = {
       // its body, so only something pressed against it hears.
       storage: { slots: 6, noiseRadius: CELL, volume: 0.7 },
       // Sells for the team's credit, which a scrap's sale adds 1 to, so a price is that many scrap.
-      // A teleporter goes for 5, a pocketball 6 and a turret 8, dear as they are rare. The register
-      // rings 2 cells off.
+      // A flare gun goes for 4, a teleporter 5, a bomb and a pocketball 6 and a turret 8, dear as
+      // they are rare. The register rings 2 cells off.
       shop: {
         wares: [
           { item: "walkie", price: 2 },
           { item: "flashlight", price: 3 },
           { item: "shovel", price: 3 },
+          { item: "flareGun", price: 4 },
           { item: "teleporter", price: 5 },
+          { item: "bomb", price: 6 },
           { item: "pocketball", price: 6 },
           { item: "turret", price: 8 },
         ],
@@ -508,6 +510,30 @@ export const config = {
       flash: 30,
       sounds: { bounce: CELL * 3, capture: CELL * 8, release: CELL * 8 },
       volume: 0.8,
+    },
+    // Goes off 3s after it is put down, Bomberman's way: a plus along the grid, each arm 8 cells
+    // long. Each arm breaks through the first wall in its way and stops at the second, knocking it
+    // down too. 100 damage, a player's whole health, to any body in it, wherever in it it stands;
+    // its bang is heard 40 cells off, as the exploder's and a land mine's are.
+    bomb: {
+      radius: 12,
+      fuse: 3,
+      blast: { reach: 8, walls: 2, damage: 100 },
+      sounds: { blast: CELL * 40 },
+      volume: 1,
+    },
+    // A flare flies 12 cells a second, so its 10 cells take under a second, and stings a body it
+    // strikes for 10. Landed, it burns for a minute, lighting 6 cells round it red, a player's own
+    // sight in the dark; it lights as it flies too. It lands with a hiss heard 4 cells off and goes
+    // out with a fizzle heard 2.
+    flare: {
+      radius: 4,
+      speed: CELL * 12,
+      damage: 10,
+      light: { range: CELL * 6, tint: "rgba(255, 60, 40, 0.28)" },
+      seconds: 60,
+      sounds: { land: CELL * 4, out: CELL * 2 },
+      volume: 0.7,
     },
     // None in the first 4 minutes of a world, never within 14 cells of a player. It creeps after a
     // player it picks, standing while there is none, at a fifth of a player's walk, kills
@@ -1192,6 +1218,29 @@ export const config = {
       volume: 0.7,
       throwNoiseRadius: CELL * 2,
       dropNoiseRadius: CELL * 2,
+    },
+    // One use: set down in the middle of the cell its holder stands in, its fuse lit with a hiss
+    // heard a cell and a half off. Uncommon, between the teleporter and the turret, and heavy-ish.
+    bomb: {
+      weight: 6,
+      uses: 1,
+      loot: { weight: 4, rarity: "uncommon" },
+      cooldown: 0.5,
+      volume: 0.7,
+      placeNoiseRadius: CELL * 1.5,
+    },
+    // Three flares, each shot 10 cells, at most one a second. Its pop is heard 12 cells off, quieter
+    // than a handgun. As common as a stun trap, and light.
+    flareGun: {
+      weight: 3,
+      uses: 3,
+      loot: { weight: 6, rarity: "uncommon" },
+      cooldown: 1,
+      range: CELL * 10,
+      volume: 0.8,
+      noiseRadius: CELL * 12,
+      duration: 0.12,
+      spark: 6,
     },
     // One use, light, and as common as a walkie. Wrapped on whoever is within a shovel's reach in
     // front, or on its user: three quarters of a body's full health back, or a corpse up on a

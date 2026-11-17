@@ -4,6 +4,7 @@ import type {
   Entity,
   Footprint,
   Interpolated,
+  LightSource,
   Player,
   Point,
   Session,
@@ -1256,15 +1257,20 @@ export function draw(
       featheredMask(mask, polygons, camera, width, height, colour),
     );
   }
-  const emitted = emittedLights(game);
-  if (emitted.length > 0) {
+  // Each colour of emitted light laid on its own, a flare's red apart from a flashlight's yellow.
+  const byTint = new Map<string, LightSource[]>();
+  for (const light of emittedLights(game)) {
+    const colour = light.tint ?? LIGHT_TINT;
+    byTint.set(colour, [...(byTint.get(colour) ?? []), light]);
+  }
+  for (const [colour, emitted] of byTint) {
     const tint = featheredMask(
       mask,
       tracePolygons(map, emitted, camera, rays),
       camera,
       width,
       height,
-      LIGHT_TINT,
+      colour,
     );
     layLight(scene, tint);
   }
