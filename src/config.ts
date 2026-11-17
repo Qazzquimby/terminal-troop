@@ -1324,7 +1324,13 @@ export const config = {
       sellInterval: 0.25,
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
-      scatter: { count: 50, seed: 2, clearance: CELL * 3, danger: 1 },
+      scatter: {
+        count: 50,
+        seed: 2,
+        clearance: CELL * 3,
+        danger: 1,
+        offRoad: 1,
+      },
     },
     // Scrap worth 5, sold, carried and dropped as plain scrap is. A new world lays only 5, a tenth
     // as many as plain scrap, favouring danger thrice over as strongly as monsters do: its spots
@@ -1337,7 +1343,13 @@ export const config = {
       sellInterval: 0.25,
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
-      scatter: { count: 5, seed: 3, clearance: CELL * 3, danger: 3 },
+      scatter: {
+        count: 5,
+        seed: 3,
+        clearance: CELL * 3,
+        danger: 3,
+        offRoad: 1,
+      },
     },
     // Scrap worth 3, sold, carried and dropped as plain scrap is, but seen and picked up only
     // while it lies in deepdark. A new world lays 25, half as many as plain scrap, favouring
@@ -1349,7 +1361,13 @@ export const config = {
       sellInterval: 0.25,
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
-      scatter: { count: 25, seed: 4, clearance: CELL * 3, danger: 1 },
+      scatter: {
+        count: 25,
+        seed: 4,
+        clearance: CELL * 3,
+        danger: 1,
+        offRoad: 1,
+      },
     },
     // Torn from any body as hard to kill as the sleeper or harder as it falls, with a wet thud heard
     // 4 cells off. Worth 3, sold, carried and dropped as scrap is; never laid as loot.
@@ -1360,7 +1378,7 @@ export const config = {
       sellInterval: 0.25,
       volume: 0.8,
       dropNoiseRadius: CELL * 4,
-      scatter: { count: 0, seed: 8, clearance: CELL * 3 },
+      scatter: { count: 0, seed: 8, clearance: CELL * 3, offRoad: 1 },
       toughness: SLEEPER_HEALTH,
       tearRange: CELL * 4,
     },
@@ -1504,8 +1522,18 @@ export const config = {
     // its band each can lies by danger weight squared, as a rare item favours danger, so it is
     // found off the road where monsters spawn. The bands keep the exit, the most dangerous place,
     // from drawing more than its own band's can.
+    // No item is laid on the road, loot, fuel or scrap (offRoad: 1): the road is where players
+    // drive and walk, so nothing lies there to be found. Each scatter may also set its own
+    // `terms` (road, right, exit, reach) to favour distance from the road or the exit side more or
+    // less than monsters do; none does yet, so loot still lies where monsters spawn.
     loot: {
-      scatter: { count: 40, seed: 4, clearance: CELL * 3, danger: 1 },
+      scatter: {
+        count: 40,
+        seed: 4,
+        clearance: CELL * 3,
+        danger: 1,
+        offRoad: 1,
+      },
       guaranteed: [
         {
           item: "fuel",
@@ -1515,6 +1543,7 @@ export const config = {
             clearance: CELL * 3,
             spread: "x",
             danger: 2,
+            offRoad: 1,
           },
         },
       ],
