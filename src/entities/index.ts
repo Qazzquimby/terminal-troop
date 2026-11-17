@@ -32,6 +32,7 @@ export {
   shortOfQuota,
   nearCruiser,
   refuel,
+  sales,
 } from "./cruiser/index.js";
 export { placeStunTrap } from "./stun-trap/index.js";
 export { placeTurret } from "./turret/index.js";

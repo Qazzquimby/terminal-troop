@@ -29,12 +29,22 @@ import type { CruiserDoorConfig } from "./door.js";
 import { stepRevival } from "./revive.js";
 import type { ReviveConfig } from "./revive.js";
 import { stock } from "./stock.js";
+import {
+  coinToss,
+  gamble,
+  saleOn,
+  sales,
+  stepCoinToss,
+  stepSales,
+} from "./finances.js";
+import type { FinancesConfig } from "./finances.js";
 import type { StockConfig } from "./stock.js";
 import { playRadio, radioPlaying, stationOf, tuner } from "./radio.js";
 import { recalling, startRecall } from "../recall/index.js";
 import type { CruiserRadioConfig } from "./radio.js";
 
 export { refuel } from "./drive.js";
+export { sales } from "./finances.js";
 // The departure's sounds, once their assets land; importing a missing file breaks the build.
 // import departUrl from "./sfx/depart.mp3";
 // import escapeUrl from "./sfx/escape.mp3";
@@ -63,7 +73,8 @@ interface HeadlightConfig {
  * A car that starts at the world's rally point, its headlights always on, unfuelled; players get
  * in it, and fuelled, one of them can drive it.
  */
-export interface CruiserConfig extends DrivingConfig, StockConfig {
+export interface CruiserConfig
+  extends DrivingConfig, StockConfig, FinancesConfig {
   /**
    * Its body, in pixels: a box `length` from back to front and `width` across, turned the way it
    * points. It is drawn, meets walls, rams bodies and is seen as that box.
@@ -78,6 +89,11 @@ export interface CruiserConfig extends DrivingConfig, StockConfig {
 }
 
 const NAME = "cruiser";
+
+/** The cruiser's stock, its shop's wares on sale as the world's sales have them. */
+function withSales(held: ReturnType<typeof stock>): ReturnType<typeof stock> {
+  return { ...held, shop: { ...held.shop, sale: saleOn } };
+}
 
 /**
  * Its headlights, front left and front right at the front of its body, `ahead` of its middle,
@@ -116,12 +132,18 @@ export const departure = worldData({
   initial: { since: null, escaped: [] },
 });
 
-/** Where the world's cruiser stands, or null when it has none. */
-function cruiserAt(game: Session): Point | null {
+/** The world's cruiser, or null when it has none. */
+function theCruiser(game: Session): WorldEntity | null {
   const id = game.kindIds.get(NAME);
   for (const entity of game.entities.values())
-    if (entity.kind === id) return { x: entity.x, y: entity.y };
+    if (entity.kind === id) return entity;
   return null;
+}
+
+/** Where the world's cruiser stands, or null when it has none. */
+function cruiserAt(game: Session): Point | null {
+  const entity = theCruiser(game);
+  return entity === null ? null : { x: entity.x, y: entity.y };
 }
 
 /** Whether `player` has escaped the world. */
@@ -228,7 +250,8 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
     headlights(config.headlights, config.length / 2, state.heading),
   vehicle: {
     ...vehicle(config),
-    ...stock(config),
+    ...withSales(stock(config)),
+    gamble: gamble(config),
     transceiver: true,
     door: door(config.door),
     tune: tuner(config.radio),
@@ -254,9 +277,12 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
     });
   },
   spawn: { at: "rally", data: FRESH },
-  world: { departure },
+  world: { departure, sales, coinToss },
   step(game) {
+    const at = theCruiser(game);
     stepDeparture(game, config.escape);
+    stepSales(game, at, config.shop.wares, config);
+    stepCoinToss(game, at, config.coinToss);
     stepRevival(game, config.revive, (at) =>
       nearCruiser(game, at, config.revive.reach),
     );

@@ -22,3 +22,4 @@ export {
 export type { MinimapConfig } from "./cabin-minimap.js";
 export { radioPanel, transmitPanel } from "./cabin-radio.js";
 export { doorPanel } from "./cabin-door.js";
+export { coinTossPanel } from "./cabin-finances.js";

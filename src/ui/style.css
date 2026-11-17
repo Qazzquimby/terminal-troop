@@ -391,7 +391,7 @@ canvas {
  * The cruiser's cabin: ugly and awkward on purpose, the way a works vehicle's dashboard is. Bolted-on
  * grey plates of slightly different sizes and shades, none quite lined up, hazard tape round the
  * frame, label-maker tags for titles, chunky buttons. Every word stays readable: monospace, light on
- * dark, nothing under 11px.
+ * dark, nothing under 14px.
  */
 .cabin {
   --cabin-text: #f0ede2;
@@ -407,12 +407,12 @@ canvas {
     "DejaVu Sans Mono", "Consolas", "Lucida Console", "Liberation Mono",
     "Courier New", monospace;
   position: absolute;
-  top: 5%;
-  left: 7%;
-  width: 83%;
-  height: 68%;
+  top: 3%;
+  left: 4%;
+  width: 91%;
+  height: 80%;
   box-sizing: border-box;
-  padding: 8px 10px 6px 14px;
+  padding: 10px 14px 8px 18px;
   overflow: auto;
   background:
     repeating-linear-gradient(
@@ -432,7 +432,7 @@ canvas {
   box-shadow:
     0 7px 0 var(--cabin-edge),
     0 10px 18px rgb(0 0 0 / 60%);
-  font: 12px/1.25 var(--cabin-mono);
+  font: 15px/1.3 var(--cabin-mono);
   transform: rotate(-0.4deg);
 }
 .cabin[hidden] {
@@ -442,10 +442,10 @@ canvas {
 .cabin-header {
   width: fit-content;
   margin: 0 0 7px 31px;
-  padding: 3px 10px;
+  padding: 5px 14px;
   background: var(--cabin-edge);
   color: var(--cabin-text);
-  font-size: 15px;
+  font-size: 19px;
   font-weight: bold;
   letter-spacing: 4px;
   text-transform: uppercase;
@@ -456,7 +456,7 @@ canvas {
 .cabin-panels {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px 11px;
+  gap: 10px 14px;
   align-items: flex-start;
 }
 /* A bolted-on plate: bevelled edges and a rivet in each corner. */
@@ -467,7 +467,7 @@ canvas {
     #2b2e32 2.2px,
     transparent 2.8px
   );
-  padding: 9px 11px 8px;
+  padding: 12px 14px 10px;
   background:
     var(--rivet) left 1px top 1px / 8px 8px no-repeat,
     var(--rivet) right 1px top 1px / 8px 8px no-repeat,
@@ -492,11 +492,11 @@ canvas {
 /* Each plate's name on a strip of label tape. */
 .cabin-title {
   width: fit-content;
-  margin: 0 0 4px;
-  padding: 1px 5px;
+  margin: 0 0 8px;
+  padding: 3px 8px;
   background: var(--cabin-edge);
   color: var(--cabin-text);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: bold;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -505,7 +505,7 @@ canvas {
 .cabin-caption {
   margin: 0;
   color: var(--cabin-text);
-  font-size: 11px;
+  font-size: 14px;
 }
 /* Cabin buttons: chunky, with a face colour of their own that hovering only brightens. */
 .cabin button {
@@ -533,8 +533,8 @@ canvas {
 }
 .cabin-wheel-svg {
   display: block;
-  width: 118px;
-  height: 118px;
+  width: 160px;
+  height: 160px;
   margin: 2px 0 0 17px;
   transition: transform 0.12s linear;
 }
@@ -559,11 +559,11 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 96px;
+  width: 136px;
 }
 .cabin .cabin-drive {
   --face: #2f7d36;
-  padding: 12px 2px;
+  padding: 16px 4px;
   font-size: 17px;
   letter-spacing: 1px;
 }
@@ -575,18 +575,18 @@ canvas {
 }
 .cabin .cabin-honk {
   --face: var(--cabin-hazard);
-  width: 61px;
-  padding: 2px;
-  margin-left: 23px;
+  width: 84px;
+  padding: 6px 2px;
+  margin-left: 26px;
   color: var(--cabin-edge);
-  font-size: 11px;
+  font-size: 14px;
   text-transform: uppercase;
   border-radius: 50%;
 }
 .cabin-honked {
   margin: 0;
   color: var(--cabin-hazard);
-  font-size: 22px;
+  font-size: 28px;
   font-weight: bold;
   text-shadow: 2px 2px 0 var(--cabin-edge);
   animation: cabin-honk 0.45s steps(3) both;
@@ -600,27 +600,18 @@ canvas {
   }
 }
 .cabin-occupants {
-  min-width: 128px;
-  max-width: 190px;
+  min-width: 170px;
+  max-width: 260px;
 }
 .cabin-occupant-list {
   margin: 1px 0 0;
   padding-left: 15px;
   color: var(--cabin-text);
-  font-size: 12px;
+  font-size: 15px;
 }
-/* Stuck to the bottom of the cabin's scroll view, so the way out shows on any screen size. */
-.cabin-exit-panel {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  align-self: flex-end;
-  margin-left: auto;
-  padding: 0;
-  background: none;
-  border: none;
-}
+/* The exit sign sits in the cabin's dock (below), bare of a plate. */
 .cabin-panel.cabin-exit-panel {
+  padding: 0;
   background: none;
   border: none;
   box-shadow: none;
@@ -630,14 +621,14 @@ canvas {
   display: flex;
   gap: 4px;
   align-items: center;
-  padding: 8px 14px 8px 10px;
+  padding: 10px 18px 10px 12px;
   color: #fff;
   border: 4px solid #fff;
   border-radius: 12px;
   outline: 3px solid #06401a;
   box-shadow: 4px 5px 0 #000;
   font:
-    900 26px/1 "Impact",
+    900 32px/1 "Impact",
     "Arial Black",
     sans-serif;
   transform: rotate(-7deg);
@@ -648,15 +639,11 @@ canvas {
 .cabin-exit-runner {
   transform: scaleX(-1);
 }
-/* The exit sign stays the last panel, and sticky (above), whatever panels are added after it. */
-.cabin-panel.cabin-exit-panel {
-  order: 99;
-}
 .cabin-panel[hidden] {
   display: none;
 }
 .cabin-storage {
-  min-width: 110px;
+  min-width: 160px;
 }
 .cabin-storage-grid {
   display: grid;
@@ -672,8 +659,8 @@ canvas {
   box-shadow: none;
 }
 .cabin .cabin-slot {
-  height: 28px;
-  font-size: 15px;
+  height: 42px;
+  font-size: 19px;
 }
 .cabin .cabin-slot-empty {
   --face: #1b1d20;
@@ -689,9 +676,9 @@ canvas {
   margin-top: 2px;
 }
 .cabin .cabin-pocket {
-  width: 27px;
-  height: 23px;
-  font-size: 12px;
+  width: 40px;
+  height: 34px;
+  font-size: 15px;
 }
 .cabin .cabin-pocket-held {
   outline: 2px solid var(--cabin-hazard);
@@ -711,8 +698,8 @@ canvas {
 .cabin .cabin-buy {
   width: 100%;
   margin: 2px 0;
-  padding: 3px 5px;
-  font-size: 11px;
+  padding: 6px 8px;
+  font-size: 14px;
   font-weight: normal;
   text-align: left;
   white-space: nowrap;
@@ -746,15 +733,15 @@ canvas {
 }
 .cabin-minimap-name {
   flex: 1;
-  padding: 1px 4px;
+  padding: 4px 8px;
   background: #010803;
   color: var(--cabin-phosphor);
-  font-size: 11px;
+  font-size: 14px;
   text-align: center;
 }
 .cabin .cabin-minimap-step {
-  padding: 1px 4px;
-  font-size: 11px;
+  padding: 4px 8px;
+  font-size: 14px;
 }
 /* The teleporter's button: a hazard-striped plate under the radar, lit while it charges. */
 .cabin .cabin-teleport {
@@ -762,9 +749,9 @@ canvas {
   display: block;
   width: 100%;
   margin-top: 4px;
-  padding: 4px 6px;
+  padding: 8px 10px;
   color: var(--cabin-hazard);
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 1px;
 }
 .cabin .cabin-teleport.cabin-teleport-charging {
@@ -774,7 +761,7 @@ canvas {
 }
 .cabin .cabin-transmit-button {
   --face: var(--cabin-socket);
-  padding: 8px 6px;
+  padding: 12px 10px;
   color: var(--cabin-hazard);
   border-width: 3px;
   border-radius: 8px;
@@ -796,15 +783,15 @@ canvas {
 }
 .cabin .cabin-radio-tune,
 .cabin .cabin-radio-off {
-  padding: 2px 6px;
-  font-size: 11px;
+  padding: 6px 12px;
+  font-size: 14px;
 }
 .cabin .cabin-door-button {
-  padding: 2px 6px;
-  font-size: 11px;
+  padding: 6px 12px;
+  font-size: 14px;
 }
 .cabin-door-meter {
-  height: 8px;
+  height: 12px;
   margin: 4px 0 2px;
   background: var(--cabin-socket);
   border: 1px solid var(--cabin-edge);
@@ -816,4 +803,179 @@ canvas {
 }
 .cabin-door-shut .cabin-door-fill {
   background: var(--cabin-phosphor);
+}
+
+/* The cabin's tabs: label-tape strips along the top, the shown one pulled out, hazard-edged. */
+.cabin-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px 12px;
+}
+.cabin .cabin-tab {
+  --face: var(--cabin-socket);
+  padding: 8px 18px;
+  color: var(--cabin-dim);
+  font-size: 17px;
+  letter-spacing: 2px;
+}
+.cabin .cabin-tab.cabin-tab-current {
+  --face: var(--cabin-plate);
+  color: var(--cabin-text);
+  border-bottom: 4px solid var(--cabin-hazard);
+  transform: translateY(2px) rotate(-1deg);
+}
+.cabin-panels[hidden] {
+  display: none;
+}
+/* The exit sign, under every tab, stuck to the bottom of the cabin's scroll view. */
+.cabin-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+.cabin-dock > * {
+  pointer-events: auto;
+}
+
+/* A ware on sale: the old price struck out and a red tag, slapped on crooked. */
+.cabin .cabin-buy {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.cabin-buy-dots {
+  flex: 1;
+  min-width: 20px;
+  border-bottom: 2px dotted currentcolor;
+  opacity: 0.5;
+}
+.cabin-buy-was {
+  color: var(--cabin-dim);
+  text-decoration: line-through;
+}
+.cabin-buy-price {
+  font-weight: bold;
+}
+.cabin-sale-tag {
+  padding: 1px 6px;
+  background: #c62828;
+  color: #fff;
+  font-weight: bold;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  transform: rotate(-6deg);
+  animation: cabin-sale 1.2s ease-in-out infinite alternate;
+}
+.cabin .cabin-on-sale:not(:disabled) .cabin-buy-price {
+  color: var(--cabin-phosphor);
+}
+@keyframes cabin-sale {
+  from {
+    transform: rotate(-6deg) scale(1);
+  }
+  to {
+    transform: rotate(-3deg) scale(1.1);
+  }
+}
+
+/* The coin toss: a brass coin that spins while it is up and lands with a bounce. */
+.cabin-coin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  min-width: 260px;
+}
+.cabin-coin-face {
+  display: grid;
+  width: 84px;
+  height: 84px;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, #ffe27a, #c99a14 60%, #8a6408);
+  color: #4a3300;
+  border: 4px solid #6d4f06;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 4px rgb(255 240 170 / 50%),
+    3px 4px 0 var(--cabin-edge);
+  font-size: 40px;
+  font-weight: bold;
+}
+.cabin-coin-spinning {
+  animation: cabin-coin-spin 0.3s linear infinite;
+}
+.cabin-coin-won {
+  color: #0d5e18;
+  animation: cabin-coin-land 0.5s ease-out both;
+  box-shadow:
+    inset 0 0 0 4px rgb(255 240 170 / 50%),
+    0 0 18px var(--cabin-phosphor);
+}
+.cabin-coin-lost {
+  color: #8f1a1a;
+  animation: cabin-coin-land 0.5s ease-out both;
+}
+@keyframes cabin-coin-spin {
+  from {
+    transform: translateY(-14px) scaleX(1);
+  }
+  50% {
+    transform: translateY(-20px) scaleX(0.1);
+  }
+  to {
+    transform: translateY(-14px) scaleX(1);
+  }
+}
+@keyframes cabin-coin-land {
+  from {
+    transform: translateY(-24px) scale(1.2);
+  }
+  60% {
+    transform: translateY(4px) scale(0.95);
+  }
+  to {
+    transform: none;
+  }
+}
+.cabin-coin-caption {
+  min-height: 1.3em;
+  font-weight: bold;
+}
+.cabin-bet {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.cabin-bet-amount {
+  min-width: 70px;
+  padding: 6px 10px;
+  background: #010803;
+  color: var(--cabin-phosphor);
+  font-size: 20px;
+  text-align: center;
+}
+.cabin .cabin-bet-step {
+  width: 40px;
+  padding: 4px 0;
+  font-size: 20px;
+}
+.cabin .cabin-bet-all {
+  padding: 8px 10px;
+  color: var(--cabin-hazard);
+  font-size: 14px;
+}
+.cabin .cabin-flip {
+  --face: #2f7d36;
+  width: 100%;
+  padding: 12px;
+  font-size: 21px;
+  letter-spacing: 2px;
+}
+.cabin .cabin-flip:disabled {
+  --face: #45494e;
+  color: var(--cabin-dim);
+  box-shadow: none;
 }

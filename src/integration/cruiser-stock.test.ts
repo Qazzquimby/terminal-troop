@@ -1,8 +1,9 @@
-import { expect, test } from "vitest";
-import { entityContent } from "../entities/index.js";
+import { expect, test, vi } from "vitest";
+import { entityContent, sales } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import {
+  cabinGamble,
   cabinShop,
   cabinStorage,
   credit,
@@ -135,7 +136,81 @@ test("buying takes the price from the team's credit on every client and gives th
   expect(pockets("b").filter((item) => item === "walkie")).toHaveLength(1);
   expect(credit.get(host)).toBe(0);
   const shop = cabinShop(game("b"), game("b").local.ride?.vehicle ?? "");
-  expect(shop).toEqual({ wares: config.shop.wares, credit: 0 });
+  expect(shop).toEqual({
+    wares: config.shop.wares.map((ware) => ({
+      ...ware,
+      was: ware.price,
+      off: 0,
+    })),
+    credit: 0,
+  });
+});
+
+test("a ware on sale shows and sells at its sale price on every client", async () => {
+  const { host, game, ask, pockets } = await aboard();
+  sales.set(host, { drawn: host.worldTime, off: { flashlight: 50 } });
+  credit.set(host, 2);
+  ask("b", { buy: "walkie" });
+  for (const id of ["a", "b"]) {
+    const shop = cabinShop(game(id), game(id).local.ride?.vehicle ?? "");
+    expect(shop?.wares.find((ware) => ware.item === "flashlight")).toEqual({
+      item: "flashlight",
+      price: 1,
+      was: 3,
+      off: 50,
+    });
+  }
+  // The walkie, at its full 2, took everything; the flashlight, at half price, is out of reach.
+  expect(credit.get(host)).toBe(0);
+  credit.set(host, 1);
+  ask("b", { buy: "flashlight" });
+  expect(pockets("b")).toContain("flashlight");
+  expect(credit.get(game("a"))).toBe(0);
+});
+
+test("a coin toss stakes the bet from the team's credit, and the host pays a win back double", async () => {
+  const { host, game, ask, run, step } = await aboard();
+  const vehicle = (id: string) => game(id).local.ride?.vehicle ?? "";
+  credit.set(host, 10);
+  const random = vi.spyOn(Math, "random").mockReturnValue(0.1);
+  try {
+    step({ b: { ...idle, cabin: { toss: 4 } } });
+    run(200);
+    for (const id of ["a", "b"]) {
+      expect([id, credit.get(game(id))]).toEqual([id, 6]);
+      expect(cabinGamble(game(id), vehicle(id))?.tossing).toEqual({
+        by: game("b").local.name,
+        bet: 4,
+      });
+    }
+    // Another coin may not go up while this one is.
+    step({ a: { ...idle, cabin: { toss: 1 } } });
+    run(200);
+    expect(credit.get(host)).toBe(6);
+    run(config.coinToss.flight * 1000);
+    for (const id of ["a", "b"]) {
+      expect([id, credit.get(game(id))]).toEqual([id, 14]);
+      expect(cabinGamble(game(id), vehicle(id))).toEqual({
+        tossing: null,
+        last: { by: game("b").local.name, bet: 4, n: 1, won: true },
+      });
+    }
+
+    random.mockReturnValue(0.9);
+    ask("a", { toss: 14 });
+    run(config.coinToss.flight * 1000);
+    expect(credit.get(game("b"))).toBe(0);
+    expect(cabinGamble(game("b"), vehicle("b"))?.last).toMatchObject({
+      n: 2,
+      won: false,
+    });
+
+    // With nothing banked, nothing is staked.
+    ask("a", { toss: 1 });
+    expect(cabinGamble(host, vehicle("a"))?.tossing).toBeNull();
+  } finally {
+    random.mockRestore();
+  }
 });
 
 test("a buyer whose items are full gets what it bought in the storage; with both full it is not bought", async () => {

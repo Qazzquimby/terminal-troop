@@ -51,7 +51,8 @@ export const RideWire = z
  * close its door; to stow
  * the item in its own slot `stow` in the vehicle's storage, in its slot `into` or the first empty
  * one; to take the item in the storage's slot `unstow`; to buy the item `buy` at the vehicle's
- * shop; or to teleport the body `teleport` to the vehicle.
+ * shop; to teleport the body `teleport` to the vehicle; or to stake `toss` of the team's credit on
+ * the vehicle's coin toss.
  */
 export type CabinCommand =
   | "drive"
@@ -63,7 +64,8 @@ export type CabinCommand =
   | { readonly stow: number; readonly into?: number }
   | { readonly unstow: number }
   | { readonly buy: string }
-  | { readonly teleport: string };
+  | { readonly teleport: string }
+  | { readonly toss: number };
 
 /** What a radio is turned to: the next station along, switching it on, or off. */
 export type Tuning = "next" | "off";
@@ -117,10 +119,40 @@ export interface Ware {
 /** A vehicle's shop: items anyone inside may buy with the team's credit. */
 export interface VehicleShop {
   readonly wares: readonly Ware[];
+  /**
+   * How much is off the item `item` now, in whole percent, by whatever rule the shop has; 0 for
+   * nothing, and always 0 when left out. Read on every client, so what it reads must be synced.
+   */
+  sale?(game: Session, item: string): number;
   /** What every client near it hears on a purchase, if anything. */
   readonly sound?: Sound;
   /** How far, in pixels, a purchase's noise carries; as far as its sound when left out. */
   readonly noise?: number;
+}
+
+/** A coin in the air, staked by `by` (a player's name) for `bet` of the team's credit. */
+export interface Toss {
+  readonly by: string;
+  readonly bet: number;
+}
+
+/** How a toss came down: `won` pays double the bet back, else it is lost. `n` counts tosses. */
+export interface Tossed extends Toss {
+  readonly n: number;
+  readonly won: boolean;
+}
+
+/**
+ * A vehicle's coin toss, double or nothing on the team's credit: the stake is spent as the coin
+ * goes up, and the host alone decides how it comes down, by whatever rule the vehicle has.
+ */
+export interface VehicleGamble {
+  /** The coin in the air now, null for none, as this client has it. Read on every client. */
+  tossing(game: Session, vehicle: WorldEntity): Toss | null;
+  /** The last toss to come down, null before any, as this client has it. */
+  last(game: Session, vehicle: WorldEntity): Tossed | null;
+  /** Tosses the coin for `bet`, already spent, by `by` inside `vehicle`, as part of an action. */
+  toss(game: Session, vehicle: WorldEntity, by: Player, bet: number): void;
 }
 
 /** How a vehicle drives, like a car. Speeds in pixels per second, rates per second. */
@@ -186,6 +218,8 @@ export interface VehicleSpec {
   readonly door?: VehicleDoor;
   /** Its teleporter, which brings bodies to it; none when left out. */
   readonly teleporter?: VehicleTeleporter;
+  /** Its coin toss, staking the team's credit double or nothing; none when left out. */
+  readonly gamble?: VehicleGamble;
   /** Its radio, turned by `by` inside it, as part of an action. None when left out. */
   tune?(game: Session, vehicle: WorldEntity, by: Player, to: Tuning): void;
   /** The name of the station its radio plays, as this client has it; null while it is off. */

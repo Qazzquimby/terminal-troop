@@ -52,7 +52,7 @@ export function storagePanel(send: CabinSend): CabinPanel {
   const element = make("section", "cabin-panel cabin-storage");
   const title = make("h3", "cabin-title", "CARGO HOLD (2x3)");
   const grid = make("div", "cabin-storage-grid");
-  grid.style.gridTemplateColumns = `repeat(${String(STORAGE_COLUMNS)}, 30px)`;
+  grid.style.gridTemplateColumns = `repeat(${String(STORAGE_COLUMNS)}, 46px)`;
   const caption = make("p", "cabin-caption", "your pockets ↓ click to stow");
   const pockets = make("div", "cabin-pockets");
   element.append(title, grid, caption, pockets);
@@ -99,7 +99,13 @@ export function storagePanel(send: CabinSend): CabinPanel {
   };
 }
 
-/** The vehicle's shop: what it sells and for how much, greyed out what the team cannot afford. */
+/** The tag a ware on sale wears: how much is off it. */
+export const saleTag = (off: number): string => `-${String(off)}%`;
+
+/**
+ * The vehicle's shop: what it sells and for how much, greyed out what the team cannot afford; a
+ * ware on sale shows its old price struck out and a tag of how much is off.
+ */
 export function shopPanel(send: CabinSend): CabinPanel {
   const element = make("section", "cabin-panel cabin-shop");
   const title = make("h3", "cabin-title", "$CRAP-MART™ (no refunds)");
@@ -121,15 +127,26 @@ export function shopPanel(send: CabinSend): CabinPanel {
         ...shop.wares.map((ware) => {
           const definition = game.itemDefinitions.get(ware.item);
           const name = definition?.name ?? ware.item;
-          const price = creditText(ware.price);
           const row = make("li", "cabin-ware");
-          const buy = button(
-            "cabin-buy",
-            `${definition?.emoji ?? "?"} ${name} ....... ${price}`,
-            () => {
-              send({ buy: ware.item });
-            },
+          const buy = button("cabin-buy", "", () => {
+            send({ buy: ware.item });
+          });
+          buy.append(
+            make(
+              "span",
+              "cabin-buy-name",
+              `${definition?.emoji ?? "?"} ${name}`,
+            ),
+            make("span", "cabin-buy-dots"),
+            ...(ware.off > 0
+              ? [
+                  make("span", "cabin-buy-was", creditText(ware.was)),
+                  make("span", "cabin-sale-tag", saleTag(ware.off)),
+                ]
+              : []),
+            make("span", "cabin-buy-price", creditText(ware.price)),
           );
+          if (ware.off > 0) buy.classList.add("cabin-on-sale");
           const afford = shop.credit >= ware.price;
           buy.disabled = !afford || definition === undefined;
           buy.title = afford ? `Buy a ${name}` : "Can't afford it";

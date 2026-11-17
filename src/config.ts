@@ -479,6 +479,12 @@ export const config = {
         noiseRadius: CELL * 2,
         volume: 0.8,
       },
+      // Each ware is on sale with a 15% chance, 25 to 75% off (#404), drawn afresh by the host every
+      // 2 minutes of world time, so a run sees a few rounds of sales without them churning.
+      sales: { chance: 0.15, minOff: 25, maxOff: 75, every: 120 },
+      // The coin toss in the cabin's finances (#404): a fair coin, a second in the air, heard as
+      // far as the shop's register.
+      coinToss: { flight: 1.2, odds: 0.5, volume: 0.7, range: CELL * 2 },
       // Its radio plays as loud and as far as a radio carried about: heard, and a noise, 25 cells
       // round every second while it plays. Its dial clicks 2 cells out.
       radio: {

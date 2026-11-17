@@ -40,21 +40,24 @@ export type {
   Impact,
   Storage,
   VehicleDoor,
+  VehicleGamble,
   VehicleShop,
   VehicleSpec,
   Ware,
 } from "./driving.js";
 export {
   cabinDoor,
+  cabinGamble,
   cabinShop,
   cabinStorage,
   cabinTeleporter,
   putIn,
+  salePrice,
   unseat,
 } from "./vehicle.js";
 export { credit } from "./credit.js";
 export type { CabinCommand, Tuning } from "./driving.js";
-export type { CabinDoor, CabinTeleporter } from "./vehicle.js";
+export type { CabinDoor, CabinGamble, CabinTeleporter } from "./vehicle.js";
 export type { Playing } from "./item-sounds.js";
 export { destroyedWalls, destroyWalls, wallCellsIn } from "./walls.js";
 export type { WallArea } from "./walls.js";
