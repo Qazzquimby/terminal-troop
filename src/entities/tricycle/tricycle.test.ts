@@ -161,9 +161,18 @@ test("it rides through a body it does not run down, leaving it unhurt and where 
 });
 
 test("its next ride sets off the way it already heads, rather than doubling back", () => {
-  // Its rides are drawn at random; every one of many sets off within a right angle of its facing.
+  // Its rides are drawn at random, here from fixed seeds, one per trial, so the test is the same
+  // each run. From the middle of the open row, with room for a full ride both ways, every one of
+  // many sets off within a right angle of its facing. (Facing a wall too near for a full ride, it
+  // may well set off sideways: that is the backtracking it falls back to when nothing else goes.)
   for (let trial = 0; trial < 20; trial++)
-    for (const facing of [0, Math.PI / 2, Math.PI]) {
+    for (const facing of [0, Math.PI]) {
+      let seed = trial + 1;
+      vi.spyOn(Math, "random").mockImplementation(() => {
+        // A small LCG; any fixed sequence spread over [0, 1) will do.
+        seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+        return seed / 2 ** 31;
+      });
       const game = world(FAR.x, 75);
       const trike = spawnEntity(game, "tricycle", 425, 325, {
         ...freshTricycle(game.worldTime, facing),
@@ -175,5 +184,6 @@ test("its next ride sets off the way it already heads, rather than doubling back
       if (first === undefined) throw new Error("no ride");
       const setsOff = Math.atan2(first.y - 325, first.x - 425);
       expect(Math.cos(setsOff - facing)).toBeGreaterThan(0);
+      vi.mocked(Math.random).mockRestore();
     }
 });
