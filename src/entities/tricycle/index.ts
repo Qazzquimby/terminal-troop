@@ -20,7 +20,7 @@ import type { SpawningConfig } from "../spawning.js";
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
 const bellUrl = new URL("./sfx/bell.mp3", import.meta.url).href;
 const creakUrl = new URL("./sfx/creak.mp3", import.meta.url).href;
-const hitUrl = new URL("./sfx/hit.mp3", import.meta.url).href;
+const hitUrl = new URL("./sfx/bell.mp3", import.meta.url).href;
 
 /**
  * The tricycle: rides on and on along the wide ways, rarely doubling back, through every body but

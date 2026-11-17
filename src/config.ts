@@ -1185,7 +1185,7 @@ export const config = {
       speedShare: 1.3,
       slowShare: 0.9,
       slowRange: CELL * 4,
-      ride: { min: CELL * 10, max: CELL * 25, tries: 12, width: CELL * 2 },
+      ride: { min: CELL * 10, max: CELL * 25, tries: 12, width: CELL },
       bellRange: CELL * 8,
       bellCooldown: 2,
       damage: 70,
