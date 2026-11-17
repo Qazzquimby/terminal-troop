@@ -680,6 +680,26 @@ export const testEntitiesConfig = {
   },
   // Its pop carries 20 test cells.
   balloon: { radius: 8, sounds: { pop: 1000 } },
+  apexPredator: {
+    spawning: { ...NEVER, unseenDistance: 700, most: 6 },
+    ignores: ["apexPredator"],
+    radius: 11,
+    mass: 0.2,
+    // Three test shovel hits.
+    maxHealth: 75,
+    speedShare: 1.1,
+    wanderShare: 0.5,
+    wanderRange: 200,
+    sightRange: 300,
+    standGap: 12.5,
+    repathInterval: 0.3,
+    calmSeconds: 8,
+    damage: 15,
+    attackCooldown: 1,
+    quackGap: { min: 4, max: 10 },
+    angryGap: { min: 1, max: 3 },
+    sounds: { quack: 200, angry: 500, attack: 200 },
+  },
 } satisfies EntitiesConfig;
 
 /** A scanner sensing 1000px out, beeping every 2s at the edge down to 10 times a second. */

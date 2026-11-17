@@ -41,7 +41,7 @@ import {
   strikeIf,
   Time,
   walk,
-  wanderLeg,
+  wanderOn,
   Waypoint,
 } from "../hunt.js";
 import type { Hunting } from "../hunt.js";
@@ -311,15 +311,7 @@ function think(
       return { ...state, lingerUntil: now + config.lingerSeconds };
     return now >= state.lingerUntil ? calm(state) : state;
   }
-  if (state.route.length > 0) return state;
-  const leg = wanderLeg(
-    game.world.map,
-    self,
-    Math.random,
-    self.radius,
-    config.wanderRange,
-  );
-  return { ...state, route: leg ?? [] };
+  return wanderOn(state, self, game.world.map, config.wanderRange);
 }
 
 /**
