@@ -1063,6 +1063,65 @@ export const config = {
       },
       sounds: { attack: CELL * 5 },
     },
+    // Alone, 2 minutes into a world on, never within 14 cells of a player; twice as common as the
+    // stalker. A little bigger than a player; three shovel hits fell it. It runs at 1.2 times a
+    // player's sprint in straight runs of 10 cells at least, a wall ending one sooner, standing
+    // 0.8s to turn between them, trying 12 headings for a run with nothing to make for. It sees 8
+    // cells down its facing, as a zombie does, and makes for any body it sees or that hurts it,
+    // but its own kind and exploders, which it would set off. It strikes what it touches for 30,
+    // once a second. Its feet thump 4 times a second, heard 12 cells off, past a sprint's 7; a
+    // slam into a wall carries 10, a blow 5.
+    thumper: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 20,
+        after: 120,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      ignores: ["thumper", "exploder"],
+      radius: 16,
+      maxHealth: SHOVEL_DAMAGE * 3,
+      sprintShare: 1.2,
+      minRun: CELL * 10,
+      turnSeconds: 0.8,
+      sightRange: CELL * 8,
+      headingTries: 12,
+      damage: 30,
+      attackCooldown: 1,
+      thumpInterval: 0.25,
+      sounds: { thump: CELL * 12, slam: CELL * 10, attack: CELL * 5 },
+    },
+    // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker.
+    // Smaller than a player; four shovel hits break it. It rides at 1.3 times a walk, to spots 10
+    // to 25 cells off, of 12 tried the one setting off most nearly the way it heads, along ways 2
+    // cells wide where there are any. It runs down players alone, passing through every other
+    // body: one within 8 cells on its way hears its bell, at most every 2s, heard 10 cells off;
+    // one within 4 cells ahead slows it to 0.9 times a walk; one it touches takes 70, once a
+    // second. Its wheels creak every 0.8s, heard 3 cells off; a body run down, 6.
+    tricycle: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
+      ignores: ["tricycle"],
+      targets: ["player"],
+      radius: 12,
+      maxHealth: SHOVEL_DAMAGE * 4,
+      speedShare: 1.3,
+      slowShare: 0.9,
+      slowRange: CELL * 4,
+      ride: { min: CELL * 10, max: CELL * 25, tries: 12, width: CELL * 2 },
+      bellRange: CELL * 8,
+      bellCooldown: 2,
+      damage: 70,
+      attackCooldown: 1,
+      creakInterval: 0.8,
+      sounds: { bell: CELL * 10, creak: CELL * 3, hit: CELL * 6 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its

@@ -1,13 +1,61 @@
 import {
+  effect,
   eyesOf,
   hasKindTag,
   inCone,
   inView,
   livingBodies,
 } from "../sim/index.js";
-import type { Body, Point, Session, Sight, WorldEntity } from "../sim/index.js";
-import { NEVER_PREY, preyNear } from "./hunt.js";
+import type {
+  Body,
+  Eyes,
+  Point,
+  Session,
+  Sight,
+  Sound,
+  Strike,
+  WorldEntity,
+} from "../sim/index.js";
+import { NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
+
+/**
+ * Eyes as a player's, down `facing`: its view cone and surroundings, both out to `range`. For a
+ * kind that sees as a person does, only not as far.
+ */
+export function facingEyes(facing: number, game: Session, range: number): Eyes {
+  const { coneAngle, surroundingsRadius } = game.config.vision;
+  return {
+    cone: { direction: facing, angle: coneAngle, range },
+    around: Math.min(surroundingsRadius, range),
+  };
+}
+
+/** A blow of `damage` on whatever `self` touches that it does not ignore, when it is `attacking`. */
+export function touchStrikes(
+  game: Session,
+  self: WorldEntity,
+  attacking: boolean,
+  ignores: readonly string[],
+  damage: number,
+): Strike[] {
+  if (!attacking) return [];
+  return strikeEach(touching(game, self, ignores), damage);
+}
+
+/**
+ * Plays, as the host, on every client, each of `made` that is a sound, where `self` stands; each
+ * also makes its noise. For a kind's cue, which lists its sounds as `step && sound`.
+ */
+export function playEach(
+  game: Session,
+  self: WorldEntity,
+  made: readonly (Sound | false)[],
+): void {
+  for (const sound of made)
+    if (sound !== false)
+      effect(game, { at: { x: self.x, y: self.y }, sound }, self);
+}
 
 /*
  * Who a monster hunts. Players are bodies like any other: a monster hunts, notices, chases and

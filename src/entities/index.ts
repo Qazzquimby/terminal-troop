@@ -21,6 +21,8 @@ import { ghostGirl } from "./ghost-girl/index.js";
 import { doppelganger } from "./doppelganger/index.js";
 import { bomb } from "./bomb/index.js";
 import { flare } from "./flare/index.js";
+import { thumper } from "./thumper/index.js";
+import { tricycle } from "./tricycle/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -67,6 +69,8 @@ const ENTITIES = [
   doppelganger,
   bomb,
   flare,
+  thumper,
+  tricycle,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

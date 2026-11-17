@@ -197,13 +197,20 @@ test("the host's players go out with its ticks, not between them", async () => {
 test("the host's entities reach the other client, ids, kinds, spots and state alike", async () => {
   const { a, b } = await hosted();
   expect(a.hostId()).toBe("a");
-  // Three zombies, the cruiser, then three scrap lying about, numbered by the content list (the
-  // stun trap, the snail, the blind dog, the exploder, the sleeper, the statue, the stalker, the
-  // hoarder, the land mine, the mine layer, the turret, the teleporter, the giant snail, the
-  // living wall, the gloom, the recall, the pocketball, the ghost girl, the doppelganger, the bomb and the flare come
-  // between) on both clients.
+  // Three zombies, the cruiser, then three scrap lying about, numbered by the content list on
+  // both clients. Items lie as the kind numbered after every entity kind; it is looked up rather
+  // than written out, so a kind added to the list does not touch this test.
+  const kinds = [...sessionOf(a).kindIds.values()];
+  const lying = sessionOf(a).kindIds.get("core/world-item");
+  expect(lying).toBe(Math.max(...kinds));
   expect(snapshotOf(a).map(({ kind }) => kind)).toEqual([
-    1, 1, 1, 2, 24, 24, 24,
+    1,
+    1,
+    1,
+    2,
+    lying,
+    lying,
+    lying,
   ]);
   expect(snapshotOf(b)).toEqual(snapshotOf(a));
 
