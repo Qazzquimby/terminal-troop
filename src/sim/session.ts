@@ -14,7 +14,9 @@ import { applyEvents } from "./content-event.js";
 import type { WorldContent } from "./content.js";
 import type { Flash } from "./flashes.js";
 import { hearDay } from "./day.js";
+import { hearFronts } from "./deepdark.js";
 import type { DayConfig } from "./day.js";
+import type { DeepdarkConfig } from "./deepdark.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { emitFootsteps } from "./footsteps.js";
@@ -103,6 +105,8 @@ export interface SimConfig extends PlayerRules {
   readonly stunned: StunnedConfig;
   /** How the world's day passes, and its daylight with it. */
   readonly day: DayConfig;
+  /** How deepdark bears on light, sight and memory, and when its fronts sweep the world. */
+  readonly deepdark: DeepdarkConfig;
 }
 
 export interface Session {
@@ -394,6 +398,7 @@ export function updateSession(
   game.sfx.listen(game.local);
   hearStatuses(game);
   hearDay(game);
+  hearFronts(game);
 }
 
 /** Drops a remote player; false when there is none by that id. */

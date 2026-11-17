@@ -1,6 +1,7 @@
 import { asEntity, asPlayer, livingBodies } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { isGhost } from "./ghosts.js";
+import { isDeepdark } from "./light.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { isStunned } from "./status.js";
@@ -13,8 +14,13 @@ import { canSeeFrom } from "./vision.js";
  *   at, as the statue, held while looked at, asks.
  * - noticing: looking, or within the circle it sees all round it, behind it too. A flash, or a
  *   body it reacts to, need only be noticed.
- * Light plays no part: a body looking into the dark at something still looks at it.
+ * Light plays no part: a body looking into the dark at something still looks at it. Deepdark does:
+ * eyes see into it only the deepdark config's `sight` of their reach, either way.
  */
+
+/** The share of its reach `sight` sees `at` out to: less into deepdark. */
+const reachInto = (game: Session, at: Point): number =>
+  isDeepdark(game, at) ? game.config.deepdark.sight : 1;
 
 /** A view cone: the way it faces and how wide it is, in radians, and how far it reaches. */
 interface Cone {
@@ -70,7 +76,7 @@ export function inCone(
   const source = {
     x: sight.x,
     y: sight.y,
-    range: Math.min(cone.range, range),
+    range: Math.min(cone.range * reachInto(game, at), range),
     shape: {
       kind: "cone" as const,
       direction: cone.direction,
@@ -92,7 +98,7 @@ export function inView(
 ): boolean {
   if (sight === null) return false;
   if (inCone(game, sight, at, range)) return true;
-  const around = Math.min(sight.around, range);
+  const around = Math.min(sight.around * reachInto(game, at), range);
   return (
     around > 0 &&
     canSeeFrom(game.world.map, { x: sight.x, y: sight.y, range: around }, at)

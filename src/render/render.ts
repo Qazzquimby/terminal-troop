@@ -1,5 +1,6 @@
 import type {
   AmbientLight,
+  Body,
   DarkSource,
   Entity,
   Footprint,
@@ -23,6 +24,11 @@ import {
   ambientPolygons,
   canSeeFrom,
   darkSources,
+  eyesOf,
+  frontsNow,
+  intoDeepdark,
+  isDeepdark,
+  nearDeepdark,
   daylightNow,
   emittedLights,
   inDarkness,
@@ -823,6 +829,23 @@ function featheredMask(
   height: number,
   colour: string,
 ): Layer {
+  const mask = startMask(layer, camera, width, height);
+  mask.ctx.fillStyle = colour;
+  fillPolygons(mask.ctx, polygons);
+  mask.ctx.restore();
+  return mask;
+}
+
+/**
+ * `layer` sized to the view padded by `EDGE_FADE` all round and cleared, its context saved, then
+ * set to blur what is drawn over the fade and to draw in world space. The caller restores it.
+ */
+function startMask(
+  layer: Layer,
+  camera: Camera,
+  width: number,
+  height: number,
+): Layer {
   const pad = EDGE_FADE;
   const mask = sized(layer, width + pad * 2, height + pad * 2);
   const { ctx } = mask;
@@ -832,9 +855,6 @@ function featheredMask(
   ctx.translate(pad, pad);
   ctx.scale(1 / camera.zoom, 1 / camera.zoom);
   ctx.translate(-camera.x, -camera.y);
-  ctx.fillStyle = colour;
-  fillPolygons(ctx, polygons);
-  ctx.restore();
   return mask;
 }
 
@@ -928,6 +948,102 @@ function drawShrouds(
       ctx.fill();
     }
   }
+}
+
+/**
+ * A mask of the deepdark behind its front, at `front` pixels across the world, but where `lit`,
+ * lights traced out to their reach into deepdark, reaches; edges soft, as `featheredMask`'s.
+ */
+function deepdarkMask(
+  layer: Layer,
+  front: number,
+  lit: readonly VisibilityPolygon[],
+  camera: Camera,
+): Layer {
+  const { width, height } = camera.view;
+  const pad = EDGE_FADE;
+  const mask = startMask(layer, camera, width, height);
+  const { ctx } = mask;
+  ctx.fillStyle = "#000";
+  const left = camera.x - pad * camera.zoom;
+  ctx.fillRect(
+    left,
+    camera.y - pad * camera.zoom,
+    front - left,
+    viewHeight(camera) + pad * 2 * camera.zoom,
+  );
+  ctx.globalCompositeOperation = "destination-out";
+  fillPolygons(ctx, lit);
+  ctx.restore();
+  return mask;
+}
+
+/**
+ * Whether the eyes of a body at `at` glow now, glimpsed for the deepdark config's `eyes.for`
+ * seconds in each `eyes.every`, each body at a moment set by its id, so a pack does not blink
+ * as one.
+ */
+function eyesGlow(game: Session, id: string, now: number): boolean {
+  const { every, for: lasting } = game.config.deepdark.eyes;
+  if (every <= 0) return false;
+  let offset = 0;
+  for (let i = 0; i < id.length; i++)
+    offset = (offset * 31 + id.charCodeAt(i)) % 1000;
+  const phase = (now / 1000 + (offset / 1000) * every) % every;
+  return phase < lasting;
+}
+
+/**
+ * The eyes of every body in deepdark that the viewer's sight reaches but no light shows, glowing
+ * now and then: two points of the deepdark config's eye colour, set the way the body faces.
+ * Drawn over the darkness, so the black gives away that something lurks there, and no more.
+ */
+function drawDeepdarkEyes(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  viewer: Player,
+  sources: readonly VisionSource[],
+  darks: readonly DarkSource[],
+): void {
+  const { map } = game.world;
+  const { colour } = game.config.deepdark.eyes;
+  const bodies: Body[] = [
+    ...game.entities.values(),
+    ...[...game.players.values()].filter(
+      (player) => player !== viewer && !isGhost(player) && !isAboard(player),
+    ),
+  ];
+  ctx.save();
+  ctx.fillStyle = colour;
+  ctx.shadowColor = colour;
+  for (const body of bodies) {
+    if (!inView(body, camera) || !eyesGlow(game, body.id, now)) continue;
+    if (!perceives(game, viewer.id, body.id)) continue;
+    const sight = eyesOf(game, body);
+    if (sight === null || !isDeepdark(game, body, darks)) continue;
+    if (!sources.some((source) => canSeeFrom(map, source, body))) continue;
+    const facing = sight.cone?.direction ?? Math.PI / 2;
+    const ahead = body.radius * 0.45;
+    const apart = body.radius * 0.3;
+    const size = Math.max(1.5, body.radius * 0.12);
+    ctx.shadowBlur = size * 4;
+    for (const side of [-1, 1]) {
+      const x =
+        body.x +
+        Math.cos(facing) * ahead +
+        Math.cos(facing + Math.PI / 2) * apart * side;
+      const y =
+        body.y +
+        Math.sin(facing) * ahead +
+        Math.sin(facing + Math.PI / 2) * apart * side;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 /** Lays `mask`'s warm shapes over the scene, only where the scene still shows. */
@@ -1172,16 +1288,20 @@ export function draw(
   const { rays } = game.config.vision;
   const area = viewArea(camera);
   const daylight = daylightNow(game);
+  const fronts = frontsNow(game);
   const ambient = (point: Point) =>
-    ambientLightAt(game.world, point, daylight) !== null;
+    ambientLightAt(game.world, point, daylight, fronts) !== null;
   // Darkness something gives off, which no light lights: nothing in it shows.
   const darks = darkSources(game);
-  const dark =
-    darks.length === 0
-      ? undefined
-      : (point: Point) => inDarkness(map, darks, point);
-  const sunlit = ambientPolygons(game.world, area, "sun", daylight);
-  const fixtureLit = ambientPolygons(game.world, area, "fixture");
+  const deep = (point: Point) => isDeepdark(game, point, darks);
+  // Deepdark no light lights but out to its reach into it.
+  const unlitDeep = (point: Point) =>
+    deep(point) &&
+    !lights.some((light) => canSeeFrom(map, intoDeepdark(light), point));
+  const dark = (point: Point) =>
+    (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
+  const sunlit = ambientPolygons(game.world, area, "sun", daylight, fronts);
+  const fixtureLit = ambientPolygons(game.world, area, "fixture", 1, fronts);
   const seen = tracePolygons(map, sources, camera, rays);
   const lit = [
     ...tracePolygons(map, lights, camera, rays),
@@ -1197,8 +1317,15 @@ export function draw(
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
 
-  // Remembered terrain, drawn on its own layer so the ink fading it eats into it alone.
-  const remembered = memory.within(area, now, viewer);
+  // Remembered terrain, drawn on its own layer so the ink fading it eats into it alone; in
+  // deepdark it fades faster.
+  const { cell } = map;
+  const { memoryFade } = game.config.deepdark;
+  const remembered = memory.within(area, now, viewer, (col, row) =>
+    nearDeepdark(game, { x: (col + 0.5) * cell, y: (row + 0.5) * cell }, darks)
+      ? memoryFade
+      : 1,
+  );
   const recall = sized((memoryCache ??= createLayer()), width, height);
   recall.ctx.clearRect(0, 0, width, height);
   applyCamera(recall.ctx, camera, () => {
@@ -1279,9 +1406,22 @@ export function draw(
     if (shade.length > 0)
       unlight(scene, featheredMask(mask, shade, camera, width, height, "#000"));
   }
+  // Behind the deepdark front, all is black but what lights reach, out to their reach into it.
+  if (fronts.deep > camera.x)
+    unlight(
+      scene,
+      deepdarkMask(
+        mask,
+        fronts.deep,
+        tracePolygons(map, lights.map(intoDeepdark), camera, rays),
+        camera,
+      ),
+    );
   ctx.drawImage(scene.canvas, 0, 0);
   applyCamera(ctx, camera, () => {
     drawShrouds(ctx, darks, sources, map, camera, now);
+    if (blind === 0)
+      drawDeepdarkEyes(ctx, game, camera, now, viewer, sources, darks);
   });
 
   // What the local player hears: a ring for a player's noise or one whose maker it can see, a

@@ -256,6 +256,19 @@ export const config = {
     night: 17 * 60,
     volume: 0.5,
   },
+  // Deepdark, darker than night: lights reach half as far into it, and a body's own sight, a
+  // player's 6 cells in the dark and every monster's eyes, half as far too. It is drawn wholly
+  // black, but for the red eyes of what lurks in it, glimpsed for 0.6s every 4s. Remembered
+  // terrain in it fades 3x as fast. Darkness, where no sunlight falls, sets out from the left
+  // edge 3 minutes in and deepdark 6 minutes in; both reach the right edge at midnight, 20
+  // minutes in. A gloom's darkness is deepdark too.
+  deepdark: {
+    light: 0.5,
+    sight: 0.5,
+    memoryFade: 3,
+    eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
+    fronts: { dark: 3 * 60, deep: 6 * 60, end: END_GAME },
+  },
   // A guest holds a hit it predicted for up to a second before the host confirms it. Bodies it
   // follows take 0.15s, one and a half snapshots at 10 a second, to reach each reported position,
   // so a late snapshot does not stop them. One reported 7 cells from its last, further than a
@@ -1148,6 +1161,18 @@ export const config = {
       volume: 0.8,
       dropNoiseRadius: CELL * 8,
       scatter: { count: 5, seed: 3, clearance: CELL * 3, danger: 3 },
+    },
+    // Scrap worth 3, sold, carried and dropped as plain scrap is, but seen and picked up only
+    // while it lies in deepdark. A new world lays 25, half as many as plain scrap, favouring
+    // danger as plain scrap does.
+    darkScrap: {
+      weight: 15,
+      value: 3,
+      cashoutRadius: CELL * 3,
+      sellInterval: 0.25,
+      volume: 0.8,
+      dropNoiseRadius: CELL * 8,
+      scatter: { count: 25, seed: 4, clearance: CELL * 3, danger: 1 },
     },
     // Five minutes of battery, a use a second it shines. Its beam is a 40 degree cone reaching 14
     // cells, past a player's own 6 cells of sight in the dark. Its click carries a cell.

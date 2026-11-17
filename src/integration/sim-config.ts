@@ -98,6 +98,14 @@ export const testSimConfig: SimConfig = {
     night: 1020,
     volume: 0.5,
   },
+  // Fronts never set out, so a test world keeps its light; a test of them sets its own times.
+  deepdark: {
+    light: 0.5,
+    sight: 0.5,
+    memoryFade: 3,
+    eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
+    fronts: { dark: Infinity, deep: Infinity, end: 1200 },
+  },
   net: { smoothing: 12, glide: 0.15, predictionHold: 0.5, snap: 350 },
   noise: { blur: 0.2 },
   footsteps: {
@@ -661,6 +669,16 @@ export const testItemsConfig: ItemsConfig = {
     volume: 1,
     dropNoiseRadius: 400,
     scatter: { count: 0, seed: 3, clearance: 200, danger: 3 },
+  },
+  // None laid, so worlds under test hold what they did before it; worth 3.
+  darkScrap: {
+    weight: 0,
+    value: 3,
+    cashoutRadius: 150,
+    sellInterval: 0.25,
+    volume: 1,
+    dropNoiseRadius: 400,
+    scatter: { count: 0, seed: 4, clearance: 200 },
   },
   flashlight: {
     weight: 0,

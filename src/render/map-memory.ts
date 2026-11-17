@@ -105,9 +105,15 @@ export interface MapMemory {
    * The remembered terrain within `view`, as of `now` (ms), seen from `from`: what has faded is
    * left out. Each cell's fading is brought up to `now` at the rate its distance from `from` sets,
    * so terrain fades from far to near; terrain out of the view is brought up to date as it comes
-   * back into it.
+   * back into it. `pace` speeds or slows the fading of the cell at `col`, `row` by what lies
+   * there, as deepdark does; every cell alike when left out.
    */
-  within(view: Area, now: number, from: Point): RememberedTerrain;
+  within(
+    view: Area,
+    now: number,
+    from: Point,
+    pace?: (col: number, row: number) => number,
+  ): RememberedTerrain;
   /** Saves what is newly remembered, unless it was saved under `saveInterval` before `now` (ms). */
   save(now: number): void;
   /** Saves what is newly remembered now, as when the page closes. */
@@ -413,7 +419,7 @@ export function createMapMemory(
         }
       }
     },
-    within(view, now, from) {
+    within(view, now, from, pace = () => 1) {
       const floor: Point[] = [];
       const walls = new Map<number, Face[]>();
       if (grid === null) return { floor, walls, ages: NO_AGES };
@@ -438,7 +444,7 @@ export function createMapMemory(
           if (!memory.has(cellKey)) continue;
           let faded = 0;
           if (seconds > 0) {
-            faded = memory.fade(cellKey, now, rate(col, row));
+            faded = memory.fade(cellKey, now, rate(col, row) * pace(col, row));
             if (faded >= seconds) continue;
           }
           ages[(row - minRow) * cols + (col - minCol)] = faded;
