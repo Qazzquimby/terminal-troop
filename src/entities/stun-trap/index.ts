@@ -12,14 +12,13 @@ import {
   notices,
   removeFromWorld,
   spawn,
-  stun,
+  stun, sound,
 } from "../../sim/index.js";
 import type { Body, Point, Session, WorldEntity } from "../../sim/index.js";
 import { Time } from "../hunt.js";
 import { Arming, arming, drawArmingLight, stepArming } from "../placed.js";
-// Its sounds, once their assets land; importing a missing file breaks the build.
-// import beepUrl from "./sfx/beep.mp3";
-// import flashUrl from "./sfx/flash.mp3";
+import beepUrl from "./sfx/beep.mp3";
+import flashUrl from "./sfx/flash.mp3";
 
 /**
  * A stun trap lying where a player put it down: it arms, then goes off when a body steps on it,
@@ -99,8 +98,8 @@ function flash(game: Session, trap: WorldEntity, config: StunTrapConfig): void {
  * trap is gone. Hunters pay it no mind.
  */
 export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
-  // const beep = sound({ url: beepUrl, volume: config.volume, range: config.sounds.beep });
-  // const bang = sound({ url: flashUrl, volume: config.volume, range: config.sounds.flash });
+  const beep = sound({ url: beepUrl, volume: config.volume, range: config.sounds.beep });
+  const bang = sound({ url: flashUrl, volume: config.volume, range: config.sounds.flash });
   return {
     radius: config.radius,
     maxHealth: Infinity,
@@ -123,7 +122,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
         return stepArming(game, entity, state, {
           seconds: config.armSeconds,
           noise: config.sounds.beep,
-          // sound: beep,
+          sound: beep,
         });
       if (!steppedOn(game, entity)) return state;
       effect(
@@ -132,7 +131,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
           at: entity,
           noise: config.sounds.flash,
           flash: { radius: config.flash, hit: false },
-          // sound: bang,
+          sound: bang,
         },
         entity,
       );

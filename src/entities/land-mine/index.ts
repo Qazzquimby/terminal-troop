@@ -17,10 +17,10 @@ import { detonate } from "../blast.js";
 import type { Blast } from "../blast.js";
 
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
-const armUrl = new URL("./sfx/arm.mp3", import.meta.url).href;
-const beepUrl = new URL("./sfx/beep.mp3", import.meta.url).href;
-const triggerUrl = new URL("./sfx/trigger.mp3", import.meta.url).href;
-const blastUrl = new URL("./sfx/blast.mp3", import.meta.url).href;
+const armUrl = new URL("./sfx/beep.wav", import.meta.url).href;
+const beepUrl = new URL("./sfx/beep.wav", import.meta.url).href;
+const triggerUrl = new URL("./sfx/beep.wav", import.meta.url).href;
+const blastUrl = new URL("./sfx/blast.wav", import.meta.url).href;
 
 /**
  * A land mine lying where something laid it: it arms, beeps now and then, and goes off when a body

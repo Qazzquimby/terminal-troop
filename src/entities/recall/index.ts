@@ -22,7 +22,7 @@ import type {
 import { Time } from "../hunt.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
-const humUrl = new URL("./sfx/hum.mp3", import.meta.url).href;
+const humUrl = new URL("./sfx/hum.wav", import.meta.url).href;
 const zapUrl = new URL("./sfx/zap.mp3", import.meta.url).href;
 const fizzleUrl = new URL("./sfx/fizzle.mp3", import.meta.url).href;
 
