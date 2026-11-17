@@ -454,8 +454,8 @@ export const config = {
       // door stays shut 16s; open, it charges back to full in 50s. It thunks 3 cells out (#377).
       door: {
         close: 0.2,
-        drain: 0.05,
-        recharge: 0.02,
+        drain: 0.02,
+        recharge: 0.01,
         volume: 0.8,
         range: CELL * 3,
       },

@@ -40,7 +40,7 @@ import hornUrl from "./sfx/horn.mp3";
 
 const idleSound = sound({
   url: idleUrl,
-  volume: 0.2,
+  volume: 0.05,
   range: 6,
   noise: false,
 });
