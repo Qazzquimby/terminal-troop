@@ -5,7 +5,7 @@ import {
   effect,
   INERT_TAG,
   inRect,
-  livingPlayers,
+  livingPlayers, sound,
   worldData,
 } from "../../sim/index.js";
 import type {
@@ -45,9 +45,8 @@ import type { CruiserRadioConfig } from "./radio.js";
 
 export { refuel } from "./drive.js";
 export { sales } from "./finances.js";
-// The departure's sounds, once their assets land; importing a missing file breaks the build.
-// import departUrl from "./sfx/depart.mp3";
-// import escapeUrl from "./sfx/escape.mp3";
+import departUrl from "./sfx/depart.mp3";
+import escapeUrl from "./sfx/escape.mp3";
 
 /** How the cruiser takes the players out once it reaches the exit. */
 interface EscapeConfig {
@@ -176,7 +175,7 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
   }
   if (held.since === null) {
     departure.set(game, { ...held, since: game.worldTime });
-    // effect(game, { at, sound: depart }, game.local);
+    effect(game, { at, sound: sound({url:departUrl, range: 20, volume: 0.3, noise: false}) }, game.local);
     return;
   }
   if (game.worldTime < held.since + config.delay) return;
@@ -193,7 +192,7 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
       {
         at: { x: player.x, y: player.y },
         flash: { radius: player.radius * ESCAPE_FLASH, hit: true },
-        // sound: escape,
+        sound: sound({url:escapeUrl, noise: false}),
       },
       player,
     );
