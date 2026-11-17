@@ -15,6 +15,8 @@ import { bandage } from "./bandage/index.js";
 import { turret } from "./turret/index.js";
 import { teleporter } from "./teleporter/index.js";
 import { pocketball } from "./pocketball/index.js";
+import { bomb } from "./bomb/index.js";
+import { flareGun } from "./flare-gun/index.js";
 
 export { credit } from "./scrap/index.js";
 
@@ -38,6 +40,8 @@ const ITEMS = [
   turret,
   teleporter,
   pocketball,
+  bomb,
+  flareGun,
 ] as const;
 
 /** Each item's config, under its name, and how a new world lays loot. */

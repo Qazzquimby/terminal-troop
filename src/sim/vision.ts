@@ -52,6 +52,11 @@ export interface LightEmission {
   readonly range: number;
   /** Where it shines from, relative to the centre of what gives it off; that centre when left out. */
   readonly from?: Point;
+  /**
+   * The colour it tints the ground it lights, a CSS colour with its own alpha, such as a flare's
+   * red; the warm yellow of a flashlight when left out. Only how it looks: lit is lit.
+   */
+  readonly tint?: string;
 }
 
 export interface LightSource extends Point, LightEmission {}

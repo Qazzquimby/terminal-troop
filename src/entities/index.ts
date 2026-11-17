@@ -19,6 +19,8 @@ import { recall } from "./recall/index.js";
 import { pocketball } from "./pocketball/index.js";
 import { ghostGirl } from "./ghost-girl/index.js";
 import { doppelganger } from "./doppelganger/index.js";
+import { bomb } from "./bomb/index.js";
+import { flare } from "./flare/index.js";
 import { spawner } from "./spawning.js";
 
 export {
@@ -30,6 +32,8 @@ export {
 export { placeStunTrap } from "./stun-trap/index.js";
 export { placeTurret } from "./turret/index.js";
 export { placeTeleporter } from "./teleporter/index.js";
+export { placeBomb } from "./bomb/index.js";
+export { fireFlare } from "./flare/index.js";
 export {
   POCKETBALL_ITEM,
   pocketballGlyph,
@@ -60,6 +64,8 @@ const ENTITIES = [
   pocketball,
   ghostGirl,
   doppelganger,
+  bomb,
+  flare,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

@@ -242,6 +242,7 @@ export {
 } from "./vision.js";
 export type {
   LightEmission,
+  LightSource,
   VisibilityPolygon,
   VisionSource,
   WallFace,
