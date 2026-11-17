@@ -39,6 +39,11 @@ export interface ItemDefinition {
    * a plain one sharing its glyph; none when left out.
    */
   readonly glint?: string;
+  /**
+   * Whether one lying in the world is perceived only while it lies in deepdark: out of it, nobody
+   * sees or picks it up. Carried, it is perceived as any item is. Anywhere when left out.
+   */
+  readonly onlyInDeepdark?: boolean;
   /** What every client near it hears when it is dropped, if anything. */
   readonly drop?: Sound;
   /** What every client near it hears as its last use is spent and it is gone, if anything. */

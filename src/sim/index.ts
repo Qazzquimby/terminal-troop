@@ -262,11 +262,16 @@ export {
   ambientLightAt,
   ambientPolygons,
   darkSources,
+  frontsNow,
   inDarkness,
+  intoDeepdark,
+  isDeepdark,
+  nearDeepdark,
   isLit,
   isLitTo,
 } from "./light.js";
 export type { DarkSource } from "./light.js";
+export { darkFront, deepFront, frontAt, hearFronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
 export { areaAt } from "./map.js";
 export type { AmbientLight } from "./light.js";

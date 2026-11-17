@@ -46,6 +46,8 @@ interface ScrapLook {
   readonly emoji: string;
   /** The colour it glows and glints in, if any. */
   readonly glint?: string;
+  /** Whether, lying in the world, it is perceived only in deepdark. */
+  readonly onlyInDeepdark?: boolean;
   /** Its sale's sound file. */
   readonly cashoutUrl: string;
   /** Its clatter's sound file. */
@@ -108,6 +110,7 @@ export function defineScrap<N extends string>(id: N, look: ScrapLook) {
       name: look.name,
       emoji: look.emoji,
       ...(look.glint !== undefined && { glint: look.glint }),
+      ...(look.onlyInDeepdark === true && { onlyInDeepdark: true }),
       drop: sound({
         url: look.dropUrl,
         volume: config.volume,

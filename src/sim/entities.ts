@@ -120,6 +120,16 @@ export interface EntityDefinition<S> {
    */
   readonly seenInDark?: boolean;
   /**
+   * Whether, given its state, no body perceives it but while it lies in deepdark: out of it, it
+   * is neither drawn, found among bodies, heard nor picked up. Every body perceives a kind without
+   * it wherever it is; `perceives` judges it for every rule.
+   */
+  readonly onlyInDeepdark?: (
+    entity: WorldEntity,
+    data: S,
+    game: Session,
+  ) => boolean;
+  /**
    * Draws whatever of it shows over the cabin's minimap, `size` pixels square, on the client of
    * each player that perceives it. The minimap shows no entity otherwise.
    */
@@ -219,6 +229,8 @@ export interface EntityType {
   /** The one body that perceives it, when `restricted`; null for none. */
   perceiver(entity: WorldEntity): string | null;
   readonly seenInDark: boolean;
+  /** Whether it is perceived only while it lies in deepdark. */
+  onlyInDeepdark(entity: WorldEntity, game: Session): boolean;
   minimap(
     ctx: CanvasRenderingContext2D,
     entity: WorldEntity,
@@ -257,6 +269,8 @@ export interface EntitySnapshot {
 }
 
 function entityType<S>(definition: EntityDefinition<S>): EntityType {
+  // Whether each state an entity of the kind has taken is perceived only in deepdark.
+  const deepdarkOnly = new WeakMap<object, boolean>();
   const { data: schema } = definition;
   return {
     radius: definition.radius,
@@ -302,6 +316,20 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       return parsed.success ? perceivedBy(entity, parsed.data) : null;
     },
     seenInDark: definition.seenInDark ?? false,
+    onlyInDeepdark(entity, game) {
+      const { onlyInDeepdark } = definition;
+      // Most kinds show anywhere, and pay nothing to parse their state for it.
+      if (onlyInDeepdark === undefined) return false;
+      // Asked of every body many times a step, so judged once for each state an entity takes.
+      const { data } = entity;
+      const keyed = typeof data === "object" && data !== null;
+      const known = keyed ? deepdarkOnly.get(data) : undefined;
+      if (known !== undefined) return known;
+      const parsed = schema.safeParse(data);
+      const only = parsed.success && onlyInDeepdark(entity, parsed.data, game);
+      if (keyed) deepdarkOnly.set(data, only);
+      return only;
+    },
     minimap(ctx, entity, size, now) {
       const parsed = schema.safeParse(entity.data);
       if (parsed.success)

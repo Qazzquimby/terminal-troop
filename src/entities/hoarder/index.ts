@@ -7,6 +7,7 @@ import {
   effect,
   darkSources,
   emittedLights,
+  frontsNow,
   hurtSinceLastStep,
   inView,
   isAreaFree,
@@ -213,7 +214,8 @@ function searchPoints(
   for (let i = 0; i < tries && points.length < count; i++) {
     const at = pointNear(nest, range);
     if (!isAreaFree(world.map, at.x, at.y, config.radius)) continue;
-    if (ambientLightAt(world, at, daylightNow(game)) !== null) continue;
+    if (ambientLightAt(world, at, daylightNow(game), frontsNow(game)) !== null)
+      continue;
     points.push(at);
   }
   return points.slice(0, MAX_POINTS);

@@ -1,6 +1,7 @@
 import type { WorldEntity } from "./entities.js";
 import { isShutIn, playersExposed } from "./aboard.js";
 import { isGhost, livingPlayers } from "./ghosts.js";
+import { isDeepdark } from "./light.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -45,13 +46,16 @@ export const isPlayer = (game: Session, body: Body): boolean =>
  * Most bodies are there for every body to perceive. A kind can name the one body that perceives
  * one of it instead (`perceivedBy`), as a haunting only its victim sees: to every other body it is
  * not there at all. Nothing sees, hears, hunts, strikes, traps or bumps into it, and no other
- * player's client draws it, plays its sounds or logs it. `perceives` is the one rule they all ask.
+ * player's client draws it, plays its sounds or logs it. A kind can also be perceived only while
+ * one of it lies in deepdark (`onlyInDeepdark`), as dark scrap: out of it, it is not there to
+ * anybody. `perceives` is the one rule they all ask.
  */
 
 /**
  * Whether the body `by`, by id, perceives the body `id`: always, unless `id` is of a kind that
- * names the one body perceiving it, which must then be `by`. Null for `by` is no body at all,
- * as a dead player's free camera, which perceives only what every body does.
+ * names the one body perceiving it, which must then be `by`, or of a kind perceived only in
+ * deepdark lying out of it. Null for `by` is no body at all, as a dead player's free camera,
+ * which perceives only what every body does.
  */
 export function perceives(
   game: Session,
@@ -62,7 +66,10 @@ export function perceives(
   const entity = game.entities.get(id);
   if (entity === undefined) return true;
   const type = game.entityTypes.get(entity.kind);
-  if (type?.restricted !== true) return true;
+  if (type === undefined) return true;
+  if (type.onlyInDeepdark(entity, game) && !isDeepdark(game, entity))
+    return false;
+  if (!type.restricted) return true;
   return by !== null && type.perceiver(entity) === by;
 }
 

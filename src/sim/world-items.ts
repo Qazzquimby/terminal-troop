@@ -9,6 +9,7 @@ import {
   take,
   usesAt,
 } from "./actions.js";
+import { perceives } from "./bodies.js";
 import type { WorldEntity } from "./entities.js";
 import {
   ITEM_TAG,
@@ -108,6 +109,8 @@ export function registerWorldItems(game: Session): void {
     collides: false,
     tags: [ITEM_TAG],
     data: WorldItemData,
+    onlyInDeepdark: (_entity, { item }, view) =>
+      view.itemDefinitions.get(item)?.onlyInDeepdark === true,
     draw(ctx, entity, { item, state }, now, view) {
       const definition = view.itemDefinitions.get(item);
       if (definition === undefined) return;
@@ -232,7 +235,11 @@ export const pickUp = defineAction("pickUp", {
   check(game, player, { id }) {
     const entity = game.entities.get(id);
     if (entity === undefined || lyingItem(game, entity) === null) return false;
-    return touches(player, entity) && hasRoom(game, player.id);
+    return (
+      perceives(game, player.id, id) &&
+      touches(player, entity) &&
+      hasRoom(game, player.id)
+    );
   },
   apply(game, player, { id }) {
     const entity = game.entities.get(id);

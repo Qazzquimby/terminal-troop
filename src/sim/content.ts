@@ -516,6 +516,7 @@ export function defineItem<N extends string, C>(
         emoji: spec.emoji,
         ...(spec.emojiFor !== undefined && { emojiFor: spec.emojiFor }),
         ...(spec.glint !== undefined && { glint: spec.glint }),
+        ...(spec.onlyInDeepdark === true && { onlyInDeepdark: true }),
         ...(traits.weight !== undefined && { weight: traits.weight }),
         ...(spec.drop !== undefined && { drop: spec.drop }),
         ...(spec.breaks !== undefined && { breaks: spec.breaks }),
