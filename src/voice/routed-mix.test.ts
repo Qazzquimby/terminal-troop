@@ -49,9 +49,16 @@ describe("routedMix", () => {
 });
 
 describe("interference on a voice carried by radio", () => {
-  const curve = { clear: 100, lost: 1100, floor: 0.1 };
+  const curve = { clear: 100, lost: 1100, floor: 0.1, ceiling: 1 };
 
-  test("is its floor up to clear, all of it from lost, and rises smoothly between", () => {
+  test("tops out at its ceiling from lost, however far", () => {
+    const capped = { ...curve, ceiling: 0.4 };
+    expect(interferenceAt(600, capped)).toBeCloseTo(0.25);
+    expect(interferenceAt(1100, capped)).toBe(0.4);
+    expect(interferenceAt(1_000_000, capped)).toBe(0.4);
+  });
+
+  test("is its floor up to clear, its ceiling from lost, and rises smoothly between", () => {
     expect(interferenceAt(0, curve)).toBe(0.1);
     expect(interferenceAt(100, curve)).toBe(0.1);
     expect(interferenceAt(600, curve)).toBeCloseTo(0.55);
