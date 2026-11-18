@@ -5,8 +5,9 @@ import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 
 /**
- * A long sound an item or an entity plays where it is, for as long as it says: a radio's song,
- * or a car radio's station, say.
+ * A long sound an item or an entity holds where it is, for as long as it says: a radio's song, a
+ * car radio's station or a running engine, say. It starts when what holds it first says so,
+ * follows it as it moves, and stops once it no longer does.
  */
 export interface Playing {
   /**
@@ -27,13 +28,27 @@ export interface Playing {
   readonly range?: number;
   /** Whether it starts again at its end. */
   readonly loop?: boolean;
+  /**
+   * Where it plays from, when not where what holds it is: a teleporter's hum at the car that sent
+   * for a body, say, held by the beam on the body. Followed as it moves, as its holder is.
+   */
+  readonly at?: Point;
+}
+
+/**
+ * What an item or entity plays now: nothing, one long sound, or several at once, each under its
+ * own key, such as a car's radio and its engine.
+ */
+export type Plays = Playing | readonly Playing[] | null;
+
+/** Every sound in `plays`. */
+function eachOf(plays: Plays | undefined): readonly Playing[] {
+  if (plays === null || plays === undefined) return [];
+  return "key" in plays ? [plays] : plays;
 }
 
 /** What each item plays, by item id, as its content says. */
-export type ItemPlays = (
-  instance: ItemInstance,
-  game: Session,
-) => Playing | null;
+export type ItemPlays = (instance: ItemInstance, game: Session) => Plays;
 
 /** What this client streams of each session's items and entities, by key. */
 const streaming = new WeakMap<Session, Map<string, SoundHandle>>();
@@ -52,18 +67,20 @@ interface Heard {
 function playings(game: Session): Map<string, Heard> {
   const wanted = new Map<string, Heard>();
   for (const instance of itemInstances(game)) {
-    const playing = game.items.get(instance.item)?.plays?.(instance, game);
-    if (playing === undefined || playing === null) continue;
-    const key = `${instance.item}:${playing.key}`;
-    if (!wanted.has(key)) wanted.set(key, { playing, at: instance.at });
+    const plays = game.items.get(instance.item)?.plays?.(instance, game);
+    for (const playing of eachOf(plays)) {
+      const key = `${instance.item}:${playing.key}`;
+      if (!wanted.has(key))
+        wanted.set(key, { playing, at: playing.at ?? instance.at });
+    }
   }
   for (const entity of game.entities.values()) {
-    const playing = game.entityTypes.get(entity.kind)?.plays(entity, game);
-    if (playing === undefined || playing === null) continue;
-    wanted.set(`#${entity.id}:${playing.key}`, {
-      playing,
-      at: { x: entity.x, y: entity.y },
-    });
+    const plays = game.entityTypes.get(entity.kind)?.plays(entity, game);
+    for (const playing of eachOf(plays))
+      wanted.set(`#${entity.id}:${playing.key}`, {
+        playing,
+        at: playing.at ?? { x: entity.x, y: entity.y },
+      });
   }
   return wanted;
 }

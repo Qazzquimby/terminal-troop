@@ -294,6 +294,60 @@ test("its engine idles quietly as it stands fuelled, ignored by zombies, and is 
   );
 });
 
+test("its engine holds one long looped sound while it runs, following the car: idling, driving or reversing, each from its start as it changes", () => {
+  const game = world();
+  const streamed: { url: unknown; options: unknown; moved: unknown[] }[] = [];
+  game.sfx.stream = (url, _origin, _listener, options) => {
+    const moved: unknown[] = [];
+    streamed.push({ url, options, moved });
+    return {
+      stop: () => undefined,
+      setVolume: () => undefined,
+      setPosition: (origin) => moved.push(origin),
+    };
+  };
+  const cruiser = cruiserOf(game);
+  const plays = () => {
+    const held = game.entityTypes.get(cruiser.kind)?.plays(cruiser, game);
+    return held === null || held === undefined
+      ? []
+      : "key" in held
+        ? [held]
+        : held;
+  };
+  const engine = () =>
+    plays().find((playing) => playing.key.startsWith("engine/")) ?? null;
+
+  // Unfuelled, it is silent.
+  park(game, { x: 450, y: 300 });
+  play(game, 0.5);
+  expect(engine()).toBeNull();
+
+  driving(game, { x: 450, y: 300 });
+  const idled = game.worldTime;
+  play(game, 1.5);
+  expect(engine()).toMatchObject({ key: "engine/idle", loop: true });
+  // Held across many steps, it started once rather than restarting on a beat.
+  expect(streamed).toHaveLength(1);
+  expect(streamed[0]?.options).toMatchObject({ loop: true });
+
+  play(game, 1, throttle);
+  const drive = engine();
+  expect(drive).toMatchObject({ key: "engine/drive", loop: true });
+  expect(drive?.since).toBeGreaterThan(idled);
+  expect(streamed).toHaveLength(2);
+  // It follows the car as the car moves.
+  const moved = streamed[1]?.moved.at(-1);
+  expect(moved).toEqual({ x: cruiser.x, y: cruiser.y });
+
+  play(game, 3, { ...idle, move: { x: 0, y: 1 } });
+  expect(engine()).toMatchObject({ key: "engine/reverse", loop: true });
+
+  cruiser.data = { ...stateOf(game), fuel: 0 };
+  play(game, 0.5);
+  expect(engine()).toBeNull();
+});
+
 /** Driving left from the right of the dev square into its first pillar, x 200..300, y 50..150. */
 function crash(game: Session, damage = 0): WorldEntity {
   const cruiser = driving(game, { x: 800, y: 100 }, Math.PI);

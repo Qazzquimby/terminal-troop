@@ -18,6 +18,7 @@ import type {
 } from "../../sim/index.js";
 import {
   cruiserNear,
+  enginePlaying,
   CruiserState,
   FRESH,
   stepCruiser,
@@ -269,7 +270,11 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
       },
     },
   },
-  plays: (_entity, state) => radioPlaying(state, config.radio),
+  // Its radio and its engine, each held under its own key, both following the car.
+  plays: (_entity, state) =>
+    [radioPlaying(state, config.radio), enginePlaying(state)].filter(
+      (playing) => playing !== null,
+    ),
   update(entity, state, dt, game) {
     const driven = stepCruiser(game, entity, state, dt, config);
     const next = stepDoor(game, entity, driven, dt, config.door);
