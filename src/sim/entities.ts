@@ -409,10 +409,11 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     givesLight: definition.light !== undefined,
     light(entity) {
       // Most kinds give off none, and pay nothing to parse their state for it.
-      if (definition.light === undefined) return [];
+      const { light: lightOf } = definition;
+      if (lightOf === undefined) return [];
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return [];
-      const light = definition.light?.(entity, parsed.data) ?? [];
+      const light = lightOf(entity, parsed.data) ?? [];
       return "range" in light ? [light] : light;
     },
     givesDarkness: definition.darkness !== undefined,

@@ -113,7 +113,7 @@ export const REFERENCE_MIX: Readonly<Record<string, number>> = {
 };
 
 /** A fixed world, the shipped one as of #470, so a resized map does not read as a regression. */
-export const REFERENCE_WORLD = { cols: 100, rows: 60, seed: 1 } as const;
+const REFERENCE_WORLD = { cols: 100, rows: 60, seed: 1 } as const;
 
 /** `config` on `REFERENCE_WORLD`'s map. */
 export const onReferenceWorld = (config: BenchConfig): BenchConfig => ({
@@ -132,7 +132,7 @@ export const benchDefaults: Omit<BenchOptions, "regime" | "count"> = {
 };
 
 /** Milliseconds a step took: its mean, median, 95th percentile and worst. */
-export interface Timing {
+interface Timing {
   readonly mean: number;
   readonly median: number;
   readonly p95: number;
