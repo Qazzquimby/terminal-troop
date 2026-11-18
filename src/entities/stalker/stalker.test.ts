@@ -20,6 +20,7 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Player, Point, Session, WorldEntity } from "../../sim/index.js";
+import { ambushSpot, foreseenPath, inSightOfAny } from "../hunt.js";
 import { freshZombie, zombie } from "../zombie/index.js";
 import type { StalkerConfig } from "./index.js";
 import {
@@ -405,4 +406,146 @@ test("its own kind's gaze does not send it back", () => {
   other.data = { ...stateOf(other), facing: Math.PI };
   run(game, DT, { x: 900, y: 300 });
   expect(stateOf(stalker).mode).not.toBe("retreat");
+});
+
+/**
+ * The dev square with a wall along row 4, open only at column 0: the local player stands at
+ * (x, 300), below it, looking right along row 6. Above the wall, rows 0 to 3 are out of sight of
+ * the row but through the gap.
+ */
+function walled(x: number, stalker: StalkerConfig = config): Session {
+  const game = world(x, 300, stalker);
+  const { map } = game.world;
+  for (let col = 0; col < map.cols; col++)
+    if (col !== 0) map.solid[4 * map.cols + col] = 1;
+  game.local.aim = 0;
+  return game;
+}
+
+/** The player's way ahead, as the stalker guesses it, from where it stands. */
+function wayAhead(game: Session): Point[] {
+  const { from, to } = foreseenPath(
+    game.world.map,
+    game.local,
+    game.local.aim,
+    config.ambush,
+  );
+  return Array.from({ length: 11 }, (_, index) => ({
+    x: from.x + ((to.x - from.x) * index) / 10,
+    y: from.y + ((to.y - from.y) * index) / 10,
+  }));
+}
+
+test("with a hidden spot beside the way its quarry walks, it lies in wait there, out of sight of all that way", () => {
+  const game = walled(100);
+  const stalker = stalkerAt(game, 75, 75);
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("ambush");
+  const spot = stateOf(stalker).ambush;
+  expect(spot).not.toBeNull();
+  if (spot === null) return;
+  // Ahead of the player, short of the way's end, above the wall, hidden from the whole way.
+  expect(spot.x).toBeGreaterThan(game.local.x);
+  expect(spot.y).toBeLessThan(200);
+  const { map } = game.world;
+  for (const at of wayAhead(game))
+    expect(
+      inSightOfAny(map, [at], spot, stalker.radius, config.watchRange),
+    ).toBe(false);
+
+  // It goes there and waits, unseen the whole while.
+  for (let i = 0; i < 240; i++) {
+    run(game, DT, { x: 900, y: 300 });
+    expect(watches(game, game.local, stalker, config.watchRange)).toBe(false);
+  }
+  const waiting = stateOf(stalker);
+  expect(waiting.mode).toBe("ambush");
+  const at = waiting.ambush ?? spot;
+  expect(Math.hypot(stalker.x - at.x, stalker.y - at.y)).toBeLessThan(5);
+  expect(waiting.route).toEqual([]);
+  expect(game.local.health).toBe(game.local.maxHealth);
+});
+
+test("its quarry passed and near, its back to it, it leaves its spot and hunts", () => {
+  const game = walled(100, {
+    ...config,
+    ambush: { ...config.ambush, pounce: 300 },
+  });
+  // It starts ahead of the player, so never behind it until the player passes it.
+  const stalker = stalkerAt(game, 850, 75);
+  run(game, 4, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("ambush");
+  // The player steps past the spot; the stalker now lies behind it.
+  Object.assign(game.local, { x: stalker.x + 50, prevX: stalker.x + 50 });
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("hunt");
+});
+
+test("in the open, with nowhere hidden beside its quarry's way, it hunts", () => {
+  const game = world(100, 300);
+  game.local.aim = 0;
+  const stalker = stalkerAt(game, 75, 75);
+  run(game, DT, { x: 900, y: 300 });
+  expect(stateOf(stalker).mode).toBe("hunt");
+  expect(stateOf(stalker).ambush).toBeNull();
+});
+
+test("it keeps its spot unless a new one lies nearer the way by the margin, and gives up one seen from it", () => {
+  const game = walled(100);
+  const { map } = game.world;
+  const path = foreseenPath(map, game.local, 0, config.ambush);
+  // A hidden spot 2.5 cells off the way; the one try, half way along and on the way itself, is
+  // seen, so nothing beats it.
+  const current = { x: 300, y: 175 };
+  const keep = ambushSpot(
+    map,
+    14,
+    path,
+    config.watchRange,
+    config.ambush,
+    () => 0.5,
+    current,
+  );
+  expect(keep).toBe(current);
+  // A spot 3 cells off loses to one 2.5 off only past the margin.
+  const further = { x: 400, y: 150 };
+  const tries = [0.25, 0.1875];
+  let draw = 0;
+  const random = (): number => tries[draw++ % tries.length] ?? 0;
+  expect(
+    ambushSpot(
+      map,
+      14,
+      path,
+      config.watchRange,
+      { ...config.ambush, tries: 1 },
+      random,
+      further,
+    ),
+  ).toBe(further);
+  draw = 0;
+  expect(
+    ambushSpot(
+      map,
+      14,
+      path,
+      config.watchRange,
+      { ...config.ambush, tries: 1, betterBy: 10 },
+      random,
+      further,
+    ),
+  ).not.toBe(further);
+  // Seen from the way, it is given up.
+  const seen = { x: 300, y: 300 };
+  expect(
+    ambushSpot(
+      map,
+      14,
+      path,
+      config.watchRange,
+      config.ambush,
+      () => 0.5,
+      seen,
+    ),
+  ).not.toBe(seen);
 });
