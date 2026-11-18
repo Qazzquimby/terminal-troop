@@ -747,7 +747,7 @@ export const config = {
     // round. Its revival and transformation carry 6 cells, its crumbling 12.
     shrine: {
       radius: 14,
-      scatter: { count: 2, seed: 7, clearance: CELL * 20, danger: 5 },
+      scatter: { count: 5, seed: 7, clearance: CELL * 20, danger: 5 },
       reach: CELL,
       earReach: CELL * 3,
       revives: "heart",
@@ -1480,7 +1480,6 @@ export const config = {
         after: 180,
         tries: 24,
         unseenDistance: CELL * 14,
-        most: 4,
       },
       ignores: ["peeper"],
       radius: 12,
@@ -1513,7 +1512,6 @@ export const config = {
         tries: 24,
         unseenDistance: CELL * 14,
         group: { min: 2, max: 4, spread: CELL * 2 },
-        most: 12,
       },
       ignores: ["mimic", "exploder"],
       radius: 10,
