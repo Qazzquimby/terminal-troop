@@ -10,11 +10,13 @@ import {
   createSession,
   hasKindTag,
   hurt,
+  isAreaFree,
   ITEM_TAG,
   mulberry32,
   pickupTarget,
   receiveEvent,
   registerContent,
+  removeEntity,
   seemsItem,
   spawnEntity,
   spawnWorldItem,
@@ -112,19 +114,45 @@ const sounded = (game: Session, file: string): boolean =>
 /** Far off in the corner, out of every mimic's notice in these tests. */
 const AWAY = { x: 875, y: 575 };
 
-test("it walks to an item it sees and poses as it, standing still, as an item to every rule", () => {
+/** Hides near what it copies, so the tests that place it by hand know where it stands. */
+const near: MimicConfig = { ...config, hideRange: 40 };
+
+/** Steps until `mimic` hides, up to `seconds`; throws if it never does. */
+function untilHidden(game: Session, mimic: WorldEntity, seconds = 8): void {
+  for (let waited = 0; waited < seconds; waited += 0.1) {
+    if (stateOf(mimic).mode === "hide") return;
+    run(game, 0.1);
+  }
+  if (stateOf(mimic).mode !== "hide") throw new Error("never hid");
+}
+
+/** An open spot `by` px from `body`, on whichever side is clear. */
+function besideOf(game: Session, body: Point, by: number): Point {
+  for (const [dx, dy] of [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ] as const) {
+    const at = { x: body.x + dx * by, y: body.y + dy * by };
+    if (isAreaFree(game.world.map, at.x, at.y, 15)) return at;
+  }
+  throw new Error("boxed in");
+}
+
+test("it hides somewhere open within its hide range of an item it sees and poses as it, as an item to every rule", () => {
   const game = world(AWAY.x, AWAY.y);
-  spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
+  const shovel = spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
   const mimic = mimicAt(game, { x: 150, y: 325 });
   expect(seemsItem(game, mimic)).toBeNull();
   expect(hasKindTag(game, mimic.id, [ITEM_TAG])).toBe(false);
-  run(game, 2);
+  untilHidden(game, mimic);
   const state = stateOf(mimic);
-  expect(state.mode).toBe("hide");
   expect(state.posing).toBe("shovel");
-  expect(Math.hypot(mimic.x - 300, mimic.y - 325)).toBeLessThan(
-    mimic.radius + testSimConfig.worldItems.radius + config.settleGap + 1,
-  );
+  const apart = Math.hypot(mimic.x - shovel.x, mimic.y - shovel.y);
+  expect(apart).toBeLessThanOrEqual(config.hideRange + mimic.radius);
+  expect(apart).toBeGreaterThan(mimic.radius);
+  expect(isAreaFree(game.world.map, mimic.x, mimic.y, mimic.radius)).toBe(true);
   expect(seemsItem(game, mimic)?.item).toBe("shovel");
   expect(hasKindTag(game, mimic.id, [ITEM_TAG])).toBe(true);
   expect(sounded(game, "settle.mp3")).toBe(true);
@@ -134,12 +162,29 @@ test("it walks to an item it sees and poses as it, standing still, as an item to
   expect(mimic.y).toBe(y);
 });
 
+test("it does not always hide right beside the item it copies", () => {
+  const spots: number[] = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    const game = world(AWAY.x, AWAY.y);
+    spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
+    const mimic = spawnEntity(
+      game,
+      "mimic",
+      150,
+      325,
+      freshMimic(game.worldTime, seed),
+    );
+    untilHidden(game, mimic);
+    spots.push(Math.hypot(mimic.x - 300, mimic.y - 325));
+  }
+  expect(Math.max(...spots)).toBeGreaterThan(config.hideRange / 4);
+});
+
 test("a body coming near springs it within its delay, and it bites like a zombie", () => {
-  const game = world(AWAY.x, AWAY.y);
+  const game = world(AWAY.x, AWAY.y, near);
   spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
   const mimic = mimicAt(game, { x: 150, y: 325 });
-  run(game, 2);
-  expect(stateOf(mimic).mode).toBe("hide");
+  untilHidden(game, mimic);
   standAt(game, mimic.x + 60, mimic.y);
   let sprungAfter: number | null = null;
   const start = game.worldTime;
@@ -162,26 +207,27 @@ test("a body coming near springs it within its delay, and it bites like a zombie
   expect(sounded(game, "attack.mp3")).toBe(true);
 });
 
-test("hunting, it moves at 0.8 times a player's walk", () => {
+test("hunting, it moves at its speed share of a player's walk", () => {
   const game = world(AWAY.x, AWAY.y);
   const mimic = mimicAt(game, { x: 150, y: 325 });
   standAt(game, 350, 325);
   run(game, 0.5);
   expect(stateOf(mimic).mode).toBe("hunt");
   expect(Math.hypot(mimic.vx, mimic.vy)).toBeCloseTo(
-    testSimConfig.player.speed * 0.8,
+    testSimConfig.player.speed * config.speedShare,
   );
 });
 
 test("reaching to pick it up targets it as an item and springs it at once, taking nothing", () => {
-  const slow = { ...config, springDelay: { min: 3, max: 3 } };
+  const slow = { ...near, springDelay: { min: 3, max: 3 } };
   const game = world(AWAY.x, AWAY.y, slow);
-  spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
+  const shovel = spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
   const mimic = mimicAt(game, { x: 150, y: 325 });
-  run(game, 2);
-  expect(stateOf(mimic).mode).toBe("hide");
-  // On its far side from the shovel it poses beside, so the mimic is the nearest it touches.
-  standAt(game, mimic.x - 20, mimic.y);
+  untilHidden(game, mimic);
+  // With the shovel gone, the mimic is the only item it touches.
+  removeEntity(game, shovel.id);
+  const at = besideOf(game, mimic, 20);
+  standAt(game, at.x, at.y);
   run(game, DT);
   expect(stateOf(mimic).mode).toBe("hide");
   expect(pickupTarget(game)?.id).toBe(mimic.id);
@@ -196,24 +242,23 @@ test("hurt while hiding, it springs at once on whatever hurt it", () => {
   const game = world(AWAY.x, AWAY.y);
   spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
   const mimic = mimicAt(game, { x: 150, y: 325 });
-  run(game, 2);
-  expect(stateOf(mimic).mode).toBe("hide");
+  untilHidden(game, mimic);
   hurt(game, mimic, 1, game.localId);
   run(game, DT);
   expect(stateOf(mimic).mode).toBe("hunt");
   expect(stateOf(mimic).foe).toBe("me");
 });
 
-test("its hiding over, it moves on to hide somewhere new rather than where it was", () => {
-  const brief = { ...config, hideSeconds: { min: 1, max: 1 } };
+test("its hiding over, it moves on to copy something new rather than what it copied", () => {
+  const brief = { ...near, hideSeconds: { min: 1, max: 1 } };
   const game = world(AWAY.x, AWAY.y, brief);
   spawnWorldItem(game, { x: 150, y: 325 }, "shovel");
   spawnWorldItem(game, { x: 350, y: 325 }, "scrap");
   const mimic = mimicAt(game, { x: 110, y: 325 });
-  run(game, 1);
+  untilHidden(game, mimic);
   expect(stateOf(mimic).posing).toBe("shovel");
   let next: string | null = null;
-  run(game, 3, {
+  run(game, 4, {
     each: () => {
       const { mode, posing } = stateOf(mimic);
       if (next === null && mode === "hide" && posing !== "shovel")
@@ -223,13 +268,12 @@ test("its hiding over, it moves on to hide somewhere new rather than where it wa
   expect(next).toBe("scrap");
 });
 
-test("with only its last spot about, it hides there again, but not until it has wandered a while", () => {
-  const brief = { ...config, hideSeconds: { min: 1, max: 1 } };
+test("with only what it last copied about, it copies it again, but not until it has wandered a while", () => {
+  const brief = { ...near, hideSeconds: { min: 1, max: 1 } };
   const game = world(AWAY.x, AWAY.y, brief);
   spawnWorldItem(game, { x: 150, y: 325 }, "shovel");
   const mimic = mimicAt(game, { x: 110, y: 325 });
-  run(game, 0.5);
-  expect(stateOf(mimic).mode).toBe("hide");
+  untilHidden(game, mimic);
   const hiding: { readonly at: number; readonly hides: boolean }[] = [];
   run(game, 15, {
     each: () => {
@@ -246,13 +290,47 @@ test("with only its last spot about, it hides there again, but not until it has 
   expect(back.at - left.at).toBeGreaterThanOrEqual(config.rehideAfter);
 });
 
-test("a second mimic will not hide by an item another already poses beside", () => {
+test("several mimics copy the same item", () => {
   const game = world(AWAY.x, AWAY.y);
   spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
   const first = mimicAt(game, { x: 150, y: 325 });
-  run(game, 2);
-  expect(stateOf(first).mode).toBe("hide");
+  untilHidden(game, first);
   const second = mimicAt(game, { x: 150, y: 325 });
-  run(game, 2);
-  expect(stateOf(second).mode).not.toBe("hide");
+  untilHidden(game, second);
+  expect(stateOf(first).posing).toBe("shovel");
+  expect(stateOf(second).posing).toBe("shovel");
+  expect(Math.hypot(first.x - second.x, first.y - second.y)).toBeGreaterThan(
+    config.spacing,
+  );
+});
+
+test("a mimic copies a mimic posing as an item, and a copy of a copy is of the real item", () => {
+  const game = world(AWAY.x, AWAY.y, near);
+  const shovel = spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
+  const first = mimicAt(game, { x: 150, y: 325 });
+  untilHidden(game, first);
+  // The shovel gone, the posing mimic is the only item about to copy.
+  removeEntity(game, shovel.id);
+  const second = mimicAt(game, { x: 150, y: 325 });
+  untilHidden(game, second);
+  expect(stateOf(second).posing).toBe("shovel");
+  expect(seemsItem(game, second)?.item).toBe("shovel");
+  removeEntity(game, first.id);
+  const third = mimicAt(game, { x: 150, y: 325 });
+  untilHidden(game, third);
+  expect(stateOf(third).posing).toBe("shovel");
+  expect(seemsItem(game, third)?.item).toBe("shovel");
+});
+
+test("seeing nothing that seems an item but itself, it never copies itself", () => {
+  const game = world(AWAY.x, AWAY.y, {
+    ...near,
+    hideSeconds: { min: 1, max: 1 },
+  });
+  const shovel = spawnWorldItem(game, { x: 300, y: 325 }, "shovel");
+  const mimic = mimicAt(game, { x: 150, y: 325 });
+  untilHidden(game, mimic);
+  removeEntity(game, shovel.id);
+  run(game, 3);
+  expect(stateOf(mimic).mode).toBe("wander");
 });

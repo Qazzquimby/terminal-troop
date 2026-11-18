@@ -1202,16 +1202,18 @@ export const config = {
       radius: 10,
       mass: 0.5,
       maxHealth: SHOVEL_DAMAGE,
-      speedShare: 0.8, // of a player's walk
+      speedShare: 1.1, // of a player's walk
       wanderRange: CELL * 5,
       sightRange: CELL * 5, // down its facing
       noticeRange: CELL * 2, // a body this near stirs it while hiding
       hideSeconds: { min: 10, max: 30 },
-      springDelay: { min: 0, max: 3 },
-      rehideAfter: 5, // seconds before it may hide near its last spot again
-      sameSpot: CELL, // what counts as near its last spot
-      spacing: CELL / 2, // from another posing mimic
-      settleGap: 4, // px short of touching the item it poses as
+      springDelay: { min: 0, max: 1 },
+      revealSeconds: 0.25, // its burst of teeth on springing
+      rehideAfter: 5, // seconds before it may copy the item it last copied again
+      sameSpot: CELL, // what counts as near the item it last copied
+      spacing: CELL / 2, // its hiding spot from any item or posing body
+      hideRange: CELL * 8, // furthest it hides from the item it copies
+      hideTries: 12, // spots drawn before it passes an item over for now
       repathInterval: 0.5,
       calmSeconds: 8,
       attackDamage: 35,

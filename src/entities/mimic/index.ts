@@ -9,7 +9,7 @@ import {
   hurtSinceLastStep,
   inView,
   livingBody,
-  lyingItem,
+  isAreaFree,
   perceives,
   rounded,
   seemsItem,
@@ -21,6 +21,7 @@ import type {
   EntityDefinition,
   Eyes,
   Point,
+  Rng,
   Session,
   Sound,
   Strike,
@@ -84,17 +85,21 @@ export interface MimicConfig extends Hunting, Dormancy {
   readonly hideSeconds: { readonly min: number; readonly max: number };
   /** Seconds from a body stirring it to its springing, drawn between the two. */
   readonly springDelay: { readonly min: number; readonly max: number };
+  /** Seconds its burst of teeth shows as it throws off its disguise. */
+  readonly revealSeconds: number;
   /**
-   * Seconds after it leaves a hiding spot before it may hide there again. It would rather hide
-   * somewhere new whenever it sees somewhere.
+   * Seconds after it leaves a hiding spot before it may copy the item it copied there again. It
+   * would rather copy something new whenever it sees something.
    */
   readonly rehideAfter: number;
-  /** How near its last hiding spot an item must lie to count as that spot. */
+  /** How near where the item it last copied lay an item must lie to count as that item. */
   readonly sameSpot: number;
-  /** How near an item another body already posing as one keeps it from hiding there. */
+  /** How near any item, or body posing as one, it will not hide. */
   readonly spacing: number;
-  /** How far past touching an item it stops beside it to take its shape. */
-  readonly settleGap: number;
+  /** Furthest from the item it copies, centre to centre, that it hides. */
+  readonly hideRange: number;
+  /** Spots it draws round an item for somewhere to hide before passing the item over for now. */
+  readonly hideTries: number;
   /** Seconds between plans of its chase. */
   readonly repathInterval: number;
   /** Seconds hunting without seeing a body before it goes back to looking for somewhere to hide. */
@@ -118,13 +123,14 @@ export interface MimicConfig extends Hunting, Dormancy {
 /**
  * Everyone reads its mode, `posing`, `posedAs`, `springAt`, `revealedAt` and its facing, to draw
  * it; the rest only the host reads.
- * - wander: walks legs, looking for an item to hide beside, and turns on any body it sees
- * - seek: heads along `route` for `goal`, the lying item it would hide beside
+ * - wander: walks legs, looking for an item to copy, and turns on any body it sees
+ * - seek: heads along `route` for `hideAt`, somewhere near an item it saw, to pose there as
+ *   `copying`, the item that one seemed to be
  * - hide: stands still as `posing`, the item it passes for, until `hideUntil`; a body coming near
  *   sets `springAt`, when it throws off its disguise and turns on `foe`
  * - hunt: chases `foe`, else any body it sees, biting what is in reach, until it has seen none
  *   for a while
- * `spot` is where it last hid, and `leftAt` when it left it.
+ * `spot` is where the item it last copied lay, and `leftAt` when it last left hiding.
  */
 export const MimicState = z.object({
   mode: z.enum(["wander", "seek", "hide", "hunt"]),
@@ -133,7 +139,8 @@ export const MimicState = z.object({
   springAt: Time.nullable(),
   revealedAt: Time.nullable(),
   hideUntil: Time,
-  goal: z.string().max(80).nullable(),
+  copying: z.string().max(64).nullable(),
+  hideAt: Waypoint.nullable(),
   spot: Waypoint.nullable(),
   leftAt: Time,
   foe: z.string().max(80).nullable(),
@@ -157,7 +164,8 @@ export function freshMimic(now: number, seed: number): MimicState {
     springAt: null,
     revealedAt: null,
     hideUntil: now,
-    goal: null,
+    copying: null,
+    hideAt: null,
     spot: null,
     leftAt: now,
     foe: null,
@@ -188,8 +196,8 @@ const routeTo = (game: Session, self: WorldEntity, to: Point): Point[] =>
 const distance = (a: Point, b: Point): number =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
-/** Whether some body but `self` already poses as an item within `spacing` of `at`. */
-function hiddenNear(
+/** Whether any item, or body posing as one, but `self` lies within `spacing` of `at`. */
+function crowded(
   game: Session,
   self: WorldEntity,
   at: Point,
@@ -198,63 +206,123 @@ function hiddenNear(
   for (const entity of game.entities.values()) {
     if (entity.id === self.id || distance(entity, at) > config.spacing)
       continue;
-    if (game.entityTypes.get(entity.kind)?.posedItem(entity) != null)
-      return true;
+    if (seemsItem(game, entity) !== null) return true;
   }
   return false;
 }
 
 /**
- * The lying item it would hide beside now, of those it sees and perceives, or null: none another
- * hides by already, and none at its last spot until it has wandered a while. Somewhere new beats
- * its last spot, then the nearest.
+ * The items it would copy now, best first, of those it sees and perceives: anything that seems an
+ * item to it, a lying item or another body posing as one. None where the item it last copied lay
+ * until it has wandered a while; something new beats that, then the nearest.
  */
-function hidingPlace(
+function itemsToCopy(
   state: MimicState,
   self: WorldEntity,
   game: Session,
   config: MimicConfig,
-): WorldEntity | null {
+): WorldEntity[] {
   const sight = eyesOf(game, self);
-  if (sight === null) return null;
+  if (sight === null) return [];
   const { spot } = state;
   const atSpot = (item: Point): boolean =>
     spot !== null && distance(item, spot) <= config.sameSpot;
   const settled = game.worldTime >= state.leftAt + config.rehideAfter;
   const items: WorldEntity[] = [];
   for (const entity of game.entities.values()) {
-    if (lyingItem(game, entity) === null) continue;
+    if (entity.id === self.id || seemsItem(game, entity) === null) continue;
     if (!perceives(game, self.id, entity.id)) continue;
     if (!inView(game, sight, entity, config.sightRange)) continue;
     if (atSpot(entity) && !settled) continue;
-    if (hiddenNear(game, self, entity, config)) continue;
     items.push(entity);
   }
-  return (
-    nearest(
-      self,
-      items.filter((item) => !atSpot(item)),
-    ) ?? nearest(self, items)
-  );
+  const by = (a: WorldEntity, b: WorldEntity): number =>
+    atSpot(a) === atSpot(b)
+      ? distance(self, a) - distance(self, b)
+      : Number(atSpot(a)) - Number(atSpot(b));
+  return items.sort(by);
 }
 
-/** Whether it stands near enough `item` to take its shape. */
-const besideIt = (
-  self: WorldEntity,
-  item: WorldEntity,
-  config: MimicConfig,
-): boolean =>
-  distance(self, item) <= self.radius + item.radius + config.settleGap;
+/** Somewhere to hide near an item, and the way there. */
+interface HidingSpot {
+  readonly at: Point;
+  readonly route: Point[];
+}
 
-/** Takes the shape of `item`, standing still, for a while drawn from its seed. */
+/**
+ * Somewhere open `self` fits and can walk to, within hide range of `item` and clear of every item
+ * and body posing as one, drawn by `rng`; null when none of its tries finds one.
+ */
+function hidingSpot(
+  self: WorldEntity,
+  item: Point,
+  game: Session,
+  config: MimicConfig,
+  rng: Rng,
+): HidingSpot | null {
+  const { map } = game.world;
+  for (let attempt = 0; attempt < config.hideTries; attempt++) {
+    const angle = rng() * Math.PI * 2;
+    const reach = config.hideRange * Math.sqrt(rng());
+    const at = {
+      x: item.x + Math.cos(angle) * reach,
+      y: item.y + Math.sin(angle) * reach,
+    };
+    if (!isAreaFree(map, at.x, at.y, self.radius)) continue;
+    if (crowded(game, self, at, config)) continue;
+    // Keeps to the open ways, as a wanderer does.
+    const route = planRoute(
+      map,
+      self.radius,
+      self,
+      at,
+      undefined,
+      undefined,
+      false,
+    );
+    if (route !== null) return { at, route };
+  }
+  return null;
+}
+
+/**
+ * Sets off to hide near the best item it sees, as that item seems to be: one that is itself a
+ * copy is copied as what it passes for, so a chain of copies is always of a real item. Null when
+ * it sees none with somewhere to hide near it.
+ */
+function setOff(
+  state: MimicState,
+  self: WorldEntity,
+  game: Session,
+  config: MimicConfig,
+): MimicState | null {
+  for (const item of itemsToCopy(state, self, game, config)) {
+    const copying = seemsItem(game, item)?.item;
+    if (copying === undefined) continue;
+    const { result, seed } = withSeed(state.seed, (rng) =>
+      hidingSpot(self, item, game, config, rng),
+    );
+    if (result === null) continue;
+    return {
+      ...state,
+      mode: "seek",
+      copying,
+      hideAt: { x: result.at.x, y: result.at.y },
+      spot: { x: item.x, y: item.y },
+      route: result.route,
+      seed,
+    };
+  }
+  return null;
+}
+
+/** Takes the shape of the item it set off to copy, standing still, for a while drawn from its seed. */
 function hide(
   state: MimicState,
-  item: WorldEntity,
+  posing: string,
   game: Session,
   config: MimicConfig,
 ): MimicState {
-  const posing = seemsItem(game, item)?.item ?? null;
-  if (posing === null) return { ...state, mode: "wander", goal: null };
   const { result, seed } = withSeed(state.seed, (rng) =>
     between(rng, config.hideSeconds),
   );
@@ -263,7 +331,8 @@ function hide(
     mode: "hide",
     posing,
     posedAs: posing,
-    goal: null,
+    copying: null,
+    hideAt: null,
     route: [],
     springAt: null,
     foe: null,
@@ -275,7 +344,6 @@ function hide(
 /** Leaves its hiding spot, as itself, to wander or to hunt `foe`. */
 function unhide(
   state: MimicState,
-  self: WorldEntity,
   game: Session,
   mode: "wander" | "hunt",
 ): MimicState {
@@ -285,7 +353,6 @@ function unhide(
     mode,
     posing: null,
     springAt: null,
-    spot: { x: self.x, y: self.y },
     leftAt: now,
     seenAt: now,
     repathAt: now,
@@ -307,7 +374,8 @@ function chase(
   return {
     ...state,
     mode: "hunt",
-    goal: null,
+    copying: null,
+    hideAt: null,
     foe: found.id,
     seenAt: now,
     route: replan ? routeTo(game, self, found) : state.route,
@@ -345,22 +413,20 @@ function lurk(
   const now = game.worldTime;
   if (hurtSinceLastStep(game, self.id) !== null) {
     const hitter = hitterOf(game, self, config);
-    const sprung = unhide(state, self, game, "hunt");
+    const sprung = unhide(state, game, "hunt");
     return hitter === null ? sprung : chase(sprung, self, hitter, game, config);
   }
   if (state.springAt === null) {
     const near = nearestSeenBody(game, self, config, config.noticeRange);
     if (near === null)
-      return now >= state.hideUntil
-        ? unhide(state, self, game, "wander")
-        : state;
+      return now >= state.hideUntil ? unhide(state, game, "wander") : state;
     const { result, seed } = withSeed(state.seed, (rng) =>
       between(rng, config.springDelay),
     );
     return { ...state, springAt: now + result, foe: near.id, seed };
   }
   if (now < state.springAt) return state;
-  const sprung = unhide(state, self, game, "hunt");
+  const sprung = unhide(state, game, "hunt");
   const foe = livingBody(game, state.foe);
   return foe === null ? sprung : chase(sprung, self, foe, game, config);
 }
@@ -379,26 +445,25 @@ function think(
     if (game.worldTime - state.seenAt < config.calmSeconds) return state;
     return { ...state, mode: "wander", foe: null, route: [] };
   }
-  if (state.mode === "seek") {
-    const goal =
-      state.goal === null ? undefined : game.entities.get(state.goal);
-    if (goal !== undefined && lyingItem(game, goal) !== null) {
-      if (besideIt(self, goal, config)) return hide(state, goal, game, config);
-      if (state.route.length > 0) return state;
-      return { ...state, route: routeTo(game, self, goal) };
-    }
+  // It keeps the item's shape in mind on the way, whatever becomes of the item.
+  if (
+    state.mode === "seek" &&
+    state.copying !== null &&
+    state.hideAt !== null
+  ) {
+    if (distance(self, state.hideAt) <= self.radius)
+      return hide(state, state.copying, game, config);
+    if (state.route.length > 0) return state;
+    // Its way spent short of the spot, pushed or blocked, it looks again.
   }
-  const place = hidingPlace(state, self, game, config);
-  if (place !== null) {
-    if (besideIt(self, place, config)) return hide(state, place, game, config);
-    return {
-      ...state,
-      mode: "seek",
-      goal: place.id,
-      route: routeTo(game, self, place),
-    };
-  }
-  const wandering = { ...state, mode: "wander" as const, goal: null };
+  const off = setOff(state, self, game, config);
+  if (off !== null) return off;
+  const wandering = {
+    ...state,
+    mode: "wander" as const,
+    copying: null,
+    hideAt: null,
+  };
   return wanderOn(wandering, self, game.world.map, config.wanderRange);
 }
 
@@ -417,9 +482,6 @@ interface MimicSounds {
   readonly reveal: Sound;
   readonly attack: Sound;
 }
-
-/** Seconds its reveal shows: a burst of teeth as it throws off its disguise. */
-const REVEAL_SECONDS = 0.5;
 
 /** Its own glyph, for a mimic that has passed for nothing yet. */
 const OWN_GLYPH = "📦";
@@ -552,7 +614,8 @@ function mimicDefinition(
         state.revealedAt === null
           ? Infinity
           : game.worldTime - state.revealedAt;
-      const burst = since < REVEAL_SECONDS ? 1 - since / REVEAL_SECONDS : 0;
+      const burst =
+        since < config.revealSeconds ? 1 - since / config.revealSeconds : 0;
       const hunting = state.mode === "hunt";
       const shake = hunting ? Math.sin(now / 40) * (1 + burst * 2) : 0;
       const body = {
@@ -573,11 +636,13 @@ function mimicDefinition(
 }
 
 /**
- * The mimic: wanders until it sees an item lying about, goes to it and takes its shape, standing
- * still beside it for a while as a second one of it. A body coming near, player or monster, stirs
- * it, and moments later it throws off its disguise and hunts as a zombie does; so does one
- * reaching to pick it up, or hurting it, at once. Hiding long enough with no one near, it slips
- * off to hide somewhere new, and back where it was only after a while wandering. While it poses
+ * The mimic: wanders until it sees something that seems an item, a lying one or another mimic
+ * posing as one, goes somewhere open within its hide range of it and takes its shape, standing
+ * still there for a while as a second one of it. Any number may copy the same item, and a copy of
+ * a copy is of the real item. A body coming near, player or monster, stirs it, and moments later
+ * it throws off its disguise and hunts as a zombie does; so does one reaching to pick it up, or
+ * hurting it, at once. Hiding long enough with no one near, it slips off to copy something new,
+ * and the item it last copied again only after a while wandering. While it poses
  * as an item it is one to every rule that tells items apart: hunters pass it over, the scanner
  * reads it as one, and a player's pickup reaches for it. The world's spawner brings them in packs.
  */
