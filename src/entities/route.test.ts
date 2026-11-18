@@ -4,6 +4,7 @@ import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import {
   createSession,
   isSweepFree,
+  moveWithCollision,
   registerEntityType,
   spawnEntity,
 } from "../sim/index.js";
@@ -100,6 +101,78 @@ describe("planRoute", () => {
         planRoute(map, WIDE, { x: 375, y: 150 }, { x: 375, y: 450 }),
       ).toBeNull();
     });
+  });
+
+  describe("plans through exactly the gaps a body fits", () => {
+    /** A little under two cells across, as a blind dog is: two cells by two. */
+    const TWO = 47;
+
+    /** 12x12 cells of 50px, a wall across row 6 but for a gap `width` cells wide from column 5. */
+    function slotted(width: number): TileMap {
+      const map = { cell: 50, cols: 12, rows: 12, solid: new Uint8Array(144) };
+      for (let col = 0; col < 12; col++)
+        if (col < 5 || col >= 5 + width) map.solid[6 * 12 + col] = 1;
+      return map;
+    }
+
+    const from = { x: 150, y: 150 };
+    const to = { x: 450, y: 450 };
+
+    test("a body two cells across goes through a gap two wide, not one", () => {
+      const map = slotted(2);
+      const route = planRoute(map, TWO, from, to) ?? [];
+      expect(route.at(-1)).toEqual(to);
+      expect(fitsAll(map, TWO, from, route)).toBe(true);
+      expect(planRoute(slotted(1), TWO, from, to)).toBeNull();
+    });
+
+    test("a body within a cell goes through a gap one wide", () => {
+      const map = slotted(1);
+      const route = planRoute(map, HALF, from, to) ?? [];
+      expect(route.at(-1)).toEqual(to);
+      expect(fitsAll(map, HALF, from, route)).toBe(true);
+    });
+
+    test("a body three cells across needs a gap three wide", () => {
+      const WIDE = 72;
+      expect(planRoute(slotted(2), WIDE, from, to)).toBeNull();
+      const map = slotted(3);
+      const route = planRoute(map, WIDE, from, to) ?? [];
+      expect(route.at(-1)).toEqual(to);
+      expect(fitsAll(map, WIDE, from, route)).toBe(true);
+    });
+
+    test("finds the nearest wanted spot through a gap it fits", () => {
+      const map = slotted(2);
+      const route = routeToNearest(map, TWO, from, (at) => at.y > 400) ?? [];
+      expect(route.at(-1)?.y).toBeGreaterThan(400);
+      expect(fitsAll(map, TWO, from, route)).toBe(true);
+      expect(
+        routeToNearest(slotted(1), TWO, from, (at) => at.y > 400),
+      ).toBeNull();
+    });
+
+    test.each([
+      [HALF, 1],
+      [TWO, 2],
+      [72, 3],
+    ])(
+      "a body of half-size %d walks the route it plans through a gap %d wide",
+      (half, width) => {
+        const map = slotted(width);
+        const body = { x: 120, y: 130, vx: 0, vy: 0 };
+        let route = planRoute(map, half, body, to) ?? [];
+        expect(route.length).toBeGreaterThan(0);
+        const dt = 1 / 60;
+        for (let step = 0; step < 60 * 30 && route.length > 0; step++) {
+          route = steer(body, route, 120, dt);
+          moveWithCollision(body, half, dt, map, 0);
+        }
+        expect(route).toEqual([]);
+        expect(body.x).toBeCloseTo(to.x);
+        expect(body.y).toBeCloseTo(to.y);
+      },
+    );
   });
 
   describe("a body that breaks walls", () => {
