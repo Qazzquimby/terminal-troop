@@ -189,13 +189,15 @@ export function arrive(game: Session, kind: string, at: Point): boolean {
 /**
  * How strongly a kind keeping `rules` favours appearing at `at`: by its danger, more the farther
  * it is from the road and the nearer the exit's side of the world; 0 where it may not appear.
+ * `radius` is the half-size of its body, for the rules that mind it.
  */
 export function spawnWeight(
   game: Session,
   at: Point,
   rules: SpawnRules = {},
+  radius = 0,
 ): number {
-  return spawnAllowed(game, at, rulesIn(game, rules))
+  return spawnAllowed(game, at, rulesIn(game, rules), radius)
     ? dangerWeight(game.world, at)
     : 0;
 }
@@ -256,7 +258,7 @@ function spawnPoint(
       y: Math.random() * game.world.H,
     };
     if (!isAreaFree(game.world.map, at.x, at.y, radius)) continue;
-    const allowed = spawnWeight(game, at, arrival.rules);
+    const allowed = spawnWeight(game, at, arrival.rules, radius);
     if (allowed <= 0) continue;
     const weight = allowed * apartShare(game, at, config.apart);
     const distance = nearestPlayerDistance(game, at);
@@ -339,7 +341,7 @@ function memberPoints(
   const taken: Point[] = [leader];
   const fits = (at: Point) =>
     isAreaFree(map, at.x, at.y, radius) &&
-    spawnAllowed(game, at, rulesIn(game, arrival.rules)) &&
+    spawnAllowed(game, at, rulesIn(game, arrival.rules), radius) &&
     nearestPlayerDistance(game, at) >= unseen &&
     taken.every(
       (other) => Math.hypot(other.x - at.x, other.y - at.y) >= radius * 2,
