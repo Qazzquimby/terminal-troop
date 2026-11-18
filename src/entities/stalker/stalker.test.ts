@@ -579,3 +579,23 @@ test("it keeps its spot unless a new one lies nearer the way by the margin, and 
     ),
   ).not.toBe(seen);
 });
+
+test("retreating, it strikes nothing it touches; in a mode not harmless to it, it would", () => {
+  /** The player looking at a stalker in retreat touching them, after a few steps. */
+  const touchedInRetreat = (stalker: StalkerConfig): Session => {
+    const game = world(400, 300, stalker);
+    spawnEntity(game, "stalker", 420, 300, {
+      ...freshStalker(game.worldTime),
+      mode: "retreat",
+      until: game.worldTime + 100,
+    });
+    run(game, DT * 3, { x: 900, y: 300 });
+    return game;
+  };
+  const harmless = touchedInRetreat(config);
+  expect(config.harmlessIn).toContain("retreat");
+  expect(harmless.local.health).toBe(harmless.local.maxHealth);
+  expect(sounded(harmless, "attack.mp3")).toBe(false);
+  const harmful = touchedInRetreat({ ...config, harmlessIn: [] });
+  expect(harmful.local.health).toBeLessThan(harmful.local.maxHealth);
+});

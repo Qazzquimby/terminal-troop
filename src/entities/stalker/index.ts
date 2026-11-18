@@ -78,6 +78,8 @@ export interface StalkerConfig extends Watching {
   readonly damage: number;
   /** Seconds between two touches' damage. */
   readonly attackCooldown: number;
+  /** The modes its touch strikes nothing in: retreat, as shipped. */
+  readonly harmlessIn: readonly Mode[];
   /**
    * Least distance a retreat keeps from every body it hunts, where it can, when nowhere it reaches
    * is out of sight.
@@ -564,7 +566,8 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
       const next = strikeIf(
         thought,
         game.worldTime,
-        touching(game, entity, config.ignores).length > 0,
+        !config.harmlessIn.includes(thought.mode) &&
+          touching(game, entity, config.ignores).length > 0,
         config.attackCooldown,
       );
       // Hunting, with a body it would hunt, one in the dark, in its own sight, it creeps.
@@ -629,7 +632,7 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
  * behind. A body in the light it passes over; with none in the dark it goes home and wanders there.
  * Caught in the gaze of a kind it heeds, players alone as configured, it hisses and gets out of
  * their sight by the quickest way, round a corner or past where they see to, then makes its way
- * home unseen, for a long while. Hurt, it shrieks and runs at whatever lives nearest, for a short
+ * home unseen, for a long while, its touch harmless meanwhile. Hurt, it shrieks and runs at whatever lives nearest, for a short
  * while. Whatever it touches takes a killing blow. It walks through light as through dark; a
  * stun holds it like anything else.
  */

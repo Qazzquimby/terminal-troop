@@ -13,6 +13,7 @@ import {
   updateSession,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
+import { door as doorContent, DoorState } from "../door/index.js";
 import { freshThumper, thumper as thumperContent } from "../thumper/index.js";
 import {
   freshTricycle,
@@ -22,7 +23,11 @@ import {
 } from "./index.js";
 
 const DT = 1 / 60;
-const { tricycle: config, thumper: thumperConfig } = testEntitiesConfig;
+const {
+  tricycle: config,
+  thumper: thumperConfig,
+  door: doorConfig,
+} = testEntitiesConfig;
 const WALK = testSimConfig.player.speed;
 
 /**
@@ -53,6 +58,7 @@ function world(
   registerContent(game, [
     tricycleContent.create({ tricycle: trikeConfig }),
     thumperContent.create({ thumper: thumpers }),
+    doorContent.create({ door: doorConfig }),
   ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   return game;
@@ -470,4 +476,69 @@ test("no more than its plans a step plan a ride in one step; the rest plan in a 
     run(game, DT);
     expect(riding()).toBe(3);
   });
+});
+
+/** The doorway: column 9 of the dev square walled top to bottom but for row 5, a door in it. */
+const DOOR_AT = { x: 475, y: 275 };
+
+/** `game`'s dev square walled down column 9 but for the doorway, a shut door standing in it. */
+function shutDoorAcross(game: Session): WorldEntity {
+  const { map } = game.world;
+  for (let row = 0; row < map.rows; row++)
+    if (row !== 5) map.solid[row * map.cols + 9] = 1;
+  const state: DoorState = { open: false, across: true };
+  return spawnEntity(game, "door", DOOR_AT.x, DOOR_AT.y, state);
+}
+
+/** Whether `route`, ridden from `from`, comes within a cell's half of the doorway's middle. */
+const throughDoor = (from: Point, route: readonly Point[]): boolean =>
+  onWay({ ...from, radius: 1 }, route, { ...DOOR_AT, radius: 24 }, Infinity);
+
+test("its rides go round a shut door, never through it, though only past it is a player", () => {
+  seeded(1, () => {
+    // The player shut off beyond the door; every ride toward them would go through it.
+    const game = world(FAR.x, FAR.y);
+    const door = shutDoorAcross(game);
+    const at = { x: 325, y: 275 };
+    const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+      ...freshTricycle(game.worldTime),
+    });
+    run(game, DT);
+    // With no way to the player, it rides about on its own side rather than standing.
+    expect(stateOf(trike).route.length).toBeGreaterThan(0);
+    expect(throughDoor(at, stateOf(trike).route)).toBe(false);
+    run(game, 4);
+    expect(trike.x).toBeLessThan(DOOR_AT.x);
+    expect(door.health).toBe(door.maxHealth);
+    expect(DoorState.parse(door.data).open).toBe(false);
+  });
+});
+
+test("a door shut across a ride it is on, it plans another rather than standing at the door", () => {
+  seeded(2, () => {
+    const game = world(FAR.x, 75, thumperHunting);
+    const door = shutDoorAcross(game);
+    // A ride planned before the door shut, through the doorway and on.
+    const trike = tricycleAt(game, { x: 225, y: 275 }, [{ x: 825, y: 275 }]);
+    run(game, 3);
+    expect(trike.x).toBeLessThan(DOOR_AT.x);
+    expect(
+      Math.hypot(trike.x - DOOR_AT.x, trike.y - DOOR_AT.y),
+    ).toBeGreaterThan(100);
+    expect(stateOf(trike).route.length).toBeGreaterThan(0);
+    expect(throughDoor(trike, stateOf(trike).route)).toBe(false);
+    expect(door.health).toBe(door.maxHealth);
+  });
+});
+
+test("held up on a ride, getting nowhere along it for its stall seconds, it plans another", () => {
+  // At no speed at all it makes no headway, whatever its way.
+  const game = world(FAR.x, 75, { ...thumperHunting, speedShare: 0 });
+  const ride = [{ x: 825, y: 325 }];
+  const trike = tricycleAt(game, { x: 425, y: 325 }, ride);
+  run(game, config.stall.seconds - 0.1);
+  expect(stateOf(trike).route).toEqual(ride);
+  run(game, 0.2);
+  expect(stateOf(trike).route).not.toEqual(ride);
+  expect(stateOf(trike).route.length).toBeGreaterThan(0);
 });
