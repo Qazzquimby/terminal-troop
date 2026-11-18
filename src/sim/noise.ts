@@ -1,5 +1,4 @@
 import { perceives } from "./bodies.js";
-import { ITEM_TAG } from "./entities.js";
 import { isGhostId } from "./ghosts.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
@@ -79,25 +78,24 @@ export function emitNoise(game: Session, noise: Noise): void {
   game.noises.push(noise);
 }
 
+const PLAYER_TAGS: readonly string[] = [PLAYER_TAG];
+const NO_TAGS: readonly string[] = [];
+
 /**
  * The tags saying what kind of thing `id` is: `PLAYER_TAG` for a player; for a world entity, its
- * kind's name, then the tags its kind declares; none for anything else.
+ * kind's name, then the tags its kind declares; none for anything else. Shared between callers,
+ * so not to be changed.
  */
-export function kindTags(game: Session, id: string): string[] {
-  if (game.players.has(id)) return [PLAYER_TAG];
+export function kindTags(game: Session, id: string): readonly string[] {
+  if (game.players.has(id)) return PLAYER_TAGS;
   const entity = game.entities.get(id);
-  if (entity === undefined) return [];
-  const type = game.entityTypes.get(entity.kind);
+  const type =
+    entity === undefined ? undefined : game.entityTypes.get(entity.kind);
+  if (entity === undefined || type === undefined) return NO_TAGS;
   // A body posing as an item is one, to whatever tells items apart, for as long as it poses.
-  const declared =
-    type === undefined
-      ? []
-      : type.posedItem(entity) === null
-        ? type.tags
-        : [...type.tags, ITEM_TAG];
-  for (const [name, kind] of game.kindIds)
-    if (kind === entity.kind) return [name, ...declared];
-  return [...declared];
+  return type.posedItem(entity) === null
+    ? type.kindTags.standing
+    : type.kindTags.posing;
 }
 
 /** Whether the player or world entity `id` carries any of `tags` among its `kindTags`. */

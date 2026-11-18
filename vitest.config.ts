@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     exclude: [...configDefaults.exclude, ".claude/worktrees/**"],
+    setupFiles: ["src/sim/test-setup.ts"],
   },
 });

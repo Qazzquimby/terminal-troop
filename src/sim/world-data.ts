@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Session } from "./session.js";
+import { guardHeld } from "./parse-cache.js";
 
 /**
  * State a content entry keeps once for the whole world. The host owns it; every client holds a
@@ -48,12 +49,21 @@ const WireEntry = z.tuple([z.number().int().min(0), z.unknown()]);
 /** A content entry's world state, read and written through the returned accessor. */
 export function worldData<S>(spec: WorldDataSpec<S>): WorldData<S> {
   const { schema, initial } = spec;
+  // The value each held entry decodes to, decoded on its first read. Every write holds a new
+  // entry, so a value decoded from an earlier one is never read again (#470).
+  const decoded = new WeakMap<HeldWorldValue, { readonly value: S }>();
   const data: WorldData<S> = {
     schema,
     initial,
     get(game) {
       const held = game.worldValues.get(data);
-      return held === undefined ? initial : schema.parse(held.wire);
+      if (held === undefined) return initial;
+      const known = decoded.get(held);
+      if (known !== undefined) return known.value;
+      const value = schema.parse(held.wire);
+      guardHeld(value);
+      decoded.set(held, { value });
+      return value;
     },
     set(game, value) {
       if (!game.hosting) return false;

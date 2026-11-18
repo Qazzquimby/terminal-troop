@@ -22,6 +22,7 @@ import type { Plays } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
 import { pressDoors } from "./doors.js";
 import { profileEnd, profileStart, profiling } from "./profile.js";
+import { heldParser } from "./parse-cache.js";
 import type { DoorHinge, Hinge } from "./doors.js";
 import type { ItemState } from "./inventory.js";
 
@@ -289,6 +290,12 @@ export interface EntityType {
   readonly collides: boolean;
   readonly healthBar: boolean;
   readonly tags: readonly string[];
+  /** Its name and then `tags`, as one of it is told apart (see `kindTags`), worked out once. */
+  readonly kindTags: {
+    readonly standing: readonly string[];
+    /** While one of it poses as an item: `ITEM_TAG` after the rest. */
+    readonly posing: readonly string[];
+  };
   readonly data: z.ZodType;
   readonly vehicle: VehicleSpec | null;
   /** Its hinge, for a kind that is a door; null for any other. */
@@ -364,9 +371,15 @@ export interface EntitySnapshot {
   readonly data: unknown;
 }
 
-/** The hinge of a door kind, parsing each door's state; null for a kind that is no door. */
-function hinge<S>(definition: EntityDefinition<S>): DoorHinge | null {
-  const { door, data } = definition;
+/**
+ * The hinge of a door kind, parsing each door's state with `parse`; null for a kind that is no
+ * door.
+ */
+function hinge<S>(
+  definition: EntityDefinition<S>,
+  parse: (data: unknown) => z.ZodSafeParseResult<S>,
+): DoorHinge | null {
+  const { door } = definition;
   if (door === undefined) return null;
   return {
     reach: door.reach,
@@ -375,33 +388,43 @@ function hinge<S>(definition: EntityDefinition<S>): DoorHinge | null {
     toll: door.toll,
     swing: door.swing.bind(door),
     closed(entity) {
-      const parsed = data.safeParse(entity.data);
+      const parsed = parse(entity.data);
       return parsed.success && door.closed(parsed.data);
     },
   };
 }
 
-function entityType<S>(definition: EntityDefinition<S>): EntityType {
+function entityType<S>(
+  name: string,
+  definition: EntityDefinition<S>,
+): EntityType {
+  const tags = definition.tags ?? [];
   // Whether each state an entity of the kind has taken is perceived only in deepdark.
   const deepdarkOnly = new WeakMap<object, boolean>();
   // The item each state an entity of the kind has taken poses as.
   const posed = new WeakMap<object, PosedItem | null>();
   const { data: schema } = definition;
+  // Asked of every entity by several hooks a step: each state an entity takes is parsed once.
+  const parse = heldParser(schema);
   return {
     radius: definition.radius,
     maxHealth: definition.maxHealth,
     mass: definition.mass ?? null,
     collides: definition.collides ?? true,
     healthBar: definition.healthBar ?? true,
-    tags: definition.tags ?? [],
+    tags,
+    kindTags: {
+      standing: [name, ...tags],
+      posing: [name, ...tags, ITEM_TAG],
+    },
     data: schema,
     vehicle: definition.vehicle ?? null,
-    door: hinge(definition),
+    door: hinge(definition, parse),
     opensDoors: definition.opensDoors ?? false,
     box(entity) {
       const { box } = definition;
       if (box === undefined) return null;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (!parsed.success) return null;
       const { length, width } = box;
       return { length, width, heading: box.heading(entity, parsed.data) };
@@ -411,7 +434,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       // Most kinds give off none, and pay nothing to parse their state for it.
       const { light: lightOf } = definition;
       if (lightOf === undefined) return [];
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (!parsed.success) return [];
       const light = lightOf(entity, parsed.data) ?? [];
       return "range" in light ? [light] : light;
@@ -421,12 +444,12 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const { darkness } = definition;
       // Most kinds give off none, and pay nothing to parse their state for it.
       if (darkness === undefined) return 0;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (!parsed.success) return 0;
       return Math.max(0, darkness(entity, parsed.data) ?? 0);
     },
     eyes(entity, game) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (!parsed.success) return null;
       return definition.eyes?.(entity, parsed.data, game) ?? null;
     },
@@ -434,14 +457,14 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const { pullsGaze } = definition;
       // Most kinds pull no gaze, and pay nothing to parse their state for it.
       if (pullsGaze === undefined) return null;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       return parsed.success ? pullsGaze(entity, parsed.data) : null;
     },
     restricted: definition.perceivedBy !== undefined,
     perceiver(entity) {
       const { perceivedBy } = definition;
       if (perceivedBy === undefined) return null;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       return parsed.success ? perceivedBy(entity, parsed.data) : null;
     },
     seenInDark: definition.seenInDark ?? false,
@@ -449,7 +472,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const { apparition } = definition;
       // Most kinds are drawn solid, and pay nothing to parse their state for it.
       if (apparition === undefined) return null;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       return parsed.success ? apparition(entity, parsed.data) : null;
     },
     posesAsWall: definition.posesAsWall ?? false,
@@ -462,7 +485,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const keyed = typeof data === "object" && data !== null;
       const known = keyed ? posed.get(data) : undefined;
       if (known !== undefined) return known;
-      const parsed = schema.safeParse(data);
+      const parsed = parse(data);
       const item = parsed.success ? posesAsItem(entity, parsed.data) : null;
       if (keyed) posed.set(data, item);
       return item;
@@ -470,7 +493,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
     grabbed(entity, by, game) {
       const { grabbed } = definition;
       if (grabbed === undefined || !game.hosting) return;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (parsed.success) entity.data = grabbed(entity, parsed.data, by, game);
     },
     castsShadow: definition.castsShadow ?? true,
@@ -483,18 +506,18 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const keyed = typeof data === "object" && data !== null;
       const known = keyed ? deepdarkOnly.get(data) : undefined;
       if (known !== undefined) return known;
-      const parsed = schema.safeParse(data);
+      const parsed = parse(data);
       const only = parsed.success && onlyInDeepdark(entity, parsed.data, game);
       if (keyed) deepdarkOnly.set(data, only);
       return only;
     },
     minimap(ctx, entity, size, now) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (parsed.success)
         definition.minimap?.(ctx, entity, parsed.data, size, now);
     },
     plays(entity, game) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (!parsed.success) return null;
       return definition.plays?.(entity, parsed.data, game) ?? null;
     },
@@ -506,25 +529,25 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
           return false;
       const { wakeful } = definition;
       if (wakeful === undefined) return true;
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       return !(parsed.success && wakeful(entity, parsed.data, game));
     },
     update(entity, dt, game) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (parsed.success && definition.update !== undefined)
         entity.data = definition.update(entity, parsed.data, dt, game);
     },
     strikes(entity, game) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (!parsed.success) return [];
       return definition.strikes?.(entity, parsed.data, game) ?? [];
     },
     dies(entity, game) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (parsed.success) definition.dies?.(entity, parsed.data, game);
     },
     draw(ctx, entity, now, game) {
-      const parsed = schema.safeParse(entity.data);
+      const parsed = parse(entity.data);
       if (parsed.success) definition.draw(ctx, entity, parsed.data, now, game);
     },
   };
@@ -545,7 +568,7 @@ export function registerEntityType<S>(
     throw new Error(`Entity kind ${name} needs a positive maxHealth.`);
   const kind = game.entityTypes.size + 1;
   game.kindIds.set(name, kind);
-  game.entityTypes.set(kind, entityType(definition));
+  game.entityTypes.set(kind, entityType(name, definition));
 }
 
 function placeEntity(
