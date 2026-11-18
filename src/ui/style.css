@@ -85,6 +85,10 @@ canvas {
   border: 1px solid #333;
   cursor: crosshair;
 }
+/* The mouse turns the view rather than pointing: no cursor over the game. */
+canvas.turning {
+  cursor: none;
+}
 .controls-hint {
   position: absolute;
   bottom: 88px;
@@ -98,6 +102,11 @@ canvas {
   font-size: 12px;
   text-align: center;
   pointer-events: none;
+}
+/* A turning camera draws the player just above the inventory, where the hint would sit over it. */
+.controls-hint.top {
+  top: 12px;
+  bottom: auto;
 }
 .debug-overlay {
   position: absolute;

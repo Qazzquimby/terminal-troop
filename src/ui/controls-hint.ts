@@ -87,19 +87,24 @@ export function hintMode(player: Pick<Player, "health" | "ride">): HintMode {
 
 /** Shown first on foot and as a ghost while the camera turns with the view: the mouse turns it. */
 const TURN_HINT = "Mouse to turn";
+/** Shown before it while the mouse is not captured: a click captures it. */
+const CAPTURE_HINT = "Click to capture the mouse";
 
 /**
  * The hint for `mode`, with the talk key when push to talk is on, and the mouse's turning when
- * the camera turns with the view and the mouse turns it.
+ * the camera turns with the view and the mouse turns it, asking for a click while the mouse is
+ * not `captured`.
  */
 export function controlsHintFor(
   mode: HintMode,
   pushToTalk: boolean,
   turning = false,
+  captured = true,
 ): string {
   const entries = CONTROLS_HINT[mode];
   const text = controlsHintText(pushToTalk ? [...entries, TALK_HINT] : entries);
-  return turning && (mode === "foot" || mode === "ghost")
+  if (!turning || (mode !== "foot" && mode !== "ghost")) return text;
+  return captured
     ? `${TURN_HINT} · ${text}`
-    : text;
+    : `${CAPTURE_HINT} · ${TURN_HINT} · ${text}`;
 }
