@@ -692,6 +692,7 @@ export const testEntitiesConfig = {
       pass: 100,
       pull: 1.2,
       rest: 15,
+      retry: 0.5,
     },
     bellRange: 400,
     bellCooldown: 2,

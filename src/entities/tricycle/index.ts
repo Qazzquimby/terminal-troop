@@ -48,7 +48,8 @@ export interface TricycleConfig extends Hunting, Dormancy {
    * down, each `overshoot` beyond one; while any such body is about, it rides only to spots within
    * `near` of one. Of those it reaches, it takes the one that best sets off the way it faces, plus
    * `pull` for a ride whose way passes within `pass` of a body it runs down that it has not passed
-   * in the last `rest` seconds (a share of `pull` for one passed more lately).
+   * in the last `rest` seconds (a share of `pull` for one passed more lately). Finding no ride, it
+   * looks again after `retry` seconds.
    */
   readonly ride: {
     readonly min: number;
@@ -61,6 +62,7 @@ export interface TricycleConfig extends Hunting, Dormancy {
     readonly pass: number;
     readonly pull: number;
     readonly rest: number;
+    readonly retry: number;
   };
   /** How far down its way it rings at a body it runs down standing on it. */
   readonly bellRange: number;
@@ -103,6 +105,7 @@ export const TricycleState = z.object({
   bellAt: Time,
   rangAt: Time.nullable(),
   creakAt: Time,
+  planAt: Time,
   attackAt: Time,
   attacking: z.boolean(),
 });
@@ -119,6 +122,7 @@ export function freshTricycle(now: number, facing = 0): TricycleState {
     bellAt: now,
     rangAt: null,
     creakAt: now,
+    planAt: now,
     attackAt: now,
     attacking: false,
   };
@@ -413,10 +417,12 @@ function think(
   const now = game.worldTime;
   const bodies = quarries(game, self, config);
   const passed = passing(state.passed, self, bodies, now, config);
-  const route =
-    state.route.length > 0
-      ? state.route
-      : nextRide(game, self, { ...state, passed }, bodies, config);
+  const plans = state.route.length === 0 && now >= state.planAt;
+  const route = plans
+    ? nextRide(game, self, { ...state, passed }, bodies, config)
+    : state.route;
+  // Finding no ride, it stands a while before it looks again, rather than every step.
+  const stuck = plans && route.length === 0;
   const blocked = bodies.some((body) =>
     onWay(self, route, body, config.bellRange),
   );
@@ -431,6 +437,7 @@ function think(
       ...state,
       route,
       passed,
+      planAt: stuck ? now + config.ride.retry : state.planAt,
       slowed,
       bellAt: rings ? now + config.bellCooldown : state.bellAt,
       rangAt: rings ? now : state.rangAt,

@@ -1092,6 +1092,7 @@ export const config = {
         pass: CELL * 3, // a way this near a player passes them
         pull: 1.2, // a pass's score; setting off straight ahead scores 1, sideways 0
         rest: 15, // seconds after passing a player before it wants to again
+        retry: 0.5, // seconds it waits to look again on finding no ride
       },
       bellRange: CELL * 8, // rings at a player this near on its way
       bellCooldown: 2,
