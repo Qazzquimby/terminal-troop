@@ -5,6 +5,7 @@ import {
   testSfx,
   testSimConfig,
 } from "../../integration/sim-config.js";
+import { sentSounds } from "../../integration/sent-sounds.js";
 import {
   createSession,
   footprintOf,
@@ -80,17 +81,12 @@ function world(x: number, y: number, statue: StatueConfig = config): Session {
 
 const played = (game: Session): string[] => sent.get(game) ?? [];
 
-const Sent = z.object({ effects: z.array(z.object({ sound: z.string() })) });
-
 /** Steps `seconds`, one step a frame, the player aiming at `aim`, noting each sound sent. */
 function run(game: Session, seconds: number, aim: Point = idle.aim): void {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, { ...idle, aim }, DT);
     for (const { payload } of game.outbox.splice(0)) {
-      const parsed = Sent.safeParse(payload);
-      if (!parsed.success) continue;
-      for (const { sound } of parsed.data.effects)
-        played(game).push(sound.split("/").at(-1) ?? sound);
+      played(game).push(...sentSounds(payload));
     }
   }
 }

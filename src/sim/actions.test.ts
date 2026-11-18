@@ -218,6 +218,25 @@ test("an effect's own noise carries in place of its sound's range", () => {
   ]);
 });
 
+/** A small file as a build inlines it: a data url thousands of characters long (#481). */
+const INLINED = sound({
+  url: `data:audio/mpeg;base64,${"SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4".repeat(140)}`,
+  range: 100,
+});
+
+test("a sound travels by a short key, so one at a long url, as a build inlines it, still sends and plays", () => {
+  const { game, play, post } = session();
+  effect(game, { at: at(post), sound: INLINED }, post);
+  const [sent] = game.outbox;
+  expect(JSON.stringify(sent?.payload).length).toBeLessThan(200);
+  deliverOwn(game);
+  receive(game);
+  expect(play.mock.calls).toEqual([
+    [INLINED.url, at(post), game.local, { range: 100 }],
+  ]);
+  expect(game.noises).toHaveLength(1);
+});
+
 test("an effect outside an action, off the host, is dropped", () => {
   const { game, play, post } = session();
   game.hosting = false;

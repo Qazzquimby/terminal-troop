@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { Session } from "./session.js";
 
 /**
@@ -33,13 +33,13 @@ interface EventBase<P, R extends EventRoute> extends ContentEventSpec<P, R> {
 
 /** An event for the host or for everyone. */
 export interface RoomEvent<P> extends EventBase<P, "host" | "all"> {
-  /** Queues `payload` for the room to send. Throws when it does not encode or the event is not registered. */
+  /** Queues `payload` for the room to send. Throws when the event is not registered; a payload that does not encode is logged and dropped. */
   send(game: Session, payload: P): void;
 }
 
 /** An event for one player. */
 export interface PlayerEvent<P> extends EventBase<P, "player"> {
-  /** Queues `payload` for the room to send to `target`. Throws when it does not encode or the event is not registered. */
+  /** Queues `payload` for the room to send to `target`. Throws when the event is not registered; a payload that does not encode is logged and dropped. */
   send(game: Session, target: string, payload: P): void;
 }
 
@@ -76,6 +76,19 @@ export interface Delivery {
   readonly sender: string;
 }
 
+/** Logs that a payload of the event at `address` failed its schema on `side`, and why. */
+function dropped(
+  side: "send" | "receive",
+  address: EventAddress,
+  error: z.ZodError,
+  payload: unknown,
+): void {
+  console.error(
+    `Dropped ${address.content}.${address.event} on ${side}, its payload failed its schema:\n${z.prettifyError(error)}`,
+    payload,
+  );
+}
+
 /** A content entry's event, sent through and received from the room, typed by its schema. */
 export function contentEvent<P>(
   spec: ContentEventSpec<P, "player">,
@@ -90,11 +103,17 @@ export function contentEvent<P>(
   const queue = (game: Session, target: string | null, payload: P): void => {
     const address = game.eventAddresses.get(event);
     if (address === undefined) throw new Error("Event not registered");
+    // A payload that breaks its schema is a bug, but one that must not stop the step sending it.
+    const encoded = schema.safeEncode(payload);
+    if (!encoded.success) {
+      dropped("send", address, encoded.error, payload);
+      return;
+    }
     game.outbox.push({
       ...address,
       route: to,
       to: target,
-      payload: schema.encode(payload),
+      payload: encoded.data,
     });
   };
   const receive = (game: Session, payload: P, sender: string): void => {
@@ -143,7 +162,7 @@ export function registerEvents(
 /**
  * Queues `message` for the next step, if this client is one it is for and it comes from whom
  * its event accepts: `host` is the player this client takes for the host. A message of an
- * unregistered event, or whose payload its schema rejects, is dropped.
+ * unregistered event is dropped; one whose payload its schema rejects is dropped and logged.
  */
 export function receiveEvent(
   game: Session,
@@ -158,6 +177,7 @@ export function receiveEvent(
   const parsed = event.schema.safeParse(message.payload);
   if (parsed.success)
     game.inbox.push({ event, payload: parsed.data, sender: message.from });
+  else dropped("receive", message, parsed.error, message.payload);
 }
 
 /** Applies every event received since the last step, in the order received. */

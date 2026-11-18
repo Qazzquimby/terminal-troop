@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { z } from "zod";
 import { reportedAt } from "../../integration/heard.js";
+import { sentSounds } from "../../integration/sent-sounds.js";
 import {
   testEntitiesConfig,
   testSfx,
@@ -200,17 +200,9 @@ test("worn down, it breaks", () => {
   expect(game.entities.has(self.id)).toBe(false);
 });
 
-const Sent = z.object({ effects: z.array(z.object({ sound: z.string() })) });
-
 /** The names of the sounds the host has sent since last asked, emptying its outbox. */
 function sent(game: Session): string[] {
-  return game.outbox.splice(0).flatMap(({ payload }) => {
-    const parsed = Sent.safeParse(payload);
-    if (!parsed.success) return [];
-    return parsed.data.effects.map(
-      ({ sound }) => sound.split("/").at(-1) ?? sound,
-    );
-  });
+  return game.outbox.splice(0).flatMap(({ payload }) => sentSounds(payload));
 }
 
 test("it holds its config's ammo, and once spent it clicks dry where it would shoot", () => {
