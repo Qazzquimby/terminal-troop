@@ -1444,7 +1444,7 @@ export const config = {
     apexPredator: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
-        weight: 1500,
+        weight: 15,
         tries: 24,
         unseenDistance: CELL * 14,
       },
