@@ -1293,15 +1293,14 @@ export const config = {
         chance: 0.3,
         items: ["shovel", "bandage", "walkie", "scrap"],
       },
-      // Seeing a monster the spawner brings as rarely as the sleeper or more rarely (spawning
-      // weight 50 or less: not zombies nor exploders), it sprints at a player's sprint to the
+      // Upon seeing a monster with spawn rate 50 or less it sprints at a player's sprint to the
       // best of 12 spots 8 cells off, stands 1.5s looking back, and, seeing nothing, walks
       // another 8 cells off. Its gasp carries 4 cells, as far as talking.
       // `by: "toughness"` instead has it fear any body as hard to kill as the sleeper or harder
       // (full health 150 or more), the bodies that drop a heart, whatever their spawning weight.
       fear: {
         by: "rarity",
-        asRareAs: SLEEPER_SPAWN_WEIGHT,
+        asRareAs: 50,
         toughness: SLEEPER_HEALTH,
         sprintSpeed: PLAYER_SPEED * SPRINT,
         flee: { leg: CELL * 8, tries: 12 },
@@ -1374,8 +1373,7 @@ export const config = {
       creakInterval: 0.8,
       sounds: { bell: CELL * 10, creak: CELL * 3, hit: CELL * 6 },
     },
-    // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker,
-    // and never more than 8 about, one to each colour. Player-sized; six shovel hits fell it. It
+    // Never more than 8 about, one to each colour. Player-sized; six shovel hits fell it. It
     // wanders legs of up to 5 cells at 0.6 times a walk, leaving a balloon every 10s, at most 10
     // of its own about and none within a cell of another. One popping sends it at 0.8 times a
     // sprint to the spot, where it looks round 10s; any killable body it sees within 10 cells of
@@ -1446,18 +1444,18 @@ export const config = {
     apexPredator: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
-        weight: 15,
+        weight: 1500,
         tries: 24,
         unseenDistance: CELL * 14,
       },
       ignores: ["apexPredator"],
       radius: 11,
       mass: 0.2,
-      maxHealth: SHOVEL_DAMAGE * 3,
-      speedShare: 1.1,
-      wanderShare: 0.5,
-      wanderRange: CELL * 4,
-      sightRange: CELL * 6,
+      maxHealth: SHOVEL_DAMAGE * 7,
+      speedShare: 1.4,
+      wanderShare: 1.0,
+      wanderRange: CELL * 20,
+      sightRange: CELL * 7,
       standGap: CELL / 4,
       repathInterval: 0.3,
       calmSeconds: 8,
