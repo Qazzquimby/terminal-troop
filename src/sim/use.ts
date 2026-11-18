@@ -142,9 +142,15 @@ export function useHeldItem(game: Session): void {
   });
 }
 
-/** Works the local player's held item's control, if it has one. */
-export function controlHeldItem(game: Session): void {
+/** The slot of the local player's held item when that item has a control to work; null if not. */
+export function heldControl(game: Session): number | null {
   const holding = held(game);
-  if (holding === null) return;
-  holding.behaviour?.control?.perform(game, { slot: holding.slot });
+  return holding?.behaviour?.control === undefined ? null : holding.slot;
+}
+
+/** Works the control of the item in the local player's slot `slot`, if it has one. */
+export function controlItemIn(game: Session, slot: number): void {
+  const item = game.local.inventory[slot] ?? null;
+  if (item === null) return;
+  game.items.get(item.id)?.control?.perform(game, { slot });
 }

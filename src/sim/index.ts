@@ -25,6 +25,8 @@ export type {
   WorldEntity,
 } from "./entities.js";
 export { entityDelta } from "./entity-delta.js";
+export { interactTarget, targetEntity } from "./interact.js";
+export type { InteractTarget } from "./interact.js";
 export { rounded } from "./rounded.js";
 export {
   drawLying,

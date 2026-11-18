@@ -7,6 +7,7 @@ import type {
   Interpolated,
   Player,
   Point,
+  InteractTarget,
   Session,
   TileMap,
   VisibilityPolygon,
@@ -36,7 +37,8 @@ import {
   isVisible,
   perceives,
   captionOf,
-  pickupTarget,
+  interactTarget,
+  targetEntity,
   stunLeft,
   litWalls,
   movement,
@@ -397,16 +399,19 @@ function drawStamina(
   });
 }
 
-/** The colour of the ring round the item interacting would pick up. */
+/** The colour of the highlight round what interacting would act on. */
 const TARGET_RING = "#ffe37a";
 
 /**
- * A pulsing ring round `item`, the lying item interacting would pick up now, so the player sees
- * which of several at its feet it would take.
+ * A pulsing highlight on `shown`, what interacting would act on now, so the player sees which of
+ * several things near it E works: a ring round a body (an item, a vehicle), or, round a door,
+ * the outline of the doorway it stands in, open or shut.
  */
-function drawPickupTarget(
+function drawInteractTarget(
   ctx: CanvasRenderingContext2D,
-  item: Point & { readonly radius: number },
+  game: Session,
+  kind: InteractTarget["kind"],
+  shown: Point & { readonly radius: number },
   now: number,
 ): void {
   const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 3);
@@ -417,7 +422,19 @@ function drawPickupTarget(
   ctx.shadowColor = TARGET_RING;
   ctx.shadowBlur = 6;
   ctx.beginPath();
-  ctx.arc(item.x, item.y, item.radius + 3 + pulse * 2, 0, Math.PI * 2);
+  if (kind === "door") {
+    const { cell } = game.world.map;
+    const { col, row } = cellAt(game.world.map, shown);
+    const out = 1 + pulse * 2;
+    ctx.rect(
+      col * cell - out,
+      row * cell - out,
+      cell + out * 2,
+      cell + out * 2,
+    );
+  } else {
+    ctx.arc(shown.x, shown.y, shown.radius + 3 + pulse * 2, 0, Math.PI * 2);
+  }
   ctx.stroke();
   ctx.restore();
 }
@@ -1708,11 +1725,13 @@ export function draw(
   }
   applyCamera(ctx, camera, () => {
     drawRipples(ctx, ripples.config, rings, now, camera);
-    // The item E would pick up, chosen as the interaction chooses it, on the simulation proper,
-    // and drawn where the view shows it.
-    const target = eye.kind === "self" ? pickupTarget(simulation) : null;
-    const shown = target === null ? undefined : game.entities.get(target.id);
-    if (shown !== undefined) drawPickupTarget(ctx, shown, now);
+    // What E would act on, chosen as the interaction chooses it, on the simulation proper, and
+    // drawn where the view shows it.
+    const target = eye.kind === "self" ? interactTarget(simulation) : null;
+    const entity = targetEntity(target);
+    const shown = entity === null ? undefined : game.entities.get(entity.id);
+    if (target !== null && shown !== undefined)
+      drawInteractTarget(ctx, game, target.kind, shown, now);
     // Inside a vehicle, the viewer is out of sight in it, as every other occupant is.
     if (!isAboard(viewer)) drawPlayer(ctx, game, viewer, viewer === game.local);
     drawHealthBar(ctx, viewer, viewer.y - viewer.radius - PLAYER_BAR_ABOVE);

@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { onScreenAngle, upright } from "../../lib/upright/index.js";
 import { drawEmoji } from "../../render/index.js";
-import { defineEntity, isAreaFree, rounded, sound } from "../../sim/index.js";
+import {
+  defineEntity,
+  isAreaFree,
+  livingBody,
+  rounded,
+  sound,
+} from "../../sim/index.js";
 import type {
   Body,
   Dormancy,
@@ -13,8 +19,15 @@ import type {
   TileMap,
   WorldEntity,
 } from "../../sim/index.js";
-import { playEach, preyFor, touching } from "../bodies.js";
-import { Route, strikeEach, strikeIf, Time, walk } from "../hunt.js";
+import { drawRing, hitterOf, playEach, preyFor, touching } from "../bodies.js";
+import {
+  rageFromHurt,
+  Route,
+  strikeEach,
+  strikeIf,
+  Time,
+  walk,
+} from "../hunt.js";
 import type { Hunting } from "../hunt.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
@@ -24,6 +37,7 @@ import type { SpawningConfig } from "../spawning.js";
 const bellUrl = new URL("./sfx/bell.mp3", import.meta.url).href;
 const creakUrl = new URL("./sfx/creak.mp3", import.meta.url).href;
 const hitUrl = new URL("./sfx/bell.mp3", import.meta.url).href;
+const rageUrl = new URL("./sfx/rage.mp3", import.meta.url).href;
 
 /**
  * The tricycle: rides on and on along the wide ways, rarely doubling back, through every body but
@@ -64,6 +78,17 @@ export interface TricycleConfig extends Hunting, Dormancy {
     readonly rest: number;
     readonly retry: number;
   };
+  /**
+   * Hurt by any body, it rages for `seconds` from each hurt: it rides at `speedShare` of a walk,
+   * slowing for no one, straight at whatever hurt it and through it, to a spot up to `overshoot`
+   * past it, aiming afresh every `reaim` seconds and on reaching each spot.
+   */
+  readonly rage: {
+    readonly seconds: number;
+    readonly speedShare: number;
+    readonly overshoot: number;
+    readonly reaim: number;
+  };
   /** How far down its way it rings at a body it runs down standing on it. */
   readonly bellRange: number;
   /** Seconds between two rings of its bell. */
@@ -79,6 +104,7 @@ export interface TricycleConfig extends Hunting, Dormancy {
     readonly bell: number;
     readonly creak: number;
     readonly hit: number;
+    readonly rage: number;
   };
 }
 
@@ -91,6 +117,8 @@ const SHORT = 100;
 
 /** Seconds its bell shows over it after a ring. */
 const BELL_SHOWN = 0.6;
+
+const RAGE_COLOUR = "#d8262a";
 
 /**
  * Everyone reads its facing, whether it slows and when it last rang, to draw it; the rest only
@@ -108,6 +136,9 @@ export const TricycleState = z.object({
   planAt: Time,
   attackAt: Time,
   attacking: z.boolean(),
+  // When the rage its last hurt set off ends, and the body it rides down meanwhile; null calm.
+  rageUntil: Time,
+  foe: z.string().nullable(),
 });
 
 export type TricycleState = z.output<typeof TricycleState>;
@@ -125,6 +156,8 @@ export function freshTricycle(now: number, facing = 0): TricycleState {
     planAt: now,
     attackAt: now,
     attacking: false,
+    rageUntil: now,
+    foe: null,
   };
 }
 
@@ -405,6 +438,124 @@ function approaching(
 }
 
 /**
+ * A charge at `foe`: the way to a spot `rage.overshoot` past it, straight on from `self`, or the
+ * nearest it fits at back along that line, a cell at a time; failing any, the way to `foe` itself.
+ * Riding it, it runs `foe` down and on, rather than stopping at it. Empty when it can reach none.
+ */
+function charge(
+  game: Session,
+  self: WorldEntity,
+  facing: number,
+  foe: Point,
+  config: TricycleConfig,
+): Point[] {
+  const { map } = game.world;
+  const dx = foe.x - self.x;
+  const dy = foe.y - self.y;
+  const angle = dx === 0 && dy === 0 ? facing : Math.atan2(dy, dx);
+  for (let beyond = config.rage.overshoot; beyond > 0; beyond -= map.cell) {
+    const spot = {
+      x: foe.x + Math.cos(angle) * beyond,
+      y: foe.y + Math.sin(angle) * beyond,
+    };
+    if (!isAreaFree(map, spot.x, spot.y, self.radius)) continue;
+    const route = planRoute(map, self.radius, self, spot);
+    if (route !== null) return route;
+  }
+  return planRoute(map, self.radius, self, foe) ?? [];
+}
+
+/**
+ * Its rage brought up to now: each hurt by any body sets it raging at that body for
+ * `rage.seconds` more; it calms once that runs out or its foe is gone.
+ */
+function rage(
+  state: TricycleState,
+  self: WorldEntity,
+  game: Session,
+  config: TricycleConfig,
+): { readonly rageUntil: number; readonly foe: Body | null } {
+  const now = game.worldTime;
+  // Any body that hurts it, not only those it runs down.
+  const hitter = hitterOf(game, self, {});
+  const rageUntil = rageFromHurt(
+    state.rageUntil,
+    now,
+    hitter !== null,
+    config.rage.seconds,
+  );
+  const foe = now < rageUntil ? (hitter ?? livingBody(game, state.foe)) : null;
+  // Its foe gone, its rage ends now.
+  return foe === null
+    ? { rageUntil: Math.min(rageUntil, now), foe: null }
+    : { rageUntil, foe };
+}
+
+/**
+ * Raging at `foe`: it charges it, aiming afresh as it turns on it, on reaching each spot and
+ * every `rage.reaim` seconds; rings at it on its way; slows for no one; and strikes it and any
+ * body it runs down that it touches.
+ */
+function raging(
+  state: TricycleState,
+  rageUntil: number,
+  foe: Body,
+  self: WorldEntity,
+  game: Session,
+  config: TricycleConfig,
+): TricycleState {
+  const now = game.worldTime;
+  const aims =
+    state.foe !== foe.id || state.route.length === 0 || now >= state.planAt;
+  const route = aims
+    ? charge(game, self, state.facing, foe, config)
+    : state.route;
+  return rolling(
+    {
+      ...state,
+      route,
+      rageUntil,
+      foe: foe.id,
+      planAt: aims ? now + config.rage.reaim : state.planAt,
+      slowed: false,
+    },
+    onWay(self, route, foe, config.bellRange),
+    self,
+    game,
+    config,
+  );
+}
+
+/**
+ * `next`, its route and rage settled, as it rolls on: ringing when `blocked` (a body it rides at
+ * on its way) and its bell is ready, creaking as it rides, and striking any body it touches that
+ * it runs down, or rages at.
+ */
+function rolling(
+  next: TricycleState,
+  blocked: boolean,
+  self: WorldEntity,
+  game: Session,
+  config: TricycleConfig,
+): TricycleState {
+  const now = game.worldTime;
+  const rings = blocked && now >= next.bellAt;
+  const creaks = next.route.length > 0 && now >= next.creakAt;
+  const struck = runOver(game, self, config, next.foe);
+  return strikeIf(
+    {
+      ...next,
+      bellAt: rings ? now + config.bellCooldown : next.bellAt,
+      rangAt: rings ? now : next.rangAt,
+      creakAt: creaks ? now + config.creakInterval : next.creakAt,
+    },
+    now,
+    struck.length > 0,
+    config.attackCooldown,
+  );
+}
+
+/**
  * Rides on: a fresh ride once the last is done; it rings when a body it runs down stands on its
  * way, slows when one is near and ahead, and strikes those it touches.
  */
@@ -415,6 +566,8 @@ function think(
   config: TricycleConfig,
 ): TricycleState {
   const now = game.worldTime;
+  const { rageUntil, foe } = rage(state, self, game, config);
+  if (foe !== null) return raging(state, rageUntil, foe, self, game, config);
   const bodies = quarries(game, self, config);
   const passed = passing(state.passed, self, bodies, now, config);
   const plans = state.route.length === 0 && now >= state.planAt;
@@ -426,32 +579,35 @@ function think(
   const blocked = bodies.some((body) =>
     onWay(self, route, body, config.bellRange),
   );
-  const rings = blocked && now >= state.bellAt;
   const slowed = bodies.some((body) =>
     approaching(self, state.facing, body, config.slowRange),
   );
-  const struck = runOver(game, self, config);
-  const creaks = route.length > 0 && now >= state.creakAt;
-  return strikeIf(
+  return rolling(
     {
       ...state,
+      rageUntil,
+      foe: null,
       route,
       passed,
       planAt: stuck ? now + config.ride.retry : state.planAt,
       slowed,
-      bellAt: rings ? now + config.bellCooldown : state.bellAt,
-      rangAt: rings ? now : state.rangAt,
-      creakAt: creaks ? now + config.creakInterval : state.creakAt,
     },
-    now,
-    struck.length > 0,
-    config.attackCooldown,
+    blocked,
+    self,
+    game,
+    config,
   );
 }
 
-/** The bodies it runs down that it touches. */
-function runOver(game: Session, self: WorldEntity, config: TricycleConfig) {
+/** The bodies it runs down that it touches, and `foe`, should it touch the body it rages at. */
+function runOver(
+  game: Session,
+  self: WorldEntity,
+  config: TricycleConfig,
+  foe: string | null,
+) {
   const bodies = new Set(quarries(game, self, config).map(({ id }) => id));
+  if (foe !== null) bodies.add(foe);
   return touching(game, self, config.ignores).filter(({ id }) =>
     bodies.has(id),
   );
@@ -461,9 +617,13 @@ interface Sounds {
   readonly bell: Sound;
   readonly creak: Sound;
   readonly hit: Sound;
+  readonly rage: Sound;
 }
 
-/** Sounds, as the host, on every client, a ring, a creak of its wheels, or a body run down. */
+/**
+ * Sounds, as the host, on every client, a ring, a creak of its wheels, a body run down, or the
+ * furious ringing of each hurt that sets it raging.
+ */
 function cue(
   self: WorldEntity,
   previous: TricycleState,
@@ -475,6 +635,7 @@ function cue(
     next.rangAt !== previous.rangAt && sounds.bell,
     next.creakAt !== previous.creakAt && sounds.creak,
     next.attacking && sounds.hit,
+    next.foe !== null && next.rageUntil > previous.rageUntil && sounds.rage,
   ]);
 }
 
@@ -483,9 +644,14 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
     bell: sound({ url: bellUrl, range: config.sounds.bell }),
     creak: sound({ url: creakUrl, range: config.sounds.creak }),
     hit: sound({ url: hitUrl, range: config.sounds.hit }),
+    rage: sound({ url: rageUrl, range: config.sounds.rage }),
   };
-  const speedOf = (game: Session, slowed: boolean): number =>
-    game.config.player.speed * (slowed ? config.slowShare : config.speedShare);
+  const shareOf = (state: TricycleState): number => {
+    if (state.foe !== null) return config.rage.speedShare;
+    return state.slowed ? config.slowShare : config.speedShare;
+  };
+  const speedOf = (game: Session, state: TricycleState): number =>
+    game.config.player.speed * shareOf(state);
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
@@ -496,7 +662,7 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
     update(entity, state, dt, game) {
       const next = think(state, entity, game, config);
       cue(entity, state, next, game, sounds);
-      const moved = walk(entity, next, speedOf(game, next.slowed), dt);
+      const moved = walk(entity, next, speedOf(game, next), dt);
       // Passing through bodies, it does not meet walls as a body does: its way keeps it clear of
       // them, and one in the way since it planned stops it, to plan anew.
       const ahead = isAreaFree(
@@ -512,7 +678,10 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
-      return strikeEach(runOver(game, entity, config), config.damage);
+      return strikeEach(
+        runOver(game, entity, config, state.foe),
+        config.damage,
+      );
     },
     draw(ctx, entity, state, _now, game) {
       // It faces the way it rides on the screen, leaning as it goes, however the camera turns.
@@ -524,6 +693,8 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
         drawEmoji(ctx, { x: 0, y: 0 }, GLYPH, entity.radius * 2);
         ctx.restore();
       });
+      // Raging, a red ring round it.
+      if (state.foe !== null) drawRing(ctx, entity, RAGE_COLOUR, 3, 0);
       const rang = state.rangAt;
       if (rang !== null && game.worldTime - rang < BELL_SHOWN) {
         drawEmoji(
@@ -545,7 +716,8 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
  * favouring whichever it has gone longest without passing, so among many it does the rounds. It passes through every
  * body but those it runs down, players as shipped, and those it strikes hard as it passes. One
  * standing on its way ahead hears its bell; near and ahead of it, it slows. Its wheels creak as it
- * goes.
+ * goes. Hurt by any body, it rages a while with a furious ringing: faster, slowing for no one, it
+ * charges whatever hurt it, on through it, again and again.
  */
 export const tricycle = defineEntity(NAME, (config: TricycleConfig) => ({
   ...definition(config),

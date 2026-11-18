@@ -1,6 +1,6 @@
 import type { MessageRates } from "../net/index.js";
 import type { PerfSnapshot } from "../perf-stats/index.js";
-import { pickupTarget, remotePlayers, seemsItem } from "../sim/index.js";
+import { interactTarget, remotePlayers, seemsItem } from "../sim/index.js";
 import type { Corrections, Session } from "../sim/index.js";
 
 /** UI tuning. */
@@ -35,23 +35,42 @@ interface RoomDebugInfo {
     presence: string;
     ageMs: number;
   }[];
-  /** The item highlighted for E, which E would pick up now, or "none". */
+  /** What E would act on now, as highlighted, or "none". */
   readonly target: string;
 }
 
+/** An item's name by its id, the id itself when it has none, "?" for no item. */
+function itemName(session: Session, item: string | undefined): string {
+  if (item === undefined) return "?";
+  return session.itemDefinitions.get(item)?.name ?? item;
+}
+
+/** The name a kind of entity was registered under, by its id; "?" for one unknown. */
+function kindName(session: Session, kind: number): string {
+  for (const [name, id] of session.kindIds) if (id === kind) return name;
+  return "?";
+}
+
 /**
- * The item highlighted for E, by name, entity id and where it lies, so a highlight that seems to
- * be on bare ground can be told from one on an item that is drawn; "none" when there is none.
+ * What E would act on now, as highlighted: a thing in the world by name (an item's, else its
+ * kind), entity id and where it stands, so a highlight that seems to be on bare ground can be
+ * told from one on a thing that is drawn; "ride" aboard a vehicle; the held item's control by
+ * that item's name; "none" when there is nothing.
  */
 export function targetLabel(session: Session): string {
-  const target = pickupTarget(session);
+  const target = interactTarget(session);
   if (target === null) return "none";
-  const item = seemsItem(session, target)?.item;
+  if (target.kind === "ride") return "ride";
+  if (target.kind === "control") {
+    const item = session.local.inventory[target.slot]?.id;
+    return `control of ${itemName(session, item)}`;
+  }
+  const { entity } = target;
   const name =
-    item === undefined
-      ? "?"
-      : (session.itemDefinitions.get(item)?.name ?? item);
-  return `${name} #${target.id} at ${target.x.toFixed(0)},${target.y.toFixed(0)}`;
+    target.kind === "item"
+      ? itemName(session, seemsItem(session, entity)?.item)
+      : kindName(session, entity.kind);
+  return `${name} #${entity.id} at ${entity.x.toFixed(0)},${entity.y.toFixed(0)}`;
 }
 
 /**

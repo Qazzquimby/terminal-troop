@@ -10,6 +10,7 @@ import {
   driverOf,
   driversOf,
   eyesOf,
+  interactTarget,
   inView,
   isLookedAt,
   livingBodies,
@@ -353,4 +354,18 @@ test("from the cabin: Drive takes the wheel, interact at the wheel goes back to 
   const gap = Math.hypot(game.local.x - cruiser.x, game.local.y - cruiser.y);
   expect(gap).toBeGreaterThan(24);
   expect(livingBodies(game)).toContain(game.local);
+});
+
+test("beside a cruiser on foot, the cruiser is what E targets, and so is highlighted; aboard, its ride", () => {
+  const game = world();
+  const cruiser = park(game, { x: 450, y: 300 });
+  stand(game, { x: 450, y: 350 });
+  const target = interactTarget(game);
+  expect(target?.kind).toBe("vehicle");
+  expect(target !== null && "entity" in target && target.entity.id).toBe(
+    cruiser.id,
+  );
+  press(game, { interact: true });
+  expect(game.local.ride?.vehicle).toBe(cruiser.id);
+  expect(interactTarget(game)).toEqual({ kind: "ride" });
 });

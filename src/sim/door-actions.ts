@@ -39,11 +39,8 @@ const swingDoor = defineAction("swing", {
 
 export const doorActions = [swingDoor] as const;
 
-/**
- * The local player opens or closes the nearest door within its reach. Returns whether it had one
- * to work.
- */
-export function useDoor(game: Session): boolean {
+/** The nearest door within the local player's reach, which it would open or close; null for none. */
+export function doorInReach(game: Session): WorldEntity | null {
   const { local } = game;
   let nearest: WorldEntity | null = null;
   let best = Infinity;
@@ -56,7 +53,10 @@ export function useDoor(game: Session): boolean {
       best = distance;
     }
   }
-  if (nearest === null) return false;
-  swingDoor.perform(game, { id: nearest.id });
-  return true;
+  return nearest;
+}
+
+/** The local player opens or closes the door `id`, as `doorInReach` offers it. */
+export function workDoor(game: Session, id: string): void {
+  swingDoor.perform(game, { id });
 }

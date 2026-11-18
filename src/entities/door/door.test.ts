@@ -9,14 +9,18 @@ import {
   AREA,
   createSession,
   defineEntity,
+  defineItem,
   destroyWalls,
   hurt,
+  interactTarget,
   isSolid,
   receiveEvent,
   registerContent,
   spawnEntity,
+  spawnWorldItem,
   updateSession,
 } from "../../sim/index.js";
+import { targetLabel } from "../../ui/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
 import { planRoute } from "../route.js";
 import { door as doorContent, DoorState, drawDoor } from "./index.js";
@@ -46,6 +50,13 @@ const walker = <N extends string>(name: N, opensDoors: boolean) =>
     draw: () => undefined,
   }));
 
+/** A test item with nothing to it, to lie at a player's feet. */
+const rag = defineItem("rag", () => ({
+  name: "Rag",
+  emoji: "🧻",
+  draw: () => undefined,
+}));
+
 const opener = walker("opener", true);
 const basher = walker("basher", false);
 
@@ -68,6 +79,7 @@ function world(x: number, y: number): Session {
     doorContent.create({ door: config }),
     opener.create({ opener: 60 }),
     basher.create({ basher: 60 }),
+    rag.create({ rag: null }),
   ]);
   const { map } = game.world;
   for (let row = 0; row < map.rows; row++)
@@ -241,6 +253,38 @@ describe("doors", () => {
     expect(doorwaySolid(game)).toBe(false);
     run(game, 0.5, true);
     expect(isOpen(door)).toBe(false);
+  });
+
+  test("a door within reach is what E targets, and so is highlighted and named", () => {
+    const game = world(DOOR_AT.x - CELL, DOOR_AT.y);
+    const door = addDoor(game, false);
+    run(game, DT);
+    const target = interactTarget(game);
+    expect(target?.kind).toBe("door");
+    expect(target !== null && "entity" in target && target.entity.id).toBe(
+      door.id,
+    );
+    expect(targetLabel(game)).toBe(`door #${door.id} at 475,275`);
+  });
+
+  test("a door out of reach is not targeted", () => {
+    const game = world(DOOR_AT.x - CELL * 4, DOOR_AT.y);
+    addDoor(game, false);
+    run(game, DT);
+    expect(interactTarget(game)).toBeNull();
+    expect(targetLabel(game)).toBe("none");
+  });
+
+  test("an item at its feet is targeted over a door in reach, and E takes the item, leaving the door", () => {
+    const game = world(DOOR_AT.x - CELL, DOOR_AT.y);
+    const door = addDoor(game, false);
+    const item = spawnWorldItem(game, game.local, "rag");
+    run(game, DT);
+    expect(interactTarget(game)?.kind).toBe("item");
+    run(game, 0.5, true);
+    expect(game.entities.has(item.id)).toBe(false);
+    expect(isOpen(door)).toBe(false);
+    expect(interactTarget(game)?.kind).toBe("door");
   });
 
   test("a player out of reach of a door works nothing", () => {
