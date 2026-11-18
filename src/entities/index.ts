@@ -42,6 +42,7 @@ export { placeTurret } from "./turret/index.js";
 export { placeTeleporter } from "./teleporter/index.js";
 export { placeBomb } from "./bomb/index.js";
 export { fireFlare } from "./flare/index.js";
+export { freshDoppelganger } from "./doppelganger/index.js";
 export {
   POCKETBALL_ITEM,
   pocketballGlyph,

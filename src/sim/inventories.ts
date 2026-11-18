@@ -346,3 +346,7 @@ export function heldItemOf(game: Session, player: Player): CarriedItem | null {
   const slot = heldSlot.get(player);
   return slot === null ? null : carriedIn(game, player.id, slot);
 }
+
+/** The slot `player` holds, as `heldItemOf` reads it; null for none. */
+export const heldSlotOf = (game: Session, player: Player): number | null =>
+  player === game.local ? player.held : heldSlot.get(player);

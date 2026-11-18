@@ -59,6 +59,11 @@ const STAMINA_MAX = 100;
 const SHOVEL_DAMAGE = 15;
 /** The sleeper's full health: ten shovel hits. A body this hard to kill or harder drops a heart. */
 const SLEEPER_HEALTH = SHOVEL_DAMAGE * 10;
+/**
+ * The sleeper's share of the spawner's picks. The doppelganger runs from any kind brought this
+ * rarely or more rarely.
+ */
+const SLEEPER_SPAWN_WEIGHT = 50;
 /** A player's walking pace, in pixels a second, and how much faster it sprints. */
 const PLAYER_SPEED = 120;
 const SPRINT = 1.8;
@@ -849,7 +854,11 @@ export const config = {
     // stands within 14 cells to watch her go or she finds nowhere; her whisper as she goes and
     // comes carries 16 cells, just past where anyone could see it.
     sleeper: {
-      spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
+      spawning: {
+        weight: SLEEPER_SPAWN_WEIGHT,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
       ignores: ["sleeper"],
       radius: 15,
       maxHealth: SLEEPER_HEALTH,
@@ -1136,7 +1145,18 @@ export const config = {
         chance: 0.3,
         items: ["shovel", "bandage", "walkie", "scrap"],
       },
-      sounds: { attack: CELL * 5 },
+      // Seeing a monster the spawner brings as rarely as the sleeper or more rarely (spawning
+      // weight 50 or less: not zombies nor exploders), it sprints at a player's sprint to the
+      // best of 12 spots 8 cells off, stands 1.5s looking back, and, seeing nothing, walks
+      // another 8 cells off. Its gasp carries 4 cells, as far as talking.
+      fear: {
+        asRareAs: SLEEPER_SPAWN_WEIGHT,
+        sprintSpeed: PLAYER_SPEED * SPRINT,
+        flee: { leg: CELL * 8, tries: 12 },
+        lookBackSeconds: 1.5,
+      },
+      // A body it fells getting up as one of it is heard 8 cells off.
+      sounds: { attack: CELL * 5, startle: CELL * 4, turn: CELL * 8 },
     },
     // Alone, 2 minutes into a world on, never within 14 cells of a player; twice as common as the
     // stalker. A little bigger than a player; three shovel hits fell it. It runs at 1.2 times a
