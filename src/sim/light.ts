@@ -6,7 +6,13 @@ import type { Session } from "./session.js";
 import { noShadows, shadowCasters, shadowsOf } from "./shadow.js";
 import type { ShadowsOf } from "./shadow.js";
 import { isShrouded } from "./status.js";
-import { canSeeFrom, emittedLights, litFrom, wallKey } from "./vision.js";
+import {
+  canSeeFrom,
+  emittedLights,
+  emittersNow,
+  litFrom,
+  wallKey,
+} from "./vision.js";
 import type { LightSource, VisibilityPolygon, WallFace } from "./vision.js";
 
 /**
@@ -180,10 +186,11 @@ export interface DarkSource extends Point {
 /** The darkness every world entity gives off now, as its kind's `darkness` has it. */
 export function darkSources(game: Session): DarkSource[] {
   const darks: DarkSource[] = [];
-  game.entities.forEach((entity) => {
+  for (const entity of emittersNow(game).darks) {
+    if (game.entities.get(entity.id) !== entity) continue;
     const range = game.entityTypes.get(entity.kind)?.darkness(entity) ?? 0;
     if (range > 0) darks.push({ x: entity.x, y: entity.y, range });
-  });
+  }
   return darks;
 }
 

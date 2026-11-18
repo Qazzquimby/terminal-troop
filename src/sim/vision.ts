@@ -1,5 +1,7 @@
 import { heldInstance, lyingInstance } from "./item-instances.js";
 import type { ItemInstance } from "./item-instances.js";
+import type { WorldEntity } from "./entities.js";
+import { lyingItem } from "./lying.js";
 import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
@@ -318,6 +320,67 @@ function placed(at: Point, emission: LightEmission, deep: number): LightSource {
 }
 
 /**
+ * The world entities that can give off light or darkness, in the session's order: those of a kind
+ * that gives off light or darkness at all, and items lying in the world that shine. Whether one
+ * does now, and how, is asked of it each time.
+ */
+export interface Emitters {
+  readonly lights: readonly WorldEntity[];
+  readonly darks: readonly WorldEntity[];
+}
+
+/** Each session's emitters, as of the step, world time, headcount and next id they were found at. */
+const emittersFound = new WeakMap<
+  Session,
+  {
+    readonly step: number;
+    readonly time: number;
+    readonly count: number;
+    readonly nextId: number;
+    readonly emitters: Emitters;
+  }
+>();
+
+/**
+ * The entities that can give off light or darkness now, found afresh each step and whenever an
+ * entity comes or goes, so the many rules that ask for the lights given off, every body's eyes and
+ * every plan kept off lit ground, walk these few and not every entity. Which entities can is
+ * fixed by kind, and by item for one lying in the world; where each stands, and whether it shines
+ * now, is not, and is asked as each light is.
+ */
+export function emittersNow(game: Session): Emitters {
+  const found = emittersFound.get(game);
+  if (
+    found?.step === game.step &&
+    found.time === game.worldTime &&
+    found.count === game.entities.size &&
+    found.nextId === game.nextEntityId
+  )
+    return found.emitters;
+  const lights: WorldEntity[] = [];
+  const darks: WorldEntity[] = [];
+  game.entities.forEach((entity) => {
+    const type = game.entityTypes.get(entity.kind);
+    const lying = lyingItem(game, entity);
+    if (
+      type?.givesLight === true ||
+      (lying !== null && game.items.get(lying.item)?.light !== undefined)
+    )
+      lights.push(entity);
+    if (type?.givesDarkness === true) darks.push(entity);
+  });
+  const emitters = { lights, darks };
+  emittersFound.set(game, {
+    step: game.step,
+    time: game.worldTime,
+    count: game.entities.size,
+    nextId: game.nextEntityId,
+    emitters,
+  });
+  return emitters;
+}
+
+/**
  * The lights entities and items give off, such as a cruiser's headlights or a flashlight switched
  * on, apart from any viewer's own sight. An item shines the same held or lying, from where it is
  * the way it points; one carried in a pocket shines on nothing.
@@ -331,12 +394,14 @@ export function emittedLights(game: Session): LightSource[] {
     if (emission !== undefined && emission !== null)
       lights.push(placed(instance.at, emission, deep));
   };
-  game.entities.forEach((entity) => {
+  for (const entity of emittersNow(game).lights) {
+    // Gone since the emitters were found, as a guest's snapshot may take one away.
+    if (game.entities.get(entity.id) !== entity) continue;
     const emissions = game.entityTypes.get(entity.kind)?.light(entity) ?? [];
     for (const emission of emissions)
       lights.push(placed(entity, emission, deep));
     shine(lyingInstance(game, entity));
-  });
+  }
   game.players.forEach((player) => {
     shine(heldInstance(game, player));
   });
