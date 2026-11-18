@@ -1,7 +1,7 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import { z } from "zod";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
-import { contentEvent } from "./content-event.js";
+import { contentEvent, receiveEvent } from "./content-event.js";
 import type { PlayerEvent, RoomEvent } from "./content-event.js";
 import { registerContent } from "./content.js";
 import type { WorldContent } from "./content.js";
@@ -74,16 +74,38 @@ describe("content events", () => {
     ]);
   });
 
-  test("an event unregistered, or a payload its schema rejects, throws on send", () => {
+  test("an event unregistered throws on send", () => {
     const game = session();
     expect(() => {
       flare.send(game, { brightness: 1 });
     }).toThrow();
+  });
+
+  test("a payload its schema rejects is dropped and logged, on send and on receive, naming the event", () => {
+    const game = session();
     registerContent(game, [entry]);
-    expect(() => {
-      flare.send(game, { brightness: -1 });
-    }).toThrow();
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    flare.send(game, { brightness: -1 });
+    receiveEvent(
+      game,
+      {
+        content: "item/signals",
+        event: "flare",
+        from: "them",
+        to: null,
+        payload: { brightness: 7 },
+      },
+      "them",
+    );
     expect(game.outbox).toEqual([]);
+    expect(game.inbox).toEqual([]);
+    expect(error.mock.calls.map(([line]) => String(line))).toEqual([
+      expect.stringContaining("item/signals.flare on send"),
+      expect.stringContaining("item/signals.flare on receive"),
+    ]);
+    error.mockRestore();
   });
 
   test("every session has the engine's own events, under core", () => {

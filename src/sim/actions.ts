@@ -39,7 +39,7 @@ import type { Player } from "./player.js";
 import { dashEnd, startDash } from "./player.js";
 import { confirmAction, hold, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
-import { declaredSound, soundNoise } from "./sound.js";
+import { declaredSound, soundKey, soundNoise } from "./sound.js";
 import type { Sound } from "./sound.js";
 import { MAX_LINE, SaidLine, sayHere, voiceOf } from "./speech.js";
 import { spendStamina } from "./stamina.js";
@@ -190,13 +190,13 @@ function play(
 }
 
 /**
- * An effect as it travels: its sound by url, and its noise as the host worked it out, with every
+ * An effect as it travels: its sound by key, and its noise as the host worked it out, with every
  * tag it carries.
  */
 const SentEffect = z.object({
   x: z.number(),
   y: z.number(),
-  sound: z.string().max(512).optional(),
+  sound: z.string().min(1).max(16).optional(),
   flash: z
     .object({
       radius: z.number().min(0),
@@ -220,7 +220,7 @@ function sent(game: Session, by: string, made: Effect): SentEffect {
   return {
     x: at.x,
     y: at.y,
-    ...(sound !== undefined && { sound: sound.url }),
+    ...(sound !== undefined && { sound: soundKey(sound.url) }),
     ...(flash !== undefined && { flash }),
     ...(use !== undefined && { use }),
     // A line too long to travel is cut short rather than lose the whole effect.

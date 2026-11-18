@@ -5,6 +5,7 @@ import {
   testSfx,
   testSimConfig,
 } from "../../integration/sim-config.js";
+import { sentSounds } from "../../integration/sent-sounds.js";
 import {
   aimAt,
   createSession,
@@ -36,8 +37,6 @@ afterEach(() => {
 const sent = new WeakMap<Session, string[]>();
 
 const played = (game: Session): string[] => sent.get(game) ?? [];
-
-const Sent = z.object({ effects: z.array(z.object({ sound: z.string() })) });
 
 /**
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
@@ -87,10 +86,7 @@ function run(game: Session, seconds: number, look: Point): void {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, controls, DT);
     for (const { payload } of game.outbox.splice(0)) {
-      const parsed = Sent.safeParse(payload);
-      if (!parsed.success) continue;
-      for (const { sound } of parsed.data.effects)
-        played(game).push(sound.split("/").at(-1) ?? sound);
+      played(game).push(...sentSounds(payload));
     }
   }
 }

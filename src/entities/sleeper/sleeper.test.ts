@@ -5,6 +5,7 @@ import {
   testSfx,
   testSimConfig,
 } from "../../integration/sim-config.js";
+import { sentSounds } from "../../integration/sent-sounds.js";
 import {
   createSession,
   hurt,
@@ -94,17 +95,12 @@ function world(x: number, y: number, sleeper: SleeperConfig = config): Session {
 
 const played = (game: Session): string[] => sent.get(game) ?? [];
 
-const Sent = z.object({ effects: z.array(z.object({ sound: z.string() })) });
-
 /** Steps `seconds`, one step a frame, noting each sound the host sends. */
 function run(game: Session, seconds: number): void {
   for (let step = 0; step < Math.round(seconds / DT); step++) {
     updateSession(game, idle, DT);
     for (const { payload } of game.outbox.splice(0)) {
-      const parsed = Sent.safeParse(payload);
-      if (!parsed.success) continue;
-      for (const { sound } of parsed.data.effects)
-        played(game).push(sound.split("/").at(-1) ?? sound);
+      played(game).push(...sentSounds(payload));
     }
   }
 }

@@ -34,6 +34,7 @@ import type {
   WorldKind,
 } from "../sim/index.js";
 import type { Voice, VoiceFalloff, VoiceRoom } from "../voice/index.js";
+import { prettifyError } from "zod";
 import type { z } from "zod";
 import { adopt, elect, sameElection } from "./host.js";
 import type { HostView, RemoteCandidate } from "./host.js";
@@ -247,6 +248,19 @@ const clipsOf = (voice: Voice): VoiceClips => ({
   volume: () => voice.status().volume,
 });
 
+/** Logs that a `event` message failed its schema on `side`, and why. */
+function dropped(
+  event: NetEvent,
+  side: "send" | "receive",
+  error: z.ZodError,
+  message: unknown,
+): void {
+  console.error(
+    `Dropped a "${event}" message on ${side}, it failed its schema:\n${prettifyError(error)}`,
+    message,
+  );
+}
+
 const ALREADY_CONNECTING = "Already connecting.";
 const LEFT_WHILE_CONNECTING = "Left before the room was joined.";
 
@@ -267,9 +281,17 @@ export function createRoom(deps: RoomDeps): Room {
     [E in NetEvent]: z.ZodType<Message<E>, WireMessage<E>>;
   } = roomMessages(deps.sim.player.nameMax);
 
-  /** Encodes `msg` for the wire and sends it as `event` to the rest of the room. */
+  /**
+   * Encodes `msg` for the wire and sends it as `event` to the rest of the room; one that does not
+   * encode is logged and dropped.
+   */
   function send<E extends NetEvent>(event: E, msg: Message<E>): Promise<void> {
-    return transport.send(event, messages[event].encode(msg));
+    const encoded = messages[event].safeEncode(msg);
+    if (!encoded.success) {
+      dropped(event, "send", encoded.error, msg);
+      return Promise.resolve();
+    }
+    return transport.send(event, encoded.data);
   }
 
   function setState(next: RoomState): void {
@@ -491,7 +513,7 @@ export function createRoom(deps: RoomDeps): Room {
   }
 
   function handlers(room: Link): Parameters<Transport["join"]>[1] {
-    /** The transport's handler for `event`: drops payloads that arrive after leaving or do not parse. */
+    /** The transport's handler for `event`: drops payloads that arrive after leaving or do not parse, logging the latter. */
     function on<E extends NetEvent>(
       event: E,
       handle: (msg: Message<E>) => void,
@@ -503,6 +525,7 @@ export function createRoom(deps: RoomDeps): Room {
           batch(() => {
             handle(parsed.data);
           });
+        else dropped(event, "receive", parsed.error, payload);
       };
     }
     return {
