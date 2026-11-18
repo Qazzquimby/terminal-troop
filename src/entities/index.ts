@@ -29,6 +29,8 @@ import { shrine } from "./shrine/index.js";
 import { apexPredator } from "./apex-predator/index.js";
 import { spawner } from "./spawning.js";
 
+export { arrive, arrivingKinds } from "./spawning.js";
+
 export {
   departingIn,
   hasEscaped,

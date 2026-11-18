@@ -247,6 +247,7 @@ export {
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";
 export { createSimClock } from "./sim-clock.js";
+export { profileSteps } from "./profile.js";
 export type { SimClockConfig } from "./sim-clock.js";
 export {
   canSeeFrom,
