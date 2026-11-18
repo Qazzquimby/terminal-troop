@@ -171,11 +171,14 @@ test("a retreat keeps its distance from a player where it can", () => {
 
 test("its hunt goes round another player's gaze, never stepping into it", () => {
   const range = 400;
-  // It creeps at full speed here, to reach the local player within the test.
+  // It creeps at full speed here, to reach the local player within the test. It tries no spots to
+  // lie in wait at, so it hunts throughout: the shadow of the pillar at (650, 500) is a hidden
+  // spot beside the local player's way, which it would otherwise find now and then and wait in.
   const game = world(560, 560, {
     ...config,
     watchRange: range,
     creepSpeed: config.speed,
+    ambush: { ...config.ambush, tries: 0 },
   });
   // A second player, further off, looks down and to the left; the straight way to the local
   // player crosses its view, though neither end is in it.
@@ -436,7 +439,29 @@ function wayAhead(game: Session): Point[] {
   }));
 }
 
+/**
+ * Runs `body` with `Math.random` drawn from a fixed seed, so a test of what it picks at random
+ * (here the spots it tries) is the same each run.
+ */
+function seeded(body: () => void): void {
+  let seed = 1;
+  vi.spyOn(Math, "random").mockImplementation(() => {
+    // A small LCG; any fixed sequence spread over [0, 1) will do.
+    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+    return seed / 2 ** 31;
+  });
+  try {
+    body();
+  } finally {
+    vi.mocked(Math.random).mockRestore();
+  }
+}
+
 test("with a hidden spot beside the way its quarry walks, it lies in wait there, out of sight of all that way", () => {
+  seeded(liesInWait);
+});
+
+function liesInWait(): void {
   const game = walled(100);
   const stalker = stalkerAt(game, 75, 75);
   run(game, DT, { x: 900, y: 300 });
@@ -464,9 +489,13 @@ test("with a hidden spot beside the way its quarry walks, it lies in wait there,
   expect(Math.hypot(stalker.x - at.x, stalker.y - at.y)).toBeLessThan(5);
   expect(waiting.route).toEqual([]);
   expect(game.local.health).toBe(game.local.maxHealth);
-});
+}
 
 test("its quarry passed and near, its back to it, it leaves its spot and hunts", () => {
+  seeded(leavesItsSpot);
+});
+
+function leavesItsSpot(): void {
   const game = walled(100, {
     ...config,
     ambush: { ...config.ambush, pounce: 300 },
@@ -475,11 +504,12 @@ test("its quarry passed and near, its back to it, it leaves its spot and hunts",
   const stalker = stalkerAt(game, 850, 75);
   run(game, 4, { x: 900, y: 300 });
   expect(stateOf(stalker).mode).toBe("ambush");
-  // The player steps past the spot; the stalker now lies behind it.
+  // The player steps past the spot, still looking on to the right wherever the spot lies; the
+  // stalker now lies behind it.
   Object.assign(game.local, { x: stalker.x + 50, prevX: stalker.x + 50 });
-  run(game, DT, { x: 900, y: 300 });
+  run(game, DT, { x: game.local.x + 500, y: 300 });
   expect(stateOf(stalker).mode).toBe("hunt");
-});
+}
 
 test("in the open, with nowhere hidden beside its quarry's way, it hunts", () => {
   const game = world(100, 300);

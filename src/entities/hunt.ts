@@ -467,9 +467,9 @@ function ambushScore(
 /**
  * Where a body of `radius` best lies in wait for one walking `path`: a spot beside the path, short
  * of its end, out of sight of the whole path out to `sightRange`, so the walker passes it unseeing
- * and leaves it behind. Of `ambushing.tries` spots drawn with `random` round the path, and
- * `current`, the one nearest the path; `current` is kept, while it still serves, unless a new one
- * lies nearer by `ambushing.betterBy`. Null for none. Its cost is bounded by the tries and the
+ * and leaves it behind. Of `ambushing.tries` spots drawn with `random` round the path, spread evenly
+ * over the range off it, and `current`, the one nearest the path; `current` is kept, while it still
+ * serves, unless a new one lies nearer by `ambushing.betterBy`. Null for none. Its cost is bounded by the tries and the
  * path's samples, not by the map. Any kind that lies in wait can take it.
  */
 export function ambushSpot(
@@ -490,9 +490,13 @@ export function ambushSpot(
   const across = { x: -dy / length, y: dx / length };
   let best: Point | null = null;
   let bestScore = Infinity;
-  for (let attempt = 0; attempt < ambushing.tries; attempt++) {
+  const tries = ambushing.tries;
+  for (let attempt = 0; attempt < tries; attempt++) {
     const along = random() * length;
-    const off = (random() * 2 - 1) * ambushing.range;
+    // Each try draws its offset from its own even share of the range, so the tries cover both
+    // sides and every distance off the way, rather than all falling, by chance, in one part of
+    // it: a hidden spot only a narrow band away is still found.
+    const off = (((attempt + random()) / tries) * 2 - 1) * ambushing.range;
     const at = {
       x: path.from.x + (dx * along) / length + across.x * off,
       y: path.from.y + (dy * along) / length + across.y * off,
