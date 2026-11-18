@@ -110,7 +110,12 @@ export type {
   SpawnRule,
   WorldContent,
 } from "./content.js";
-export { lerpAngle, renderAim, renderPosition } from "./interpolation.js";
+export {
+  lerpAngle,
+  renderAim,
+  renderPosition,
+  wrapAngle,
+} from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
 export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";

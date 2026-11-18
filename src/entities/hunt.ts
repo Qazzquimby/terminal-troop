@@ -12,6 +12,7 @@ import {
   mulberry32Next,
   noisesHeardBy,
   rounded,
+  wrapAngle,
 } from "../sim/index.js";
 import type {
   Body,
@@ -276,6 +277,105 @@ export function walk<S extends { route: Point[]; facing: number }>(
 ): S {
   const route = steer(body, state.route, speed, dt);
   return { ...state, route, facing: faced(body, state.facing) };
+}
+
+/**
+ * How a body that rides rather than walks handles: it gains speed at `acceleration` and sheds it
+ * at `braking`, turns its heading at most `turnRate` radians a second, and slows into a turn to as
+ * little as `cornerShare` of its speed, more the sharper the turn. It steers at a spot
+ * `lookahead` down its way rather than at its next waypoint, so it rounds corners in curves, and
+ * counts a waypoint passed within `reach` of it, or, short of its way's end, within `lookahead`
+ * and behind it, so it never turns back for a corner it cut.
+ */
+export interface Handling {
+  readonly acceleration: number;
+  readonly braking: number;
+  readonly turnRate: number;
+  readonly cornerShare: number;
+  readonly lookahead: number;
+  readonly reach: number;
+}
+
+/**
+ * `route` from `at`, heading `facing`, with the waypoints it has passed dropped, as `Handling`
+ * counts them.
+ */
+function unpassed(
+  at: Point,
+  facing: number,
+  route: readonly Point[],
+  handling: Handling,
+): Point[] {
+  const { reach, lookahead } = handling;
+  let start = 0;
+  for (;;) {
+    const next = route[start];
+    if (next === undefined) break;
+    const dx = next.x - at.x;
+    const dy = next.y - at.y;
+    const off = Math.hypot(dx, dy);
+    const behind =
+      start + 1 < route.length &&
+      off <= lookahead &&
+      dx * Math.cos(facing) + dy * Math.sin(facing) < 0;
+    if (off > reach && !behind) break;
+    start++;
+  }
+  return route.slice(start);
+}
+
+/** The spot `lookahead` down `route` from `at`: its next waypoint, or that far on past it. */
+function aimAlong(at: Point, route: readonly Point[], lookahead: number) {
+  const [next, after] = route;
+  if (next === undefined) return null;
+  const off = Math.hypot(next.x - at.x, next.y - at.y);
+  if (after === undefined || off >= lookahead) return next;
+  const leg = Math.hypot(after.x - next.x, after.y - next.y);
+  const t = leg === 0 ? 1 : Math.min(1, (lookahead - off) / leg);
+  return {
+    x: next.x + (after.x - next.x) * t,
+    y: next.y + (after.y - next.y) * t,
+  };
+}
+
+/**
+ * Rides `body` along `state`'s route for a step of `dt`, heading for `cruise` as `handling` has
+ * it: turning toward a spot down its way no faster than its turn rate, slowing for sharp turns,
+ * and, its way done, braking to a stop on its heading. Sets its velocity and returns `state` with
+ * the route left, its heading as `facing` and its `speed`. Any kind that rides can use it.
+ */
+export function drive<
+  S extends { route: Point[]; facing: number; speed: number },
+>(
+  body: Point & { vx: number; vy: number },
+  state: S,
+  cruise: number,
+  dt: number,
+  handling: Handling,
+): S {
+  const route = unpassed(body, state.facing, state.route, handling);
+  const aim = aimAlong(body, route, handling.lookahead);
+  let facing = state.facing;
+  let target = 0;
+  if (aim !== null && (aim.x !== body.x || aim.y !== body.y)) {
+    const off = wrapAngle(
+      Math.atan2(aim.y - body.y, aim.x - body.x) - state.facing,
+    );
+    const most = handling.turnRate * dt;
+    facing = wrapAngle(state.facing + Math.max(-most, Math.min(most, off)));
+    // Straight on at full speed; a right angle or more off at its corner share, and slow enough
+    // that it comes round within reach of its aim rather than circling it.
+    target = cruise * Math.max(handling.cornerShare, Math.cos(off));
+    if (Math.cos(off) <= 0)
+      target = Math.min(target, handling.turnRate * handling.reach);
+  } else if (aim !== null) target = cruise;
+  const rate = target > state.speed ? handling.acceleration : handling.braking;
+  const speed =
+    state.speed +
+    Math.max(-rate * dt, Math.min(rate * dt, target - state.speed));
+  body.vx = Math.cos(facing) * speed;
+  body.vy = Math.sin(facing) * speed;
+  return { ...state, route, facing, speed };
 }
 
 /** A strike of `amount` on each of `bodies`. */

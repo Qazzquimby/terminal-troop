@@ -405,19 +405,21 @@ test("it forgets passing a body once its rest has run out", () => {
 const raged = (game: Session): boolean =>
   vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith("rage.mp3"));
 
-test("hurt by a player, it rages with a furious ring, charging them at twice a walk", () => {
+test("hurt by a player, it rages with a furious ring, turning on them and charging them at twice a walk", () => {
   // Behind it, so it would never turn for them calm.
   const game = world(125, 325);
-  const trike = tricycleAt(game, { x: 300, y: 325 }, ROW);
+  const trike = tricycleAt(game, { x: 425, y: 325 }, ROW);
   hurt(game, trike, 10, game.localId);
-  run(game, 0.3);
-  const state = stateOf(trike);
-  expect(state.foe).toBe(game.localId);
+  run(game, DT);
+  expect(stateOf(trike).foe).toBe(game.localId);
   expect(raged(game)).toBe(true);
+  let fastest = 0;
+  for (let step = 0; step < 90 && trike.x > game.local.x; step++) {
+    run(game, DT);
+    fastest = Math.max(fastest, Math.hypot(trike.vx, trike.vy));
+  }
   expect(trike.vx).toBeLessThan(0);
-  expect(Math.hypot(trike.vx, trike.vy)).toBeCloseTo(
-    WALK * config.rage.speedShare,
-  );
+  expect(fastest).toBeCloseTo(WALK * config.rage.speedShare);
 });
 
 test("raging, it rides on through whatever hurt it, past them, rather than stopping at them", () => {
@@ -427,7 +429,7 @@ test("raging, it rides on through whatever hurt it, past them, rather than stopp
   run(game, DT);
   const end = stateOf(trike).route.at(-1);
   expect(end?.x).toBeLessThan(400 - config.ride.pass);
-  run(game, 1);
+  run(game, 1.5);
   expect(game.local.health).toBe(game.local.maxHealth - config.damage);
 });
 
@@ -541,4 +543,115 @@ test("held up on a ride, getting nowhere along it for its stall seconds, it plan
   run(game, 0.2);
   expect(stateOf(trike).route).not.toEqual(ride);
   expect(stateOf(trike).route.length).toBeGreaterThan(0);
+});
+
+/**
+ * Steps `trike` a step at a time, up to `seconds`, until `done`, calling `each` with its heading
+ * and speed before and after every step.
+ */
+function track(
+  game: Session,
+  trike: WorldEntity,
+  seconds: number,
+  each: (before: TricycleState, after: TricycleState) => void,
+  done: () => boolean = () => false,
+): void {
+  for (let step = 0; step < Math.round(seconds / DT) && !done(); step++) {
+    const before = stateOf(trike);
+    run(game, DT);
+    each(before, stateOf(trike));
+  }
+}
+
+const turnOf = (before: TricycleState, after: TricycleState): number =>
+  Math.abs(
+    Math.atan2(
+      Math.sin(after.facing - before.facing),
+      Math.cos(after.facing - before.facing),
+    ),
+  );
+
+test("it turns no faster than its turn rate, slowing into a sharp turn, and still reaches its ride's end", () => {
+  const game = world(FAR.x, 75, thumperHunting);
+  const cruise = WALK * config.speedShare;
+  // East along the open row, then sharply back west and a little down: a turn of near 170°.
+  const end = { x: 475, y: 375 };
+  const trike = spawnEntity(game, "tricycle", 425, 325, {
+    ...freshTricycle(game.worldTime, 0),
+    speed: cruise,
+    route: [{ x: 725, y: 325 }, end],
+  });
+  let sharpest = 0;
+  let slowest = Infinity;
+  let reached = false;
+  track(
+    game,
+    trike,
+    4,
+    (before, after) => {
+      sharpest = Math.max(sharpest, turnOf(before, after));
+      if (turnOf(before, after) > 0) slowest = Math.min(slowest, after.speed);
+    },
+    () => {
+      reached ||=
+        Math.hypot(trike.x - end.x, trike.y - end.y) <= config.handling.reach;
+      return reached;
+    },
+  );
+  expect(reached).toBe(true);
+  expect(sharpest).toBeGreaterThan(0);
+  expect(sharpest).toBeLessThanOrEqual(config.handling.turnRate * DT + 1e-6);
+  expect(slowest).toBeLessThan(cruise / 2);
+  // Braking into it, its wheels skid.
+  expect(
+    vi
+      .mocked(game.sfx.play)
+      .mock.calls.some(([url]) => url.endsWith("skid.mp3")),
+  ).toBe(true);
+});
+
+test("from a stand it gains speed no faster than its acceleration, up to its cruise", () => {
+  const game = world(FAR.x, FAR.y);
+  const trike = tricycleAt(game, { x: 75, y: 325 }, ROW);
+  const speeds: number[] = [];
+  track(game, trike, 1, (before, after) => {
+    expect(after.speed - before.speed).toBeLessThanOrEqual(
+      config.handling.acceleration * DT + 0.1,
+    );
+    speeds.push(after.speed);
+  });
+  expect(speeds[0]).toBeCloseTo(config.handling.acceleration * DT, 0);
+  expect(speeds.at(-1)).toBeCloseTo(WALK * config.speedShare, 0);
+  expect(speeds).toEqual([...speeds].sort((a, b) => a - b));
+});
+
+test("turning round near where it was, it is not held up: it keeps its ride rather than planning another", () => {
+  const game = world(FAR.x, 75, {
+    ...thumperHunting,
+    // Short of this in a fraction of a second would count as held up, but for its turning.
+    stall: { distance: 50, seconds: 0.2 },
+  });
+  // A spot just behind it, moving fast: it must come round in a tight loop to reach it.
+  const behind = { x: 375, y: 325 };
+  const trike = spawnEntity(game, "tricycle", 425, 325, {
+    ...freshTricycle(game.worldTime, 0),
+    speed: WALK * config.speedShare,
+    route: [behind],
+  });
+  let kept = true;
+  track(
+    game,
+    trike,
+    3,
+    () => undefined,
+    () => {
+      const route = stateOf(trike).route;
+      if (route.length === 1 && route[0]?.x === behind.x) return false;
+      kept =
+        Math.hypot(trike.x - behind.x, trike.y - behind.y) <=
+        config.handling.reach + WALK * config.speedShare * DT;
+      return true;
+    },
+  );
+  expect(kept).toBe(true);
 });
