@@ -124,8 +124,8 @@ export const config = {
   // 10), 2 (3 in 10) or 3 (1 in 10). The start is the road's first 6 columns, the exit its last 8.
   world: {
     cell: CELL,
-    cols: 140,
-    rows: 80,
+    cols: 100,
+    rows: 60,
     seed: 1,
     wallBounce: 0,
     generation: {
@@ -185,8 +185,8 @@ export const config = {
     always: false,
     rays: 48,
     margin: 1.15,
-    min: 1,
-    max: 2.2,
+    min: 0.7,
+    max: 2.5,
     rate: 2.5,
   },
   // With the rotating camera on, the mouse turns the view 0.0028 radians a pixel, the prototype's
@@ -1860,7 +1860,7 @@ export const config = {
     // less than monsters do; none does yet, so loot still lies where monsters spawn.
     loot: {
       scatter: {
-        count: 40,
+        count: 50,
         seed: 4,
         clearance: CELL * 3,
         danger: 1,
@@ -1870,7 +1870,7 @@ export const config = {
         {
           item: "fuel",
           scatter: {
-            count: 15,
+            count: 12,
             seed: 5,
             clearance: CELL * 3,
             spread: "x",
