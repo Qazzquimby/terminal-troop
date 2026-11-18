@@ -25,4 +25,4 @@ export { createSpectator, eyeOf, stepSpectator } from "./spectate.js";
 export type { Eye, SpectateConfig } from "./spectate.js";
 export { pulledView, viewHeading } from "./turning.js";
 export { createZoomFit } from "./zoom-fit.js";
-export type { ZoomFitConfig } from "./zoom-fit.js";
+export type { Sees, ZoomFitConfig } from "./zoom-fit.js";

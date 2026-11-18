@@ -139,15 +139,19 @@ export const config = {
     // Rotating camera (a setting). rate: ease rate per second; anchor: eye's height down view, 0..1.
     roll: { rate: 13.4, anchor: 0.78 },
   },
-  // Rotating camera: zoom eases to fit the furthest map in sight. always: also when upright;
-  // rays: cast round the eye; margin: multiplier of room to spare; rate: ease rate per second.
+  // Rotating camera: zoom glides to fit the furthest point that shows (seen and lit). always: also
+  // when upright; rays: cast round the eye; margin: multiplier of room to spare.
   zoomFit: {
     always: false,
     rays: 48,
+    step: CELL / 2, // px between points checked along a ray
     margin: 1.15,
     min: 0.7,
     max: 2.5,
-    rate: 2.5,
+    interval: 0.1, // between re-measures
+    deadBand: 0.12, // fraction the fit must change by before the zoom follows
+    outTime: 1.2, // about how long a glide out takes (critically damped spring)
+    inTime: 2,
   },
   // sensitivity: radians per px of mouse, times the player's setting; directions: steer headings
   // in a full turn.
