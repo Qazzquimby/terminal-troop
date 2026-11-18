@@ -113,6 +113,15 @@ export function stepSpectator(
   local.y = spectator.at.y;
 }
 
+/**
+ * Whether the camera turns with, and zooms to fit, what `eye` shows, with the rotating camera on.
+ * A ghost's free camera does neither: it stays upright, the world's up at the top, at the zoom its
+ * wheel sets. Watching a player, the view turns with them as it would for them.
+ */
+export function eyeTurns(eye: Eye): boolean {
+  return eye.kind !== "free";
+}
+
 /** What the local player's client shows now. */
 export function eyeOf(spectator: Spectator, game: Session): Eye {
   if (!isGhost(game.local) || spectator.at === null) return { kind: "self" };

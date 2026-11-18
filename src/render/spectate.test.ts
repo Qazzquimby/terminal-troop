@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { testSfx, testSimConfig } from "../integration/sim-config.js";
 import { createPlayer, createSession } from "../sim/index.js";
 import type { Controls, Session } from "../sim/index.js";
-import { createSpectator, eyeOf, stepSpectator } from "./spectate.js";
+import { createSpectator, eyeOf, eyeTurns, stepSpectator } from "./spectate.js";
 
 const DT = 1 / 60;
 const CONFIG = { speed: 300, zoom: { min: 0.5, max: 2.5, step: 1.2 } };
@@ -112,6 +112,25 @@ test("the view toggle switches a ghost to a free camera moved like a player, and
   expect(eye.kind === "free" && eye.at.x).toBe(300);
   stepSpectator(spectator, game, { ...idle, toggleView: true }, DT, CONFIG);
   expect(watched(spectator, game)).toBe("p");
+});
+
+test("a ghost's free camera stays upright and unfitted, while watching a player still turns (#502)", () => {
+  const game = world();
+  expect(eyeTurns(eyeOf(createSpectator(), game))).toBe(true);
+  game.local.health = 0;
+  const spectator = createSpectator();
+  stepSpectator(spectator, game, idle, DT, CONFIG);
+  expect(eyeTurns(eyeOf(spectator, game))).toBe(true);
+  stepSpectator(
+    spectator,
+    game,
+    { ...idle, toggleView: true, cycle: 1 },
+    DT,
+    CONFIG,
+  );
+  expect(eyeTurns(eyeOf(spectator, game))).toBe(false);
+  // Its wheel zoom still works.
+  expect(spectator.zoom).toBeGreaterThan(1);
 });
 
 test("the wheel zooms a ghost's view out and in, within its bounds", () => {

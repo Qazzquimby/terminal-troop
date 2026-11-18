@@ -17,10 +17,13 @@ import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
 import {
   aimAhead,
+  captureMode,
+  createCaptureControl,
   createInput,
   actionKeyLabel,
   turnMove,
 } from "./input/index.js";
+import type { CaptureMode } from "./input/index.js";
 import {
   cabinView,
   coinTossPanel,
@@ -57,7 +60,9 @@ import {
   updateCamera,
   createSpectator,
   createZoomFit,
+  drawCursor,
   eyeOf,
+  eyeTurns,
   stepSpectator,
   pulledView,
   viewHeading,
@@ -289,7 +294,7 @@ function showControlsHint(session: Session | null): void {
   const text = controlsHintFor(
     session === null ? "foot" : hintMode(session.local),
     settings.get().voice.mode === "pushToTalk",
-    settings.get().view.rotateCamera,
+    capture.mode() === "turn",
     input.captured(),
   );
   if (controlsHint.textContent !== text) controlsHint.textContent = text;
@@ -297,17 +302,29 @@ function showControlsHint(session: Session | null): void {
   controlsHint.classList.toggle("top", settings.get().view.rotateCamera);
 }
 
+/** Whether the spawn menu shows, wanting the pointer. */
+function spawnMenuShown(session: Session | null): boolean {
+  return debugSpawns && debugShown && session !== null;
+}
+
 /**
- * Whether the mouse turns the local view: with the rotating camera on, on foot or as a ghost. In a
- * vehicle the view follows it, and the cabin wants the pointer.
+ * How the mouse is captured for `session`: free outside a room, and while a page over the game
+ * wants the pointer (settings, the spawn menu, a vehicle's cabin). Otherwise it turns the view with
+ * the rotating camera on, on foot or watching another player, and aims a cursor of the game's own
+ * everywhere else, a ghost's free camera included, so the browser opens no menu over the game.
  */
-function mouseTurnsView(): boolean {
-  const session = joinedSession(room.state());
-  return (
-    settings.get().view.rotateCamera &&
-    session !== null &&
-    session.local.ride === null
-  );
+function wantedCapture(session: Session | null): CaptureMode {
+  return captureMode({
+    playing: session !== null,
+    ui:
+      settingsDialog.open ||
+      spawnMenuShown(session) ||
+      (session !== null && session.local.ride !== null),
+    turning:
+      settings.get().view.rotateCamera &&
+      session !== null &&
+      eyeTurns(eyeOf(spectator, session)),
+  });
 }
 
 /**
@@ -427,38 +444,52 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 const input = createInput(
   canvas,
   // With the rotating camera on, the mouse turns the view rather than pointing: the aim is
-  // straight ahead.
+  // straight ahead. A ghost's free camera stays upright, and points.
   (point) =>
-    settings.get().view.rotateCamera && aimFrom !== null
+    settings.get().view.rotateCamera &&
+    aimFrom !== null &&
+    eyeTurns(eyeOf(spectator, aimFrom))
       ? aimAhead(aimFrom.local, heading)
       : screenToWorld(camera, point),
   config.view,
   config.wheel,
   config.turn,
+  config.cursor,
   {
     toggleSettings: {
       press(time) {
         settingsMenu.toggle(time);
+        // Within the key's own handler, so the browser lets the mouse be captured again.
+        syncCapture();
       },
     },
     toggleDebug: {
       press() {
         debugOverlay.toggle();
         debugShown = !debugShown;
+        syncCapture();
       },
     },
     pushToTalk: pushToTalk(voice),
   },
   "play",
 );
+/** Captures the mouse as the game wants it, and gives the game focus back on leaving a menu. */
+const capture = createCaptureControl(input);
+/**
+ * Captures the mouse as the game wants it now. Called in the handler of a press that closes a
+ * menu, so the browser lets the mouse be captured again at once, rather than waiting for a click
+ * on the game; each frame calls it too, catching a vehicle left or a room come into.
+ */
+function syncCapture(): void {
+  capture.sync(wantedCapture(joinedSession(room.state())));
+}
 const inputContext = trackInputContext("play", input.setContext);
 const settingsMenu = createSettingsMenu(settingsDialog, settings, {
   onOpenChange(open, time) {
     if (open) refreshPeers(room.state());
     inputContext.set(open ? "menu" : "play", time);
-    // Closing settings is a press, so the browser lets the mouse be captured again at once,
-    // rather than waiting for a click on the game.
-    if (!open && mouseTurnsView()) input.requestCapture();
+    syncCapture();
   },
   onPeerMutedChange(id, muted) {
     voice.setPeerMuted(id, muted);
@@ -594,9 +625,10 @@ function frame(): void {
       : session.local.aim;
     // A pull let go since the last frame leaves the heading where it was, before the steps aim.
     holdView(session, rotating);
-    // The mouse is captured to turn the view on foot or as a ghost; in a vehicle the view follows
-    // it, and the cabin wants the pointer.
-    input.setCapture(mouseTurnsView() && !settingsDialog.open);
+    // The mouse is captured to turn the view, or to aim the game's own cursor; in a vehicle the
+    // view follows it, and the cabin wants the pointer, as menus do.
+    input.setSensitivity(mouseSensitivity);
+    syncCapture();
     // On foot or through a free camera, the keys steer as the screen shows the world: up the
     // screen is ahead. A vehicle's keys work its pedals and wheel, turned or not.
     const steerOnScreen = rotating && session.local.ride === null;
@@ -631,22 +663,28 @@ function frame(): void {
     if (rotating) heading = viewHeading(heading, eye, session.local, 0);
     const facing = holdView(session, rotating);
     const target = eyeTarget(session, eye, alpha);
-    // The zoom fits how far the eye sees, and a ghost's wheel zoom multiplies with it.
-    const fitted = zoomFit.step(
-      camera,
-      session.world.map,
-      target,
-      frameSeconds,
-      rotating,
-      () => eyeSees(session, eye),
-    );
+    // The zoom fits how far the eye sees, and a ghost's wheel zoom multiplies with it. A ghost's
+    // free camera neither fits nor turns: upright, at its wheel's zoom alone (#502).
+    const turns = eyeTurns(eye);
+    const fitted = turns
+      ? zoomFit.step(
+          camera,
+          session.world.map,
+          target,
+          frameSeconds,
+          rotating,
+          () => eyeSees(session, eye),
+        )
+      : zoomFit.rest();
     updateCamera(
       camera,
       target,
       frameSeconds,
       fitted * spectator.zoom,
-      rotating ? facing : null,
+      rotating && turns ? facing : null,
     );
+    // Sounds pan as the screen shows where they are, the world turned as the camera turns it.
+    sfx.setEarTurn(camera.roll);
     const drawStart = performance.now();
     draw(
       ctx,
@@ -661,6 +699,8 @@ function frame(): void {
       mapMemory,
       eye,
     );
+    const cursorAt = input.cursor();
+    if (cursorAt !== null) drawCursor(ctx, cursorAt, config.cursor);
     mapMemory.save(now);
     if (!isGhost(session.local)) positions.save(session.local, now);
     frameStats.drawMs = performance.now() - drawStart;
@@ -677,7 +717,7 @@ function frame(): void {
     });
     cabin.show(cabinView(session), session);
   } else {
-    input.setCapture(false);
+    syncCapture();
     hud.show(null);
     cabin.show(null, null);
     cabinCommands.length = 0;

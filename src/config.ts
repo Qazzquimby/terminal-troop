@@ -2,6 +2,7 @@ import type { SpatialFalloff } from "./audio/index.js";
 import type { EntitiesConfig } from "./entities/index.js";
 import type {
   CameraConfig,
+  CursorLook,
   FlashConfig,
   MapMemoryConfig,
   RippleConfig,
@@ -15,7 +16,7 @@ import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, MinimapConfig, UiConfig } from "./ui/index.js";
-import type { TurnConfig, WheelConfig } from "./input/index.js";
+import type { CursorConfig, TurnConfig, WheelConfig } from "./input/index.js";
 
 import type {
   RadioSoundConfig,
@@ -55,6 +56,7 @@ interface AppConfig extends SimConfig {
   readonly minimap: MinimapConfig;
   readonly wheel: WheelConfig;
   readonly turn: TurnConfig;
+  readonly cursor: CursorConfig & CursorLook;
   readonly worldLog: WorldLogConfig;
 }
 
@@ -162,6 +164,9 @@ export const config = {
     // Uncaptured mouse: a cursor within `band` (share of width) of a side turns at `rate` rad/s.
     edge: { band: 0.1, rate: 3 },
   },
+  // The game's cursor while the mouse is captured to aim. speed: view px per mouse px, times the
+  // player's sensitivity; size: arm length in px.
+  cursor: { speed: 1, size: 8, colour: "#e8f0f8", edge: "#090b0e" },
   // zoom: multiples of the living camera's zoom; step: factor per wheel notch.
   spectate: { speed: CELL * 8, zoom: { min: 0.5, max: 2.5, step: 1.2 } },
   ripples: {

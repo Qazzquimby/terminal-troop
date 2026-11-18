@@ -28,13 +28,17 @@ export type VoiceFalloff = SpatialFalloff & {
   readonly interference?: InterferenceFalloff;
 };
 
-/** How loud `speaker` sounds to `listener`, and from which side. */
+/**
+ * How loud `speaker` sounds to `listener`, and from which side, with the world turned `turn`
+ * radians clockwise on the screen (the camera's roll).
+ */
 export function voiceMix(
   listener: Point,
   speaker: Point,
   falloff: VoiceFalloff,
+  turn = 0,
 ): PeerMix {
-  return spatialMix(speaker, listener, falloff);
+  return spatialMix(speaker, listener, falloff, turn);
 }
 
 /** The interference, 0..1, on a voice carried `distance` pixels. */
@@ -80,18 +84,20 @@ function loudest<T extends { volume: number; pan: number }>(
  * How loud, and from which side, a voice reaching `listener` by `routes` sounds: through the air
  * as its loudest air route has it, and through a speaker as its loudest radio route has it, with
  * that route's interference. A route from no place is heard at full volume, centred. Without a
- * radio route, the mix has no radio part; without any route, it is silent.
+ * radio route, the mix has no radio part; without any route, it is silent. Sides are as the
+ * screen shows them, with the world turned `turn` radians clockwise on it (the camera's roll).
  */
 export function routedMix(
   listener: Point,
   routes: readonly VoiceRoute[],
   falloff: VoiceFalloff,
+  turn = 0,
 ): PeerMix {
   const heard = (via: VoiceRoute["via"], fades: SpatialFalloff) =>
     routes
       .filter((route) => route.via === via)
       .map((route) => ({
-        ...spatialMix(route.at, listener, fades),
+        ...spatialMix(route.at, listener, fades, turn),
         interference: routeInterference(route, falloff.interference),
       }));
   const silent = { volume: 0, pan: 0, interference: 0 };
