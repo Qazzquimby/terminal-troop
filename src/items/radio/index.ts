@@ -52,8 +52,8 @@ function tuneOf(
 
 /**
  * The radio: E switches it on or off, held or not. Switched on, it picks a station at random and
- * plays its songs in a shuffled order, round and round, streamed from where the world's clock has
- * it, as far as its range,
+ * joins it where it has got to, playing the same song at the same place as every other radio on
+ * it, carried, lying or in a car, as far as its range,
  * making a noise that far each interval wherever it is. It never runs down.
  */
 export const radio = defineItem(ITEM, (config: RadioConfig) => {
@@ -100,7 +100,7 @@ export const radio = defineItem(ITEM, (config: RadioConfig) => {
       const tune = tuneOf(instance.state);
       return tune === null
         ? null
-        : stationPlaying(tune.station, tune.since, config);
+        : stationPlaying(tune.station, config, String(tune.since));
     },
     step(game, dt) {
       const due = (playing.get(game) ?? 0) - dt;

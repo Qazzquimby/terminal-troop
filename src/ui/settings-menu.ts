@@ -118,6 +118,7 @@ export function createSettingsMenu(
   const muted = control("voice-muted");
   const voiceVolume = control("voice-volume");
   const masterVolume = control("master-volume");
+  const radioVolume = control("radio-volume");
   const rotateCamera = control("rotate-camera");
   const mouseSensitivity = control("mouse-sensitivity");
   mouseSensitivity.min = String(MOUSE_SENSITIVITY.min);
@@ -151,6 +152,7 @@ export function createSettingsMenu(
     muted.checked = settings.voice.muted;
     voiceVolume.valueAsNumber = settings.voice.volume;
     masterVolume.valueAsNumber = settings.audio.masterVolume;
+    radioVolume.valueAsNumber = settings.audio.radioVolume;
     rotateCamera.checked = settings.view.rotateCamera;
     mouseSensitivity.valueAsNumber = settings.view.mouseSensitivity;
     input.value = settings.voice.inputDevice ?? "";
@@ -168,7 +170,10 @@ export function createSettingsMenu(
         volume: voiceVolume.valueAsNumber,
         inputDevice: input.value === "" ? null : input.value,
       },
-      audio: { masterVolume: masterVolume.valueAsNumber },
+      audio: {
+        masterVolume: masterVolume.valueAsNumber,
+        radioVolume: radioVolume.valueAsNumber,
+      },
       view: {
         rotateCamera: rotateCamera.checked,
         mouseSensitivity: mouseSensitivity.valueAsNumber,
