@@ -1,4 +1,5 @@
 import { perceives } from "./bodies.js";
+import { ITEM_TAG } from "./entities.js";
 import { isGhostId } from "./ghosts.js";
 import type { Point, Rng } from "./map.js";
 import type { Session } from "./session.js";
@@ -86,7 +87,14 @@ export function kindTags(game: Session, id: string): string[] {
   if (game.players.has(id)) return [PLAYER_TAG];
   const entity = game.entities.get(id);
   if (entity === undefined) return [];
-  const declared = game.entityTypes.get(entity.kind)?.tags ?? [];
+  const type = game.entityTypes.get(entity.kind);
+  // A body posing as an item is one, to whatever tells items apart, for as long as it poses.
+  const declared =
+    type === undefined
+      ? []
+      : type.posedItem(entity) === null
+        ? type.tags
+        : [...type.tags, ITEM_TAG];
   for (const [name, kind] of game.kindIds)
     if (kind === entity.kind) return [name, ...declared];
   return [...declared];

@@ -27,8 +27,10 @@ export type {
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
 export {
+  drawLying,
   lyingItem,
   pickupTarget,
+  seemsItem,
   soundDrop,
   spawnWorldItem,
 } from "./world-items.js";

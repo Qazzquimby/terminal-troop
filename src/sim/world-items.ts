@@ -10,7 +10,7 @@ import {
   usesAt,
 } from "./actions.js";
 import { perceives } from "./bodies.js";
-import type { WorldEntity } from "./entities.js";
+import type { PosedItem, WorldEntity } from "./entities.js";
 import {
   ITEM_TAG,
   registerEntityType,
@@ -70,7 +70,7 @@ const GLINT_FOR = 0.35;
  */
 function drawGlint(
   ctx: CanvasRenderingContext2D,
-  entity: WorldEntity,
+  entity: Point,
   radius: number,
   colour: string,
   now: number,
@@ -112,32 +112,49 @@ export function registerWorldItems(game: Session): void {
     data: WorldItemData,
     onlyInDeepdark: (_entity, { item }, view) =>
       view.itemDefinitions.get(item)?.onlyInDeepdark === true,
-    draw(ctx, entity, { item, state }, now, view) {
-      const definition = view.itemDefinitions.get(item);
-      if (definition === undefined) return;
-      const glyph = glyphOf(definition, state);
-      ctx.save();
-      ctx.font = `${String(radius * 2)}px system-ui`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const glint = view.itemDefinitions.get(item)?.glint;
-      if (glint !== undefined) {
-        ctx.shadowColor = glint;
-        ctx.shadowBlur = radius * (0.6 + 0.3 * Math.sin((now / 1000) * 3));
-      }
-      ctx.fillText(glyph, entity.x, entity.y);
-      ctx.shadowBlur = 0;
-      if (glint !== undefined) drawGlint(ctx, entity, radius, glint, now);
-      if (isOn(state)) {
-        ctx.globalAlpha = 0.6 + 0.4 * Math.sin((now / 1000) * Math.PI * 2);
-        ctx.fillStyle = ON_LIGHT;
-        ctx.beginPath();
-        ctx.arc(entity.x + radius, entity.y - radius, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
+    draw(ctx, entity, lying, now, view) {
+      drawLying(ctx, entity, lying, now, view);
     },
   });
+}
+
+/**
+ * Draws `posed` lying at `at` as any lying item of it is drawn: its glyph at a lying item's size,
+ * glinting if it glints, with a small pulsing light while it is switched on. For whatever passes
+ * itself off as one, so it looks no different.
+ */
+export function drawLying(
+  ctx: CanvasRenderingContext2D,
+  at: Point,
+  posed: PosedItem,
+  now: number,
+  view: Session,
+): void {
+  const { item, state } = posed;
+  const { radius } = view.config.worldItems;
+  const definition = view.itemDefinitions.get(item);
+  if (definition === undefined) return;
+  const glyph = glyphOf(definition, state);
+  ctx.save();
+  ctx.font = `${String(radius * 2)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const { glint } = definition;
+  if (glint !== undefined) {
+    ctx.shadowColor = glint;
+    ctx.shadowBlur = radius * (0.6 + 0.3 * Math.sin((now / 1000) * 3));
+  }
+  ctx.fillText(glyph, at.x, at.y);
+  ctx.shadowBlur = 0;
+  if (glint !== undefined) drawGlint(ctx, at, radius, glint, now);
+  if (isOn(state)) {
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin((now / 1000) * Math.PI * 2);
+    ctx.fillStyle = ON_LIGHT;
+    ctx.beginPath();
+    ctx.arc(at.x + radius, at.y - radius, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /**
@@ -203,6 +220,21 @@ export function lyingItem(
 }
 
 /**
+ * The item `entity` seems to be to a body looking at it: the item it is, lying in the world, or
+ * the one it passes itself off as; null for neither.
+ */
+export function seemsItem(
+  game: Session,
+  entity: WorldEntity,
+): PosedItem | null {
+  return (
+    lyingItem(game, entity) ??
+    game.entityTypes.get(entity.kind)?.posedItem(entity) ??
+    null
+  );
+}
+
+/**
  * As the host, leaves the lying item `entity` with `left` uses left, keeping its state; with none
  * left it is gone. Its snapshots carry that to every client. Returns whether it changed it.
  */
@@ -218,24 +250,31 @@ export function setLyingUses(
   return true;
 }
 
+/**
+ * How far apart, in pixels, two bodies may stand and still touch: one that collides, as a body
+ * posing as an item does, is pushed off to just past touching.
+ */
+const TOUCH_SLACK = 1;
+
 /** Whether `player`'s body touches `entity`. */
 const touches = (player: Point & { radius: number }, entity: WorldEntity) =>
   Math.hypot(entity.x - player.x, entity.y - player.y) <=
-  player.radius + entity.radius;
+  player.radius + entity.radius + TOUCH_SLACK;
 
 /**
  * A player's pickup of a lying item. The host takes it if the item still lies in the world, the
  * player's body touches it, and the host's record has room for it; it takes the item out of the
  * world, which its snapshots carry to everyone, then puts it in the player's first empty slot.
  * The player's own client shows it in its items at once, and does not reach for it again while
- * the host answers.
+ * the host answers. Reaching for a body that only poses as an item takes nothing: the body's kind
+ * says what the grab does to it, as a mimic springs.
  */
 export const pickUp = defineAction("pickUp", {
   input: z.object({ id: z.string().min(1).max(80) }),
   cooldown: (game) => game.config.worldItems.cooldown,
   check(game, player, { id }) {
     const entity = game.entities.get(id);
-    if (entity === undefined || lyingItem(game, entity) === null) return false;
+    if (entity === undefined || seemsItem(game, entity) === null) return false;
     return (
       perceives(game, player.id, id) &&
       touches(player, entity) &&
@@ -244,8 +283,12 @@ export const pickUp = defineAction("pickUp", {
   },
   apply(game, player, { id }) {
     const entity = game.entities.get(id);
-    const lying = entity === undefined ? null : lyingItem(game, entity);
-    if (entity === undefined || lying === null) return;
+    if (entity === undefined) return;
+    const lying = lyingItem(game, entity);
+    if (lying === null) {
+      game.entityTypes.get(entity.kind)?.grabbed(entity, player, game);
+      return;
+    }
     removeFromWorld(game, entity);
     give(game, player, lying.item, lying.left, lying.state);
   },
@@ -273,8 +316,8 @@ export const drop = defineAction("drop", {
 });
 
 /**
- * The lying item nearest the local player that its body touches and perceives, if any. One it
- * does not perceive, as dark scrap out of deepdark, is not there to it: the host would refuse it,
+ * The lying item nearest the local player that its body touches and perceives, if any, or a body
+ * posing as one. One it does not perceive, as dark scrap out of deepdark, is not there to it: the host would refuse it,
  * and it must not shadow a visible item lying under it (#429).
  */
 function nearestTouching(game: Session): WorldEntity | null {
@@ -282,7 +325,7 @@ function nearestTouching(game: Session): WorldEntity | null {
   let nearest: WorldEntity | null = null;
   let nearestDistance = Infinity;
   for (const entity of game.entities.values()) {
-    if (lyingItem(game, entity) === null || isReaching(game, entity.id))
+    if (seemsItem(game, entity) === null || isReaching(game, entity.id))
       continue;
     if (!touches(local, entity) || !perceives(game, local.id, entity.id))
       continue;

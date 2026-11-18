@@ -772,6 +772,34 @@ export const testEntitiesConfig = {
     relocate: { after: 120, range: 700, retry: 5 },
     sounds: { seize: 400, stare: 300, squelch: 200, blink: 800 },
   },
+  // One test shovel hit fells it.
+  mimic: {
+    spawning: {
+      ...NEVER,
+      unseenDistance: 700,
+      group: { min: 2, max: 4, spread: 100 },
+    },
+    ignores: ["mimic", "exploder"],
+    radius: 10,
+    mass: 0.5,
+    maxHealth: 25,
+    speedShare: 0.8,
+    wanderRange: 250,
+    sightRange: 250,
+    noticeRange: 100,
+    hideSeconds: { min: 10, max: 30 },
+    springDelay: { min: 0, max: 3 },
+    rehideAfter: 5,
+    sameSpot: 50,
+    spacing: 25,
+    settleGap: 4,
+    repathInterval: 0.5,
+    calmSeconds: 8,
+    attackDamage: 35,
+    attackRange: 30,
+    attackCooldown: 2,
+    sounds: { settle: 100, reveal: 500, attack: 250 },
+  },
 } satisfies EntitiesConfig;
 
 /** A scanner sensing 1000px out, beeping every 2s at the edge down to 10 times a second. */

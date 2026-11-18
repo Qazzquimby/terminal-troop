@@ -1470,6 +1470,47 @@ export const config = {
         blink: CELL * 16,
       },
     },
+    // The mimic, in packs of 2 to 4 within 2 cells of each other, never within 14 cells of a
+    // player, at most 12 about; a fifth as common as zombies. Small, near an item's size, half a
+    // player's mass; one shovel hit fells it. It goes at 0.8 times a walk whatever it does. It
+    // sees items and bodies 5 cells down its facing, as a zombie does, and walks to the nearest
+    // item it sees, stopping within 4px of touching it, to pose as it for 10 to 30s, unless
+    // another mimic poses within half a cell of it. It hides somewhere new when it can; back
+    // within a cell of where it last hid only 5s after it left. Hiding, any body it hunts within
+    // 2 cells along a clear line stirs it, and 0 to 3s later it springs; reaching for it or
+    // hurting it springs it at once. It then hunts as a zombie: 35 a bite within 30px, every 2s,
+    // replanning every 0.5s, until 8s pass with none seen. It spares exploders, as zombies do.
+    // Its squelch taking an item's shape is heard 2 cells off, its shriek 10, a bite 5.
+    mimic: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 20,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: { min: 2, max: 4, spread: CELL * 2 },
+        most: 12,
+      },
+      ignores: ["mimic", "exploder"],
+      radius: 10,
+      mass: 0.5,
+      maxHealth: SHOVEL_DAMAGE,
+      speedShare: 0.8,
+      wanderRange: CELL * 5,
+      sightRange: CELL * 5,
+      noticeRange: CELL * 2,
+      hideSeconds: { min: 10, max: 30 },
+      springDelay: { min: 0, max: 3 },
+      rehideAfter: 5,
+      sameSpot: CELL,
+      spacing: CELL / 2,
+      settleGap: 4,
+      repathInterval: 0.5,
+      calmSeconds: 8,
+      attackDamage: 35,
+      attackRange: 30,
+      attackCooldown: 2,
+      sounds: { settle: CELL * 2, reveal: CELL * 10, attack: CELL * 5 },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its
