@@ -314,6 +314,6 @@ export {
 } from "./deepdark.js";
 export type { Fronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
-export { areaAt } from "./map.js";
+export { areaAt, roadDistanceAt } from "./map.js";
 export type { AmbientLight } from "./light.js";
 export { showsTo, viewOf } from "./view.js";

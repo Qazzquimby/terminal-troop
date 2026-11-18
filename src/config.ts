@@ -1266,6 +1266,7 @@ export const config = {
       nothing: 0.5, // chance a roll brings nothing at world start, falling to 0 by certainAfter
       certainAfter: END_GAME,
       headStart: 600, // seconds of rolls a new world starts with
+      offRoad: 1, // cells from the road every arrival keeps, relocations too; 0: anywhere
     },
     // F3 menu. enabled: production hosts take requests too (always in dev and under ?debug);
     // cells: how far ahead it spawns; soundRange: the pop, which is not a noise.

@@ -178,7 +178,13 @@ const NEVER = { weight: 0, tries: 24 } as const;
 // The spawner brings nothing unless a test gives a kind weight; kinds appear only when a test
 // spawns them.
 export const testEntitiesConfig = {
-  spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
+  spawner: {
+    period: 5,
+    nothing: 0.5,
+    certainAfter: 20,
+    headStart: 30,
+    offRoad: 1,
+  },
   debugSpawn: { enabled: true, cells: 10, soundRange: 400 },
   // No world laid by a test gets doors; a test of doors lays its own.
   door: {
