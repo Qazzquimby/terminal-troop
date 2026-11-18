@@ -726,6 +726,17 @@ export const testEntitiesConfig = {
     angryGap: { min: 1, max: 3 },
     sounds: { quack: 200, angry: 500, attack: 200 },
   },
+  peeper: {
+    spawning: { ...NEVER, unseenDistance: 700, most: 4 },
+    ignores: ["peeper"],
+    radius: 12,
+    // Four test shovel hits.
+    maxHealth: 100,
+    pullSeconds: 0.4,
+    stare: { damagePerSecond: 10, interval: 0.5 },
+    relocate: { after: 120, range: 700, retry: 5 },
+    sounds: { seize: 400, stare: 300, squelch: 200, blink: 800 },
+  },
 } satisfies EntitiesConfig;
 
 /** A scanner sensing 1000px out, beeping every 2s at the edge down to 10 times a second. */
