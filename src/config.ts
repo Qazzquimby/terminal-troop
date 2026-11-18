@@ -146,8 +146,8 @@ export const config = {
     rays: 48,
     step: CELL / 2, // px between points checked along a ray
     margin: 1.15,
-    min: 0.7,
-    max: 2.5,
+    min: 0.8,
+    max: 1.6,
     interval: 0.1, // between re-measures
     deadBand: 0.12, // fraction the fit must change by before the zoom follows
     outTime: 1.2, // about how long a glide out takes (critically damped spring)
@@ -238,11 +238,13 @@ export const config = {
     coneAngle: Math.PI / 2,
     rays: 360,
     surroundingsRadius: CELL * 0.7,
-    lookRange: CELL * 7, // how far a body looks, light or not (holds a statue etc.)
+    lookRange: CELL * 12, // how far a body looks (todo should just be everything drawn)
     footprintSpacing: CELL / 4, // px between points checked for a body being in sight
   },
   // range: carried light down the cone. shadows: bodies in light cast shadows (drawn / for rules).
-  light: { range: CELL * 6, shadows: { cast: true, gameplay: true } },
+  // I hope this is talking about vision in darkness rather than "carried light" like a flashlight or something.
+  // Technically that isnt a light at all, its just vision in darkness.
+  light: { range: CELL * 5, shadows: { cast: true, gameplay: true } },
   day: {
     startHour: 8,
     midnight: END_GAME, // seconds in
