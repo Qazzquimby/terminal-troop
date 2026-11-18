@@ -259,6 +259,9 @@ export const config = {
     eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
     // Seconds in when dark / deepdark set out from the left edge; both reach the right at `end`.
     fronts: { dark: 2 * 60, deep: 4 * 60, end: END_GAME },
+    // Each row's edge leads or lags the front's mean by up to `amplitude`. scale: rows between
+    // the biggest bumps. drift: seconds to reshape (0 never; lengthened so no row goes back).
+    ragged: { amplitude: CELL * 6, scale: 12, octaves: 2, drift: 120 },
   },
   // smoothing: ease rate; glide: seconds to reach a reported position; predictionHold: seconds a
   // guest holds a predicted hit; snap: a jump further than this is placed, not glided.
@@ -636,7 +639,7 @@ export const config = {
     giantSnail: {
       spawning: {
         weight: 5,
-        after: 60*5,
+        after: 60 * 5,
         tries: 24,
         unseenDistance: CELL * 14,
         apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
