@@ -23,6 +23,34 @@ export interface TurnConfig {
   readonly edge: { readonly band: number; readonly rate: number };
 }
 
+/** How the game's own cursor moves while the mouse is captured to point (#496). */
+export interface CursorConfig {
+  /** Pixels of the view the cursor moves for each pixel the mouse moves, times the player's setting. */
+  readonly speed: number;
+}
+
+/**
+ * Where a cursor at `at` goes for a mouse movement of `dx`, `dy` pixels, scaled by `scale`, kept
+ * within a view `width` by `height`. A movement past `spike` either way counts as none, as for
+ * turning.
+ */
+export function moveCursor(
+  at: Point,
+  dx: number,
+  dy: number,
+  scale: number,
+  width: number,
+  height: number,
+  spike: number,
+): Point {
+  const clamp = (value: number, max: number) =>
+    Math.min(Math.max(value, 0), max);
+  return {
+    x: clamp(at.x + turnMovement(dx, spike) * scale, width),
+    y: clamp(at.y + turnMovement(dy, spike) * scale, height),
+  };
+}
+
 /** A sideways mouse movement, in pixels, kept to what counts: a spike counts as none. */
 export function turnMovement(movementX: number, spike: number): number {
   return Number.isFinite(movementX) && Math.abs(movementX) <= spike

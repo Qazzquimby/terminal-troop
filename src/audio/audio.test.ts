@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { settle, stubAudio } from "../integration/fake-audio.js";
-import { createSfx, rangedFalloff, spatialMix } from "./audio.js";
+import { createSfx, rangedFalloff, sideways, spatialMix } from "./audio.js";
 
 const falloff = { full: 100, silent: 1000, pan: 500 };
 const listener = { x: 0, y: 0 };
@@ -207,5 +207,49 @@ describe("a positioned sound still playing", () => {
     expect(ended?.volume()).toBe(1);
     expect(stopped?.volume()).toBe(0);
     expect(everywhere?.volume()).toBe(1);
+  });
+});
+
+describe("a sound with the camera turned (#500)", () => {
+  const east = { x: 400, y: 0 };
+  const north = { x: 0, y: -400 };
+  /** The camera's roll for a view facing `angle`, as `updateCamera` turns it. */
+  const facing = (angle: number) => -Math.PI / 2 - angle;
+
+  test("pans by where it shows on the screen, not where it lies in the world", () => {
+    expect(spatialMix(east, listener, falloff).pan).toBeCloseTo(0.8);
+    // Facing east, east is straight ahead, up the screen, and north on the left.
+    expect(spatialMix(east, listener, falloff, facing(0)).pan).toBeCloseTo(0);
+    expect(spatialMix(north, listener, falloff, facing(0)).pan).toBeCloseTo(
+      -0.8,
+    );
+    // Facing south, east shows on the left.
+    expect(
+      spatialMix(east, listener, falloff, facing(Math.PI / 2)).pan,
+    ).toBeCloseTo(-0.8);
+  });
+
+  test("never changes how loud it is", () => {
+    expect(spatialMix(east, listener, falloff, 1.3).volume).toBe(
+      spatialMix(east, listener, falloff).volume,
+    );
+  });
+
+  test("measures sideways as the camera turns a point onto the screen", () => {
+    // As `turned` in render/camera.ts: x' = x cos - y sin.
+    const roll = 0.7;
+    expect(sideways(3, 4, roll)).toBeCloseTo(
+      3 * Math.cos(roll) - 4 * Math.sin(roll),
+    );
+    expect(sideways(3, 4, 0)).toBe(3);
+  });
+
+  test("the ear keeps the turn it is set to, and a nonsense turn as none", () => {
+    const sfx = createSfx(falloff);
+    expect(sfx.earTurn()).toBe(0);
+    sfx.setEarTurn(1.25);
+    expect(sfx.earTurn()).toBe(1.25);
+    sfx.setEarTurn(Number.NaN);
+    expect(sfx.earTurn()).toBe(0);
   });
 });

@@ -154,4 +154,12 @@ describe("syncVoicePeers", () => {
     ]).toEqual([]);
     expect(calls).toEqual(["peers "]);
   });
+
+  test("a voice pans as the screen shows it, the ear turned with the camera (#500)", () => {
+    const { session, mixes, room } = setup(["east", 200]);
+    // Facing south, the world turned π: east shows on the left.
+    session.sfx.setEarTurn(-Math.PI);
+    syncVoicePeers(session, session.players.keys(), room, new Set(), falloff);
+    expect(mixes.get("east")?.pan).toBeCloseTo(-200 / falloff.pan);
+  });
 });

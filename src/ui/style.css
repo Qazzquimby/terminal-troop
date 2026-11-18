@@ -84,6 +84,8 @@ canvas {
   background: #090b0e;
   border: 1px solid #333;
   cursor: crosshair;
+  /* Focused only to take the keys back from a menu: no ring round the game. */
+  outline: none;
 }
 /* The mouse turns the view rather than pointing: no cursor over the game. */
 canvas.turning {
