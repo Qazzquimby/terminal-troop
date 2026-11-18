@@ -5,6 +5,7 @@ import { isGhost } from "./ghosts.js";
 import { lerpAngle } from "./interpolation.js";
 import { isDeepdark } from "./light.js";
 import type { Point } from "./map.js";
+import { hasKindTag } from "./noise.js";
 import { aimAt } from "./player.js";
 import type { Player } from "./player.js";
 import type { Session } from "./session.js";
@@ -17,14 +18,24 @@ import { canSeeFrom } from "./vision.js";
  * whichever way the body faces, has its facing dragged round onto it, as if its eyes were held
  * there. It is the one rule for every body that looks: a player's aim, which its own client turns
  * as it steers, and a world entity's view cone, which `eyesOf` turns. Of several pulling at once,
- * the nearest has it.
+ * the nearest has it. A kind may narrow whose gaze it pulls by kind tag, as a hunter narrows its
+ * quarry: `targets` alone, sparing `ignores`.
  */
 
 /** How a kind pulls the gaze of a body that could look at it. */
 export interface GazePull {
   /** Seconds for a facing it catches to be dragged all the way onto it; 0 snaps it there. */
   readonly seconds: number;
+  /** When given, it pulls only the gazes of bodies carrying one of these kind tags. */
+  readonly targets?: readonly string[];
+  /** Kind tags whose gazes it never pulls. */
+  readonly ignores?: readonly string[];
 }
+
+/** Whether `pull` takes hold of the gaze of body `id`, by its kind tags. */
+const takes = (game: Session, pull: GazePull, id: string): boolean =>
+  !hasKindTag(game, id, pull.ignores ?? []) &&
+  (pull.targets === undefined || hasKindTag(game, id, pull.targets));
 
 /** A body pulling gazes now, and how. */
 interface Lure {
@@ -32,7 +43,12 @@ interface Lure {
   readonly pull: GazePull;
 }
 
-/** A body's gaze caught by a lure: since when, and when that was last seen to hold. */
+/**
+ * A body's gaze caught by a lure: since when, and when that was last seen to hold, by this
+ * client's own sim clock (`Session.time`). Not the world clock: a client following a host has its
+ * world clock put back to the host's with each snapshot, and a grip it took would keep starting
+ * afresh.
+ */
 interface Grip {
   readonly lure: string;
   readonly since: number;
@@ -67,9 +83,9 @@ function luresOf(game: Session): readonly Lure[] {
 }
 
 /**
- * The lure nearest `looker` that it could look at by turning, its view cone reaching `range`: in
- * reach, which deepdark shortens as it does any look, along a clear line, and perceived by it. Not
- * the looker itself. Null for none.
+ * The lure nearest `looker` that takes its gaze and that it could look at by turning, its view
+ * cone reaching `range`: in reach, which deepdark shortens as it does any look, along a clear
+ * line, and perceived by it. Not the looker itself. Null for none.
  */
 function lureFor(
   game: Session,
@@ -83,6 +99,7 @@ function lureFor(
     if (
       entity.health <= 0 ||
       entity.id === looker.id ||
+      !takes(game, lure.pull, looker.id) ||
       !perceives(game, looker.id, entity.id)
     )
       continue;
@@ -123,12 +140,10 @@ export function pulledFacing(
     held.delete(looker.id);
     return facing;
   }
-  const now = game.worldTime;
+  const now = game.time;
   const kept = held.get(looker.id);
   const grip =
-    kept?.lure === lure.entity.id &&
-    now - kept.last <= GRIP_GAP &&
-    now >= kept.since
+    kept?.lure === lure.entity.id && now - kept.last <= GRIP_GAP
       ? kept
       : { lure: lure.entity.id, since: now, last: now };
   grip.last = now;

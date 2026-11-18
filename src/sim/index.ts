@@ -204,6 +204,8 @@ export {
   notices,
 } from "./eyes.js";
 export type { Eyes, Sight } from "./eyes.js";
+export { pulledAim } from "./gaze-pull.js";
+export type { GazePull } from "./gaze-pull.js";
 export { hurtSinceLastStep, lastHurtBy } from "./hurts.js";
 export type { HurtRecord } from "./hurts.js";
 export { entityWho, falls, rises, watchFalls, who } from "./fallen.js";

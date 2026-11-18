@@ -15,6 +15,7 @@ export {
   drawHeldItem,
   drawLikePlayer,
   drawWallBlock,
+  interpolatedView,
 } from "./render.js";
 export { createRipples } from "./ripples.js";
 export type { RippleConfig, Ripples } from "./ripples.js";
@@ -22,6 +23,6 @@ export { createFlashes } from "./flashes.js";
 export type { FlashConfig } from "./flashes.js";
 export { createSpectator, eyeOf, stepSpectator } from "./spectate.js";
 export type { Eye, SpectateConfig } from "./spectate.js";
-export { viewHeading } from "./turning.js";
+export { pulledView, viewHeading } from "./turning.js";
 export { createZoomFit } from "./zoom-fit.js";
 export type { ZoomFitConfig } from "./zoom-fit.js";

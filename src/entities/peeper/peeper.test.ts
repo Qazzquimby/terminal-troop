@@ -160,9 +160,28 @@ test("a gaze caught stings once, and its drone plays while held", () => {
   expect(type?.plays(peeper, game)).toMatchObject({ key: "stare", loop: true });
 });
 
-test("any body with a view cone is pulled and hurt alike, not only players", () => {
+/** `peeper`, configured for players alone, with no `targets`: it works on any body with eyes. */
+function onAnyBody(peeper: PeeperConfig): PeeperConfig {
+  const { targets, ...rest } = peeper;
+  expect(targets).toEqual(["player"]);
+  return rest;
+}
+
+test("as configured, a monster's view cone is neither pulled nor hurt, nor the peeper's drone set off", () => {
   // The player stands far off, out of its reach.
   const game = world(100, 550);
+  const peeper = peeperAt(game, 450, 100);
+  const watcher = spawnEntity(game, "watcher", 350, 250, {});
+  run(game, config.pullSeconds + 2, { x: 100, y: 300 });
+  expect(eyesOf(game, watcher)?.cone?.direction).toBe(0);
+  expect(watcher.health).toBe(100);
+  expect(stateOf(peeper).held).toEqual([]);
+  expect(played(game)).not.toContain("seize.mp3");
+});
+
+test("given no targets, any body with a view cone is pulled and hurt alike, not only players", () => {
+  // The player stands far off, out of its reach.
+  const game = world(100, 550, onAnyBody(config));
   const peeper = peeperAt(game, 450, 100);
   // It faces right; the peeper lies up and to its left, within its cone's reach.
   const watcher = spawnEntity(game, "watcher", 350, 250, {});
@@ -209,10 +228,28 @@ test("with no body near long enough, it blinks out to somewhere it might have ar
   expect(played(game).filter((url) => url === "blink.mp3")).toHaveLength(2);
 });
 
-test("a body near keeps it where it is", () => {
-  const game = world(100, 550, restless);
-  const peeper = peeperAt(game, 700, 300);
-  spawnEntity(game, "watcher", 700, 420, {});
-  run(game, 3, { x: 100, y: 300 });
+test("a body it hunts near keeps it where it is; a monster it leaves be does not", () => {
+  const kept = world(100, 550, onAnyBody(restless));
+  const peeper = peeperAt(kept, 700, 300);
+  spawnEntity(kept, "watcher", 700, 420, {});
+  run(kept, 3, { x: 100, y: 300 });
   expect(peeper).toMatchObject({ x: 700, y: 300 });
+
+  const left = world(100, 550, restless);
+  const alone = peeperAt(left, 700, 300);
+  spawnEntity(left, "watcher", 700, 420, {});
+  run(left, 3, { x: 100, y: 300 });
+  expect(alone.x !== 700 || alone.y !== 300).toBe(true);
+});
+
+test("a gaze is still dragged on a client whose world clock the host keeps putting back", () => {
+  const game = world(450, 300);
+  const peeper = peeperAt(game, 650, 300);
+  const up = { x: 450, y: 0 };
+  // As a guest's is, by snapshots arriving later than it has stepped on to.
+  for (let step = 0; step < 60; step++) {
+    run(game, DT, up);
+    if (step % 6 === 5) game.worldTime -= 8 * DT;
+  }
+  expect(turn(game.local.aim, aimAt(game.local, peeper))).toBeLessThan(1e-6);
 });
