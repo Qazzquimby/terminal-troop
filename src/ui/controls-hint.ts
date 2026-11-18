@@ -85,8 +85,21 @@ export function hintMode(player: Pick<Player, "health" | "ride">): HintMode {
   return player.ride.driving ? "driving" : "cabin";
 }
 
-/** The hint for `mode`, with the talk key when push to talk is on. */
-export function controlsHintFor(mode: HintMode, pushToTalk: boolean): string {
+/** Shown first on foot and as a ghost while the camera turns with the view: the mouse turns it. */
+const TURN_HINT = "Mouse to turn";
+
+/**
+ * The hint for `mode`, with the talk key when push to talk is on, and the mouse's turning when
+ * the camera turns with the view and the mouse turns it.
+ */
+export function controlsHintFor(
+  mode: HintMode,
+  pushToTalk: boolean,
+  turning = false,
+): string {
   const entries = CONTROLS_HINT[mode];
-  return controlsHintText(pushToTalk ? [...entries, TALK_HINT] : entries);
+  const text = controlsHintText(pushToTalk ? [...entries, TALK_HINT] : entries);
+  return turning && (mode === "foot" || mode === "ghost")
+    ? `${TURN_HINT} · ${text}`
+    : text;
 }

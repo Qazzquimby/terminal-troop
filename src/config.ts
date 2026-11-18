@@ -14,7 +14,7 @@ import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, MinimapConfig, UiConfig } from "./ui/index.js";
-import type { WheelConfig } from "./input/index.js";
+import type { TurnConfig, WheelConfig } from "./input/index.js";
 
 import type {
   RadioSoundConfig,
@@ -52,6 +52,7 @@ interface AppConfig extends SimConfig {
   readonly hud: HudConfig;
   readonly minimap: MinimapConfig;
   readonly wheel: WheelConfig;
+  readonly turn: TurnConfig;
   readonly worldLog: WorldLogConfig;
 }
 
@@ -168,7 +169,16 @@ export const config = {
     zoomRate: 13.4,
     followRate: 18,
     snapDistance: CELL * 4,
+    // With the rotating camera on (a setting, off by default): the turn eases a fifth of the way
+    // to the view's facing each 60Hz frame, about a tenth of a second to catch a quick flick,
+    // and the eye sits 62% of the way down the view, as in the prototype, so more of what lies
+    // ahead shows than behind.
+    roll: { rate: 13.4, anchor: 0.62 },
   },
+  // With the rotating camera on, the mouse turns the view 0.0028 radians a pixel, the prototype's
+  // own: about 560px of mouse for a half turn. Keys turned with the view steer one of 64 ways
+  // (5.6° apart), so turning while walking sends a new steer only every few degrees.
+  turn: { sensitivity: 0.0028, directions: 64 },
   // A ghost's free camera glides at 8 cells a second, nearly twice a sprint. Each notch of the
   // wheel zooms a ghost's view by a fifth, from half the living's zoom (twice as close) out to
   // two and a half times it (about 2.5x as wide), eased at the camera's own zoom rate.

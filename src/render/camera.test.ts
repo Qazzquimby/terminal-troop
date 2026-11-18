@@ -1,12 +1,15 @@
 import { expect, test } from "vitest";
 import {
   createCamera,
+  screenToWorldDirection,
   screenToWorld,
   snapCamera,
   updateCamera,
+  worldToScreen,
 } from "./camera.js";
 
 const view = { width: 900, height: 600 };
+const roll = { rate: 10, anchor: 0.6 };
 
 test("camera centers its target even at the world boundary", () => {
   const camera = createCamera(view, {
@@ -14,6 +17,7 @@ test("camera centers its target even at the world boundary", () => {
     zoomRate: 10,
     followRate: 10,
     snapDistance: 200,
+    roll,
   });
   updateCamera(camera, { x: 14, y: 14 }, 1 / 60);
   expect(camera).toMatchObject({ x: 14 - 450, y: 14 - 300 });
@@ -25,6 +29,7 @@ test("camera eases its zoom toward the configured zoom", () => {
     zoomRate: 10,
     followRate: 10,
     snapDistance: 200,
+    roll,
   });
   updateCamera(camera, { x: 0, y: 0 }, 1 / 60);
   expect(camera.zoom).toBeGreaterThan(1);
@@ -32,7 +37,13 @@ test("camera eases its zoom toward the configured zoom", () => {
 });
 
 test("the zoom eases by elapsed time, however it is split into frames", () => {
-  const config = { zoom: 2, zoomRate: 10, followRate: 10, snapDistance: 200 };
+  const config = {
+    zoom: 2,
+    zoomRate: 10,
+    followRate: 10,
+    snapDistance: 200,
+    roll,
+  };
   const fast = createCamera(view, config);
   for (let frame = 0; frame < 12; frame++)
     updateCamera(fast, { x: 0, y: 0 }, 1 / 120);
@@ -48,6 +59,7 @@ test("no time passing leaves the zoom as it is", () => {
     zoomRate: 10,
     followRate: 10,
     snapDistance: 200,
+    roll,
   });
   updateCamera(camera, { x: 0, y: 0 }, 0);
   expect(camera.zoom).toBe(1);
@@ -59,6 +71,7 @@ test("a zoom scale eases the camera to its configured zoom times the scale, and 
     zoomRate: 10,
     followRate: 10,
     snapDistance: 200,
+    roll,
   });
   for (let frame = 0; frame < 600; frame++)
     updateCamera(camera, { x: 0, y: 0 }, 1 / 60, 2);
@@ -74,6 +87,7 @@ test("screenToWorld inverts the view transform at any zoom", () => {
     zoomRate: 10,
     followRate: 10,
     snapDistance: 200,
+    roll,
   });
   camera.zoom = 2;
   updateCamera(camera, { x: 1000, y: 800 }, 0);
@@ -88,7 +102,13 @@ test("screenToWorld inverts the view transform at any zoom", () => {
   });
 });
 
-const follow = { zoom: 1, zoomRate: 10, followRate: 10, snapDistance: 200 };
+const follow = {
+  zoom: 1,
+  zoomRate: 10,
+  followRate: 10,
+  snapDistance: 200,
+  roll,
+};
 const centre = (camera: ReturnType<typeof createCamera>) =>
   screenToWorld(camera, { x: view.width / 2, y: view.height / 2 });
 
@@ -147,4 +167,79 @@ test("the mouse maps to the world through the trailing camera it is drawn with",
     x: x + 20,
     y: 0,
   });
+});
+
+const settled = (
+  camera: ReturnType<typeof createCamera>,
+  facing: number | null,
+  scale = 1,
+) => {
+  for (let frame = 0; frame < 600; frame++)
+    updateCamera(camera, { x: 500, y: 400 }, 1 / 60, scale, facing);
+};
+
+test("a turning camera puts the facing at the top of the screen, the eye down the view", () => {
+  const camera = createCamera(view, follow);
+  settled(camera, 0.3);
+  const eye = worldToScreen(camera, { x: 500, y: 400 });
+  expect(eye.x).toBeCloseTo(view.width / 2);
+  expect(eye.y).toBeCloseTo(view.height * roll.anchor);
+  const ahead = worldToScreen(camera, {
+    x: 500 + Math.cos(0.3) * 50,
+    y: 400 + Math.sin(0.3) * 50,
+  });
+  expect(ahead.x).toBeCloseTo(eye.x);
+  expect(ahead.y).toBeCloseTo(eye.y - 50);
+});
+
+test("the mouse maps to the world through a turned, zoomed view", () => {
+  const camera = createCamera(view, follow);
+  settled(camera, 2.1, 1.7);
+  for (const point of [
+    { x: 0, y: 0 },
+    { x: 123, y: 456 },
+    { x: 900, y: 600 },
+  ]) {
+    const back = worldToScreen(camera, screenToWorld(camera, point));
+    expect(back.x).toBeCloseTo(point.x);
+    expect(back.y).toBeCloseTo(point.y);
+  }
+  // Up the screen is the facing, whatever the zoom.
+  const up = screenToWorldDirection(camera, { x: 0, y: -1 });
+  expect(Math.atan2(up.y, up.x)).toBeCloseTo(2.1);
+});
+
+test("the camera's box holds every corner of a turned view", () => {
+  const camera = createCamera(view, follow);
+  settled(camera, 1);
+  for (const corner of [
+    { x: 0, y: 0 },
+    { x: view.width, y: 0 },
+    { x: 0, y: view.height },
+    { x: view.width, y: view.height },
+  ]) {
+    const at = screenToWorld(camera, corner);
+    expect(at.x).toBeGreaterThanOrEqual(camera.x - 1e-6);
+    expect(at.y).toBeGreaterThanOrEqual(camera.y - 1e-6);
+    expect(at.x).toBeLessThanOrEqual(camera.x + camera.width + 1e-6);
+    expect(at.y).toBeLessThanOrEqual(camera.y + camera.height + 1e-6);
+  }
+  expect(camera.width).toBeGreaterThan(view.width);
+});
+
+test("the turn eases the shorter way round, and back upright once it stops", () => {
+  const camera = createCamera(view, follow);
+  // Facing up already: no turn.
+  settled(camera, -Math.PI / 2);
+  expect(camera.roll).toBeCloseTo(0);
+  // Facing just past straight down: a turn clockwise is short of a half turn, so it goes that way.
+  updateCamera(camera, { x: 500, y: 400 }, 1 / 60, 1, Math.PI / 2 + 0.1);
+  expect(camera.roll).toBeGreaterThan(0);
+  updateCamera(camera, { x: 500, y: 400 }, 0, 1, Math.PI / 2 - 0.1);
+  settled(camera, Math.PI / 2 - 0.1);
+  expect(camera.roll).toBeCloseTo(-Math.PI + 0.1);
+  settled(camera, null);
+  expect(camera.roll).toBe(0);
+  expect(camera.anchor).toBe(0.5);
+  expect(camera.x).toBe(500 - view.width / 2);
 });

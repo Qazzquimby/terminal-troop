@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { onScreenAngle, upright } from "../../lib/upright/index.js";
 import { drawEmoji } from "../../render/index.js";
 import { defineEntity, isAreaFree, rounded, sound } from "../../sim/index.js";
 import type {
@@ -362,13 +363,15 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
       return strikeEach(runOver(game, entity, config), config.damage);
     },
     draw(ctx, entity, state, _now, game) {
-      ctx.save();
-      // It faces the way it rides, leaning as it goes.
-      const flip = Math.cos(state.facing) < 0;
-      ctx.translate(entity.x, entity.y);
-      if (flip) ctx.scale(-1, 1);
-      drawEmoji(ctx, { x: 0, y: 0 }, GLYPH, entity.radius * 2);
-      ctx.restore();
+      // It faces the way it rides on the screen, leaning as it goes, however the camera turns.
+      const flip = Math.cos(onScreenAngle(ctx, state.facing)) < 0;
+      upright(ctx, entity, () => {
+        ctx.save();
+        ctx.translate(entity.x, entity.y);
+        if (flip) ctx.scale(-1, 1);
+        drawEmoji(ctx, { x: 0, y: 0 }, GLYPH, entity.radius * 2);
+        ctx.restore();
+      });
       const rang = state.rangAt;
       if (rang !== null && game.worldTime - rang < BELL_SHOWN) {
         drawEmoji(

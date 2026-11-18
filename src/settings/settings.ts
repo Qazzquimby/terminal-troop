@@ -15,11 +15,16 @@ export interface Settings {
   readonly audio: {
     readonly masterVolume: number;
   };
+  readonly view: {
+    /** Whether the camera turns with the view's facing, so ahead is always up the screen. */
+    readonly rotateCamera: boolean;
+  };
 }
 
 export interface SettingsPatch {
   readonly voice?: Partial<Settings["voice"]>;
   readonly audio?: Partial<Settings["audio"]>;
+  readonly view?: Partial<Settings["view"]>;
 }
 
 /** Where settings are kept between visits. Either method may throw; the store copes. */
@@ -38,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
     inputDevice: null,
   },
   audio: { masterVolume: 1 },
+  view: { rotateCamera: false },
 };
 
 /** Out-of-range volumes are clamped to 0..1; NaN and non-numbers are invalid. */
@@ -61,6 +67,11 @@ function schemaFallingBackTo(fallback: Settings) {
       audio: z
         .object({ masterVolume: unit.catch(fallback.audio.masterVolume) })
         .catch(fallback.audio),
+      view: z
+        .object({
+          rotateCamera: z.boolean().catch(fallback.view.rotateCamera),
+        })
+        .catch(fallback.view),
     })
     .catch(fallback);
 }
@@ -93,6 +104,7 @@ export function createSettingsStore(storage: SettingsStorage) {
       const merged = {
         voice: { ...current.voice, ...patch.voice },
         audio: { ...current.audio, ...patch.audio },
+        view: { ...current.view, ...patch.view },
       };
       const next = schemaFallingBackTo(current).parse(merged);
       const serialized = JSON.stringify(next);

@@ -1,3 +1,4 @@
+import { onScreenAngle, upright } from "../../lib/upright/index.js";
 import { occupantsOf } from "../../sim/index.js";
 import type { BoxSize, Point, Session, WorldEntity } from "../../sim/index.js";
 import type { CruiserState } from "./drive.js";
@@ -70,10 +71,12 @@ function drawOccupants(
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const width = ctx.measureText(text).width;
-  ctx.fillStyle = COLOURS.gauge;
-  ctx.fillRect(at.x - width / 2 - 4, at.y - 8, width + 8, 16);
-  ctx.fillStyle = COLOURS.names;
-  ctx.fillText(text, at.x, at.y);
+  upright(ctx, at, () => {
+    ctx.fillStyle = COLOURS.gauge;
+    ctx.fillRect(at.x - width / 2 - 4, at.y - 8, width + 8, 16);
+    ctx.fillStyle = COLOURS.names;
+    ctx.fillText(text, at.x, at.y);
+  });
   ctx.restore();
 }
 
@@ -111,29 +114,32 @@ export function drawCruiser(
     ctx.fill();
   }
   ctx.restore();
-  // Just under the body however it is turned.
+  // Just under the body on the screen, however it and the camera are turned.
+  const onScreen = onScreenAngle(ctx, heading);
   const reach =
-    (Math.abs(Math.sin(heading)) * length +
-      Math.abs(Math.cos(heading)) * width) /
+    (Math.abs(Math.sin(onScreen)) * length +
+      Math.abs(Math.cos(onScreen)) * width) /
     2;
   drawOccupants(ctx, game, entity, at);
   const below = at.y + reach + 10;
-  if (powered)
-    gauge(
-      ctx,
-      at,
-      below,
-      length * 0.5,
-      state.fuel / gauges.fullTank,
-      COLOURS.fuel,
-    );
-  if (state.damage > 0)
-    gauge(
-      ctx,
-      at,
-      below + 7,
-      length * 0.5,
-      state.damage / gauges.breakdown,
-      COLOURS.damage,
-    );
+  upright(ctx, at, () => {
+    if (powered)
+      gauge(
+        ctx,
+        at,
+        below,
+        length * 0.5,
+        state.fuel / gauges.fullTank,
+        COLOURS.fuel,
+      );
+    if (state.damage > 0)
+      gauge(
+        ctx,
+        at,
+        below + 7,
+        length * 0.5,
+        state.damage / gauges.breakdown,
+        COLOURS.damage,
+      );
+  });
 }
