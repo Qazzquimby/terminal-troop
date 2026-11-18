@@ -7,10 +7,13 @@ import type { ItemsConfig } from "../items/index.js";
 import type { Room } from "../room/index.js";
 
 import {
+  createSession,
   hurt,
   hurtPlayer,
+  INERT_TAG,
   isGhost,
   itemInstances,
+  registerContent,
   registerEntityType,
   spawnEntity,
   spawnWorldItem,
@@ -23,7 +26,12 @@ import type {
   WorldEntity,
 } from "../sim/index.js";
 import { crew as crewAt, playerOn, sessionOf } from "./crew.js";
-import { testEntitiesConfig, testItemsConfig } from "./sim-config.js";
+import {
+  testEntitiesConfig,
+  testItemsConfig,
+  testSfx,
+  testSimConfig,
+} from "./sim-config.js";
 
 /** No zombies, now or later. */
 const entities: EntitiesConfig = {
@@ -56,20 +64,22 @@ const SHRINE = { x: 450, y: 150 };
 const { toughness } = testItemsConfig.heart;
 
 /**
- * A tough body, as hard to kill as the sleeper; a soft one, just short of it; and a biter that,
- * on its first step, deals every tough or soft body all its health.
+ * A tough body, as hard to kill as the sleeper; a soft one, just short of it; a tough inert one,
+ * as a door is; and a biter that, on its first step, deals every one of them all its health.
  */
 const bodies: WorldContent = {
   name: "entity/test-bodies",
   register(session) {
-    for (const [name, maxHealth] of [
-      ["tough", toughness],
-      ["soft", toughness - 1],
+    for (const [name, maxHealth, tags] of [
+      ["tough", toughness, []],
+      ["soft", toughness - 1, []],
+      ["inert", toughness, [INERT_TAG]],
     ] as const)
       registerEntityType(session, name, {
         radius: 8,
         maxHealth,
         collides: false,
+        tags,
         data: z.object({}),
         draw: () => undefined,
       });
@@ -84,7 +94,7 @@ const bodies: WorldContent = {
           ? []
           : [...game.entities.values()]
               .filter((other) =>
-                ["tough", "soft"].some(
+                ["tough", "soft", "inert"].some(
                   (kind) => other.kind === game.kindIds.get(kind),
                 ),
               )
@@ -125,14 +135,16 @@ const shrinesOf = (game: Session): WorldEntity[] => {
 const distance = (a: Point, b: Point): number =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
-test("a body as hard to kill as the sleeper drops a heart where it falls; a softer one does not", async () => {
+test("a body as hard to kill as the sleeper drops a heart where it falls; a softer one or an inert one does not", async () => {
   const { room, run } = await crew("a");
   const host = sessionOf(room("a"));
   const tough = spawnEntity(host, "tough", 300, 450, {});
   spawnEntity(host, "soft", 600, 150, {});
+  const inert = spawnEntity(host, "inert", 600, 450, {});
   spawnEntity(host, "biter", 450, 300, { steps: 0 });
   const at = { x: tough.x, y: tough.y };
   run(500);
+  expect(host.entities.has(inert.id)).toBe(false);
   expect(lying(host, "heart")).toEqual([at]);
 });
 
@@ -255,4 +267,36 @@ test("a ghost walkie switched on plays every ghost and lets them hear whoever is
     at: null,
     via: "radio",
   });
+});
+
+/** A new world in `room` with two shrines laid by the shrine's own scatter, and nothing else. */
+function laidShrines(room: string): Session {
+  const game = createSession(
+    "me",
+    "ME",
+    room,
+    "standard",
+    testSfx(),
+    testSimConfig,
+  );
+  const content = entityContent({
+    ...entities,
+    shrine: {
+      ...entities.shrine,
+      scatter: { ...entities.shrine.scatter, count: 2 },
+    },
+  });
+  registerContent(game, content);
+  for (const each of content) each.populate(game);
+  return game;
+}
+
+test("a new world's shrines lie one to each equal band across its width, not bunched at the exit", () => {
+  for (const room of ["SHRINE", "ALTAR", "GHOST", "WHISPER", "OFFER"]) {
+    const game = laidShrines(room);
+    const found = shrinesOf(game);
+    const band = game.world.W / found.length;
+    expect(found).toHaveLength(2);
+    expect(found.map(({ x }) => Math.floor(x / band)).sort()).toEqual([0, 1]);
+  }
 });

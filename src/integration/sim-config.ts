@@ -337,7 +337,14 @@ export const testEntitiesConfig = {
   },
   shrine: {
     radius: 14,
-    scatter: { count: 0, seed: 7, clearance: 200, danger: 5 },
+    scatter: {
+      count: 0,
+      seed: 7,
+      clearance: 200,
+      spread: "x",
+      danger: 3,
+      terms: { right: 0, exit: 0 },
+    },
     reach: 50,
     earReach: 150,
     revives: "heart",

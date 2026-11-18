@@ -584,8 +584,16 @@ export const config = {
     },
     shrine: {
       radius: 14,
-      // danger: exponent on danger weight (higher keeps it further out); clearance: from the start.
-      scatter: { count: 5, seed: 7, clearance: CELL * 20, danger: 3 },
+      // spread "x": one per equal band of the width; danger: exponent on danger weight within its
+      // band; terms right/exit 0: only distance from the road counts; clearance: from the start.
+      scatter: {
+        count: 5,
+        seed: 7,
+        clearance: CELL * 20,
+        spread: "x",
+        danger: 3,
+        terms: { right: 0, exit: 0 },
+      },
       reach: CELL, // an item this near its middle counts as offered
       earReach: CELL * 20, // ghosts hear speakers within this
       revives: "heart",
