@@ -6,8 +6,10 @@ import {
   testSimConfig,
 } from "../../integration/sim-config.js";
 import {
+  captionOf,
   createSession,
   hurt,
+  VOICE_TAG,
   receiveEvent,
   registerContent,
   spawnEntity,
@@ -42,6 +44,17 @@ function world(x: number, y: number, boyConfig = config): Session {
     "dev",
     testSfx(),
     testSimConfig,
+    {
+      speech: {
+        say: vi.fn(() =>
+          Promise.resolve({
+            stop: () => undefined,
+            setVolume: () => undefined,
+            setPosition: () => undefined,
+          }),
+        ),
+      },
+    },
   );
   vi.spyOn(game.sfx, "play").mockResolvedValue({
     stop: () => undefined,
@@ -188,6 +201,50 @@ test("on patrol, a killable body it sees near the popped balloon enrages it, and
   const lost = game.local.maxHealth - game.local.health;
   expect(lost).toBeGreaterThan(0);
   expect(lost % config.damage).toBe(0);
+});
+
+/** Each line said so far, and the pitch of the voice it was said in. */
+const said = (game: Session): { text: string; pitch: number }[] =>
+  vi
+    .mocked(game.speech.say)
+    .mock.calls.map(([line]) => ({ text: line.text, pitch: line.voice.pitch }));
+
+test("flying into a rage, it shouts one of its lines once, heard as a voice as far as the shout carries", () => {
+  const game = world(425, 325);
+  const boy = boyAt(
+    game,
+    { x: 125, y: 325 },
+    { mode: "patrol", spot: { x: 400, y: 325 }, facing: 0, balloonAt: 1000 },
+  );
+  const heard = run(game, 2);
+  const shout = testSimConfig.speech.voices.shout;
+  expect(said(game)).toEqual([
+    { text: config.speech.enraged[0], pitch: shout?.pitch },
+  ]);
+  expect(
+    heard.some(
+      (noise) =>
+        noise.source === boy.id &&
+        noise.radius === shout?.range &&
+        noise.tags.includes(VOICE_TAG),
+    ),
+  ).toBe(true);
+  expect(captionOf(game, boy.id)).toBe(config.speech.enraged[0]);
+});
+
+test("leaving a balloon, it says something as often as its chatter has it", () => {
+  const chatty = world(FAR.x, FAR.y, {
+    ...config,
+    speech: { ...config.speech, chatter: 1 },
+  });
+  boyAt(chatty, { x: 425, y: 325 });
+  run(chatty, config.balloonGap + 0.1);
+  expect(said(chatty).map(({ text }) => text)).toEqual(config.speech.placing);
+
+  const quiet = world(FAR.x, FAR.y);
+  boyAt(quiet, { x: 425, y: 325 });
+  run(quiet, config.balloonGap + 0.1);
+  expect(said(quiet)).toEqual([]);
 });
 
 test("on patrol, a snail by the balloon is no quarry: it cannot be killed", () => {

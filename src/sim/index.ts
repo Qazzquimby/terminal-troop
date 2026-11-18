@@ -221,6 +221,8 @@ export { FOOTSTEP_TAG } from "./footsteps.js";
 export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
 export { echoVoice } from "./echoes.js";
 export type { VoiceClips } from "./echoes.js";
+export { captionOf, sayHere } from "./speech.js";
+export type { Speech, VoiceParams } from "./speech.js";
 export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";
 export type { Heard, Noise } from "./noise.js";
 export { declaredSounds, sound } from "./sound.js";

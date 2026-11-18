@@ -48,6 +48,8 @@ import { emitVoices } from "./voice-noise.js";
 import type { SpokenLevel, VoiceNoiseConfig } from "./voice-noise.js";
 import { followEchoes, noClips } from "./echoes.js";
 import type { EchoConfig, VoiceClips } from "./echoes.js";
+import { noSpeech } from "./speech.js";
+import type { Speech, SpeechConfig } from "./speech.js";
 import { settlePredictions } from "./prediction.js";
 import {
   createPilot,
@@ -99,6 +101,8 @@ export interface SimConfig extends PlayerRules {
   readonly voiceNoise: VoiceNoiseConfig;
   /** How clips of players' voices travel, for entities that speak in them. */
   readonly echoes: EchoConfig;
+  /** The voices bodies say lines in. */
+  readonly speech: SpeechConfig;
   readonly worldItems: WorldItemConfig;
   readonly arrival: ArrivalConfig;
   readonly death: DeathConfig;
@@ -124,6 +128,8 @@ export interface Session {
   readonly sfx: Sfx;
   /** The local player's recorded speech, for entities that speak in its voice. */
   readonly clips: VoiceClips;
+  /** Says lines aloud in synthesized voices, for bodies that talk. */
+  readonly speech: Speech;
   readonly players: Map<string, Player>;
   readonly entities: Map<string, WorldEntity>;
   readonly entityTypes: Map<number, EntityType>;
@@ -214,6 +220,8 @@ export interface Start {
   readonly rng?: Rng | undefined;
   /** The local player's recorded speech; none when left out. */
   readonly clips?: VoiceClips | undefined;
+  /** The speech synthesizer; silent when left out. */
+  readonly speech?: Speech | undefined;
 }
 
 /** The seed of the room `code` in worlds seeded by `base`. */
@@ -274,6 +282,7 @@ export function createSession(
     rally,
     sfx,
     clips: start.clips ?? noClips,
+    speech: start.speech ?? noSpeech,
     players: new Map([[localId, local]]),
     entities: new Map(),
     entityTypes: new Map(),

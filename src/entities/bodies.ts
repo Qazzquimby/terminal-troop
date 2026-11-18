@@ -75,6 +75,22 @@ export function playEach(
       effect(game, { at: { x: self.x, y: self.y }, sound }, self);
 }
 
+/**
+ * Has `self`, as the host, say one of `lines` picked at random aloud in `voice`, the speech
+ * config's id for it: heard from it on every client, and a voice's noise as far. Says nothing with
+ * no lines.
+ */
+export function sayOneOf(
+  game: Session,
+  self: WorldEntity,
+  lines: readonly string[],
+  voice: string,
+): void {
+  const text = lines[Math.floor(Math.random() * lines.length)];
+  if (text === undefined) return;
+  effect(game, { at: { x: self.x, y: self.y }, say: { text, voice } }, self);
+}
+
 /*
  * Who a monster hunts. Players are bodies like any other: a monster hunts, notices, chases and
  * strikes any living body, player or world entity, but itself, what `NEVER_PREY` names (inert

@@ -30,6 +30,7 @@ import {
   facingEyes,
   isKillable,
   playEach,
+  sayOneOf,
   seenPrey,
   touching,
   touchStrikes,
@@ -116,6 +117,19 @@ export interface BirthdayBoyConfig extends Hunting, Dormancy {
     readonly place: number;
     readonly angry: number;
     readonly attack: number;
+  };
+  /** What it says aloud, and in which of the speech config's voices. */
+  readonly speech: {
+    /** Its voice as it wanders. */
+    readonly voice: string;
+    /** Its voice enraged. */
+    readonly angryVoice: string;
+    /** Chance, 0..1, that it says something as it leaves a balloon. */
+    readonly chatter: number;
+    /** What it may say as it leaves a balloon, one picked at random. */
+    readonly placing: readonly string[];
+    /** What it may say as it flies into a rage, one picked at random. */
+    readonly enraged: readonly string[];
   };
 }
 
@@ -342,6 +356,9 @@ function leaveBalloon(
     const balloon: BalloonState = { owner: self.id, colour: state.colour };
     spawn(game, BALLOON, { x: self.x, y: self.y }, balloon);
     playEach(game, self, [placed]);
+    const { speech } = config;
+    if (Math.random() < speech.chatter)
+      sayOneOf(game, self, speech.placing, speech.voice);
   }
   return { ...state, balloonAt: now + config.balloonGap };
 }
@@ -399,6 +416,9 @@ function boyDefinition(
         config.attackCooldown,
       );
       const cried = cry(state, struck, now, config);
+      // As it flies into a rage, it shouts at whoever it blames.
+      if (state.mode !== "enraged" && cried.mode === "enraged")
+        sayOneOf(game, entity, config.speech.enraged, config.speech.angryVoice);
       playEach(game, entity, [
         cried.cryAt !== struck.cryAt && sounds.angry,
         cried.attacking && sounds.attack,

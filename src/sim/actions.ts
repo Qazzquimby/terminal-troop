@@ -41,8 +41,10 @@ import { confirmAction, hold, nextAction } from "./prediction.js";
 import type { Session } from "./session.js";
 import { declaredSound, soundNoise } from "./sound.js";
 import type { Sound } from "./sound.js";
+import { MAX_LINE, SaidLine, sayHere, voiceOf } from "./speech.js";
 import { spendStamina } from "./stamina.js";
 import { actorTime, alter, placePlayer, queueAction } from "./steering.js";
+import { VOICE_TAG } from "./voice-noise.js";
 import type { WorldData } from "./world-data.js";
 
 /**
@@ -112,8 +114,14 @@ export interface Effect {
   /** Shown on the actor, as its item draws a use. */
   readonly use?: Use;
   /**
-   * How far, in pixels, the noise it makes carries; as far as its sound's range when left out,
-   * and none for a sound without one.
+   * A line its maker says aloud, in the voice the speech config names by id: heard from the
+   * maker, following it, and shown over it a while. It makes a voice's noise out to the voice's
+   * range, unless `noise` says otherwise.
+   */
+  readonly say?: SaidLine;
+  /**
+   * How far, in pixels, the noise it makes carries; as far as its sound's range, or its line's
+   * voice's, when left out, and none for a sound without one.
    */
   readonly noise?: number;
   /**
@@ -124,8 +132,24 @@ export interface Effect {
 }
 
 /** How far the noise `made` makes carries, in pixels; undefined for none. */
-const noiseOf = (made: Effect): number | undefined =>
-  made.noise ?? (made.sound === undefined ? undefined : soundNoise(made.sound));
+function noiseOf(game: Session, made: Effect): number | undefined {
+  if (made.noise !== undefined) return made.noise;
+  const sounded = made.sound === undefined ? undefined : soundNoise(made.sound);
+  const said =
+    made.say === undefined
+      ? undefined
+      : voiceOf(game.config.speech, made.say.voice).range;
+  if (sounded === undefined) return said;
+  return said === undefined ? sounded : Math.max(sounded, said);
+}
+
+/** The tags `made`'s noise carries past its maker's kind: a line said is a voice's noise. */
+const tagsOf = (made: Effect): readonly string[] => {
+  const tags = made.tags ?? [];
+  return made.say === undefined || tags.includes(VOICE_TAG)
+    ? tags
+    : [...tags, VOICE_TAG];
+};
 
 /**
  * How an action is being applied on this client:
@@ -151,13 +175,14 @@ const requests = new WeakMap<Action<never>, ContentEvent<unknown>>();
 function play(
   game: Session,
   by: string,
-  { at, sound, flash, use }: Effect,
+  { at, sound, flash, use, say }: Effect,
 ): void {
   if (sound !== undefined)
     void game.sfx.play(sound.url, at, game.local, {
       ...(sound.volume !== undefined && { volume: sound.volume }),
       ...(sound.range !== undefined && { range: sound.range }),
     });
+  if (say !== undefined) sayHere(game, by, at, say);
   if (flash !== undefined) showFlash(game, { at, ...flash });
   const actor = game.players.get(by);
   if (use !== undefined && actor !== undefined)
@@ -180,6 +205,7 @@ const SentEffect = z.object({
     })
     .optional(),
   use: z.object({ item: ItemId, hit: z.boolean() }).optional(),
+  say: SaidLine.optional(),
   noise: z.number().min(0).optional(),
   tags: z.array(z.string().min(1).max(32)).max(8).optional(),
 });
@@ -187,16 +213,21 @@ type SentEffect = z.infer<typeof SentEffect>;
 
 /** `made` as the host sends it on behalf of `by`, its noise tagged with `by`'s kind first. */
 function sent(game: Session, by: string, made: Effect): SentEffect {
-  const { at, sound, flash, use } = made;
-  const noise = noiseOf(made);
+  const { at, sound, flash, use, say } = made;
+  const noise = noiseOf(game, made);
   const tags =
-    noise === undefined ? [] : [...kindTags(game, by), ...(made.tags ?? [])];
+    noise === undefined ? [] : [...kindTags(game, by), ...tagsOf(made)];
   return {
     x: at.x,
     y: at.y,
     ...(sound !== undefined && { sound: sound.url }),
     ...(flash !== undefined && { flash }),
     ...(use !== undefined && { use }),
+    // A line too long to travel is cut short rather than lose the whole effect.
+    ...(say !== undefined &&
+      say.text !== "" && {
+        say: { ...say, text: say.text.slice(0, MAX_LINE) },
+      }),
     ...(noise !== undefined && { noise }),
     ...(tags.length > 0 && { tags }),
   };
@@ -206,7 +237,7 @@ function sent(game: Session, by: string, made: Effect): SentEffect {
  * `effect` as it arrived; a sound no content declared plays nothing. Its noise and tags are as
  * the host sent them, the noise of its sound included.
  */
-function arrived({ x, y, sound, flash, use, noise, tags }: SentEffect): {
+function arrived({ x, y, sound, flash, use, say, noise, tags }: SentEffect): {
   readonly made: Effect;
   readonly noise?: { readonly radius: number; readonly tags: string[] };
 } {
@@ -217,6 +248,7 @@ function arrived({ x, y, sound, flash, use, noise, tags }: SentEffect): {
       ...(declared !== undefined && { sound: declared }),
       ...(flash !== undefined && { flash }),
       ...(use !== undefined && { use }),
+      ...(say !== undefined && { say }),
     },
     ...(noise !== undefined && { noise: { radius: noise, tags: tags ?? [] } }),
   };

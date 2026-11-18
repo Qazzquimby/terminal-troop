@@ -28,6 +28,7 @@ import type {
   Point,
   Session,
   SimConfig,
+  Speech,
   VoiceClips,
   WorldContent,
   WorldKind,
@@ -113,6 +114,8 @@ export interface RoomDeps {
   readonly transport: Transport;
   readonly voice: Voice;
   readonly sfx: Sfx;
+  /** Says lines aloud for bodies that talk; silent when left out. */
+  readonly speech?: Speech;
   /** Each room joined lives in a child of this scope. */
   readonly scope: Scope;
   readonly clock: RoomClock;
@@ -697,6 +700,7 @@ export function createRoom(deps: RoomDeps): Room {
           seed,
         }),
         clips: clipsOf(deps.voice),
+        speech: deps.speech,
       },
     );
     registerContent(session, deps.content);

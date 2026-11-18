@@ -42,6 +42,7 @@ import {
   isSolid,
   isVisible,
   perceives,
+  captionOf,
   pickupTarget,
   stunLeft,
   lightSources,
@@ -207,6 +208,7 @@ function drawPlayer(
     ctx.fillText("away", player.x, player.y - player.radius - 22);
   }
   ctx.restore();
+  drawCaption(ctx, game, player);
 }
 
 /** Draws the white facing line from `at` in `direction` (radians) out to `radius`. */
@@ -1193,6 +1195,73 @@ function drawEntity(
     drawStunned(ctx, entity, now, STUN_ABOVE.entity);
   if (definition.healthBar)
     drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+  drawCaption(ctx, game, entity);
+}
+
+/** Pixels over a body's top the bottom of the line it says shows, clear of a name and bar. */
+const CAPTION_ABOVE = 30;
+/** Widest a caption's line runs, in characters, before it wraps. */
+const CAPTION_WIDTH = 28;
+/** Most lines a caption shows; the rest is cut with an ellipsis. */
+const CAPTION_LINES = 3;
+
+/** `text` broken into lines of at most `width` characters, at spaces where it can be. */
+export function wrapCaption(
+  text: string,
+  width: number,
+  most: number,
+): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter((part) => part !== "")) {
+    let rest = word;
+    while (rest.length > 0) {
+      const joined = line === "" ? rest : `${line} ${rest}`;
+      if (joined.length <= width) {
+        line = joined;
+        rest = "";
+      } else if (line !== "") {
+        lines.push(line);
+        line = "";
+      } else {
+        lines.push(rest.slice(0, width));
+        rest = rest.slice(width);
+      }
+    }
+  }
+  if (line !== "") lines.push(line);
+  if (lines.length <= most) return lines;
+  const kept = lines.slice(0, most);
+  const last = kept[most - 1] ?? "";
+  kept[most - 1] = `${last.slice(0, Math.max(0, width - 1))}…`;
+  return kept;
+}
+
+/** The line `body` is saying, if any, in a dark box over it. */
+function drawCaption(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  body: Circle & { readonly id: string },
+): void {
+  const text = captionOf(game, body.id);
+  if (text === null) return;
+  const lines = wrapCaption(text, CAPTION_WIDTH, CAPTION_LINES);
+  const size = 11;
+  const lineHeight = size + 2;
+  ctx.save();
+  ctx.font = `${String(size)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
+  const bottom = body.y - body.radius - CAPTION_ABOVE;
+  const top = bottom - lines.length * lineHeight;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+  ctx.fillRect(body.x - width / 2 - 4, top - 3, width + 8, bottom - top + 5);
+  ctx.fillStyle = "#fff";
+  lines.forEach((line, index) => {
+    ctx.fillText(line, body.x, top + (index + 1) * lineHeight);
+  });
+  ctx.restore();
 }
 
 /**
