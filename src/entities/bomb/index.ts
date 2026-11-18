@@ -101,6 +101,7 @@ export const bomb = defineEntity(NAME, (config: BombConfig) => {
     radius: config.radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: BombState,
     update(entity, state, _dt, game) {

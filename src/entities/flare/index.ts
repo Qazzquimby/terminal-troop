@@ -152,6 +152,7 @@ export const flare = defineEntity(NAME, (config: FlareConfig) => {
     radius: config.radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: FlareState,
     light: () => light,

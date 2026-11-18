@@ -5,13 +5,13 @@ import type {
   Entity,
   Footprint,
   Interpolated,
-  LightSource,
   Player,
   Point,
   Session,
   TileMap,
   VisibilityPolygon,
   VisionSource,
+  Occluder,
   WallFace,
   World,
   WorldEntity,
@@ -45,7 +45,8 @@ import {
   captionOf,
   pickupTarget,
   stunLeft,
-  lightSources,
+  sightLights,
+  litFrom,
   litWalls,
   movement,
   pocketRect,
@@ -53,6 +54,8 @@ import {
   renderAim,
   drawnLocal,
   renderPosition,
+  shadowCasters,
+  shadowsOf,
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
@@ -814,14 +817,31 @@ function drawEdgeGlows(
   ctx.restore();
 }
 
-/** Visibility polygons for the sources that can reach the view, cut off at its far corner. */
+/**
+ * Visibility polygons for the sources that can reach the view, cut off at its far corner, and
+ * for lights, shadowed by `occluders`.
+ */
 function tracePolygons(
   map: TileMap,
   sources: readonly VisionSource[],
   camera: Camera,
   rays: number,
+  occluders: readonly Occluder[] = [],
 ): VisibilityPolygon[] {
-  const polygons: VisibilityPolygon[] = [];
+  return traceEach(map, sources, camera, rays, occluders).filter(
+    (polygon) => polygon !== null,
+  );
+}
+
+/** As `tracePolygons`, one for each of `sources`, null for one that cannot reach the view. */
+function traceEach(
+  map: TileMap,
+  sources: readonly VisionSource[],
+  camera: Camera,
+  rays: number,
+  occluders: readonly Occluder[] = [],
+): (VisibilityPolygon | null)[] {
+  const polygons: (VisibilityPolygon | null)[] = [];
 
   for (const source of sources) {
     const maxDistance = Math.hypot(
@@ -834,10 +854,12 @@ function tracePolygons(
         Math.abs(source.y - camera.y - viewHeight(camera)),
       ),
     );
-    if (!inView({ ...source, radius: source.range ?? maxDistance }, camera))
+    if (!inView({ ...source, radius: source.range ?? maxDistance }, camera)) {
+      polygons.push(null);
       continue;
+    }
 
-    polygons.push(visibilityPolygon(map, source, rays, maxDistance));
+    polygons.push(visibilityPolygon(map, source, rays, maxDistance, occluders));
   }
 
   return polygons;
@@ -1537,7 +1559,11 @@ export function draw(
       ? (game.players.get(eye.player.id) ?? game.local)
       : game.local;
   const sources = visionOrigins(game, viewer);
-  const lights = lightSources(game, viewer);
+  const sight = sightLights(game, viewer);
+  const lights = [...sight, ...emittedLights(game)];
+  // Every body standing in a light given off or carried shadows it (#384).
+  const occluders = shadowCasters(game);
+  const shadows = shadowsOf(occluders);
   const { map } = game.world;
   const { rays } = game.config.vision;
   const area = viewArea(camera);
@@ -1551,14 +1577,18 @@ export function draw(
   // Deepdark no light lights but out to its reach into it.
   const unlitDeep = (point: Point) =>
     deep(point) &&
-    !lights.some((light) => canSeeFrom(map, intoDeepdark(light), point));
+    !lights.some((light) =>
+      litFrom(map, intoDeepdark(light), point, shadows(light)),
+    );
   const dark = (point: Point) =>
     (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
   const sunlit = ambientPolygons(game.world, area, "sun", daylight, fronts);
   const fixtureLit = ambientPolygons(game.world, area, "fixture", 1, fronts);
   const seen = tracePolygons(map, sources, camera, rays);
+  // Each light traced once, its shadows cut out of it, for the light it gives and its tint.
+  const traced = traceEach(map, lights, camera, rays, occluders);
   const lit = [
-    ...tracePolygons(map, lights, camera, rays),
+    ...traced.filter((polygon) => polygon !== null),
     ...sunlit,
     ...fixtureLit,
   ];
@@ -1573,8 +1603,7 @@ export function draw(
       lights,
       body,
       game.config.vision.footprintSpacing,
-      ambient,
-      dark,
+      { ambient, dark, shadows },
     );
   // Bodies passing themselves off as walls, drawn as the walls they pose as: their cells join the
   // real walls round them, lit and banded as those are.
@@ -1643,21 +1672,17 @@ export function draw(
       featheredMask(mask, polygons, camera, width, height, colour),
     );
   }
-  // Each colour of emitted light laid on its own, a flare's red apart from a flashlight's yellow.
-  const byTint = new Map<string, LightSource[]>();
-  for (const light of emittedLights(game)) {
+  // Each colour of emitted light laid on its own, a flare's red apart from a flashlight's yellow:
+  // every light but the viewer's own sight, its first two.
+  const byTint = new Map<string, VisibilityPolygon[]>();
+  lights.forEach((light, i) => {
+    const polygon = traced[i];
+    if (i < sight.length || polygon === null || polygon === undefined) return;
     const colour = light.tint ?? LIGHT_TINT;
-    byTint.set(colour, [...(byTint.get(colour) ?? []), light]);
-  }
-  for (const [colour, emitted] of byTint) {
-    const tint = featheredMask(
-      mask,
-      tracePolygons(map, emitted, camera, rays),
-      camera,
-      width,
-      height,
-      colour,
-    );
+    byTint.set(colour, [...(byTint.get(colour) ?? []), polygon]);
+  });
+  for (const [colour, polygons] of byTint) {
+    const tint = featheredMask(mask, polygons, camera, width, height, colour);
     layLight(scene, tint);
   }
   if (darks.length > 0) {
@@ -1672,7 +1697,7 @@ export function draw(
       deepdarkMask(
         mask,
         fronts.deep,
-        tracePolygons(map, lights.map(intoDeepdark), camera, rays),
+        tracePolygons(map, lights.map(intoDeepdark), camera, rays, occluders),
         camera,
       ),
     );
@@ -1689,7 +1714,11 @@ export function draw(
     blind === 0 &&
     (ripple.player ||
       (inView({ ...ripple.origin, radius: 0 }, camera) &&
-        isVisible(map, sources, lights, ripple.origin, ambient, dark)));
+        isVisible(map, sources, lights, ripple.origin, {
+          ambient,
+          dark,
+          shadows,
+        })));
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));
 

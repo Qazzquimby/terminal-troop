@@ -109,6 +109,7 @@ export function registerWorldItems(game: Session): void {
     radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [ITEM_TAG],
     data: WorldItemData,
     onlyInDeepdark: (_entity, { item }, view) =>

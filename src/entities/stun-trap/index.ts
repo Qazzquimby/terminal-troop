@@ -113,6 +113,7 @@ export const stunTrap = defineEntity(NAME, (config: StunTrapConfig) => {
     radius: config.radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: TrapState,
     light(_entity, state) {

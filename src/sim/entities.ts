@@ -191,6 +191,11 @@ export interface EntityDefinition<S> {
     game: Session,
   ) => S;
   /**
+   * Whether it casts a shadow, blocking the lights given off round it as a wall does (#384); true
+   * when left out. False for a kind lying flat on the ground, such as a mine or a teleporter pad.
+   */
+  readonly castsShadow?: boolean;
+  /**
    * Whether, given its state, no body perceives it but while it lies in deepdark: out of it, it
    * is neither drawn, found among bodies, heard nor picked up. Every body perceives a kind without
    * it wherever it is; `perceives` judges it for every rule.
@@ -314,6 +319,8 @@ export interface EntityType {
     by: { readonly id: string },
     game: Session,
   ): void;
+  /** Whether it casts a shadow in the lights given off round it. */
+  readonly castsShadow: boolean;
   /** Whether it is perceived only while it lies in deepdark. */
   onlyInDeepdark(entity: WorldEntity, game: Session): boolean;
   minimap(
@@ -457,6 +464,7 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (parsed.success) entity.data = grabbed(entity, parsed.data, by, game);
     },
+    castsShadow: definition.castsShadow ?? true,
     onlyInDeepdark(entity, game) {
       const { onlyInDeepdark } = definition;
       // Most kinds show anywhere, and pay nothing to parse their state for it.
