@@ -1581,6 +1581,10 @@ export const config = {
       certainAfter: END_GAME,
       headStart: 600,
     },
+    // The F3 debug menu spawns a monster or item 10 cells ahead of whoever asks, short of any
+    // wall in the way, with a pop heard 8 cells out that stirs nothing. A host takes requests in
+    // development and under ?debug; `enabled` lets a production host without ?debug take them.
+    debugSpawn: { enabled: false, cells: 10, soundRange: CELL * 8 },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.

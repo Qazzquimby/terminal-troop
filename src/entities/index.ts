@@ -30,8 +30,15 @@ import { apexPredator } from "./apex-predator/index.js";
 import { peeper } from "./peeper/index.js";
 import { mimic } from "./mimic/index.js";
 import { spawner } from "./spawning.js";
+import { debugSpawn } from "./debug-spawn/index.js";
 
 export { arrive, arrivingKinds } from "./spawning.js";
+export {
+  requestSpawn,
+  spawnChoices,
+  takesDebugSpawns,
+} from "./debug-spawn/index.js";
+export type { SpawnChoice } from "./debug-spawn/index.js";
 
 export {
   departingIn,
@@ -90,6 +97,8 @@ const ENTITIES = [
   mimic,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
+  // Registers no kind either: spawns those above, and items, from the debug menu.
+  debugSpawn,
 ] as const;
 
 /** Each entry's config, under its name. */
