@@ -1088,6 +1088,14 @@ export const config = {
       speedShare: 1.3, // of a player's walk
       slowShare: 0.9, // with a player within slowRange ahead
       slowRange: CELL * 4,
+      handling: {
+        acceleration: CELL * 6, // px/s²
+        braking: CELL * 8, // px/s²
+        turnRate: 4, // rad/s
+        cornerShare: 0.35, // of its speed, into a right-angle turn or sharper
+        lookahead: CELL, // down its way, the spot it steers at
+        reach: CELL / 2, // a waypoint this near is passed
+      },
       ride: {
         min: CELL * 14,
         max: CELL * 28,
@@ -1107,6 +1115,7 @@ export const config = {
         speedShare: 2, // of a player's walk, past a sprint
         overshoot: CELL * 6, // past whatever hurt it
         reaim: 0.75, // seconds between aims at it
+        turnRate: 6, // rad/s
       },
       stall: { distance: CELL, seconds: 1 }, // less headway than this on a ride, it plans another
       bellRange: CELL * 8, // rings at a player this near on its way
@@ -1114,9 +1123,11 @@ export const config = {
       damage: 70,
       attackCooldown: 1,
       creakInterval: 0.8,
+      skidCooldown: 1.5,
       sounds: {
         bell: CELL * 10,
         creak: CELL * 3,
+        skid: CELL * 5,
         hit: CELL * 6,
         rage: CELL * 14,
       },
