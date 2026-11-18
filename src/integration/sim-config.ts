@@ -11,11 +11,6 @@ import type {
 import type { GenerationConfig, SimConfig } from "../sim/index.js";
 import type { Station } from "../stations/index.js";
 
-/**
- * A road 8 to 16 cells wide, bending every 12 columns by up to 6 rows, kept 10 rows off the top and
- * bottom; 2 to 5 cells of yard; rooms 3x3 to 8x8. The start is the first 5 columns, the exit the
- * last 5.
- */
 export const testGeneration: GenerationConfig = {
   road: { width: { min: 8, max: 16 }, step: 12, meander: 6, margin: 10 },
   yard: {
@@ -40,14 +35,7 @@ export const testGeneration: GenerationConfig = {
   exit: 5,
 };
 
-/**
- * Tuning for tests that build a whole session. A full stamina bar lasts 3s of sprinting and
- * refills in 4s after a 0.6s rest. A noise seems to come from within a fifth of its distance of
- * where it was made. Walking steps every 0.5s, heard 150px off; sprinting every 0.25s, 450px off;
- * crouching, at half speed, every 0.75s, 60px off. A player new to a world starts within 100px of its
- * rally point. A guest holds what it predicted of an entity for up to 0.5s. Speech is judged by its loudest level over 0.5s: from 0.3 it carries
- * 100px, up to 500px from 0.8, in steps of 50px, rippling every 0.4s.
- */
+// Tuning for tests that build a whole session. Units as in src/config.ts.
 export const testSimConfig: SimConfig = {
   world: {
     cell: 50,
@@ -153,10 +141,6 @@ export const testSimConfig: SimConfig = {
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };
 
-/**
- * Each noise the local player hears ripples for 0.5s, its ring full grown in 0.1s; one unseen
- * glows 50px wide, 10px in from the screen's edge.
- */
 export const testRippleConfig: RippleConfig = {
   duration: 0.5,
   expand: 0.1,
@@ -171,7 +155,6 @@ export const testRippleConfig: RippleConfig = {
   colour: "#fff",
 };
 
-/** Remembered terrain is saved at most once a second, for the three worlds entered last. */
 export const testMapMemoryConfig: MapMemoryConfig = {
   saveInterval: 1,
   maxRooms: 3,
@@ -191,38 +174,10 @@ export const testMapMemoryConfig: MapMemoryConfig = {
 /** A kind the spawner never picks: it has no weight. */
 const NEVER = { weight: 0, tries: 24 } as const;
 
-/**
- * Three zombies scattered in the 4000x3000 test world, two in the dev square; they walk at 50px/s,
- * chase at 200px/s, see 300px, have 40 health, bark every 4 to 8 seconds, and hit for 25 at most
- * every 1.5 seconds. The spawner brings nothing unless a test gives a kind weight: it then rolls
- * every 5 seconds, half of them bringing nothing as a world begins and every one 20 seconds in,
- * and a new world starts with 30 seconds of rolls. A zombie it brings arrives alone, never within
- * 1100px of a player. A cruiser starts at the rally point, its two headlights
- * 45 degree cones reaching 400px. A stun trap arms in 3s and stuns for 5s within 250px. The
- * snail creeps at a fifth of a player's pace and kills what it touches. No blind dog nor exploder
- * appears unless a test spawns one: a blind dog 144px across, felled by three test shovel hits,
- * charging at full suspicion of 1000; a
- * exploder that feels players 600px off, lights a 1s fuse within 100px of one and bursts 150px
- * round, from 100 damage to 30. Nor does a sleeper or a statue. No stalker nor hoarder appears
- * unless a test spawns one: a
- * stalker at 1.2 times the test player's walk, creeping at 0.1 times it, watched 700px down a player's cone, retreating
- * 600px clear; hoarders at 0.8 and 1.1 times it, seeing 300px, guarding 200px round their
- * nest, spooked within 400px, avenging a theft until the thief is 250px from it. No mine layer
- * appears unless a test spawns one: one at the test player's walk, felled by a test shovel hit,
- * seeing 400px all round; its land mines arm in 3s and go off within 100px, bursting 100px round
- * from 120 damage to 60. No giant snail appears unless a test spawns one: 94px across, at 0.3
- * times the test player's walk, breaking a wall it presses for 5s. No living wall appears unless
- * a test spawns one: one that moves on a body within 500px at 0.8 times the test player's walk,
- * held by any gaze within 700px, striking for 80 from behind, fleeing at twice the test sprint
- * for 3s once hurt. No ghost girl appears unless a test spawns one: as the game's, but appearing
- * 200 to 600px off, staying away 10s and chasing for 6s, with 10 patience. No doppelganger
- * appears unless a test spawns one: the test player's size, health and walk, held by any gaze
- * within 700px, biting for 35 within 30px of a body within 75px, heading for where it last knew a
- * body once unwatched for 2s, speaking every 6 to 12s.
- */
+// The spawner brings nothing unless a test gives a kind weight; kinds appear only when a test
+// spawns them.
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
-  // A test host takes debug spawns, 10 cells ahead.
   debugSpawn: { enabled: true, cells: 10, soundRange: 400 },
   // No world laid by a test gets doors; a test of doors lays its own.
   door: {
@@ -534,6 +489,9 @@ export const testEntitiesConfig = {
     ignores: ["statue"],
     targets: ["player"],
     sightRange: 800,
+    watchRange: Infinity,
+    watchMargin: Math.PI / 18,
+    watchPad: 12,
     patrol: { distance: 300, spread: 50, tries: 16, retry: 2 },
     huntSeconds: 10,
     repathInterval: 0.25,
@@ -766,6 +724,7 @@ export const testEntitiesConfig = {
     wanderShare: 0.5,
     wanderRange: 200,
     sightRange: 300,
+    followRange: 500,
     standGap: 12.5,
     repathInterval: 0.3,
     calmSeconds: 8,
@@ -778,6 +737,7 @@ export const testEntitiesConfig = {
   peeper: {
     spawning: { ...NEVER, unseenDistance: 700, most: 4 },
     ignores: ["peeper"],
+    targets: ["player"],
     radius: 12,
     // Four test shovel hits.
     maxHealth: 100,
@@ -816,7 +776,6 @@ export const testEntitiesConfig = {
   },
 } satisfies EntitiesConfig;
 
-/** A scanner sensing 1000px out, beeping every 2s at the edge down to 10 times a second. */
 const TEST_SCANNER = {
   weight: 0,
   uses: 100,
@@ -831,23 +790,14 @@ const TEST_SCANNER = {
   clickRange: 50,
 };
 
-/**
- * Items: a shovel that hits 40px ahead for 25, so a test zombie falls to its second hit, at most
- * twice a second; three scrap, each selling for 2 within 150px of the cruiser, one every quarter
- * second, clattering 400px round as it drops. A handgun with 6 shots of 50 out to 600px; a
- * shotgun with 2 blasts of six shots of 5, fanned across 30 degrees out to 400px; a flashlight
- * whose 45 degree beam reaches 600px, its battery 10 seconds. A walkie with a 10-second battery
- * whose speaker carries half as far as the speech it plays; a radio heard, and making noise,
- * 1000px round each second. All weigh nothing, so what a player carries does not slow it, and no
- * loot is laid.
- */
+// Every item weighs nothing, so carrying never slows a test player.
 export const testItemsConfig: ItemsConfig = {
   shovel: {
     weight: 0,
     loot: { weight: 30, rarity: "common" },
     radius: 20,
     reach: 40,
-    damage: 25,
+    damage: 25, // a test zombie falls to the second hit
     knockback: 20,
     cooldown: 0.5,
     duration: 0.1,
@@ -1031,16 +981,11 @@ export const testItemsConfig: ItemsConfig = {
   },
 };
 
-/**
- * Moves: a kick that lunges one body length and hits 30px ahead of where it lands for 10, so a
- * test zombie falls to its fourth, sending what it hits two of the kicker's body lengths away. It costs
- * a third of the test stamina bar, at most twice a second.
- */
 export const testMovesConfig: MovesConfig = {
   kick: {
     reach: 30,
     radius: 20,
-    damage: 10,
+    damage: 10, // a test zombie falls to the fourth
     knockback: 2,
     cooldown: 0.5,
     stamina: 30,
@@ -1049,7 +994,6 @@ export const testMovesConfig: MovesConfig = {
   },
 };
 
-/** A flash lasts 0.5s, swelling from half its size. */
 export const testFlashConfig: FlashConfig = {
   duration: 0.5,
   start: 0.5,

@@ -11,6 +11,7 @@ import {
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
+  GazePull,
   Playing,
   Session,
   Sound,
@@ -32,8 +33,10 @@ const blinkUrl = new URL("./sfx/blink.mp3", import.meta.url).href;
 const NAME = "peeper";
 
 /**
- * The peeper: a lone eye that never moves, dragging the gaze of every body that could see it onto
- * it, and hurting every body looking at it. Distances in pixels, times in sim seconds.
+ * The peeper: a lone eye that never moves, dragging the gaze of every body it hunts that could
+ * see it onto it, and hurting every body it hunts that looks at it. What it hunts is `targets`,
+ * sparing `ignores`, as for any hunter: given no `targets`, any body with eyes. Distances in
+ * pixels, times in sim seconds.
  */
 export interface PeeperConfig extends Hunting {
   readonly spawning: SpawningConfig;
@@ -99,14 +102,17 @@ interface Sounds {
   readonly blink: Sound;
 }
 
-/** Every body looking at `self`, nearest first, but the kinds it ignores. */
+/** Every body looking at `self` that it hunts, nearest first: its `targets`, sparing `ignores`. */
 function lookers(
   game: Session,
   self: WorldEntity,
   config: PeeperConfig,
 ): string[] {
+  const { ignores, targets } = config;
   return lookersAt(game, self, {
-    except: (body) => hasKindTag(game, body.id, config.ignores),
+    except: (body) =>
+      hasKindTag(game, body.id, ignores) ||
+      (targets !== undefined && !hasKindTag(game, body.id, targets)),
   })
     .sort(
       (a, b) =>
@@ -281,7 +287,12 @@ function definition(config: PeeperConfig): EntityDefinition<PeeperState> {
   };
   // Declared for the noise it makes; played as the drone below, while anyone looks.
   sound({ url: stareUrl, range: config.sounds.stare });
-  const pull = { seconds: config.pullSeconds };
+  // It pulls the gazes of the bodies it hunts, and those alone.
+  const pull: GazePull = {
+    seconds: config.pullSeconds,
+    ignores: config.ignores,
+    ...(config.targets !== undefined && { targets: config.targets }),
+  };
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
@@ -325,11 +336,12 @@ function definition(config: PeeperConfig): EntityDefinition<PeeperState> {
 }
 
 /**
- * The peeper: a lone eye that never moves. Every body with a view cone that could see it by
- * turning, it lying within the cone's reach along a clear line, has its facing dragged round onto
- * it, a player's aim as if the mouse were held over it, a zombie's or a stalker's gaze alike; see
- * gaze-pull.ts. Each body looking at it, but its own kind, loses health steadily. With no body it
- * hunts near for a while it blinks out, unseen, and opens somewhere it might have arrived.
+ * The peeper: a lone eye that never moves. Every body it hunts with a view cone that could see it
+ * by turning, it lying within the cone's reach along a clear line, has its facing dragged round
+ * onto it, a player's aim as if the mouse were held over it; see gaze-pull.ts. Each body it hunts
+ * that looks at it loses health steadily. As configured it hunts players alone, leaving other
+ * monsters' gazes, and so their steering, be. With no body it hunts near for a while it blinks
+ * out, unseen, and opens somewhere it might have arrived.
  */
 export const peeper = defineEntity(NAME, (config: PeeperConfig) => ({
   ...definition(config),

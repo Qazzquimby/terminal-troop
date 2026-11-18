@@ -20,44 +20,34 @@ import {
   AREA,
   aimAt,
   footprintPoints,
-  ambientLightAt,
   ambientPolygons,
   canSeeFrom,
-  darkSources,
   eyesOf,
-  frontsNow,
   intoDeepdark,
   isDeepdark,
   nearDeepdark,
-  daylightNow,
-  emittedLights,
-  inDarkness,
   footprintOf,
   glyphOf,
   heldItemOf,
   isAboard,
   isGhost,
   isStunned,
-  isBodyVisible,
   isSolid,
   isVisible,
   perceives,
   captionOf,
   pickupTarget,
   stunLeft,
-  sightLights,
-  litFrom,
   litWalls,
   movement,
   pocketRect,
   pocketsIn,
+  pulledAim,
   renderAim,
   drawnLocal,
   renderPosition,
-  shadowCasters,
-  shadowsOf,
   visibilityPolygon,
-  visionOrigins,
+  viewOf,
 } from "../sim/index.js";
 import { drawApparition } from "./apparition.js";
 import { toViewSpace, worldToScreen } from "./camera.js";
@@ -1502,7 +1492,8 @@ function drawEyeBanner(
 /**
  * A render-time copy of the session with every body blended `alpha` of the way from its
  * pre-step position to its current one. Remote players turn along the shortest arc; the local
- * player faces `mouse` (a world point) from where it is drawn. The simulation is left untouched.
+ * player faces `mouse` (a world point) from where it is drawn, dragged round as the simulation
+ * drags it by any body pulling its gaze. The simulation is left untouched.
  */
 export function interpolatedView(
   game: Session,
@@ -1514,7 +1505,11 @@ export function interpolatedView(
     ...renderPosition(body, alpha),
   });
   const placed = { ...game.local, ...drawnLocal(game, alpha) };
-  const local = { ...placed, aim: aimAt(placed, mouse) };
+  // Drawn from the mouse alone, a body pulling the gaze would never be seen to.
+  const local = {
+    ...placed,
+    aim: pulledAim(game, placed, aimAt(placed, mouse)),
+  };
   const players = new Map(
     [...game.players].map(([id, player]) => [
       id,
@@ -1558,30 +1553,13 @@ export function draw(
     eye.kind === "watch"
       ? (game.players.get(eye.player.id) ?? game.local)
       : game.local;
-  const sources = visionOrigins(game, viewer);
-  const sight = sightLights(game, viewer);
-  const lights = [...sight, ...emittedLights(game)];
-  // Every body standing in a light given off or carried shadows it (#384).
-  const occluders = shadowCasters(game);
-  const shadows = shadowsOf(occluders);
+  // What shows, worked out by the one test the sim's rules share too (#457).
+  const view = viewOf(game, viewer);
+  const { sources, sight, lights, occluders, shadows, ambient, dark } = view;
+  const { darks, fronts, daylight, shows } = view;
   const { map } = game.world;
   const { rays } = game.config.vision;
   const area = viewArea(camera);
-  const daylight = daylightNow(game);
-  const fronts = frontsNow(game);
-  const ambient = (point: Point) =>
-    ambientLightAt(game.world, point, daylight, fronts) !== null;
-  // Darkness something gives off, which no light lights: nothing in it shows.
-  const darks = darkSources(game);
-  const deep = (point: Point) => isDeepdark(game, point, darks);
-  // Deepdark no light lights but out to its reach into it.
-  const unlitDeep = (point: Point) =>
-    deep(point) &&
-    !lights.some((light) =>
-      litFrom(map, intoDeepdark(light), point, shadows(light)),
-    );
-  const dark = (point: Point) =>
-    (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
   const sunlit = ambientPolygons(game.world, area, "sun", daylight, fronts);
   const fixtureLit = ambientPolygons(game.world, area, "fixture", 1, fronts);
   const seen = tracePolygons(map, sources, camera, rays);
@@ -1596,15 +1574,6 @@ export function draw(
   // A stunned viewer sees nothing, so learns nothing of the map.
   const blind = blindness(game, viewer);
   if (blind === 0) memory.see({ seen, lit, walls: realWalls }, area, now);
-  const shows = (body: Footprint): boolean =>
-    isBodyVisible(
-      map,
-      sources,
-      lights,
-      body,
-      game.config.vision.footprintSpacing,
-      { ambient, dark, shadows },
-    );
   // Bodies passing themselves off as walls, drawn as the walls they pose as: their cells join the
   // real walls round them, lit and banded as those are.
   const posing = posingCells(game, camera, viewer.id, shows);

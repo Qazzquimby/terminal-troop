@@ -257,6 +257,19 @@ export interface Watching extends Hunting {
 }
 
 /**
+ * Whether a kind watching as `watching` says heeds `body`'s gaze: it is of the kinds `watchedBy`
+ * names, or with none named of any kind but those it ignores.
+ */
+export function heeds(
+  game: Session,
+  body: { readonly id: string },
+  { ignores, watchedBy }: Watching,
+): boolean {
+  if (hasKindTag(game, body.id, ignores)) return false;
+  return watchedBy === undefined || hasKindTag(game, body.id, watchedBy);
+}
+
+/**
  * The eyes of every living body whose gaze `self` heeds, as they are now: those of the kinds
  * `watchedBy` names, or with none named any body but the kinds it ignores. A stunned or blind body
  * has none, nor one with no view cone.
@@ -266,12 +279,9 @@ export function watchers(
   self: { readonly id: string },
   watching: Watching,
 ): Sight[] {
-  const { ignores, watchedBy } = watching;
   const sights: Sight[] = [];
   for (const body of livingBodies(game)) {
-    if (body.id === self.id || hasKindTag(game, body.id, ignores)) continue;
-    if (watchedBy !== undefined && !hasKindTag(game, body.id, watchedBy))
-      continue;
+    if (body.id === self.id || !heeds(game, body, watching)) continue;
     const sight = eyesOf(game, body);
     if (sight !== null && sight.cone !== null) sights.push(sight);
   }
