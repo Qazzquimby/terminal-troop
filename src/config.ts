@@ -619,7 +619,7 @@ export const config = {
     snail: {
       spawning: {
         weight: 10,
-        after: 240, // seconds into a world before any spawn
+        after: 180, // seconds into a world before any spawn
         tries: 24,
         unseenDistance: CELL * 14,
         // Spawn chance falls off nearer than `distance` to these, to never when touching.
@@ -636,7 +636,7 @@ export const config = {
     giantSnail: {
       spawning: {
         weight: 5,
-        after: 480,
+        after: 60*5,
         tries: 24,
         unseenDistance: CELL * 14,
         apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
@@ -657,7 +657,7 @@ export const config = {
     ghostGirl: {
       spawning: {
         weight: 3,
-        after: 60 * 3,
+        after: 60 * 2,
         tries: 24,
         most: 1,
         unseenDistance: CELL * 14,
