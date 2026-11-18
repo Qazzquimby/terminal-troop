@@ -5,13 +5,16 @@ import type { PeerMix } from "./voice.js";
 
 /**
  * How much a voice carried from one place to another breaks up on the way, by how far it went:
- * `floor` up to `clear` pixels, rising smoothly to all of it at `lost` pixels and past.
+ * `floor` up to `clear` pixels, rising smoothly to `ceiling` at `lost` pixels and past. A voice
+ * carries however far it goes; `ceiling` is how badly it breaks up at worst.
  */
 export interface InterferenceFalloff {
   readonly clear: number;
   readonly lost: number;
   /** The interference even side by side, 0..1: a cheap radio is never clean. */
   readonly floor: number;
+  /** The interference at `lost` and past, 0..1. */
+  readonly ceiling: number;
 }
 
 /**
@@ -47,7 +50,7 @@ export function interferenceAt(
         : 0
       : Math.min(1, Math.max(0, (distance - falloff.clear) / span));
   const smooth = t * t * (3 - 2 * t);
-  return falloff.floor + (1 - falloff.floor) * smooth;
+  return falloff.floor + (falloff.ceiling - falloff.floor) * smooth;
 }
 
 /** The interference on a voice carried by `route`: its floor when it went nowhere to say. */

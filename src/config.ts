@@ -1522,8 +1522,13 @@ export const config = {
     silent: 600,
     pan: 300,
     radio: { full: CELL, silent: CELL * 8, pan: 300 }, // a walkie's speaker
-    // Between walkies: floor: breakup always present; rises past `clear` apart, total at `lost`.
-    interference: { clear: CELL * 6, lost: CELL * 90, floor: 0.1 },
+    // Between walkies, 0..1: `floor` up to `clear` apart, rising to `ceiling` at `lost` and on.
+    interference: {
+      clear: CELL * 6,
+      lost: CELL * 120,
+      floor: 0.1,
+      ceiling: 0.35,
+    },
   },
   // Walkie speaker. Ranges go from `clean` (close walkies) to `worst` (far apart).
   voiceRadio: {
