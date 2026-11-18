@@ -165,10 +165,13 @@ export function livingBodies(
   ];
 }
 
-/** A point and how far from it a rule reaches, edge included. */
+/**
+ * A point and how far from it a rule reaches, edge included: one range for every body, or each
+ * body's own, such as how near it must be to touch.
+ */
 export interface Near {
   readonly at: Point;
-  readonly range: number;
+  readonly range: number | ((body: Body) => number);
 }
 
 /**
@@ -176,10 +179,13 @@ export interface Near {
  * for none, or a range that is not finite. One at no finite distance counts as near, as the
  * rules that measure past it, such as sight, let it through.
  */
-function isNear(near: Near | null): (body: Point) => boolean {
-  if (near === null || !Number.isFinite(near.range)) return () => true;
+function isNear(near: Near | null): (body: Body) => boolean {
+  if (near === null) return () => true;
   const { at, range } = near;
-  return (body) => !(Math.hypot(body.x - at.x, body.y - at.y) > range);
+  const away = (body: Body) => Math.hypot(body.x - at.x, body.y - at.y);
+  if (typeof range === "function") return (body) => !(away(body) > range(body));
+  if (!Number.isFinite(range)) return () => true;
+  return (body) => !(away(body) > range);
 }
 
 /** Whether the body `id` is gone from the world, dead, or a ghost. */
