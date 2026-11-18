@@ -163,7 +163,8 @@ function heldTarget(
 ): Body | null {
   const body = livingBody(game, state.target);
   if (body === null) return null;
-  if (!preyFor(game, self, config).includes(body)) return null;
+  if (!preyFor(game, self, config, { at: body, range: 0 }).includes(body))
+    return null;
   const range = config.sight.range;
   return canSeeFrom(game.world.map, { x: self.x, y: self.y, range }, body)
     ? body

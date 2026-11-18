@@ -135,11 +135,13 @@ function stepTable(rows: readonly Row[]): string {
       ms(median(runs.map((run) => run.send.mean))),
       sumBy(runs, (run) => run.replaced),
       busy === 0 ? "" : `${String(busy)}/${String(runs.length)}`,
+      // One a seed: runs of one seed step alike, so more would mean something is not seeded.
+      [...new Set(runs.map((run) => run.digest))].join(" "),
     ].join(" | ")} |`;
   });
   return [
-    "| regime | mix | N | entities | runs | step mean (median) | step mean (least) | step median | step p95 | step max | draw mean | send mean | replaced | loaded |",
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    "| regime | mix | N | entities | runs | step mean (median) | step mean (least) | step median | step p95 | step max | draw mean | send mean | replaced | loaded | digest |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ...lines,
   ].join("\n");
 }

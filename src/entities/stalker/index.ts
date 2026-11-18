@@ -46,6 +46,7 @@ import {
   preyFor,
   seenPrey,
   touching,
+  watchedAt,
   watchers,
 } from "../bodies.js";
 import type { Watching } from "../bodies.js";
@@ -388,7 +389,7 @@ function think(
   }
   const timed = state.mode === "retreat" || state.mode === "enraged";
   if (timed && now < state.until) return state;
-  if (gazeOn(game, self, config)(self))
+  if (watchedAt(game, self, config, self))
     return enter(state, "retreat", now, now + config.retreatSeconds);
   const quarry = quarryOf(game, self, config);
   if (quarry !== null) return stalk(state, self, quarry, game, config);

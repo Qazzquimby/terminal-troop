@@ -94,17 +94,18 @@ export interface EngagementConfig {
 }
 
 /**
- * Whether a world entity at `at` is in play: within the engagement range of a living player, not
- * a ghost, but one in a vehicle too.
+ * Whether a world entity at a point is in play: within the engagement range of a living player,
+ * not a ghost, but one in a vehicle too. The players are taken once, as they stand now, for a
+ * rule that asks of many points.
  */
-function inPlayAt(game: Session, at: Point): boolean {
+function inPlayNow(game: Session): (at: Point) => boolean {
   const { range } = game.config.engagement;
-  return (
-    range === Infinity ||
-    livingPlayers(game).some(
+  if (range === Infinity) return () => true;
+  const players = livingPlayers(game);
+  return (at) =>
+    players.some(
       (player) => Math.hypot(player.x - at.x, player.y - at.y) <= range,
-    )
-  );
+    );
 }
 
 /**
@@ -112,7 +113,7 @@ function inPlayAt(game: Session, at: Point): boolean {
  * player.
  */
 function inPlay(game: Session, body: Body): boolean {
-  return isPlayer(game, body) || inPlayAt(game, body);
+  return isPlayer(game, body) || inPlayNow(game)(body);
 }
 
 /**
@@ -133,26 +134,58 @@ export function engages(game: Session, by: string | null, body: Body): boolean {
  * inside a vehicle (see `isShutIn`): nothing out in the world sees, strikes or targets it. So is every body that only some
  * other body than `by`, by id, perceives, and with `by` left out, every body only one perceives.
  * When `by` is a world entity, so is every other world entity it does not engage, as `engages`
- * has it; it keeps itself.
+ * has it; it keeps itself. With `near` given, only those within its range of its point, edge
+ * included: a rule that only reaches so far asks this, so the far bodies cost it a measure alone.
  */
-export function livingBodies(game: Session, by: string | null = null): Body[] {
+export function livingBodies(
+  game: Session,
+  by: string | null = null,
+  near: Near | null = null,
+): Body[] {
   const actor = by === null ? undefined : game.entities.get(by);
+  const inPlayAt = inPlayNow(game);
   const engaged =
     actor === undefined
       ? () => true
-      : inPlayAt(game, actor)
-        ? (entity: WorldEntity) => entity === actor || inPlayAt(game, entity)
+      : inPlayAt(actor)
+        ? (entity: WorldEntity) => entity === actor || inPlayAt(entity)
         : (entity: WorldEntity) => entity === actor;
+  const reached = isNear(near);
   return [
-    ...playersExposed(game),
+    ...playersExposed(game).filter(reached),
     ...[...game.entities.values()].filter(
+      // The cheap tests first: each one is a pure test, so their order changes nothing else.
       (entity) =>
         entity.health > 0 &&
+        reached(entity) &&
+        engaged(entity) &&
         !isShutIn(game, entity) &&
-        perceives(game, by, entity.id) &&
-        engaged(entity),
+        perceives(game, by, entity.id),
     ),
   ];
+}
+
+/**
+ * A point and how far from it a rule reaches, edge included: one range for every body, or each
+ * body's own, such as how near it must be to touch.
+ */
+export interface Near {
+  readonly at: Point;
+  readonly range: number | ((body: Body) => number);
+}
+
+/**
+ * Whether a body lies within `near`'s range of its point, measured from that point; every body
+ * for none, or a range that is not finite. One at no finite distance counts as near, as the
+ * rules that measure past it, such as sight, let it through.
+ */
+function isNear(near: Near | null): (body: Body) => boolean {
+  if (near === null) return () => true;
+  const { at, range } = near;
+  const away = (body: Body) => Math.hypot(body.x - at.x, body.y - at.y);
+  if (typeof range === "function") return (body) => !(away(body) > range(body));
+  if (!Number.isFinite(range)) return () => true;
+  return (body) => !(away(body) > range);
 }
 
 /** Whether the body `id` is gone from the world, dead, or a ghost. */
