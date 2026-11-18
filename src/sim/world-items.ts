@@ -272,7 +272,11 @@ export const drop = defineAction("drop", {
   },
 });
 
-/** The lying item nearest the local player that its body touches, if any. */
+/**
+ * The lying item nearest the local player that its body touches and perceives, if any. One it
+ * does not perceive, as dark scrap out of deepdark, is not there to it: the host would refuse it,
+ * and it must not shadow a visible item lying under it (#429).
+ */
 function nearestTouching(game: Session): WorldEntity | null {
   const { local } = game;
   let nearest: WorldEntity | null = null;
@@ -280,7 +284,8 @@ function nearestTouching(game: Session): WorldEntity | null {
   for (const entity of game.entities.values()) {
     if (lyingItem(game, entity) === null || isReaching(game, entity.id))
       continue;
-    if (!touches(local, entity)) continue;
+    if (!touches(local, entity) || !perceives(game, local.id, entity.id))
+      continue;
     const distance = Math.hypot(entity.x - local.x, entity.y - local.y);
     if (distance >= nearestDistance) continue;
     nearest = entity;

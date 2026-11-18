@@ -25,7 +25,12 @@ export type {
 } from "./entities.js";
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
-export { pickupTarget, soundDrop, spawnWorldItem } from "./world-items.js";
+export {
+  lyingItem,
+  pickupTarget,
+  soundDrop,
+  spawnWorldItem,
+} from "./world-items.js";
 export {
   driverOf,
   driversOf,

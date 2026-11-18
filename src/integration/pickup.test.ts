@@ -7,6 +7,7 @@ import {
   defineItem,
   giveItem,
   itemIn,
+  perceives,
   pickupTarget,
   remotePlayers,
   removeEntity,
@@ -15,6 +16,7 @@ import {
   updateSession,
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
+import { targetLabel } from "../ui/index.js";
 import { createNullVoice } from "../voice/index.js";
 import { teleport } from "./crew.js";
 import {
@@ -49,6 +51,13 @@ const bolt = defineItem("bolt", () => ({
   name: "Bolt",
   emoji: "🔩",
   drop: sound({ url: BOLT_DROP, volume: 1 }),
+}));
+
+/** A bolt there only in deepdark, as dark scrap is: out of it, nobody perceives it. */
+const darkBolt = defineItem("darkBolt", () => ({
+  name: "Dark bolt",
+  emoji: "🔩",
+  onlyInDeepdark: true,
 }));
 
 /** No zombies, so nothing moves; the cruiser beside the first host. */
@@ -107,7 +116,11 @@ async function crew(...ids: string[]) {
       clock,
       config: testRoomConfig,
       sim: testSimConfig,
-      content: [...entityContent(entities), bolt.create({ bolt: undefined })],
+      content: [
+        ...entityContent(entities),
+        bolt.create({ bolt: undefined }),
+        darkBolt.create({ darkBolt: undefined }),
+      ],
       falloff: { full: 100, silent: 600, pan: 300 },
       onChange: () => undefined,
       onPeerFailed: () => undefined,
@@ -177,13 +190,14 @@ const HOMES: readonly Point[] = [
   { x: 150, y: 500 },
 ];
 
-/** A bolt the host lays at SPOT, once every client has it. */
+/** A bolt, or another `item`, the host lays at SPOT, once every client has it. */
 function layBolt(
   host: Room,
   exchange: () => void,
   at: Point = SPOT,
+  item = "bolt",
 ): WorldEntity {
-  const entity = spawnWorldItem(sessionOf(host), at, "bolt");
+  const entity = spawnWorldItem(sessionOf(host), at, item);
   exchange();
   return entity;
 }
@@ -223,6 +237,25 @@ test("the nearest bolt touching the player is the one highlighted, and the one p
   exchange({ b: reach });
   expect(sessionOf(host).entities.has(near.id)).toBe(false);
   expect(sessionOf(host).entities.has(far.id)).toBe(true);
+});
+
+test("an item nobody perceives is never the target: the bolt beside it is, and is picked up (#429)", async () => {
+  const { get, host, exchange } = await crew("a", "b");
+  const b = get("b");
+  const lying = layBolt(host, exchange, { x: SPOT.x + 8, y: SPOT.y });
+  const dark = layBolt(host, exchange, SPOT, "darkBolt");
+  place(b, SPOT);
+  exchange();
+  const guest = sessionOf(b);
+  expect(guest.entities.has(dark.id)).toBe(true);
+  expect(perceives(guest, guest.localId, dark.id)).toBe(false);
+  expect(pickupTarget(guest)?.id).toBe(lying.id);
+  expect(targetLabel(guest)).toBe(`Bolt #${lying.id} at 308,300`);
+  exchange({ b: reach });
+  expect(carried(b)).toEqual(["bolt", null, null, null]);
+  expect(sessionOf(host).entities.has(dark.id)).toBe(true);
+  expect(pickupTarget(guest)).toBeNull();
+  expect(targetLabel(guest)).toBe("none");
 });
 
 test("two guests reaching for one bolt in the same step: exactly one gets it", async () => {

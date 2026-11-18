@@ -32,6 +32,7 @@ test("room info lists remote players with their presence and the age of their la
     playerCount: 2,
     host: "you",
     remotes: [{ name: "THEM", presence: "away", ageMs: 250 }],
+    target: "none",
   });
 });
 
