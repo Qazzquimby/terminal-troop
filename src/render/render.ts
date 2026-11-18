@@ -629,6 +629,28 @@ export function poseAsWalls(
 }
 
 /**
+ * The row-major index of each cell of `map` that one of `walls`, lit wall faces, is a face of:
+ * the cell half a cell in from the face's middle, against its normal.
+ */
+export function facedCells(
+  map: TileMap,
+  walls: VisibilityPolygon["walls"],
+): Set<number> {
+  const { cell, cols, rows } = map;
+  const faced = new Set<number>();
+  for (const faces of walls.values())
+    for (const { from, to, normal } of faces) {
+      const { col, row } = cellAt(map, {
+        x: (from.x + to.x) / 2 - (normal.x * cell) / 2,
+        y: (from.y + to.y) / 2 - (normal.y * cell) / 2,
+      });
+      if (col >= 0 && row >= 0 && col < cols && row < rows)
+        faced.add(row * cols + col);
+    }
+  return faced;
+}
+
+/**
  * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
  * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
  * real wall's. For a body passing itself off as a wall.
@@ -1220,6 +1242,31 @@ function posingCells(
 }
 
 /**
+ * Every world entity in view standing in a wall cell, such as a shut door walling its own cell
+ * off, that `by` perceives and whose cell a face of `walls`, seen and lit, belongs to. It is the
+ * face of the wall the viewer looks at, so it is drawn over the darkness as wall faces are,
+ * filling its cell where a wall shows only its band.
+ */
+function drawInWalls(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  by: string,
+  walls: VisibilityPolygon["walls"],
+): void {
+  const { map } = game.world;
+  const faced = facedCells(map, walls);
+  if (faced.size === 0) return;
+  game.entities.forEach((entity) => {
+    const { col, row } = cellAt(map, entity);
+    if (!isSolid(map, col, row) || !faced.has(row * map.cols + col)) return;
+    if (!perceives(game, by, entity.id) || !inView(entity, camera)) return;
+    drawEntity(ctx, game, entity, now);
+  });
+}
+
+/**
  * Every world entity in view of a kind seen in the dark that `viewer` perceives and that any of
  * `sources`, its sight, reaches some part of, light or no light. Drawn over the darkness, so
  * nothing masks it.
@@ -1548,13 +1595,15 @@ export function draw(
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));
 
-  // Above the darkness: lit wall faces; a stunned viewer's blindness over all it would see;
-  // then rings, the player and its HUD, then edge glows.
+  // Above the darkness: lit wall faces and the bodies standing in walls whose faces show, such as
+  // shut doors; a stunned viewer's blindness over all it would see; then rings, the player and its
+  // HUD, then edge glows.
   applyCamera(ctx, camera, () => {
     ctx.fillStyle = "#000";
     for (const { col, row } of posing)
       ctx.fillRect(col * cell, row * cell, cell, cell);
     drawLitWalls(ctx, walls);
+    drawInWalls(ctx, game, camera, now, viewer.id, walls);
     drawSeenInDark(ctx, game, camera, now, viewer, sources);
   });
   if (blind > 0) {

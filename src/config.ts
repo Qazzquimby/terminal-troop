@@ -340,7 +340,8 @@ export const config = {
   // Peers connect a second or two after joining; past this, a HELLO is news to no one.
   greeting: { replayMs: 10_000 },
   entities: {
-    // A door in half the world's doorways, every cell of the doorway one; half of them left shut.
+    // A door, shut, in three in four of the world's 1-wide doorways (about a third of them, doorways
+    // being 1 to 3 wide); a wider doorway gets none.
     // 300 health. A player within a cell and a bit of one works it; its swing carries 8 cells.
     // A body that opens doors takes half a second to; any other bashes it for 20 every second,
     // 15s to break one, and a route goes through one shut where that saves more than 10 cells.
@@ -348,8 +349,7 @@ export const config = {
       radius: CELL / 2,
       maxHealth: 300,
       seed: 4,
-      frequency: 0.5,
-      closedShare: 0.5,
+      frequency: 0.75,
       reach: CELL * 1.2,
       openSeconds: 0.5,
       bash: { damage: 20, cooldown: 1 },

@@ -200,7 +200,6 @@ export const testEntitiesConfig = {
     maxHealth: 300,
     seed: 4,
     frequency: 0,
-    closedShare: 0.5,
     reach: 60,
     openSeconds: 0.5,
     bash: { damage: 20, cooldown: 1 },
