@@ -28,6 +28,7 @@ import type {
   Playing,
   Point,
   Session,
+  Sound,
   VehicleSpec,
   WorldEntity,
 } from "../../sim/index.js";
@@ -45,27 +46,44 @@ import hornUrl from "./sfx/horn.mp3";
 const EngineRun = z.enum(["off", "idle", "drive", "reverse"]);
 type EngineRun = z.output<typeof EngineRun>;
 
-/**
- * The long sound its engine holds while it runs, by what it is doing, looped from its start each
- * time that changes. Range in pixels.
- */
-const engineSounds: Record<
-  Exclude<EngineRun, "off">,
-  { readonly url: string; readonly volume: number; readonly range: number }
-> = {
-  idle: { url: idleUrl, volume: 0.05, range: 6 },
-  drive: { url: engineUrl, volume: 0.4, range: 20 },
-  reverse: { url: reverseUrl, volume: 0.4, range: 20 },
+/** The long sound its engine holds while it runs, by what it is doing. */
+const engineUrls: Record<Exclude<EngineRun, "off">, string> = {
+  idle: idleUrl,
+  drive: engineUrl,
+  reverse: reverseUrl,
 };
-const crashSound = sound({
-  url: crashUrl,
-  volume: 0.8,
-  range: 34,
-});
-const ramSound = sound({
-  url: ramUrl,
-  volume: 0.5,
-  range: 22,
+
+/**
+ * How loud one of its sounds plays, 0..1, and how far off it is heard, in pixels (not cells):
+ * the sound's own reach, apart from the noise it makes.
+ */
+export interface CruiserSound {
+  readonly volume: number;
+  /** In pixels. */
+  readonly range: number;
+}
+
+/** How each of its driving sounds plays. */
+export interface DrivingSounds {
+  /** Its engine's three held, looping sounds: standing fuelled, driven forward, backing up. */
+  readonly idle: CruiserSound;
+  readonly drive: CruiserSound;
+  readonly reverse: CruiserSound;
+  /** Knocking down a wall. */
+  readonly crash: CruiserSound;
+  /** Hitting a body. */
+  readonly ram: CruiserSound;
+}
+
+/**
+ * Its crash and ram sounds, declared as `sounds` says. Declared with its vehicle spec on every
+ * peer, so each client plays them when the host sends them.
+ */
+const impactSounds = (
+  sounds: DrivingSounds,
+): { readonly crash: Sound; readonly ram: Sound } => ({
+  crash: sound({ url: crashUrl, ...sounds.crash }),
+  ram: sound({ url: ramUrl, ...sounds.ram }),
 });
 
 /** How often the engine is heard, and how far. Seconds, pixels. */
@@ -118,6 +136,8 @@ export interface DrivingConfig {
     /** How loud it plays, 0..1. */
     readonly volume: number;
   };
+  /** How its engine, crash and ram sounds play. */
+  readonly sounds: DrivingSounds;
 }
 
 /** The tag the engine's noise carries, past its maker's kind. */
@@ -175,6 +195,7 @@ export function vehicle(config: DrivingConfig): VehicleSpec {
     volume: config.horn.volume,
     range: config.horn.noiseRadius,
   });
+  impactSounds(config.sounds);
   return {
     handling: config.handling,
     reach: config.reach,
@@ -220,7 +241,7 @@ function crash(
       at: impact.area.center,
       flash: { radius: entity.radius, hit: true },
       noise: config.crash.noiseRadius,
-      sound: crashSound,
+      sound: impactSounds(config.sounds).crash,
     },
     driver,
   );
@@ -305,7 +326,7 @@ function ram(
         at: { x: body.x, y: body.y },
         flash: { radius: body.radius * 2, hit: true },
         noise: config.ram.noiseRadius,
-        sound: ramSound,
+        sound: impactSounds(config.sounds).ram,
       },
       driver,
     );
@@ -377,12 +398,15 @@ function runEngine(
  * idles, drives or backs up, from its start each time that changes, so a client coming upon it
  * joins it where the world's clock has it.
  */
-export function enginePlaying(state: CruiserState): Playing | null {
+export function enginePlaying(
+  state: CruiserState,
+  sounds: DrivingSounds,
+): Playing | null {
   if (state.engine === "off") return null;
-  const { url, volume, range } = engineSounds[state.engine];
+  const { volume, range } = sounds[state.engine];
   return {
     key: `engine/${state.engine}`,
-    url,
+    url: engineUrls[state.engine],
     since: state.revved,
     volume,
     range,
