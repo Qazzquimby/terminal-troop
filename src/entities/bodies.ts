@@ -6,11 +6,13 @@ import {
   hurtSinceLastStep,
   inCone,
   inView,
+  sightReach,
   livingBodies,
   livingBody,
 } from "../sim/index.js";
 import type {
   Body,
+  Near,
   Eyes,
   Point,
   Session,
@@ -118,16 +120,18 @@ export function sayOneOf(
 /**
  * Every living body `self` may hunt, null for a hunter yet to arrive: players and world entities
  * alike, but itself, what `NEVER_PREY` names, those of the kind tags `hunting` ignores,
- * and, when `hunting` names targets, those of none of them.
+ * and, when `hunting` names targets, those of none of them. With `near` given, only those within
+ * its range of its point.
  */
 export function preyFor(
   game: Session,
   self: { readonly id: string } | null,
   hunting: Hunting,
+  near: Near | null = null,
 ): Body[] {
   const passed = [...hunting.ignores, ...NEVER_PREY];
   const { targets } = hunting;
-  return livingBodies(game, self?.id ?? null).filter(
+  return livingBodies(game, self?.id ?? null, near).filter(
     (body) =>
       body.id !== self?.id &&
       !hasKindTag(game, body.id, passed) &&
@@ -163,7 +167,11 @@ export function nearestPrey(
   hunting: Hunting,
   range = Infinity,
 ): Body | null {
-  return nearestWithin(self, preyFor(game, self, hunting), range);
+  return nearestWithin(
+    self,
+    preyFor(game, self, hunting, { at: self, range }),
+    range,
+  );
 }
 
 /**
@@ -178,7 +186,8 @@ export function seenPrey(
 ): Body[] {
   const sight = eyesOf(game, self);
   if (sight === null) return [];
-  return preyFor(game, self, hunting).filter((body) =>
+  const near = { at: self, range: Math.min(range, sightReach(game, sight)) };
+  return preyFor(game, self, hunting, near).filter((body) =>
     inView(game, sight, body, range),
   );
 }
@@ -197,7 +206,8 @@ export function nearestSeenBody(
   if (sight === null) return null;
   let nearest: Body | null = null;
   let nearestDistance = range;
-  for (const body of preyFor(game, self, hunting)) {
+  const near = { at: self, range: Math.min(range, sightReach(game, sight)) };
+  for (const body of preyFor(game, self, hunting, near)) {
     const distance = Math.hypot(body.x - self.x, body.y - self.y);
     if (distance > nearestDistance) continue;
     if (!inView(game, sight, body, range)) continue;
@@ -292,26 +302,60 @@ export function watchers(
  * Whether any living body whose gaze `self` heeds, as `watchers` has them, watches a point: it
  * lies within that body's view cone, widened by the watch margin each side, as far as it looks but
  * no further than the watch range, with nothing in the way. Light plays no part, nor what lies
- * behind a body. Make one per step: the bodies' eyes are taken as they stand when it is made.
+ * behind a body. Ask it at once, before anything moves: a body's eyes are taken the first time a
+ * point within the watch range of it is asked about, and kept, and only those bodies' eyes are
+ * taken at all, as no body watches past the watch range.
  */
 export function gazeOn(
   game: Session,
   self: { readonly id: string },
   watching: Watching,
 ): (at: Point) => boolean {
-  const widened = watchers(game, self, watching).map((sight) =>
-    sight.cone === null
-      ? sight
-      : {
-          ...sight,
-          cone: {
-            ...sight.cone,
-            angle: sight.cone.angle + watching.watchMargin * 2,
-          },
-        },
-  );
+  return gazeAmong(game, self, watching, livingBodies(game));
+}
+
+/** Whether any living body whose gaze `self` heeds watches `at`, as `gazeOn` has it. */
+export function watchedAt(
+  game: Session,
+  self: { readonly id: string },
+  watching: Watching,
+  at: Point,
+): boolean {
+  const near = { at, range: watching.watchRange };
+  return gazeAmong(game, self, watching, livingBodies(game, null, near))(at);
+}
+
+/** `gazeOn`, over `bodies` alone: their eyes, and whether `self` heeds them, taken as needed. */
+function gazeAmong(
+  game: Session,
+  self: { readonly id: string },
+  watching: Watching,
+  bodies: readonly Body[],
+): (at: Point) => boolean {
+  const { watchRange, watchMargin } = watching;
+  // Each body's eyes widened by the margin, null for none or one it does not heed.
+  const sights = new Map<Body, Sight | null>();
+  const widened = (body: Body): Sight | null => {
+    const known = sights.get(body);
+    if (known !== undefined) return known;
+    const sight =
+      body.id === self.id || !heeds(game, body, watching)
+        ? null
+        : eyesOf(game, body);
+    const cone = sight?.cone ?? null;
+    const wide =
+      sight === null || cone === null
+        ? null
+        : { ...sight, cone: { ...cone, angle: cone.angle + watchMargin * 2 } };
+    sights.set(body, wide);
+    return wide;
+  };
   return (at) =>
-    widened.some((sight) => inCone(game, sight, at, watching.watchRange));
+    bodies.some(
+      (body) =>
+        !(Math.hypot(at.x - body.x, at.y - body.y) > watchRange) &&
+        inCone(game, widened(body), at, watchRange),
+    );
 }
 
 /**
@@ -362,7 +406,8 @@ export function seenFeared(
   const sight = eyesOf(game, self);
   if (sight === null) return [];
   const isFeared = fears(game, fearing);
-  return livingBodies(game, self.id).filter(
+  const near = { at: self, range: sightReach(game, sight) };
+  return livingBodies(game, self.id, near).filter(
     (body) =>
       body.id !== self.id &&
       isFeared(body) &&

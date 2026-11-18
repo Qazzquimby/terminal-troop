@@ -2,6 +2,7 @@ import { playersOutside } from "./aboard.js";
 import type { Point, TileMap } from "./map.js";
 import { isAreaFree, isSolid } from "./map.js";
 import type { Session } from "./session.js";
+import { SpatialGrid } from "./spatial.js";
 
 export interface Kinetic extends Point {
   vx: number;
@@ -188,7 +189,11 @@ function stopTowards(body: Kinetic, nx: number, ny: number): void {
   body.vy -= speed * ny;
 }
 
-function separatePair(
+/**
+ * Steps two overlapping bodies apart, whichever of them is `movable`, and stops each moving into
+ * the other; whether either moved.
+ */
+export function separatePair(
   first: CollisionBody,
   second: CollisionBody,
   map: TileMap,
@@ -247,16 +252,43 @@ function separatePair(
   return false;
 }
 
+/**
+ * Steps each of `bodies` that is `movable` out of every other it overlaps, pair by pair in list
+ * order, pass after pass until none moves. A grid finds the pairs near enough to touch, so only
+ * those are measured; they are taken in the order going over every pair would take them, each
+ * as the bodies stand by then, so the outcome is that of going over every pair.
+ */
 export function separateBodies(
   bodies: readonly CollisionBody[],
   map: TileMap,
   movable: ReadonlySet<CollisionBody> = new Set(bodies),
 ): void {
+  const widest = Math.max(0, ...bodies.map((body) => body.radius));
+  // Bodies of no finite size could touch anything: the grid then hands back every one.
+  const grid = new SpatialGrid(
+    bodies,
+    Number.isFinite(widest) && widest > 0 ? widest * 2 : 1,
+  );
   for (let pass = 0; pass < SEPARATION_PASSES; pass++) {
     let moved = false;
     for (const [index, first] of bodies.entries()) {
-      for (const second of bodies.slice(index + 1)) {
-        if (separatePair(first, second, map, movable)) moved = true;
+      let after = index;
+      // Each time `first` moves, what it may touch is found again, past the last one done.
+      for (let looking = true; looking;) {
+        looking = false;
+        for (const other of grid.near(first, first.radius + widest)) {
+          const second = bodies[other];
+          if (other <= after || second === undefined) continue;
+          after = other;
+          const { x, y } = first;
+          if (separatePair(first, second, map, movable)) moved = true;
+          grid.moved(index);
+          grid.moved(other);
+          if (first.x !== x || first.y !== y) {
+            looking = true;
+            break;
+          }
+        }
       }
     }
     if (!moved) return;

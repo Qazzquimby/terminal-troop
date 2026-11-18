@@ -103,6 +103,16 @@ export function inCone(
 }
 
 /**
+ * How far `sight` could see anything at all, down its cone or all round it, deepdark or not: past
+ * this, `inView` and `inCone` see nothing. For a rule that asks of many points, to pass over the
+ * far ones unmeasured.
+ */
+export function sightReach(game: Session, sight: Sight): number {
+  const into = Math.max(1, game.config.deepdark.sight);
+  return Math.max(sight.cone?.range ?? 0, sight.around) * into;
+}
+
+/**
  * Whether `sight` sees `at` at all: down its cone, or within the circle it sees all round it;
  * within `range`, and along a clear line either way.
  */

@@ -276,7 +276,7 @@ export function inDarkness(
 export function isLit(
   game: Session,
   at: Point,
-  lights: readonly LightSource[] = emittedLights(game),
+  lights?: readonly LightSource[],
   darks: readonly DarkSource[] = darkSources(game),
   ignore: string | null = null,
 ): boolean {
@@ -289,7 +289,8 @@ export function isLit(
   const shadows = game.config.light.shadows.gameplay
     ? shadowsNow(game)
     : noShadows;
-  return lights.some((light) =>
+  // Found only now: most places are settled by darkness or their own light before any is needed.
+  return (lights ?? emittedLights(game)).some((light) =>
     litFrom(
       world.map,
       deep ? intoDeepdark(light) : light,

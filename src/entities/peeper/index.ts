@@ -138,7 +138,7 @@ function relocate(
 ): PeeperState {
   const now = game.worldTime;
   const { after, range, retry } = config.relocate;
-  const near = preyFor(game, self, config).some(
+  const near = preyFor(game, self, config, { at: self, range }).some(
     (body) => Math.hypot(body.x - self.x, body.y - self.y) <= range,
   );
   if (near) return { ...state, nearAt: now };

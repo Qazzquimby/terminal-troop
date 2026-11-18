@@ -196,7 +196,7 @@ export {
 } from "./bodies.js";
 export { axesOf, gapTo, isBoxFree, reachAlong, touches } from "./shape.js";
 export type { BoxSize, Footprint } from "./shape.js";
-export type { Body } from "./bodies.js";
+export type { Body, Near } from "./bodies.js";
 export {
   eyesOf,
   inCone,
@@ -205,6 +205,7 @@ export {
   lookersAt,
   looksAt,
   notices,
+  sightReach,
 } from "./eyes.js";
 export type { Eyes, Sight } from "./eyes.js";
 export { pulledAim } from "./gaze-pull.js";

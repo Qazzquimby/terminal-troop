@@ -30,7 +30,7 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { gazeOn, nearestSeenBody, seenFeared } from "../bodies.js";
+import { nearestSeenBody, seenFeared, watchedAt } from "../bodies.js";
 import type { Fearing, Watching } from "../bodies.js";
 import {
   clearestNoise,
@@ -419,7 +419,7 @@ function think(
   config: DoppelgangerConfig,
 ): DoppelgangerState {
   const now = game.worldTime;
-  const watched = gazeOn(game, self, config)(self);
+  const watched = watchedAt(game, self, config, self);
   const state = learn(
     watched ? { ...previous, watchedAt: now } : previous,
     self,
