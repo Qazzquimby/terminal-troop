@@ -10,6 +10,8 @@ import {
 import { createButtonSource } from "./buttons.js";
 import { createWheelNotches } from "./wheel.js";
 import type { WheelConfig } from "./wheel.js";
+import { edgePush, turnMovement } from "./turn.js";
+import type { TurnConfig } from "./turn.js";
 import type { Point, Controls, ViewConfig } from "../sim/index.js";
 
 /**
@@ -20,14 +22,16 @@ import type { Point, Controls, ViewConfig } from "../sim/index.js";
  * its `WHEEL` key, pressed and released at once, and the page never scrolls under it. UI actions
  * run immediately, outside the simulation step. `toWorld` turns a canvas point into the world
  * point aimed at. Sideways mouse movement is counted up for `takeTurn`, for a view the mouse
- * turns; while capturing, a press on the canvas captures the mouse (pointer lock) so it can turn
- * on without end.
+ * turns; while capturing, the cursor is hidden over the game and a press on the canvas captures
+ * the mouse (pointer lock) so it can turn on without end. Should the browser leave it free, a
+ * pointer at the game's side keeps pushing the view round (`edgePush`).
  */
 export function createInput(
   canvas: HTMLCanvasElement,
   toWorld: (screen: Point) => Point,
   view: ViewConfig,
   wheel: WheelConfig,
+  turnConfig: TurnConfig,
   uiActions: Partial<Record<Action, UiHandlers>>,
   context: InputContext,
 ): {
@@ -35,7 +39,10 @@ export function createInput(
   mouseWorld: () => Point;
   setContext: (context: InputContext, time: number) => void;
   takeTurn: () => number;
+  edgePush: () => number;
   setCapture: (on: boolean) => void;
+  requestCapture: () => void;
+  captured: () => boolean;
 } {
   const state = createActionState();
   const buttons = createButtonSource<Action, InputContext>(
@@ -49,22 +56,63 @@ export function createInput(
   /** Sideways mouse movement since `takeTurn` last read it, in CSS pixels. */
   let turn = 0;
   let capture = false;
+  /** A free pointer's push on the view at the side of the game, -1 (left) to 1 (right). */
+  let push = 0;
+  /** Whether a capture asked for is still waiting on the browser. */
+  let requesting = false;
   const captured = (): boolean => document.pointerLockElement === canvas;
 
-  canvas.addEventListener("pointermove", (event) => {
-    turn += event.movementX;
+  /**
+   * Captures the mouse, if it is not already. Raw movement is asked for first, unscaled by the
+   * system's pointer speed; a browser without it is asked plainly. Refused, the pointer is left
+   * free, and the view still turns as it moves, and at the game's sides.
+   */
+  function requestCapture(): void {
+    if (captured() || requesting) return;
+    requesting = true;
+    const done = () => {
+      requesting = false;
+    };
+    const attempt = (options?: PointerLockOptions): Promise<void> => {
+      try {
+        return Promise.resolve(canvas.requestPointerLock(options));
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error());
+      }
+    };
+    attempt({ unadjustedMovement: true })
+      .catch(() => attempt())
+      .then(done, done);
+  }
+
+  /** The cursor is hidden over the game while the mouse turns the view. */
+  function showCursor(): void {
+    canvas.classList.toggle("turning", capture);
+  }
+
+  // Movement is read from the whole page: a captured pointer's movement goes to the canvas, and a
+  // free one that has left the game's side still pushes the view round.
+  window.addEventListener("pointermove", (event) => {
+    if (capture) turn += turnMovement(event.movementX, turnConfig.spike);
     // A captured pointer stays where it was caught; only its movement counts.
     if (captured()) return;
     const rect = canvas.getBoundingClientRect();
+    push = edgePush(event.clientX, rect.left, rect.width, turnConfig.edge.band);
+    if (event.target !== canvas) return;
     mouse.x = ((event.clientX - rect.left) * canvas.width) / rect.width;
     mouse.y = ((event.clientY - rect.top) * canvas.height) / rect.height;
   });
 
+  document.addEventListener("pointerlockchange", () => {
+    // Caught or freed, the pointer pushes the view no more until it next moves.
+    push = 0;
+  });
+  document.addEventListener("pointerlockerror", () => {
+    requesting = false;
+  });
+
   canvas.addEventListener("pointerdown", (event) => {
-    if (capture && !captured()) {
-      // Refused or unsupported, the pointer is left free; the view still turns as it moves.
-      void Promise.resolve(canvas.requestPointerLock()).catch(() => undefined);
-    }
+    if (capture) requestCapture();
     const code = MOUSE_BUTTONS[event.button];
     if (code !== undefined) buttons.keyDown(code, false, event.timeStamp);
   });
@@ -108,6 +156,7 @@ export function createInput(
   });
   window.addEventListener("blur", (event) => {
     buttons.blur(event.timeStamp);
+    push = 0;
   });
 
   return {
@@ -131,10 +180,26 @@ export function createInput(
       turn = 0;
       return taken;
     },
-    /** Whether a press on the canvas captures the mouse; turning it off frees a captured one. */
+    /**
+     * How hard a free pointer at the game's side pushes the view round, -1 (left) to 1 (right);
+     * 0 while the mouse is captured or does not turn the view.
+     */
+    edgePush() {
+      return capture && !captured() ? push : 0;
+    },
+    /**
+     * Whether the mouse turns the view: a press on the canvas captures it, and the cursor is
+     * hidden over the game. Turning it off frees a captured one.
+     */
     setCapture(on) {
+      if (on === capture) return;
       capture = on;
+      showCursor();
       if (!on && captured()) document.exitPointerLock();
     },
+    /** Captures the mouse now; for a press or key outside the canvas, such as closing settings. */
+    requestCapture,
+    /** Whether the mouse is captured. */
+    captured,
   };
 }

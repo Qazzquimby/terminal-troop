@@ -1,6 +1,10 @@
 import { expect, test, vi } from "vitest";
 import type { Settings, SettingsStorage } from "./settings.js";
-import { DEFAULT_SETTINGS, createSettingsStore } from "./settings.js";
+import {
+  DEFAULT_SETTINGS,
+  MOUSE_SENSITIVITY,
+  createSettingsStore,
+} from "./settings.js";
 
 function memoryStorage(initial: string | null = null) {
   const storage = {
@@ -27,7 +31,7 @@ test("a fresh store has the defaults", () => {
   expect(store.get()).toEqual({
     voice: { mode: "pushToTalk", muted: false, volume: 1, inputDevice: null },
     audio: { masterVolume: 1 },
-    view: { rotateCamera: false },
+    view: { rotateCamera: false, mouseSensitivity: 1 },
   });
 });
 
@@ -41,7 +45,7 @@ test("update merges into the current settings and persists them", () => {
   const expected = {
     voice: { mode: "pushToTalk", muted: true, volume: 1, inputDevice: null },
     audio: { masterVolume: 0.25 },
-    view: { rotateCamera: false },
+    view: { rotateCamera: false, mouseSensitivity: 1 },
   };
   expect(store.get()).toEqual(expected);
   expect(createSettingsStore(storage).get()).toEqual(expected);
@@ -87,7 +91,7 @@ test("partially valid stored data keeps its valid fields", () => {
   expect(store.get()).toEqual({
     voice: { mode: "pushToTalk", muted: false, volume: 0.4, inputDevice: null },
     audio: { masterVolume: 1 },
-    view: { rotateCamera: false },
+    view: { rotateCamera: false, mouseSensitivity: 1 },
   });
 });
 
@@ -142,7 +146,22 @@ test("a stored rotating camera that is not a boolean loads as off", () => {
   const stored = JSON.stringify({ view: { rotateCamera: "yes" } });
   expect(createSettingsStore(memoryStorage(stored)).get().view).toEqual({
     rotateCamera: false,
+    mouseSensitivity: 1,
   });
+});
+
+test("mouse sensitivity defaults to 1, persists, and is kept within its bounds", () => {
+  const storage = memoryStorage();
+  const store = createSettingsStore(storage);
+  expect(store.get().view.mouseSensitivity).toBe(1);
+  store.update({ view: { mouseSensitivity: 2.5 } });
+  expect(createSettingsStore(storage).get().view.mouseSensitivity).toBe(2.5);
+  store.update({ view: { mouseSensitivity: 100 } });
+  expect(store.get().view.mouseSensitivity).toBe(MOUSE_SENSITIVITY.max);
+  store.update({ view: { mouseSensitivity: 0 } });
+  expect(store.get().view.mouseSensitivity).toBe(MOUSE_SENSITIVITY.min);
+  store.update({ view: { mouseSensitivity: Number.NaN } });
+  expect(store.get().view.mouseSensitivity).toBe(MOUSE_SENSITIVITY.min);
 });
 
 test("a stored device that is not a string loads as the default", () => {

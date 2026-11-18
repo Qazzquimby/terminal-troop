@@ -54,6 +54,7 @@ import {
   snapCamera,
   updateCamera,
   createSpectator,
+  createZoomFit,
   eyeOf,
   stepSpectator,
   viewHeading,
@@ -217,6 +218,8 @@ const defaultName = identity.current().slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
 /** What the local player watches while it is a ghost. */
 const spectator = createSpectator();
+/** The zoom that fits how far the local view sees, while the camera turns with it. */
+const zoomFit = createZoomFit(config.zoomFit);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
 const flashes = createFlashes(config.flashes);
@@ -262,8 +265,24 @@ function showControlsHint(session: Session | null): void {
     session === null ? "foot" : hintMode(session.local),
     settings.get().voice.mode === "pushToTalk",
     settings.get().view.rotateCamera,
+    input.captured(),
   );
   if (controlsHint.textContent !== text) controlsHint.textContent = text;
+  // A turning camera draws the player just above the inventory, where the hint would sit over it.
+  controlsHint.classList.toggle("top", settings.get().view.rotateCamera);
+}
+
+/**
+ * Whether the mouse turns the local view: with the rotating camera on, on foot or as a ghost. In a
+ * vehicle the view follows it, and the cabin wants the pointer.
+ */
+function mouseTurnsView(): boolean {
+  const session = joinedSession(room.state());
+  return (
+    settings.get().view.rotateCamera &&
+    session !== null &&
+    session.local.ride === null
+  );
 }
 
 /**
@@ -365,6 +384,7 @@ const input = createInput(
       : screenToWorld(camera, point),
   config.view,
   config.wheel,
+  config.turn,
   {
     toggleSettings: {
       press(time) {
@@ -385,6 +405,9 @@ const settingsMenu = createSettingsMenu(settingsDialog, settings, {
   onOpenChange(open, time) {
     if (open) refreshPeers(room.state());
     inputContext.set(open ? "menu" : "play", time);
+    // Closing settings is a press, so the browser lets the mouse be captured again at once,
+    // rather than waiting for a click on the game.
+    if (!open && mouseTurnsView()) input.requestCapture();
   },
   onPeerMutedChange(id, muted) {
     voice.setPeerMuted(id, muted);
@@ -488,17 +511,20 @@ function frame(): void {
 
   const session = joinedSession(room.state());
   aimFrom = session;
-  const rotating = settings.get().view.rotateCamera;
-  const turn = input.takeTurn() * config.turn.sensitivity;
+  const { rotateCamera: rotating, mouseSensitivity } = settings.get().view;
+  // The mouse's movement turns the view, and a free pointer held at the game's side keeps turning
+  // it, so it never sticks at the edge.
+  const turn =
+    (input.takeTurn() * config.turn.sensitivity +
+      input.edgePush() * config.turn.edge.rate * frameSeconds) *
+    mouseSensitivity;
   if (session !== null) {
     heading = rotating
       ? viewHeading(heading, eyeOf(spectator, session), session.local, turn)
       : session.local.aim;
     // The mouse is captured to turn the view on foot or as a ghost; in a vehicle the view follows
     // it, and the cabin wants the pointer.
-    input.setCapture(
-      rotating && !settingsDialog.open && session.local.ride === null,
-    );
+    input.setCapture(mouseTurnsView() && !settingsDialog.open);
     // On foot or through a free camera, the keys steer as the screen shows the world: up the
     // screen is ahead. A vehicle's keys work its pedals and wheel, turned or not.
     const steerOnScreen = rotating && session.local.ride === null;
@@ -531,11 +557,20 @@ function frame(): void {
     room.frame(now);
     const eye = eyeOf(spectator, session);
     if (rotating) heading = viewHeading(heading, eye, session.local, 0);
+    const target = eyeTarget(session, eye, alpha);
+    // The zoom fits how far the eye sees, and a ghost's wheel zoom multiplies with it.
+    const fitted = zoomFit.step(
+      camera,
+      session.world.map,
+      target,
+      frameSeconds,
+      rotating,
+    );
     updateCamera(
       camera,
-      eyeTarget(session, eye, alpha),
+      target,
       frameSeconds,
-      spectator.zoom,
+      fitted * spectator.zoom,
       rotating ? heading : null,
     );
     const drawStart = performance.now();
