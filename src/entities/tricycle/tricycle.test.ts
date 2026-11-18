@@ -312,13 +312,19 @@ test("of two bodies it runs down, it rides by the one it has not lately passed",
   const at = { x: 425, y: 325 };
   const west = { x: 225, y: 250 };
   const east = { x: 625, y: 250 };
+  // Spots past each body are drawn at random from the two: enough of them that some lie past
+  // each, or with none past the one it wants it falls back on whichever way it faces.
+  const manySpotsPast = {
+    ...thumperHunting,
+    ride: { ...thumperHunting.ride, through: 12 },
+  };
   for (let trial = 0; trial < 10; trial++)
     for (const [lately, other] of [
       [west, east],
       [east, west],
     ] as const)
       seeded(trial + 1, () => {
-        const game = world(FAR.x, FAR.y, thumperHunting);
+        const game = world(FAR.x, FAR.y, manySpotsPast);
         const thumpers = [lately, other].map((spot) =>
           spawnEntity(game, "thumper", spot.x, spot.y, {
             ...freshThumper(game.worldTime),

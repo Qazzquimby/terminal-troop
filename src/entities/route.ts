@@ -26,6 +26,41 @@ function centreOf(map: TileMap, cell: Cell): Point {
   return { x: (cell.col + 0.5) * map.cell, y: (cell.row + 0.5) * map.cell };
 }
 
+/** Margin, in cells, as `isAreaFree` takes a body's edges. */
+const EPSILON = 1e-6;
+
+/**
+ * How many cells across a body of half-size `half` needs to pass: a square of that many cells
+ * a side holds it, as collision has it. 1 for a body within a cell, 2 for one a little under two
+ * cells wide. Every body plans its ways as a square of this many cells, so it plans through
+ * exactly the gaps it fits.
+ */
+export function spanOf(cell: number, half: number): number {
+  return Math.max(1, Math.ceil((half * 2) / cell - EPSILON));
+}
+
+/**
+ * The square of `span` cells a side, by its top-left cell, whose middle is nearest `point`: for
+ * one cell, the cell `point` is in.
+ */
+function squareAt(map: TileMap, span: number, point: Point): Cell {
+  return {
+    col: Math.round(point.x / map.cell - span / 2),
+    row: Math.round(point.y / map.cell - span / 2),
+  };
+}
+
+/**
+ * The middle of the square of `span` cells a side whose top-left cell is `square`: a cell's middle
+ * for an odd span, a corner where cells meet for an even one.
+ */
+function middleOf(map: TileMap, span: number, square: Cell): Point {
+  return {
+    x: (square.col + span / 2) * map.cell,
+    y: (square.row + span / 2) * map.cell,
+  };
+}
+
 /**
  * A cell a route keeps off, past the walls: lit ground, say, or ground some player sees. A route
  * may still start or end on one.
@@ -93,34 +128,51 @@ function straighten(
 }
 
 /**
- * How many cells round its own a body of half-size `half` fills, standing mid-cell: none for a
- * body within one cell, one for a body up to three cells across.
+ * `map` as a body `span` cells across sees it: each cell stands for the square of `span` cells a
+ * side it is the top-left of, blocked where any cell of that square is a wall or off the world.
+ * The map itself for a span of 1.
  */
-function reachOf(map: TileMap, half: number): number {
-  return Math.max(0, Math.ceil(half / map.cell - 0.5 - 1e-9));
-}
-
-/**
- * `map` as a body filling `reach` cells round its own sees it: a cell is blocked where any cell
- * within `reach` of it, or the world's edge, is a wall. The map itself for a reach of 0.
- */
-function inflated(map: Grid, reach: number): Grid {
-  if (reach === 0) return map;
+function inflated(map: Grid, span: number): Grid {
+  if (span === 1) return map;
   const { cols, rows } = map;
   const solid = new Uint8Array(cols * rows);
   for (let row = 0; row < rows; row++)
     for (let col = 0; col < cols; col++) {
-      const edge =
-        col < reach ||
-        row < reach ||
-        col >= cols - reach ||
-        row >= rows - reach;
-      if (!edge && map.solid[row * cols + col] !== 1) continue;
-      for (let r = row - reach; r <= row + reach; r++)
-        for (let c = col - reach; c <= col + reach; c++)
-          if (c >= 0 && r >= 0 && c < cols && r < rows) solid[r * cols + c] = 1;
+      if (col > cols - span || row > rows - span) solid[row * cols + col] = 1;
+      if (map.solid[row * cols + col] !== 1) continue;
+      for (let r = Math.max(0, row - span + 1); r <= row; r++)
+        for (let c = Math.max(0, col - span + 1); c <= col; c++)
+          solid[r * cols + c] = 1;
     }
   return { cols, rows, solid };
+}
+
+/** Whether `col`, `row` lies in the square of `span` cells a side whose top-left is `square`. */
+function within(square: Cell, span: number, col: number, row: number): boolean {
+  return (
+    col >= square.col &&
+    row >= square.row &&
+    col < square.col + span &&
+    row < square.row + span
+  );
+}
+
+/**
+ * The cells, edges included, a body `span` cells across passes over stepping from the square
+ * whose top-left is `from` to the one whose top-left is `to`, a step one cell across, down or
+ * both: the box round the two squares, the corners a diagonal step cuts past among them.
+ */
+function sweptBox(
+  from: Cell,
+  to: Cell,
+  span: number,
+): { left: number; top: number; right: number; bottom: number } {
+  return {
+    left: Math.min(from.col, to.col),
+    top: Math.min(from.row, to.row),
+    right: Math.max(from.col, to.col) + span - 1,
+    bottom: Math.max(from.row, to.row) + span - 1,
+  };
 }
 
 /** `map` with every wall gone, its size alone kept: as a body that breaks walls plans on it. */
@@ -133,28 +185,27 @@ function unwalled(map: Grid): Grid {
 }
 
 /**
- * The toll a body filling `reach` cells round its own pays for each step on `map` that brings a
- * wall into what it fills: `wallCost`, once a step however many walls it brings in, as the body
- * breaks the whole face it presses at once. Its first step, from `start`, pays for any wall at
- * all: the body standing there is up against those walls at most, not through them, though the
- * cells round its own take them in.
+ * The toll a body `span` cells across pays for each step on `map`, square to square by top-left
+ * cell, that brings a wall into what it passes over, as `sweptBox` has it: `wallCost`, once a step
+ * however many walls it brings in, as the body breaks the whole face it presses at once. A
+ * diagonal step pays for the corner it cuts past too. Its first step, from `start`,
+ * pays for any wall at all: the body standing there is up against those walls at most, not
+ * through them, though the square it starts in takes them in.
  */
 function breakingToll(
   map: Grid,
-  reach: number,
+  span: number,
   wallCost: number,
   start: Cell,
 ): (from: Cell, to: Cell) => number {
   const { cols, rows, solid } = map;
   return (from, to) => {
     const first = from.col === start.col && from.row === start.row;
-    for (let row = to.row - reach; row <= to.row + reach; row++)
-      for (let col = to.col - reach; col <= to.col + reach; col++) {
+    const box = sweptBox(from, to, span);
+    for (let row = box.top; row <= box.bottom; row++)
+      for (let col = box.left; col <= box.right; col++) {
         if (col < 0 || row < 0 || col >= cols || row >= rows) continue;
-        const filled =
-          !first &&
-          Math.abs(col - from.col) <= reach &&
-          Math.abs(row - from.row) <= reach;
+        const filled = !first && within(from, span, col, row);
         if (!filled && solid[row * cols + col] === 1) return wallCost;
       }
     return 0;
@@ -170,43 +221,54 @@ function doorsOpen(map: Grid, doors: ReadonlyMap<number, ClosedDoor>): Grid {
 }
 
 /**
- * The toll a body filling `reach` cells round its own pays for each step that brings a closed door
- * of `doors` into what it fills: that door's toll, the dearest of them if more than one. Its first
- * step, from `start`, pays for any it fills at all, as `breakingToll` has it.
+ * The toll a body `span` cells across pays for each step that brings a closed door of `doors` into
+ * what it passes over, as `sweptBox` has it: that door's toll, the dearest of them if more than one. Its first step, from
+ * `start`, pays for any it fills at all, as `breakingToll` has it.
  */
 function doorToll(
   cols: number,
   doors: ReadonlyMap<number, ClosedDoor>,
-  reach: number,
+  span: number,
   start: Cell,
 ): (from: Cell, to: Cell) => number {
   return (from, to) => {
     const first = from.col === start.col && from.row === start.row;
     let toll = 0;
-    for (let row = to.row - reach; row <= to.row + reach; row++)
-      for (let col = to.col - reach; col <= to.col + reach; col++) {
+    const box = sweptBox(from, to, span);
+    for (let row = box.top; row <= box.bottom; row++)
+      for (let col = box.left; col <= box.right; col++) {
         if (col < 0 || row < 0 || col >= cols) continue;
         const door = doors.get(row * cols + col);
         if (door === undefined) continue;
-        const filled =
-          !first &&
-          Math.abs(col - from.col) <= reach &&
-          Math.abs(row - from.row) <= reach;
+        const filled = !first && within(from, span, col, row);
         if (!filled) toll = Math.max(toll, door.toll);
       }
     return toll;
   };
 }
 
-/** The open cell of `grid` nearest `cell`, searched out `rings` cells round it; null for none. */
-function nearestOpen(grid: Grid, cell: Cell, rings: number): Cell | null {
+/**
+ * Where a body `span` cells across standing at `point` starts or ends on `grid`, as `inflated`
+ * has it: the open square, by top-left cell, whose middle is nearest `point`, searched out a cell
+ * further than half the body round the square nearest it. Just that square for a body within a
+ * cell. Null for none.
+ */
+function nearestOpen(
+  map: TileMap,
+  grid: Grid,
+  span: number,
+  point: Point,
+): Cell | null {
+  const square = squareAt(map, span, point);
+  const rings = span === 1 ? 0 : Math.floor(span / 2) + 1;
   let best: Cell | null = null;
   let bestDistance = Infinity;
-  for (let row = cell.row - rings; row <= cell.row + rings; row++)
-    for (let col = cell.col - rings; col <= cell.col + rings; col++) {
+  for (let row = square.row - rings; row <= square.row + rings; row++)
+    for (let col = square.col - rings; col <= square.col + rings; col++) {
       if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) continue;
       if (grid.solid[row * grid.cols + col] === 1) continue;
-      const distance = Math.hypot(col - cell.col, row - cell.row);
+      const middle = middleOf(map, span, { col, row });
+      const distance = Math.hypot(middle.x - point.x, middle.y - point.y);
       if (distance < bestDistance) {
         best = { col, row };
         bestDistance = distance;
@@ -216,12 +278,27 @@ function nearestOpen(grid: Grid, cell: Cell, rings: number): Cell | null {
 }
 
 /**
+ * `avoid` for squares `span` cells a side by top-left cell, as the planner steps them: a square
+ * is avoided where the cell under its middle is, the cell a body standing there has its middle in.
+ */
+function avoidingSquares(
+  map: TileMap,
+  span: number,
+  avoid: Avoid | undefined,
+): Avoid | undefined {
+  if (avoid === undefined || span === 1) return avoid;
+  return (square) => avoid(cellOf(map, middleOf(map, span, square)));
+}
+
+/**
  * Waypoints that take a body of half-size `half` from `from` to `to` round the walls, through
  * gaps wide enough for it, `from` left out, and through no cell `avoid` names but those it starts
- * and ends in. They end at `to` where the body fits there, otherwise at the middle of the nearest
- * cell it fits in. A body wider than a cell starts and ends at the nearest cells it fits in,
- * searched out a cell further than it fills. Null when no path joins them, or it needs more than
- * MAX_WAYPOINTS.
+ * and ends in. The body plans as a square of `spanOf` cells a side, the square collision holds it
+ * in, so it goes through every gap that many cells wide and none narrower: a body a little under
+ * two cells across through a gap of two, its waypoints where cells meet. They end at `to` where
+ * the body fits there, otherwise at the middle of the nearest square it fits in. A body wider
+ * than a cell starts and ends at the nearest squares it fits in. A cell `avoid` names keeps off
+ * the body's middle. Null when no path joins them, or it needs more than MAX_WAYPOINTS.
  *
  * A body that breaks walls gives `wallCost`: how many cells it could walk in the time it takes to
  * break through the walls in its way. Its route then goes through a wall wherever breaking it is
@@ -241,45 +318,50 @@ export function planRoute(
   wallCost?: number,
   throughDoors = true,
 ): Point[] | null {
-  const reach = reachOf(map, half);
+  const span = spanOf(map.cell, half);
   const doors =
     throughDoors && wallCost === undefined
       ? closedDoors(map)
       : new Map<number, ClosedDoor>();
   const grid = inflated(
     wallCost === undefined ? doorsOpen(map, doors) : unwalled(map),
-    reach,
+    span,
   );
-  const rings = reach === 0 ? 0 : reach + 1;
-  const start = nearestOpen(grid, cellOf(map, from), rings);
-  const goal = nearestOpen(grid, cellOf(map, to), rings);
+  const start = nearestOpen(map, grid, span, from);
+  const goal = nearestOpen(map, grid, span, to);
   if (start === null || goal === null) return null;
   const toll =
     wallCost !== undefined
-      ? breakingToll(map, reach, wallCost, start)
+      ? breakingToll(map, span, wallCost, start)
       : doors.size > 0
-        ? doorToll(map.cols, doors, reach, start)
+        ? doorToll(map.cols, doors, span, start)
         : undefined;
-  const cells = findPath(grid, start, goal, avoid, toll);
-  const last = cells?.at(-1);
-  if (cells === null || last === undefined) return null;
+  const squares = findPath(
+    grid,
+    start,
+    goal,
+    avoidingSquares(map, span, avoid),
+    toll,
+  );
+  const last = squares?.at(-1);
+  if (squares === null || last === undefined) return null;
   const end = isAreaFree(map, to.x, to.y, half)
     ? { x: to.x, y: to.y }
-    : centreOf(map, last);
-  const own = cellOf(map, from);
+    : middleOf(map, span, last);
+  const own = squareAt(map, span, from);
   const moved = own.col !== start.col || own.row !== start.row;
-  const between = cells
+  const between = squares
     .slice(moved ? 0 : 1, -1)
-    .map((cell) => centreOf(map, cell));
+    .map((square) => middleOf(map, span, square));
   const route = straighten(map, half, from, [...between, end], avoid);
   return route.length > MAX_WAYPOINTS ? null : route;
 }
 
 /**
  * Waypoints that take a body of half-size `half` from `from`, by the cheapest walk round the
- * walls, to the middle of the nearest cell it fits in whose middle `wanted` names: the first such
- * cell it can reach, so the soonest it can be there at any speed. `from` left out; empty when the
- * cell it starts in is wanted. Null when it reaches none, or the way needs more than MAX_WAYPOINTS.
+ * walls, to the middle of the nearest square it fits in, as `planRoute` has squares, whose middle
+ * `wanted` names: the first such square it can reach, so the soonest it can be there at any
+ * speed. `from` left out; empty when the square it starts in is wanted. Null when it reaches none, or the way needs more than MAX_WAYPOINTS.
  * `wanted` is asked of each cell once at most, nearest first, so it may be costly.
  */
 export function routeToNearest(
@@ -288,16 +370,19 @@ export function routeToNearest(
   from: Point,
   wanted: (middle: Point) => boolean,
 ): Point[] | null {
-  const reach = reachOf(map, half);
-  const grid = inflated(map, reach);
-  const rings = reach === 0 ? 0 : reach + 1;
-  const start = nearestOpen(grid, cellOf(map, from), rings);
+  const span = spanOf(map.cell, half);
+  const grid = inflated(map, span);
+  const start = nearestOpen(map, grid, span, from);
   if (start === null) return null;
-  const cells = findNearest(grid, start, (cell) => wanted(centreOf(map, cell)));
-  if (cells === null) return null;
-  const own = cellOf(map, from);
+  const squares = findNearest(grid, start, (square) =>
+    wanted(middleOf(map, span, square)),
+  );
+  if (squares === null) return null;
+  const own = squareAt(map, span, from);
   const moved = own.col !== start.col || own.row !== start.row;
-  const points = cells.slice(moved ? 0 : 1).map((cell) => centreOf(map, cell));
+  const points = squares
+    .slice(moved ? 0 : 1)
+    .map((square) => middleOf(map, span, square));
   if (points.length === 0) return [];
   const route = straighten(map, half, from, points, undefined);
   return route.length > MAX_WAYPOINTS ? null : route;
@@ -339,7 +424,9 @@ export function wayToDark(
     (at) => !isLit(game, at, lights, darks, self.id),
   );
   if (route === null) return null;
-  return route.length > 0 ? route : [centreOf(map, cellOf(map, self))];
+  if (route.length > 0) return route;
+  const span = spanOf(map.cell, self.radius);
+  return [middleOf(map, span, squareAt(map, span, self))];
 }
 
 /** A kind that, opting in, makes for the dark before anything else when light falls on it. */

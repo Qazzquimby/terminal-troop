@@ -36,7 +36,8 @@ import { entityContent } from "./index.js";
 import { freshPeeper } from "./peeper/index.js";
 import { relocate } from "./relocate.js";
 import { freshSnail } from "./snail/index.js";
-import { reachesRoad, spanOf } from "./road-reach.js";
+import { reachesRoad } from "./road-reach.js";
+import { spanOf } from "./route.js";
 import { spawnAllowed } from "./spawn-rules.js";
 import {
   apartShare,

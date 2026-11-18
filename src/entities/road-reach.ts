@@ -1,16 +1,9 @@
 import { AREA, destroyedWalls } from "../sim/index.js";
 import type { Point, Session, TileMap } from "../sim/index.js";
+import { spanOf } from "./route.js";
 
-/** Margin, in pixels over a cell, as `isAreaFree` takes a body's edges. */
+/** Margin, in cells, as `isAreaFree` takes a body's edges. */
 const EPSILON = 1e-6;
-
-/**
- * How many cells across a body of half-size `half` needs to pass: a square of that many cells
- * a side holds it. 2 for a body a little under two cells wide.
- */
-export function spanOf(cell: number, half: number): number {
-  return Math.max(1, Math.ceil((half * 2) / cell - EPSILON));
-}
 
 /**
  * Which squares of `span` cells a side, each by its top-left cell, row-major, stand clear in

@@ -1,7 +1,8 @@
 import { expect, test } from "vitest";
 import { AREA } from "../sim/index.js";
 import type { TileMap } from "../sim/index.js";
-import { roadReach, spanOf } from "./road-reach.js";
+import { roadReach } from "./road-reach.js";
+import { spanOf } from "./route.js";
 
 const CELL = 10;
 
