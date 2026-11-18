@@ -286,7 +286,10 @@ export const config = {
     // cruiser 4 cells across stays drawn while its nose is in view.
     footprintSpacing: CELL / 4,
   },
-  light: { range: CELL * 6 },
+  // A player carries a light 6 cells down its cone. Every body standing in a light given off or
+  // carried casts a shadow behind it, as a wall does; sunlight and a room's fixture cast none
+  // (#384). What lies in a body's shadow is dark to every rule that asks of light, as it looks.
+  light: { range: CELL * 6, shadows: { cast: true, gameplay: true } },
   // A world starts at 8am and reaches midnight in 20 minutes, when the spawner hits its end game.
   // Afternoon comes 10 minutes in, and daylight recedes to the road's centre line until night,
   // 17 minutes in, when none is left. Each turn is marked by a sound, at half volume.

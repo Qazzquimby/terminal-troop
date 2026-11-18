@@ -242,6 +242,7 @@ function definition(config: DoorConfig): EntityDefinition<DoorState> {
     mass: Infinity,
     // Its cell is a wall while it is shut, and floor while it is open; it is no body to bump.
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: DoorState,
     door: hinge(config, sounds),

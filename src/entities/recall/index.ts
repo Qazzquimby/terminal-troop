@@ -162,6 +162,7 @@ export const recall = defineEntity(NAME, (config: RecallConfig) => {
     maxHealth: Infinity,
     mass: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: RecallState,
     plays: (_entity, state, game) => hums(game, state, config),

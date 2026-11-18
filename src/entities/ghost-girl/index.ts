@@ -625,6 +625,7 @@ function definition(config: GhostGirlConfig): EntityDefinition<GhostGirlState> {
     mass: Infinity,
     // She passes through walls, and nothing bumps into her.
     collides: false,
+    castsShadow: false,
     tags: [UNNOTICED_TAG],
     data: GhostGirlState,
     // She is there for her target alone, and for no one while she has none.

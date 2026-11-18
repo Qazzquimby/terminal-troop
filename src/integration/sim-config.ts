@@ -90,7 +90,7 @@ export const testSimConfig: SimConfig = {
     lookRange: 400,
     footprintSpacing: 12.5,
   },
-  light: { range: 200 },
+  light: { range: 200, shadows: { cast: true, gameplay: true } },
   day: {
     startHour: 8,
     midnight: 1200,

@@ -312,7 +312,9 @@ export function avoidingLight(game: Session, id: string): Avoid {
   if (isShrouded(game, id)) return () => false;
   const lights = emittedLights(game);
   const darks = darkSources(game);
-  return avoidingWhere(game.world.map, (at) => isLit(game, at, lights, darks));
+  return avoidingWhere(game.world.map, (at) =>
+    isLit(game, at, lights, darks, id),
+  );
 }
 
 /**

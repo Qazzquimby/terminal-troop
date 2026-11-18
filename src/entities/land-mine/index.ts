@@ -207,6 +207,7 @@ export const landMine = defineEntity(NAME, (config: LandMineConfig) => {
     radius: config.radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: MineState,
     update(entity, state, _dt, game) {

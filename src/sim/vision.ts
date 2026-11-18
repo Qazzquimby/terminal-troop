@@ -2,6 +2,8 @@ import { heldItemOf } from "./inventories.js";
 import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
+import { edgeAngles, inShadow, occludedDistance, shadowing } from "./shadow.js";
+import type { Occluder } from "./shadow.js";
 import { footprintPoints } from "./shape.js";
 import type { Footprint } from "./shape.js";
 
@@ -32,6 +34,19 @@ export interface VisionConfig {
 export interface LightConfig {
   /** How far the light reaches along the view cone, in pixels. */
   readonly range: number;
+  /** How bodies shadow lights given off and carried (#384); see shadow.ts. */
+  readonly shadows: ShadowConfig;
+}
+
+/** How bodies shadow the lights given off and carried round them. */
+interface ShadowConfig {
+  /** Whether bodies cast shadows at all, to see and to every rule that asks of light. */
+  readonly cast: boolean;
+  /**
+   * Whether what lies in a shadow is dark to the rules that ask of light, such as a stalker
+   * hunting only bodies out of the light; false keeps shadows only to look at.
+   */
+  readonly gameplay: boolean;
 }
 
 type VisionShape =
@@ -87,6 +102,23 @@ export function canSeeFrom(
   point: Point,
 ): boolean {
   return withinVision(source, point) && hasLineOfSight(map, source, point);
+}
+
+/**
+ * Whether `light` lights `point`: it reaches it along a clear line, and none of `occluders` but
+ * `ignore`, by id, shadows it from there.
+ */
+export function litFrom(
+  map: TileMap,
+  light: VisionSource,
+  point: Point,
+  occluders: readonly Occluder[] = [],
+  ignore: string | null = null,
+): boolean {
+  return (
+    canSeeFrom(map, light, point) &&
+    (occluders.length === 0 || !inShadow(occluders, light, point, ignore))
+  );
 }
 
 /**
@@ -305,6 +337,14 @@ export function emittedLights(game: Session): LightSource[] {
  * only the deepdark config's `sight` of its range, and every light given off.
  */
 export function lightSources(game: Session, viewer: Viewer): LightSource[] {
+  return [...sightLights(game, viewer), ...emittedLights(game)];
+}
+
+/**
+ * The lights of `viewer`'s own sight alone, down its cone and round it, reaching into deepdark
+ * only the deepdark config's `sight` of its range.
+ */
+export function sightLights(game: Session, viewer: Viewer): LightSource[] {
   const [cone, surroundings] = directionalVision(
     viewer,
     viewer.aim,
@@ -315,35 +355,48 @@ export function lightSources(game: Session, viewer: Viewer): LightSource[] {
   return [
     { ...cone, range, deepRange: range * sight },
     { ...surroundings, deepRange: surroundings.range * sight },
-    ...emittedLights(game),
   ];
 }
 
+/** What bears on whether a point is lit, past the lights themselves; none of it by default. */
+interface Lighting {
+  /** Whether the place's own light lights a point, such as sunlight out of doors. */
+  readonly ambient?: (point: Point) => boolean;
+  /** Whether darkness something gives off reaches a point, which no light lights. */
+  readonly dark?: (point: Point) => boolean;
+  /** Whether a point is deepdark, which no place's own light lights. */
+  readonly deep?: (point: Point) => boolean;
+  /** The bodies casting shadows in the lights. */
+  readonly occluders?: readonly Occluder[];
+}
+
+const never = (): boolean => false;
+
 /**
- * Whether `point` is both seen from some source and lit: by some light that reaches it, or where
- * `ambient` says the place's own light does, such as sunlight out of doors; and not where `dark`
- * says darkness something gives off reaches it, which no light lights. Where `deep` says it is
- * deepdark, no place's own light lights it, and each light reaches it only out to its
- * `deepRange`.
+ * Whether `point` is both seen from some source and lit: by some light that reaches it unshadowed
+ * by `lighting`'s occluders, or where its `ambient` says the place's own light does; and not where
+ * its `dark` says darkness given off reaches it. Where its `deep` says it is deepdark, no place's
+ * own light lights it, and each light reaches it only out to its `deepRange`.
  */
 export function isVisible(
   map: TileMap,
   sources: readonly VisionSource[],
   lights: readonly LightSource[],
   point: Point,
-  ambient: (point: Point) => boolean = () => false,
-  dark: (point: Point) => boolean = () => false,
-  deep: (point: Point) => boolean = () => false,
+  lighting: Lighting = {},
 ): boolean {
+  const { ambient = never, dark = never, deep = never } = lighting;
+  const { occluders = [] } = lighting;
   if (dark(point) || !sources.some((source) => canSeeFrom(map, source, point)))
     return false;
   const deepdark = deep(point);
   if (!deepdark && ambient(point)) return true;
   return lights.some((light) =>
-    canSeeFrom(
+    litFrom(
       map,
       deepdark ? { ...light, range: light.deepRange ?? light.range } : light,
       point,
+      occluders,
     ),
   );
 }
@@ -359,12 +412,10 @@ export function isBodyVisible(
   lights: readonly LightSource[],
   body: Footprint,
   spacing: number,
-  ambient: (point: Point) => boolean = () => false,
-  dark: (point: Point) => boolean = () => false,
-  deep: (point: Point) => boolean = () => false,
+  lighting: Lighting = {},
 ): boolean {
   return footprintPoints(body, spacing).some((point) =>
-    isVisible(map, sources, lights, point, ambient, dark, deep),
+    isVisible(map, sources, lights, point, lighting),
   );
 }
 
@@ -516,6 +567,7 @@ function traceWallFaces(
   angles: readonly number[],
   closed: boolean,
   limit: number,
+  occluders: readonly Occluder[],
 ): Map<WallKey, WallFace[]> {
   const walls = new Map<WallKey, WallFace[]>();
 
@@ -528,15 +580,19 @@ function traceWallFaces(
     if (last === undefined || last <= first) continue;
 
     const middle = (first + last) / 2;
-    const { wall } = castRay(
+    const direction = { x: Math.cos(middle), y: Math.sin(middle) };
+    const { wall, distance } = castRay(
       map,
       origin.x,
       origin.y,
-      Math.cos(middle),
-      Math.sin(middle),
+      direction.x,
+      direction.y,
       limit + Math.SQRT2 * map.cell,
     );
     if (wall === undefined) continue;
+    // A body between the light and the wall shadows its face.
+    if (occludedDistance(occluders, origin, direction, distance) < distance)
+      continue;
 
     const face = wallFaceBetween(map, origin, wall, first, last, limit);
     if (face !== undefined) addWallFace(walls, wall.key, face);
@@ -590,11 +646,18 @@ export function litWalls(
   return result;
 }
 
+/**
+ * What `origin` reaches, traced by `rayCount` rays round it or down its cone and one at each wall
+ * corner: the polygon its rays end on, and the wall faces they end on. Each of `occluders`, the
+ * bodies casting shadows in a light, stops a ray at its far side, so the body is reached and
+ * what lies behind it is not.
+ */
 export function visibilityPolygon(
   map: TileMap,
   origin: VisionSource,
   rayCount: number,
   maxDist: number = Math.hypot(map.cols * map.cell, map.rows * map.cell),
+  occluders: readonly Occluder[] = [],
 ): VisibilityPolygon {
   const cone = origin.shape?.kind === "cone" ? origin.shape : undefined;
   const points: Point[] =
@@ -611,6 +674,13 @@ export function visibilityPolygon(
   for (let i = 0; i < count; i++) {
     offsets.add((i / (cone === undefined ? count : count - 1)) * sweep);
   }
+  const blocking =
+    occluders.length === 0 ? [] : shadowing(occluders, origin, limit);
+  const turn = Math.PI * 2;
+  for (const angle of edgeAngles(blocking, origin)) {
+    const offset = (((angle - start) % turn) + turn) % turn;
+    if (offset <= sweep) offsets.add(offset);
+  }
 
   const angles = [...offsets]
     .sort((a, b) => a - b)
@@ -618,12 +688,23 @@ export function visibilityPolygon(
   for (const angle of angles) {
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
-    const { distance } = castRay(map, origin.x, origin.y, dx, dy, limit);
+    const wall = castRay(map, origin.x, origin.y, dx, dy, limit).distance;
+    const distance =
+      blocking.length === 0
+        ? wall
+        : occludedDistance(blocking, origin, { x: dx, y: dy }, wall);
     points.push({ x: origin.x + dx * distance, y: origin.y + dy * distance });
   }
 
   return {
     points,
-    walls: traceWallFaces(map, origin, angles, cone === undefined, limit),
+    walls: traceWallFaces(
+      map,
+      origin,
+      angles,
+      cone === undefined,
+      limit,
+      blocking,
+    ),
   };
 }

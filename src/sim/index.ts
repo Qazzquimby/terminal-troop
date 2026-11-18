@@ -262,13 +262,14 @@ export {
   isBodyVisible,
   isVisible,
   lightSources,
+  sightLights,
+  litFrom,
   litWalls,
   visibilityPolygon,
   visionOrigins,
 } from "./vision.js";
 export type {
   LightEmission,
-  LightSource,
   VisibilityPolygon,
   VisionSource,
   WallFace,
@@ -295,6 +296,8 @@ export {
   isLitTo,
 } from "./light.js";
 export type { DarkSource } from "./light.js";
+export { shadowCasters } from "./shadow.js";
+export type { Occluder } from "./shadow.js";
 export { darkFront, deepFront, frontAt, hearFronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
 export { areaAt } from "./map.js";

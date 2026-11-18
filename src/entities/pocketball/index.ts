@@ -322,6 +322,7 @@ export const pocketball = defineEntity(NAME, (config: PocketballConfig) => {
     radius: config.radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: ThrownState,
     update(entity, state, dt, game) {
