@@ -487,10 +487,10 @@ function cue(
 
 function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
   const sounds: Sounds = {
-    bark: sound({ url: barkUrl, range: config.sounds.bark }),
+    bark: sound({ url: barkUrl, range: config.sounds.bark, volume: 0.8 }),
     growl: sound({ url: growlUrl, range: config.sounds.growl }),
     enrage: sound({ url: enrageUrl, range: config.sounds.enrage }),
-    rageBark: sound({ url: rageBarkUrl, range: config.sounds.rageBark }),
+    rageBark: sound({ url: rageBarkUrl, range: config.sounds.rageBark, volume: 0.6 }),
     attack: sound({ url: attackUrl, range: config.sounds.attack }),
     vanish: sound({ url: vanishUrl, range: config.sounds.vanish }),
   };

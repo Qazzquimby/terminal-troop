@@ -812,10 +812,10 @@ export const config = {
       // after: seconds asleep with none she hunts within range before moving; retry: seconds.
       relocate: { after: 120, range: CELL * 14, retry: 5 },
       sounds: {
-        bark: CELL * 8,
+        bark: CELL * 14,
         growl: CELL * 6,
         enrage: CELL * 16,
-        rageBark: CELL * 12,
+        rageBark: CELL * 10,
         attack: CELL * 6,
         vanish: 0,
       },
@@ -1232,7 +1232,7 @@ export const config = {
       wanderRange: CELL * 5,
       sightRange: CELL * 5, // down its facing
       noticeRange: CELL * 2, // a body this near stirs it while hiding
-      hideSeconds: { min: 10, max: 30 },
+      hideSeconds: { min: 20, max: 60 },
       springDelay: { min: 0, max: 1 },
       revealSeconds: 0.1, // its burst of teeth on springing
       rehideAfter: 5, // seconds before it may copy the item it last copied again
