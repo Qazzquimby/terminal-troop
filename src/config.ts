@@ -858,6 +858,7 @@ export const config = {
       watchedBy: ["player"], // whose gaze makes it back off
       damage: 100,
       attackCooldown: 1,
+      harmlessIn: ["retreat"], // modes its touch does no harm in
       watchRange: CELL * 14, // a gaze counts out to the looker's look range, capped at this
       watchMargin: WATCH_MARGIN,
       retreatDistance: CELL * 12, // kept from every body it hunts when nowhere is out of sight
@@ -1105,6 +1106,7 @@ export const config = {
         overshoot: CELL * 6, // past whatever hurt it
         reaim: 0.75, // seconds between aims at it
       },
+      stall: { distance: CELL, seconds: 1 }, // less headway than this on a ride, it plans another
       bellRange: CELL * 8, // rings at a player this near on its way
       bellCooldown: 2,
       damage: 70,

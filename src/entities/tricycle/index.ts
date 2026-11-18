@@ -21,6 +21,8 @@ import type {
 } from "../../sim/index.js";
 import { drawRing, hitterOf, playEach, preyFor, touching } from "../bodies.js";
 import {
+  Headway,
+  headwayOf,
   rageFromHurt,
   Route,
   strikeEach,
@@ -28,7 +30,7 @@ import {
   Time,
   walk,
 } from "../hunt.js";
-import type { Hunting } from "../hunt.js";
+import type { Hunting, Stalling } from "../hunt.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -91,6 +93,11 @@ export interface TricycleConfig extends Hunting, Dormancy {
     readonly overshoot: number;
     readonly reaim: number;
   };
+  /**
+   * On a way, getting less than `distance` along it in `seconds`, it gives that way up and plans
+   * another, as when a door shut across it since it planned.
+   */
+  readonly stall: Stalling;
   /** How far down its way it rings at a body it runs down standing on it. */
   readonly bellRange: number;
   /** Seconds between two rings of its bell. */
@@ -141,6 +148,7 @@ export const TricycleState = z.object({
   // When the rage its last hurt set off ends, and the body it rides down meanwhile; null calm.
   rageUntil: Time,
   foe: z.string().nullable(),
+  headway: Headway,
 });
 
 export type TricycleState = z.output<typeof TricycleState>;
@@ -160,12 +168,26 @@ export function freshTricycle(now: number, facing = 0): TricycleState {
     attacking: false,
     rageUntil: now,
     foe: null,
+    headway: null,
   };
 }
 
 /** The bodies it runs down: those it would hunt, `targets` as configured. */
 function quarries(game: Session, self: WorldEntity, config: TricycleConfig) {
   return preyFor(game, self, config);
+}
+
+/**
+ * Its way from where it stands to `to`, round closed doors as round walls: it can neither open
+ * one nor, passing through bodies, press one to bash it down. Null for none.
+ */
+function rideRoute(
+  map: TileMap,
+  half: number,
+  self: Point,
+  to: Point,
+): Point[] | null {
+  return planRoute(map, half, self, to, undefined, undefined, false);
 }
 
 /** The way from `from` to `to` along ways wide enough where there is one, else any. */
@@ -178,7 +200,7 @@ function wideRoute(
   const { map } = game.world;
   const half = Math.max(self.radius, config.ride.width / 2);
   return (
-    planRoute(map, half, self, to) ?? planRoute(map, self.radius, self, to)
+    rideRoute(map, half, self, to) ?? rideRoute(map, self.radius, self, to)
   );
 }
 
@@ -461,10 +483,10 @@ function charge(
       y: foe.y + Math.sin(angle) * beyond,
     };
     if (!isAreaFree(map, spot.x, spot.y, self.radius)) continue;
-    const route = planRoute(map, self.radius, self, spot);
+    const route = rideRoute(map, self.radius, self, spot);
     if (route !== null) return route;
   }
-  return planRoute(map, self.radius, self, foe) ?? [];
+  return rideRoute(map, self.radius, self, foe) ?? [];
 }
 
 /**
@@ -576,9 +598,13 @@ function think(
     state.route.length === 0 &&
     now >= state.planAt &&
     mayPlan(game, config.ride.plansPerStep);
-  const route = plans
-    ? nextRide(game, self, { ...state, passed }, bodies, config)
-    : state.route;
+  const ride = (near: readonly Body[]) =>
+    nextRide(game, self, { ...state, passed }, near, config);
+  // With no ride toward the bodies it runs down, as when shut doors cut them off, it rides
+  // anywhere round it, as with none about, rather than standing.
+  const planned = plans ? ride(bodies) : state.route;
+  const route =
+    plans && planned.length === 0 && bodies.length > 0 ? ride([]) : planned;
   // Finding no ride, it stands a while before it looks again, rather than every step.
   const stuck = plans && route.length === 0;
   const blocked = bodies.some((body) =>
@@ -687,7 +713,20 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
     collides: false,
     data: TricycleState,
     update(entity, state, dt, game) {
-      const next = think(state, entity, game, config);
+      // Held up on its way, it gives the way up, to plan another.
+      const { headway, stalled } = headwayOf(
+        state.headway,
+        entity,
+        dt,
+        state.route.length > 0,
+        config.stall,
+      );
+      const next = think(
+        { ...state, headway, route: stalled ? [] : state.route },
+        entity,
+        game,
+        config,
+      );
       cue(entity, state, next, game, sounds);
       const moved = walk(entity, next, speedOf(game, next), dt);
       // Passing through bodies, it does not meet walls as a body does: its way keeps it clear of
