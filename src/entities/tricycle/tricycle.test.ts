@@ -161,32 +161,160 @@ test("it rides through a body it does not run down, leaving it unhurt and where 
   expect(other.health).toBe(other.maxHealth);
 });
 
+/**
+ * Runs `body` with `Math.random` drawing from a fixed sequence for `seed`, so a test of its
+ * random rides is the same each run.
+ */
+function seeded(seed: number, body: () => void): void {
+  let state = seed;
+  vi.spyOn(Math, "random").mockImplementation(() => {
+    // A small LCG; any fixed sequence spread over [0, 1) will do.
+    state = (state * 1_103_515_245 + 12_345) % 2 ** 31;
+    return state / 2 ** 31;
+  });
+  try {
+    body();
+  } finally {
+    vi.mocked(Math.random).mockRestore();
+  }
+}
+
+/** Which way `trike`'s ride sets off from `from`: to its first waypoint a cell off. */
+function setsOff(trike: WorldEntity, from: Point): number {
+  const first = stateOf(trike).route.find(
+    (point) => Math.hypot(point.x - from.x, point.y - from.y) >= 50,
+  );
+  if (first === undefined) throw new Error("no ride");
+  return Math.atan2(first.y - from.y, first.x - from.x);
+}
+
+/** Whether `trike`'s ride, from `from`, comes within `range` of `body`. */
+function ridesBy(
+  trike: WorldEntity,
+  from: Point,
+  body: Point,
+  range: number,
+): boolean {
+  const radius = range / 2;
+  return onWay(
+    { ...from, radius },
+    stateOf(trike).route,
+    { ...body, radius },
+    Infinity,
+  );
+}
+
+/** The test config, but running down only thumpers: with none spawned, it runs down no one. */
+const thumperHunting = { ...config, targets: ["thumper"] };
+
 test("its next ride sets off the way it already heads, rather than doubling back", () => {
-  // Its rides are drawn at random, here from fixed seeds, one per trial, so the test is the same
-  // each run. From the middle of the open row, with room for a full ride both ways, every one of
-  // many sets off within a right angle of its facing. (Facing a wall too near for a full ride, it
-  // may well set off sideways: that is the backtracking it falls back to when nothing else goes.)
+  // From the middle of the open row, with room for a full ride both ways, every one of many sets
+  // off within a right angle of its facing. (Facing a wall too near for a full ride, it may well
+  // set off sideways: that is the backtracking it falls back to when nothing else goes.)
   for (let trial = 0; trial < 20; trial++)
-    for (const facing of [0, Math.PI]) {
-      let seed = trial + 1;
-      vi.spyOn(Math, "random").mockImplementation(() => {
-        // A small LCG; any fixed sequence spread over [0, 1) will do.
-        seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
-        return seed / 2 ** 31;
+    for (const facing of [0, Math.PI])
+      seeded(trial + 1, () => {
+        const game = world(FAR.x, 75, thumperHunting);
+        const at = { x: 425, y: 325 };
+        const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+          ...freshTricycle(game.worldTime, facing),
+        });
+        run(game, DT);
+        expect(Math.cos(setsOff(trike, at) - facing)).toBeGreaterThan(0);
       });
-      const game = world(FAR.x, 75);
-      const trike = spawnEntity(game, "tricycle", 425, 325, {
-        ...freshTricycle(game.worldTime, facing),
+});
+
+test("its rides are long: at least its ride's min along the way", () => {
+  for (let trial = 0; trial < 20; trial++)
+    seeded(trial + 1, () => {
+      const game = world(FAR.x, 75, thumperHunting);
+      const at = { x: 425, y: 325 };
+      const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+        ...freshTricycle(game.worldTime, (trial / 20) * Math.PI * 2),
       });
       run(game, DT);
-      const first = stateOf(trike).route.find(
-        (point) => Math.hypot(point.x - 425, point.y - 325) >= 50,
+      let from: Point = at;
+      let length = 0;
+      for (const point of stateOf(trike).route) {
+        length += Math.hypot(point.x - from.x, point.y - from.y);
+        from = point;
+      }
+      expect(length).toBeGreaterThanOrEqual(config.ride.min);
+    });
+});
+
+test("it rides by a player ahead and on past them, rather than up to them", () => {
+  const player = { x: 425, y: 325 };
+  const at = { x: 125, y: 325 };
+  for (let trial = 0; trial < 20; trial++)
+    seeded(trial + 1, () => {
+      const game = world(player.x, player.y);
+      const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+        ...freshTricycle(game.worldTime, 0),
+      });
+      run(game, DT);
+      expect(ridesBy(trike, at, player, config.ride.pass)).toBe(true);
+      const end = destinationOf(trike);
+      expect(Math.hypot(end.x - player.x, end.y - player.y)).toBeGreaterThan(
+        config.ride.pass,
       );
-      if (first === undefined) throw new Error("no ride");
-      const setsOff = Math.atan2(first.y - 325, first.x - 425);
-      expect(Math.cos(setsOff - facing)).toBeGreaterThan(0);
-      vi.mocked(Math.random).mockRestore();
-    }
+    });
+});
+
+test("it rides by a player off to its side, though not straight ahead", () => {
+  const player = { x: 425, y: 325 };
+  const at = { x: 425, y: 75 };
+  for (let trial = 0; trial < 20; trial++)
+    seeded(trial + 1, () => {
+      const game = world(player.x, player.y);
+      const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+        ...freshTricycle(game.worldTime, 0),
+      });
+      run(game, DT);
+      expect(ridesBy(trike, at, player, config.ride.pass)).toBe(true);
+    });
+});
+
+test("having just passed the only player, it rides on rather than turning back for them", () => {
+  const player = { x: 350, y: 325 };
+  const at = { x: 425, y: 325 };
+  for (let trial = 0; trial < 20; trial++)
+    seeded(trial + 1, () => {
+      const game = world(player.x, player.y);
+      const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+        ...freshTricycle(game.worldTime, 0),
+      });
+      run(game, DT);
+      expect(stateOf(trike).passed[game.localId]).toBeDefined();
+      expect(Math.cos(setsOff(trike, at))).toBeGreaterThan(0);
+    });
+});
+
+test("of two bodies it runs down, it rides by the one it has not lately passed", () => {
+  const at = { x: 425, y: 325 };
+  const west = { x: 225, y: 250 };
+  const east = { x: 625, y: 250 };
+  for (let trial = 0; trial < 10; trial++)
+    for (const [lately, other] of [
+      [west, east],
+      [east, west],
+    ] as const)
+      seeded(trial + 1, () => {
+        const game = world(FAR.x, FAR.y, thumperHunting);
+        const thumpers = [lately, other].map((spot) =>
+          spawnEntity(game, "thumper", spot.x, spot.y, {
+            ...freshThumper(game.worldTime),
+            until: 1000,
+          }),
+        );
+        const trike = spawnEntity(game, "tricycle", at.x, at.y, {
+          ...freshTricycle(game.worldTime, -Math.PI / 2),
+          passed: { [thumpers[0]?.id ?? ""]: game.worldTime },
+        });
+        run(game, DT);
+        expect(ridesBy(trike, at, other, config.ride.pass)).toBe(true);
+        expect(ridesBy(trike, at, lately, config.ride.pass)).toBe(false);
+      });
 });
 
 /** How far the middle of a 50px cell can be from a spot in it. */
@@ -240,4 +368,18 @@ test("it rides near whatever it runs down, not only near players", () => {
       Math.hypot(end.x - thumper.x, end.y - thumper.y),
     ).toBeLessThanOrEqual(near + HALF_CELL_DIAGONAL);
   }
+});
+
+test("it forgets passing a body once its rest has run out", () => {
+  const game = world(FAR.x, FAR.y);
+  const trike = spawnEntity(game, "tricycle", 75, 325, {
+    ...freshTricycle(game.worldTime),
+    route: ROW,
+    passed: {
+      lately: game.worldTime - config.ride.rest / 2,
+      long: game.worldTime - config.ride.rest,
+    },
+  });
+  run(game, DT);
+  expect(Object.keys(stateOf(trike).passed)).toEqual(["lately"]);
 });
