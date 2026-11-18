@@ -11,6 +11,7 @@
     "typecheck": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:entities": "vitest run --config vitest.bench.config.ts",
     "lint": "eslint .",
     "knip": "knip",
     "dupes": "jscpd",

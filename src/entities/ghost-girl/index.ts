@@ -19,6 +19,7 @@ import {
   UNNOTICED_TAG,
 } from "../../sim/index.js";
 import type {
+  Apparition,
   Body,
   EntityDefinition,
   Point,
@@ -33,9 +34,7 @@ import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
-const stareUrls = [
-  new URL("./sfx/stare.mp3", import.meta.url).href,
-];
+const stareUrls = [new URL("./sfx/stare.mp3", import.meta.url).href];
 const chaseUrl = new URL("./sfx/chase.mp3", import.meta.url).href;
 const appearUrl = new URL("./sfx/appear.mp3", import.meta.url).href;
 const vanishUrl = new URL("./sfx/vanish.mp3", import.meta.url).href;
@@ -109,6 +108,8 @@ export interface GhostGirlConfig {
   };
   /** Seconds she flickers before she vanishes at the end of a chase. */
   readonly flicker: number;
+  /** How she shows, out in the world: see-through, shaking and staticky. */
+  readonly apparition: Apparition;
   /** What touching her target costs it in a chase: `damage` every `interval` seconds. */
   readonly contact: { readonly damage: number; readonly interval: number };
   /** How far her sounds carry: heard by her target alone, however far it carries. */
@@ -610,7 +611,9 @@ function drawStatic(ctx: CanvasRenderingContext2D, size: number): void {
 
 function definition(config: GhostGirlConfig): EntityDefinition<GhostGirlState> {
   const sounds: Sounds = {
-    stare: stareUrls.map((url) => sound({ url, volume: 0.5, range: config.soundRange })),
+    stare: stareUrls.map((url) =>
+      sound({ url, volume: 0.5, range: config.soundRange }),
+    ),
     chase: sound({ url: chaseUrl, range: config.soundRange }),
     appear: sound({ url: appearUrl, range: config.soundRange }),
     vanish: sound({ url: vanishUrl, range: config.soundRange }),
@@ -622,11 +625,15 @@ function definition(config: GhostGirlConfig): EntityDefinition<GhostGirlState> {
     mass: Infinity,
     // She passes through walls, and nothing bumps into her.
     collides: false,
+    castsShadow: false,
     tags: [UNNOTICED_TAG],
     data: GhostGirlState,
     // She is there for her target alone, and for no one while she has none.
     perceivedBy: (_entity, state) => state.target,
     seenInDark: true,
+    // Out in the world she is see-through, shaking and staticky; flickering out, the static
+    // lingers where she was.
+    apparition: (_entity, state) => (inWorld(state) ? config.apparition : null),
     update(entity, arrived, dt, game) {
       const target = isGone(game, arrived.target ?? "")
         ? null
@@ -652,7 +659,8 @@ function definition(config: GhostGirlConfig): EntityDefinition<GhostGirlState> {
     draw(ctx, entity, state, now) {
       if (!inWorld(state)) return;
       if (state.mode === "vanishing" && !flickerOn(now)) return;
-      ctx.globalAlpha = state.mode === "chasing" ? 0.95 : 0.75;
+      // Bolder as she comes for her target; see-through, shaking and staticky always.
+      ctx.globalAlpha *= state.mode === "chasing" ? 1 : 0.8;
       drawEmoji(ctx, entity, GLYPH, entity.radius * 2.4);
     },
     minimap(ctx, _entity, state, size) {

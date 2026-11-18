@@ -27,6 +27,7 @@ test("a fresh store has the defaults", () => {
   expect(store.get()).toEqual({
     voice: { mode: "pushToTalk", muted: false, volume: 1, inputDevice: null },
     audio: { masterVolume: 1 },
+    view: { rotateCamera: false },
   });
 });
 
@@ -40,6 +41,7 @@ test("update merges into the current settings and persists them", () => {
   const expected = {
     voice: { mode: "pushToTalk", muted: true, volume: 1, inputDevice: null },
     audio: { masterVolume: 0.25 },
+    view: { rotateCamera: false },
   };
   expect(store.get()).toEqual(expected);
   expect(createSettingsStore(storage).get()).toEqual(expected);
@@ -85,6 +87,7 @@ test("partially valid stored data keeps its valid fields", () => {
   expect(store.get()).toEqual({
     voice: { mode: "pushToTalk", muted: false, volume: 0.4, inputDevice: null },
     audio: { masterVolume: 1 },
+    view: { rotateCamera: false },
   });
 });
 
@@ -125,6 +128,21 @@ test("the chosen microphone persists until it is set back to the default", () =>
 
   store.update({ voice: { inputDevice: null } });
   expect(createSettingsStore(storage).get().voice.inputDevice).toBeNull();
+});
+
+test("the rotating camera is off by default, and persists once turned on", () => {
+  const storage = memoryStorage();
+  const store = createSettingsStore(storage);
+  expect(store.get().view.rotateCamera).toBe(false);
+  store.update({ view: { rotateCamera: true } });
+  expect(createSettingsStore(storage).get().view.rotateCamera).toBe(true);
+});
+
+test("a stored rotating camera that is not a boolean loads as off", () => {
+  const stored = JSON.stringify({ view: { rotateCamera: "yes" } });
+  expect(createSettingsStore(memoryStorage(stored)).get().view).toEqual({
+    rotateCamera: false,
+  });
 });
 
 test("a stored device that is not a string loads as the default", () => {

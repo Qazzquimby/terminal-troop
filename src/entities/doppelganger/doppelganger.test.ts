@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testItemsConfig,
@@ -10,19 +11,33 @@ import {
   CORPSE_ITEM,
   createSession,
   FOOTSTEP_TAG,
+  giveItem,
+  itemsOf,
   hurt,
+  isGhost,
   itemInstances,
   itemName,
   receiveEvent,
   registerContent,
+  registerEntityType,
+  revivableGhosts,
   revive,
+  reviveGhost,
   spawnEntity,
   updateSession,
 } from "../../sim/index.js";
-import type { Noise, Point, Session, WorldEntity } from "../../sim/index.js";
+import type {
+  Noise,
+  Point,
+  Session,
+  WorldContent,
+  WorldEntity,
+} from "../../sim/index.js";
+import { arrivals } from "../spawning.js";
 import {
   doppelganger as doppelgangerContent,
   DoppelgangerState,
+  type DoppelgangerConfig,
   freshDoppelganger,
 } from "./index.js";
 
@@ -31,9 +46,14 @@ const { doppelganger: config } = testEntitiesConfig;
 
 /**
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
- * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y).
+ * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y). Doppelgangers fear
+ * as `fear` says, by default as the test config's do.
  */
-function world(x: number, y: number): Session {
+function world(
+  x: number,
+  y: number,
+  fear: DoppelgangerConfig["fear"] = config.fear,
+): Session {
   const game = createSession(
     "me",
     "ME",
@@ -48,7 +68,7 @@ function world(x: number, y: number): Session {
     setPosition: () => undefined,
   });
   registerContent(game, [
-    doppelgangerContent.create({ doppelganger: config }),
+    doppelgangerContent.create({ doppelganger: { ...config, fear } }),
     ...itemContent(testItemsConfig),
   ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
@@ -200,4 +220,188 @@ test("felled, it drops what it held and leaves its player's corpse, which brough
   expect(state.copies).toBe("me");
   expect(state.name).toBe("ME");
   expect(state.held).toBeNull();
+});
+
+/** The doppelgangers in `game`. */
+const doubles = (game: Session): WorldEntity[] => {
+  const kind = game.kindIds.get("doppelganger");
+  return [...game.entities.values()].filter((each) => each.kind === kind);
+};
+
+/** ME holding a bandage in its second slot, its shovel in its first; felled by `by`. */
+function felledBy(game: Session, by: string | null): void {
+  expect(itemsOf(game, "me")[0]?.id).toBe("shovel");
+  giveItem(game, "me", "bandage", 1);
+  game.local.held = 1;
+  hurt(game, game.local, Infinity, by);
+  run(game, 0.1, AWAY);
+}
+
+test("a player a doppelganger fells gets up as one of it, holding what it held, and lies as no corpse", () => {
+  const game = world(475, 325);
+  const killer = doubleAt(game, 125, 325);
+  felledBy(game, killer.id);
+  expect(isGhost(game.local)).toBe(true);
+  expect(itemInstances(game, CORPSE_ITEM)).toEqual([]);
+  const risen = doubles(game).find((each) => each !== killer);
+  if (risen === undefined) throw new Error("no new doppelganger");
+  const state = stateOf(risen);
+  expect(state).toMatchObject({ copies: "me", name: "ME", held: "bandage" });
+  expect(Math.hypot(risen.x - 475, risen.y - 325)).toBeLessThan(100);
+  // What it did not hold drops as it would; what it held went with it.
+  expect(
+    itemInstances(game, "shovel").some(({ place }) => "lying" in place),
+  ).toBe(true);
+  expect(itemInstances(game, "bandage")).toEqual([]);
+  expect(
+    vi
+      .mocked(game.sfx.play)
+      .mock.calls.some(([url]) => url.endsWith("turn.mp3")),
+  ).toBe(true);
+});
+
+test("a player felled by anything else lies as a corpse, as ever", () => {
+  const game = world(475, 325);
+  doubleAt(game, 125, 325);
+  felledBy(game, null);
+  expect(itemInstances(game, CORPSE_ITEM)).toHaveLength(1);
+  expect(doubles(game)).toHaveLength(1);
+});
+
+test("a ghost whose body a doppelganger wears can be brought back, and the doppelganger is gone", () => {
+  const game = world(475, 325);
+  const killer = doubleAt(game, 125, 325);
+  felledBy(game, killer.id);
+  const worn = doubles(game).find((each) => each !== killer);
+  expect(revivableGhosts(game)).toEqual([game.local]);
+  const risen = reviveGhost(game, "me", { x: 725, y: 325 }, null);
+  expect(risen).toBe(game.local);
+  expect(isGhost(game.local)).toBe(false);
+  expect(game.entities.has(worn?.id ?? "")).toBe(false);
+  expect(game.entities.has(killer.id)).toBe(true);
+  expect(revivableGhosts(game)).toEqual([]);
+});
+
+test("felled, a doppelganger wearing a player's body leaves that player's corpse, which brings the player back", () => {
+  const game = world(475, 325);
+  const killer = doubleAt(game, 125, 325);
+  felledBy(game, killer.id);
+  const worn = doubles(game).find((each) => each !== killer);
+  if (worn === undefined) throw new Error("no new doppelganger");
+  hurt(game, worn, worn.maxHealth, killer.id);
+  run(game, 0.1, AWAY);
+  // It drops the bandage it took.
+  expect(
+    itemInstances(game, "bandage").some(({ place }) => "lying" in place),
+  ).toBe(true);
+  const [corpse] = itemInstances(game, CORPSE_ITEM);
+  if (corpse === undefined) throw new Error("no corpse");
+  expect(
+    itemName(game, { id: CORPSE_ITEM, name: "Corpse", state: corpse.state }),
+  ).toBe("ME's corpse");
+  expect(revive(game, corpse.state, { x: 725, y: 325 }, null)).toBe(game.local);
+  expect(isGhost(game.local)).toBe(false);
+});
+
+/**
+ * Kinds that stand still: a rare one, brought as rarely as the doppelganger fears; a common one,
+ * brought more often; and a tough one, as common, but as hard to kill as the doppelganger fears
+ * by toughness, the others a little less. The spawner never brings any while a test runs.
+ */
+const kinds: WorldContent = {
+  name: "entity/test-kinds",
+  register(session) {
+    for (const [kind, weight, maxHealth] of [
+      ["rare", config.fear.asRareAs, config.fear.toughness - 1],
+      ["common", config.fear.asRareAs + 1, config.fear.toughness - 1],
+      ["tough", config.fear.asRareAs + 1, config.fear.toughness],
+    ] as const) {
+      registerEntityType(session, kind, {
+        radius: 14,
+        maxHealth,
+        data: z.object({}),
+        update: (entity) => {
+          entity.vx = 0;
+          entity.vy = 0;
+          return {};
+        },
+        draw: () => undefined,
+      });
+      arrivals({
+        kind,
+        radius: 14,
+        config: { weight, after: 1e9, tries: 1, unseenDistance: 0 },
+        fresh: () => ({}),
+      }).register(session);
+    }
+  },
+  populate: () => undefined,
+};
+
+/** ME far off at the bottom right, a doppelganger at (425, 325) facing right, a `kind` before it. */
+function facing(
+  kind: string,
+  fear: DoppelgangerConfig["fear"] = config.fear,
+): {
+  game: Session;
+  double: WorldEntity;
+  other: WorldEntity;
+} {
+  const game = world(875, 575, fear);
+  registerContent(game, [kinds]);
+  const double = doubleAt(game, 425, 325);
+  const other = spawnEntity(game, kind, 525, 325, {});
+  return { game, double, other };
+}
+
+test("seeing a monster as rare as it fears, it gasps and sprints away", () => {
+  const { game, double, other } = facing("rare");
+  run(game, 0.2, AWAY);
+  expect(stateOf(double).mode).toBe("flee");
+  expect(Math.hypot(double.vx, double.vy)).toBeCloseTo(config.fear.sprintSpeed);
+  expect(double.x).toBeLessThan(425);
+  expect(stateOf(double).threat).toEqual({ x: other.x, y: other.y });
+  expect(
+    vi
+      .mocked(game.sfx.play)
+      .mock.calls.some(([url]) => url.endsWith("startle.mp3")),
+  ).toBe(true);
+});
+
+test("a commoner monster it pays no mind, however hard to kill", () => {
+  for (const kind of ["common", "tough"]) {
+    const { game, double } = facing(kind);
+    run(game, 0.5, AWAY);
+    expect(stateOf(double).mode).not.toBe("flee");
+  }
+});
+
+test("fearing by toughness, it runs from a body as hard to kill as it fears, however common", () => {
+  const byToughness = { ...config.fear, by: "toughness" } as const;
+  const tough = facing("tough", byToughness);
+  run(tough.game, 0.2, AWAY);
+  expect(stateOf(tough.double).mode).toBe("flee");
+  const rare = facing("rare", byToughness);
+  run(rare.game, 0.5, AWAY);
+  expect(stateOf(rare.double).mode).not.toBe("flee");
+});
+
+test("its sprint over, it looks back the way it came, then, seeing nothing, walks further off", () => {
+  const { game, double, other } = facing("rare");
+  run(game, 0.1, AWAY);
+  game.entities.delete(other.id);
+  let looked = false;
+  for (let tick = 0; tick < 60 && stateOf(double).mode !== "retreat"; tick++) {
+    run(game, 0.1, AWAY);
+    const state = stateOf(double);
+    if (state.mode !== "lookBack") continue;
+    looked = true;
+    expect(double.vx).toBe(0);
+    const toThreat = Math.atan2(325 - double.y, 525 - double.x);
+    expect(Math.cos(state.facing - toThreat)).toBeGreaterThan(0.99);
+  }
+  expect(looked).toBe(true);
+  expect(stateOf(double).mode).toBe("retreat");
+  run(game, 0.2, AWAY);
+  expect(Math.hypot(double.vx, double.vy)).toBeCloseTo(config.speed);
 });

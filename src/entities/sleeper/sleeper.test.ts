@@ -141,7 +141,7 @@ test("a player close by makes her growl, and if still there a second later she w
   expect(played(game)).toContain("enrage.mp3");
   run(game, 1);
   expect(game.local.health).toBeLessThan(game.local.maxHealth);
-  expect(played(game)).toContain("attack.mp3");
+  expect(played(game)).toContain("attack.wav");
 });
 
 test("a player who backs off before her growl ends leaves her dormant", () => {

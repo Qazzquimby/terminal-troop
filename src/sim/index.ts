@@ -17,6 +17,7 @@ export {
   spawnEntity,
 } from "./entities.js";
 export type {
+  Apparition,
   Dormancy,
   EntityDefinition,
   EntitySnapshot,
@@ -25,7 +26,14 @@ export type {
 } from "./entities.js";
 export { entityDelta } from "./entity-delta.js";
 export { rounded } from "./rounded.js";
-export { pickupTarget, soundDrop, spawnWorldItem } from "./world-items.js";
+export {
+  drawLying,
+  lyingItem,
+  pickupTarget,
+  seemsItem,
+  soundDrop,
+  spawnWorldItem,
+} from "./world-items.js";
 export {
   driverOf,
   driversOf,
@@ -100,7 +108,7 @@ export type {
   SpawnRule,
   WorldContent,
 } from "./content.js";
-export { renderAim, renderPosition } from "./interpolation.js";
+export { lerpAngle, renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
 export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";
@@ -160,13 +168,16 @@ export { isGhost, livingPlayers } from "./ghosts.js";
 export {
   CORPSE_ITEM,
   corpseAt,
-  ghostCorpses,
   dropAll,
   isRevivable,
   itemName,
   layCorpse,
+  revivableGhosts,
   revive,
+  reviveGhost,
+  takeBodies,
 } from "./death.js";
+export type { BodyTaker } from "./death.js";
 export { arrivalPoint } from "./arrival.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
@@ -212,6 +223,8 @@ export { FOOTSTEP_TAG } from "./footsteps.js";
 export { speak, VOICE_TAG, voiceNoise } from "./voice-noise.js";
 export { echoVoice } from "./echoes.js";
 export type { VoiceClips } from "./echoes.js";
+export { captionOf, sayHere } from "./speech.js";
+export type { Speech, VoiceParams } from "./speech.js";
 export { hasKindTag, makeNoise, noisesHeardBy, PLAYER_TAG } from "./noise.js";
 export type { Heard, Noise } from "./noise.js";
 export { declaredSounds, sound } from "./sound.js";
@@ -222,6 +235,7 @@ export {
   giveItem,
   heldItemOf,
   heldSlot,
+  heldSlotOf,
   itemIn,
   itemsOf,
   takeItem,
@@ -237,6 +251,7 @@ export {
 } from "./session.js";
 export type { Session, SimConfig } from "./session.js";
 export { createSimClock } from "./sim-clock.js";
+export { profileSteps } from "./profile.js";
 export type { SimClockConfig } from "./sim-clock.js";
 export {
   canSeeFrom,
@@ -247,13 +262,14 @@ export {
   isBodyVisible,
   isVisible,
   lightSources,
+  sightLights,
+  litFrom,
   litWalls,
   visibilityPolygon,
   visionOrigins,
 } from "./vision.js";
 export type {
   LightEmission,
-  LightSource,
   VisibilityPolygon,
   VisionSource,
   WallFace,
@@ -280,6 +296,8 @@ export {
   isLitTo,
 } from "./light.js";
 export type { DarkSource } from "./light.js";
+export { shadowCasters, shadowsOf } from "./shadow.js";
+export type { Occluder } from "./shadow.js";
 export { darkFront, deepFront, frontAt, hearFronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
 export { areaAt } from "./map.js";

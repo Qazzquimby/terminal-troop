@@ -1,6 +1,6 @@
 import type { MessageRates } from "../net/index.js";
 import type { PerfSnapshot } from "../perf-stats/index.js";
-import { remotePlayers } from "../sim/index.js";
+import { pickupTarget, remotePlayers, seemsItem } from "../sim/index.js";
 import type { Corrections, Session } from "../sim/index.js";
 
 /** UI tuning. */
@@ -35,6 +35,23 @@ interface RoomDebugInfo {
     presence: string;
     ageMs: number;
   }[];
+  /** The item highlighted for E, which E would pick up now, or "none". */
+  readonly target: string;
+}
+
+/**
+ * The item highlighted for E, by name, entity id and where it lies, so a highlight that seems to
+ * be on bare ground can be told from one on an item that is drawn; "none" when there is none.
+ */
+export function targetLabel(session: Session): string {
+  const target = pickupTarget(session);
+  if (target === null) return "none";
+  const item = seemsItem(session, target)?.item;
+  const name =
+    item === undefined
+      ? "?"
+      : (session.itemDefinitions.get(item)?.name ?? item);
+  return `${name} #${target.id} at ${target.x.toFixed(0)},${target.y.toFixed(0)}`;
 }
 
 /**
@@ -66,6 +83,7 @@ export function roomDebugInfo(
         ageMs: now - (presence?.lastHeard ?? now),
       };
     }),
+    target: targetLabel(session),
   };
 }
 
@@ -100,6 +118,7 @@ function formatDebug({ perf, room, voice }: DebugInfo): string {
     `net     sent ${String(room.net.sentPerS)}/s  recv ${String(room.net.receivedPerS)}/s`,
     fixes(room.corrections),
     `host    ${room.host}`,
+    `target  ${room.target}`,
     `players ${String(room.playerCount)}`,
     ...room.remotes.map(
       (remote) =>

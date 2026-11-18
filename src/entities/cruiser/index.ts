@@ -5,7 +5,8 @@ import {
   effect,
   INERT_TAG,
   inRect,
-  livingPlayers, sound,
+  livingPlayers,
+  sound,
   worldData,
 } from "../../sim/index.js";
 import type {
@@ -17,12 +18,13 @@ import type {
 } from "../../sim/index.js";
 import {
   cruiserNear,
+  enginePlaying,
   CruiserState,
   FRESH,
   stepCruiser,
   vehicle,
 } from "./drive.js";
-import type { DrivingConfig } from "./drive.js";
+import type { CruiserSound, DrivingConfig } from "./drive.js";
 import { drawCruiser } from "./draw.js";
 import { door, stepDoor } from "./door.js";
 import type { CruiserDoorConfig } from "./door.js";
@@ -56,6 +58,11 @@ interface EscapeConfig {
   readonly volume: number;
   /** Credit the team must have banked for the cruiser to leave; it keeps it. */
   readonly quota: number;
+  /**
+   * The sound it makes coming to rest in the exit: how loud, 0..1, and how far off it is heard,
+   * `range`, in pixels (not cells).
+   */
+  readonly depart: CruiserSound;
 }
 
 /** The cruiser's two headlights, one each side of its front, each a cone like a flashlight's. */
@@ -175,7 +182,14 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
   }
   if (held.since === null) {
     departure.set(game, { ...held, since: game.worldTime });
-    effect(game, { at, sound: sound({url:departUrl, range: 20, volume: 0.3, noise: false}) }, game.local);
+    effect(
+      game,
+      {
+        at,
+        sound: sound({ url: departUrl, ...config.depart, noise: false }),
+      },
+      game.local,
+    );
     return;
   }
   if (game.worldTime < held.since + config.delay) return;
@@ -192,7 +206,7 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
       {
         at: { x: player.x, y: player.y },
         flash: { radius: player.radius * ESCAPE_FLASH, hit: true },
-        sound: sound({url:escapeUrl, noise: false}),
+        sound: sound({ url: escapeUrl, noise: false }),
       },
       player,
     );
@@ -261,7 +275,12 @@ export const cruiser = defineEntity(NAME, (config: CruiserConfig) => ({
       },
     },
   },
-  plays: (_entity, state) => radioPlaying(state, config.radio),
+  // Its radio and its engine, each held under its own key, both following the car.
+  plays: (_entity, state) =>
+    [
+      radioPlaying(state, config.radio),
+      enginePlaying(state, config.sounds),
+    ].filter((playing) => playing !== null),
   update(entity, state, dt, game) {
     const driven = stepCruiser(game, entity, state, dt, config);
     const next = stepDoor(game, entity, driven, dt, config.door);

@@ -27,9 +27,10 @@ const WALK = testSimConfig.player.speed;
 /**
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
  * and x 600-700, y 450-550; the local player, ME, stands at (x, y). A thumper may be spawned too,
- * as a body that is not a player.
+ * as a body that is not a player. Tricycles are as `trikeConfig` has them, the test config's by
+ * default.
  */
-function world(x: number, y: number): Session {
+function world(x: number, y: number, trikeConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
@@ -44,7 +45,7 @@ function world(x: number, y: number): Session {
     setPosition: () => undefined,
   });
   registerContent(game, [
-    tricycleContent.create({ tricycle: config }),
+    tricycleContent.create({ tricycle: trikeConfig }),
     thumperContent.create({ thumper: thumperConfig }),
   ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
@@ -186,4 +187,57 @@ test("its next ride sets off the way it already heads, rather than doubling back
       expect(Math.cos(setsOff - facing)).toBeGreaterThan(0);
       vi.mocked(Math.random).mockRestore();
     }
+});
+
+/** How far the middle of a 50px cell can be from a spot in it. */
+const HALF_CELL_DIAGONAL = 25 * Math.SQRT2;
+
+/** Where `trike`'s ride ends: the middle of the cell holding the spot it chose. */
+function destinationOf(trike: WorldEntity): Point {
+  const end = stateOf(trike).route.at(-1);
+  if (end === undefined) throw new Error("no ride");
+  return end;
+}
+
+test("it rides only to spots within range of a player, though no spot round it is", () => {
+  const near = 150;
+  const player = { x: 125, y: 525 };
+  for (let trial = 0; trial < 10; trial++) {
+    const game = world(player.x, player.y, {
+      ...config,
+      ride: { ...config.ride, near },
+    });
+    const trike = spawnEntity(game, "tricycle", 775, 175, {
+      ...freshTricycle(game.worldTime),
+    });
+    run(game, DT);
+    const end = destinationOf(trike);
+    expect(Math.hypot(end.x - player.x, end.y - player.y)).toBeLessThanOrEqual(
+      near + HALF_CELL_DIAGONAL,
+    );
+  }
+});
+
+test("it rides near whatever it runs down, not only near players", () => {
+  const near = 150;
+  const thumper = { x: 125, y: 525 };
+  for (let trial = 0; trial < 10; trial++) {
+    const game = world(875, 75, {
+      ...config,
+      targets: ["thumper"],
+      ride: { ...config.ride, near },
+    });
+    spawnEntity(game, "thumper", thumper.x, thumper.y, {
+      ...freshThumper(game.worldTime),
+      until: 1000,
+    });
+    const trike = spawnEntity(game, "tricycle", 775, 175, {
+      ...freshTricycle(game.worldTime),
+    });
+    run(game, DT);
+    const end = destinationOf(trike);
+    expect(
+      Math.hypot(end.x - thumper.x, end.y - thumper.y),
+    ).toBeLessThanOrEqual(near + HALF_CELL_DIAGONAL);
+  }
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { upright } from "../../lib/upright/index.js";
 import { drawEmoji } from "../../render/index.js";
 import {
   defineEntity,
@@ -300,7 +301,9 @@ function definition(
       ctx.font = "12px system-ui";
       ctx.textAlign = "center";
       ctx.fillStyle = "#eee";
-      ctx.fillText(name, entity.x, entity.y + entity.radius + 14);
+      upright(ctx, entity, () => {
+        ctx.fillText(name, entity.x, entity.y + entity.radius + 14);
+      });
     },
   };
 }

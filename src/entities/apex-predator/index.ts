@@ -1,13 +1,6 @@
 import { z } from "zod";
 import { drawEmoji, drawFacing } from "../../render/index.js";
-import {
-  defineEntity,
-  eyesOf,
-  hurtSinceLastStep,
-  livingBody,
-  rounded,
-  sound,
-} from "../../sim/index.js";
+import { defineEntity, eyesOf, rounded, sound } from "../../sim/index.js";
 import type {
   Body,
   Dormancy,
@@ -20,6 +13,7 @@ import type {
 import {
   drawRing,
   facingEyes,
+  hitterOf,
   isKillable,
   playEach,
   seenPrey,
@@ -27,7 +21,6 @@ import {
   touching,
 } from "../bodies.js";
 import {
-  avenged,
   nearest,
   periodicCall,
   Route,
@@ -183,11 +176,7 @@ function quarry(
   game: Session,
   config: ApexPredatorConfig,
 ): Body | null {
-  const hurt = hurtSinceLastStep(game, self.id);
-  const hitter = livingBody(
-    game,
-    avenged(game, self, hurt?.by ?? null, config),
-  );
+  const hitter = hitterOf(game, self, config);
   if (hitter !== null) return hitter;
   if (state.mode !== "angry") return null;
   const seen = seenPrey(game, self, config, config.sightRange).filter((body) =>

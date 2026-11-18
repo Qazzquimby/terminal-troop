@@ -3,6 +3,7 @@ import { drawEmoji, drawFacing } from "../../render/index.js";
 import {
   darkSources,
   defineEntity,
+  eyesOf,
   distanceToWall,
   effect,
   emittedLights,
@@ -22,8 +23,10 @@ import type {
   WorldEntity,
 } from "../../sim/index.js";
 import {
+  ambushSpot,
   between,
   coverRoute,
+  foreseenPath,
   inSightOfAny,
   nearest,
   Route,
@@ -35,6 +38,7 @@ import {
   Waypoint,
   avenged,
 } from "../hunt.js";
+import type { Ambushing } from "../hunt.js";
 import {
   drawRing,
   gazeOn,
@@ -86,6 +90,15 @@ export interface StalkerConfig extends Watching {
   /** Seconds between plans of its route. */
   readonly repathInterval: number;
   /**
+   * How it lies in wait for its quarry: beside the way the quarry is guessed to walk, out of sight
+   * of all of it, looking for a better spot every `interval` seconds. Once the quarry has passed
+   * and stands within `pounce`, its back to it, it hunts.
+   */
+  readonly ambush: Ambushing & {
+    readonly interval: number;
+    readonly pounce: number;
+  };
+  /**
    * How it wanders with nothing to hunt, once home: legs to spots up to `range` from home, as the
    * crow flies, standing `pause` seconds between them.
    */
@@ -120,6 +133,7 @@ const CORNERS = [
 
 const COLOURS = {
   hunt: "#4b4f63",
+  ambush: "#3a3d4d",
   home: "#4b4f63",
   wander: "#4b4f63",
   retreat: "#7e8bb0",
@@ -129,6 +143,8 @@ const COLOURS = {
 /**
  * Everyone reads its mode, to draw it, and its facing; the rest only the host reads.
  * - hunt: heads for the nearest body it hunts that stands in the dark, by a way no body watches
+ * - ambush: heads for `ambush`, a spot beside the way that body is guessed to walk and hidden from
+ *   all of it, by a way no body watches, and waits there for it to pass
  * - home: with none to hunt, heads home by a way no body watches
  * - wander: home, it walks legs round it, standing until `standUntil` between them, null while it
  *   walks one
@@ -136,10 +152,11 @@ const COLOURS = {
  *   heads home by a way none of them sees, until `until`
  * - enraged: runs straight at `foe`, while it lives, or else the nearest living body, until `until`
  * `home` is where it arrived, null until it first steps; `foe` is the body that last hurt it,
- * which it goes for while enraged.
+ * which it goes for while enraged. `ambush` is the spot it lies in wait at, kept between its looks
+ * for a better one, the next due at `scoutAt`.
  */
 export const StalkerState = z.object({
-  mode: z.enum(["hunt", "home", "wander", "retreat", "enraged"]),
+  mode: z.enum(["hunt", "ambush", "home", "wander", "retreat", "enraged"]),
   until: Time,
   home: Waypoint.nullable(),
   route: Route,
@@ -148,6 +165,8 @@ export const StalkerState = z.object({
   attackAt: Time,
   attacking: z.boolean(),
   foe: z.string().nullable(),
+  ambush: Waypoint.nullable(),
+  scoutAt: Time,
   facing: rounded(2),
   creeping: z.boolean(),
 });
@@ -168,6 +187,8 @@ export function freshStalker(now: number): StalkerState {
     attackAt: now,
     attacking: false,
     foe: null,
+    ambush: null,
+    scoutAt: now,
     facing: 0,
     creeping: false,
   };
@@ -286,6 +307,13 @@ function plan(
       if (quarry === null) return [];
       return unwatchedRoute(game, self, quarry, config) ?? [];
     }
+    case "ambush":
+      if (state.ambush === null) return [];
+      return (
+        unwatchedRoute(game, self, state.ambush, config) ??
+        planRoute(map, self.radius, self, state.ambush) ??
+        []
+      );
     case "home":
       return (
         unwatchedRoute(game, self, home, config) ??
@@ -336,7 +364,7 @@ function isHome(
 
 /**
  * The mode it moves to: hurt, it rages; a rage or retreat runs its length. Otherwise the gaze of a
- * body it heeds sends it into retreat; a body it hunts in the dark sets it hunting; and with none,
+ * body it heeds sends it into retreat; a body it hunts in the dark sets it lying in wait or hunting; and with none,
  * it heads home, then wanders there.
  */
 function think(
@@ -360,11 +388,74 @@ function think(
   if (timed && now < state.until) return state;
   if (gazeOn(game, self, config)(self))
     return enter(state, "retreat", now, now + config.retreatSeconds);
-  if (quarryOf(game, self, config) !== null) return settle(state, "hunt", now);
+  const quarry = quarryOf(game, self, config);
+  if (quarry !== null) return stalk(state, self, quarry, game, config);
   if (state.mode === "wander") return state;
   if (state.mode === "home" && isHome(game, self, state))
     return enter(state, "wander", now, now);
   return settle(state, "home", now);
+}
+
+/**
+ * Whether it pounces on `quarry`: the quarry within the pounce distance with its back to it, as
+ * `facing` has it, or with no facing at all.
+ */
+function pounces(
+  self: Point,
+  quarry: Body,
+  facing: number | null,
+  config: StalkerConfig,
+): boolean {
+  const dx = self.x - quarry.x;
+  const dy = self.y - quarry.y;
+  if (Math.hypot(dx, dy) > config.ambush.pounce) return false;
+  return facing === null || dx * Math.cos(facing) + dy * Math.sin(facing) <= 0;
+}
+
+/**
+ * With `quarry` to hunt: every `ambush.interval` it looks for a spot to lie in wait at beside the
+ * way the quarry is guessed to walk, keeping the one it has unless a better turns up, and heads
+ * there; with none, or once the quarry has passed and stands near with its back to it, it hunts.
+ * A quarry with no facing, nothing to guess its way by, it hunts outright.
+ */
+function stalk(
+  state: StalkerState,
+  self: WorldEntity,
+  quarry: Body,
+  game: Session,
+  config: StalkerConfig,
+): StalkerState {
+  const now = game.worldTime;
+  const { map } = game.world;
+  const facing = eyesOf(game, quarry)?.cone?.direction ?? null;
+  let scouted = state;
+  if (now >= state.scoutAt) {
+    const spot =
+      facing === null
+        ? null
+        : ambushSpot(
+            map,
+            self.radius,
+            foreseenPath(map, quarry, facing, config.ambush),
+            config.watchRange,
+            config.ambush,
+            Math.random,
+            state.ambush,
+          );
+    const ambush = spot === null ? null : Waypoint.parse(spot);
+    const moved =
+      ambush?.x !== state.ambush?.x || ambush?.y !== state.ambush?.y;
+    scouted = {
+      ...state,
+      ambush,
+      scoutAt: now + config.ambush.interval,
+      // A new spot, it heads there at once.
+      repathAt: moved && state.mode === "ambush" ? now : state.repathAt,
+    };
+  }
+  const lying =
+    scouted.ambush !== null && !pounces(self, quarry, facing, config);
+  return settle(scouted, lying ? "ambush" : "hunt", now);
 }
 
 /** `state` with its route replanned, when due. */
@@ -499,17 +590,20 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
     },
     draw(ctx, entity, state, now) {
       ctx.save();
-      // Raging, it shakes; hunting, heading home or wandering, it is hard to make out, and
-      // creeping, harder still.
+      // Raging, it shakes; hunting, lying in wait, heading home or wandering, it is hard to make
+      // out, and creeping or waiting at its spot, harder still.
       const shake = state.mode === "enraged" ? Math.sin(now / 25) * 1.5 : 0;
       const at = { x: entity.x + shake, y: entity.y };
       const lurking =
         state.mode === "hunt" ||
+        state.mode === "ambush" ||
         state.mode === "home" ||
         state.mode === "wander";
+      // Lying in wait at its spot, it is as faint as creeping.
+      const waiting = state.mode === "ambush" && state.route.length === 0;
       ctx.globalAlpha = !lurking
         ? 1
-        : state.creeping
+        : state.creeping || waiting
           ? CREEPING_ALPHA
           : LURKING_ALPHA;
       drawEmoji(ctx, at, GLYPH, entity.radius * 2);
@@ -530,7 +624,9 @@ function definition(config: StalkerConfig): EntityDefinition<StalkerState> {
  * The stalker: alone, arriving in the dark out of every player's sight. It knows where every body
  * is and which way each faces, and comes up on the nearest standing in the dark along a way no
  * body looks down, faster than a walk, slowing to a creep once it has that body in its own sight.
- * A body in the light it passes over; with none in the dark it goes home and wanders there.
+ * Where it can, it gets ahead instead: to a spot beside the way that body would walk in the next
+ * few seconds, hidden from all of it, and waits there for the body to pass, then comes on from
+ * behind. A body in the light it passes over; with none in the dark it goes home and wanders there.
  * Caught in the gaze of a kind it heeds, players alone as configured, it hisses and gets out of
  * their sight by the quickest way, round a corner or past where they see to, then makes its way
  * home unseen, for a long while. Hurt, it shrieks and runs at whatever lives nearest, for a short

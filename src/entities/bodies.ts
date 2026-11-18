@@ -3,9 +3,11 @@ import {
   effect,
   eyesOf,
   hasKindTag,
+  hurtSinceLastStep,
   inCone,
   inView,
   livingBodies,
+  livingBody,
 } from "../sim/index.js";
 import type {
   Body,
@@ -17,8 +19,22 @@ import type {
   Strike,
   WorldEntity,
 } from "../sim/index.js";
-import { NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
+import { avenged, NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
+import { kindsAsRareAs } from "./spawning.js";
+
+/**
+ * The living body that hurt `self` since its last step, as one it would turn on: none for one it
+ * spares, itself or no one; null for none.
+ */
+export function hitterOf(
+  game: Session,
+  self: { readonly id: string },
+  hunting: Pick<Hunting, "targets">,
+): Body | null {
+  const hurt = hurtSinceLastStep(game, self.id);
+  return livingBody(game, avenged(game, self, hurt?.by ?? null, hunting));
+}
 
 /**
  * Eyes as a player's, down `facing`: its view cone and surroundings, both out to `range`. For a
@@ -72,6 +88,22 @@ export function playEach(
   for (const sound of made)
     if (sound !== false)
       effect(game, { at: { x: self.x, y: self.y }, sound }, self);
+}
+
+/**
+ * Has `self`, as the host, say one of `lines` picked at random aloud in `voice`, the speech
+ * config's id for it: heard from it on every client, and a voice's noise as far. Says nothing with
+ * no lines.
+ */
+export function sayOneOf(
+  game: Session,
+  self: WorldEntity,
+  lines: readonly string[],
+  voice: string,
+): void {
+  const text = lines[Math.floor(Math.random() * lines.length)];
+  if (text === undefined) return;
+  effect(game, { at: { x: self.x, y: self.y }, say: { text, voice } }, self);
 }
 
 /*
@@ -281,4 +313,50 @@ export function isKillable(game: Session, body: Body): boolean {
   if (entity === null) return true;
   const kind = game.entityTypes.get(entity.kind);
   return kind !== undefined && Number.isFinite(kind.maxHealth);
+}
+
+/** What a kind runs from, which its config says. */
+export interface Fearing {
+  /**
+   * The measure it fears by: "rarity", the kinds the world's spawner brings as rarely as
+   * `asRareAs` or more rarely; "toughness", any body whose full health is `toughness` or more.
+   */
+  readonly by: "rarity" | "toughness";
+  /**
+   * By rarity, it fears the kinds the world's spawner brings this rarely or more rarely: those
+   * whose spawning weight is at most this.
+   */
+  readonly asRareAs: number;
+  /** By toughness, it fears any body whose full health is at least this. */
+  readonly toughness: number;
+}
+
+/** Whether a body is one `fearing` fears, by the measure it names. */
+function fears(game: Session, fearing: Fearing): (body: Body) => boolean {
+  if (fearing.by === "toughness")
+    return (body) => body.maxHealth >= fearing.toughness;
+  const kinds = kindsAsRareAs(game, fearing.asRareAs);
+  return (body) => kinds.length > 0 && hasKindTag(game, body.id, kinds);
+}
+
+/**
+ * Every living body `self` fears that it sees with its kind's eyes: those `fearing` names, by
+ * rarity or by toughness, but the kind tags in `ignores`. A stunned or blind entity sees none.
+ */
+export function seenFeared(
+  game: Session,
+  self: WorldEntity,
+  fearing: Fearing,
+  ignores: readonly string[],
+): Body[] {
+  const sight = eyesOf(game, self);
+  if (sight === null) return [];
+  const isFeared = fears(game, fearing);
+  return livingBodies(game, self.id).filter(
+    (body) =>
+      body.id !== self.id &&
+      isFeared(body) &&
+      !hasKindTag(game, body.id, ignores) &&
+      inView(game, sight, body),
+  );
 }

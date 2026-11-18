@@ -5,7 +5,7 @@ import type { Controls, Session } from "../sim/index.js";
 import { createSpectator, eyeOf, stepSpectator } from "./spectate.js";
 
 const DT = 1 / 60;
-const CONFIG = { speed: 300 };
+const CONFIG = { speed: 300, zoom: { min: 0.5, max: 2.5, step: 1.2 } };
 
 const idle: Controls = {
   move: { x: 0, y: 0 },
@@ -112,4 +112,33 @@ test("the view toggle switches a ghost to a free camera moved like a player, and
   expect(eye.kind === "free" && eye.at.x).toBe(300);
   stepSpectator(spectator, game, { ...idle, toggleView: true }, DT, CONFIG);
   expect(watched(spectator, game)).toBe("p");
+});
+
+test("the wheel zooms a ghost's view out and in, within its bounds", () => {
+  const game = world();
+  game.local.health = 0;
+  const spectator = createSpectator();
+  stepSpectator(spectator, game, { ...idle, cycle: 1 }, DT, CONFIG);
+  expect(spectator.zoom).toBeCloseTo(1.2, 10);
+  stepSpectator(spectator, game, { ...idle, cycle: -1 }, DT, CONFIG);
+  expect(spectator.zoom).toBeCloseTo(1, 10);
+  for (let notch = 0; notch < 20; notch++)
+    stepSpectator(spectator, game, { ...idle, cycle: 1 }, DT, CONFIG);
+  expect(spectator.zoom).toBe(2.5);
+  for (let notch = 0; notch < 40; notch++)
+    stepSpectator(spectator, game, { ...idle, cycle: -1 }, DT, CONFIG);
+  expect(spectator.zoom).toBe(0.5);
+});
+
+test("the wheel leaves a living player's zoom alone, and coming back to life sets a ghost's back", () => {
+  const game = world();
+  const spectator = createSpectator();
+  stepSpectator(spectator, game, { ...idle, cycle: 1 }, DT, CONFIG);
+  expect(spectator.zoom).toBe(1);
+  game.local.health = 0;
+  stepSpectator(spectator, game, { ...idle, cycle: 1 }, DT, CONFIG);
+  expect(spectator.zoom).toBeGreaterThan(1);
+  game.local.health = 1;
+  stepSpectator(spectator, game, idle, DT, CONFIG);
+  expect(spectator.zoom).toBe(1);
 });

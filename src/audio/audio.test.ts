@@ -73,6 +73,42 @@ describe("a sound whose file is missing", () => {
   });
 });
 
+describe("sound made rather than loaded", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("plays its samples placed as a loaded sound is, fading out to its range", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    const near = { x: 0, y: 0 };
+    void sfx.playSamples(new Float32Array(441), 22_050, near, near, {
+      range: 400,
+    });
+    await settle();
+    const [made] = audio.sounds();
+    expect(made?.url).toBe("samples:441@22050");
+    expect(made?.volume()).toBe(1);
+    sfx.listen({ x: 400, y: 0 });
+    expect(made?.volume()).toBe(0);
+  });
+
+  test("of no samples plays nothing", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    const handle = await sfx.playSamples(
+      new Float32Array(0),
+      22_050,
+      null,
+      null,
+    );
+    expect(audio.sounds()).toHaveLength(0);
+    expect(() => {
+      handle.stop();
+    }).not.toThrow();
+  });
+});
+
 describe("a positioned sound still playing", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

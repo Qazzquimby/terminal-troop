@@ -163,6 +163,7 @@ export const teleporter = defineEntity(NAME, (config: TeleporterConfig) => {
     radius: config.radius,
     maxHealth: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: TeleporterState,
     update(entity, state, _dt, game) {

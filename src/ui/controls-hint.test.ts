@@ -36,7 +36,7 @@ test("a ghost is shown only how to spectate", () => {
   const text = controlsHintFor("ghost", false);
   expect(text).toBe(
     "Click to watch next · Right click to watch previous · Space to toggle free camera · " +
-      "WASD / ↑←↓→ to move free camera · Esc for settings",
+      "WASD / ↑←↓→ to move free camera · Scroll to zoom · Esc for settings",
   );
   expect(text).not.toMatch(/pick up|kick|drop/);
 });
@@ -78,4 +78,12 @@ test("an action missing from the list does not appear", () => {
   expect(text).toBe("Shift to sprint");
   for (const entries of Object.values(CONTROLS_HINT))
     expect(controlsHintText(entries)).not.toMatch(/F3|debug/);
+});
+
+test("with the rotating camera on, the hint says the mouse turns, on foot and as a ghost", () => {
+  expect(controlsHintFor("foot", false, true)).toMatch(/^Mouse to turn · WASD/);
+  expect(controlsHintFor("ghost", false, true)).toMatch(/^Mouse to turn · /);
+  expect(controlsHintFor("driving", false, true)).toBe(
+    controlsHintFor("driving", false),
+  );
 });

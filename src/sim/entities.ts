@@ -16,11 +16,14 @@ import type { Session } from "./session.js";
 import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
 import type { Eyes } from "./eyes.js";
+import type { GazePull } from "./gaze-pull.js";
 import type { VehicleSpec } from "./driving.js";
-import type { Playing } from "./item-sounds.js";
+import type { Plays } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
 import { pressDoors } from "./doors.js";
+import { profileEnd, profileStart, profiling } from "./profile.js";
 import type { DoorHinge, Hinge } from "./doors.js";
+import type { ItemState } from "./inventory.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
@@ -66,6 +69,34 @@ export interface Strike {
   readonly target: string;
   readonly amount: number;
   readonly by?: string | null;
+}
+
+/**
+ * How a kind shows as an apparition, as a ghost on a bad signal: see-through, shaking where it
+ * stands, now and then lurching aside, and crawling with static. Any kind can take one, from its
+ * config, as `apparition` on its definition.
+ */
+export interface Apparition {
+  /** How opaque it is drawn, 0..1, on top of whatever opacity it draws itself with. */
+  readonly opacity: number;
+  /** How far, in pixels, it trembles every way, afresh each frame. */
+  readonly shake: number;
+  /**
+   * Its jolts: the share of moments, 0..1, it lurches `size` pixels sideways, a faint copy of it
+   * left where it stood.
+   */
+  readonly jolt: { readonly chance: number; readonly size: number };
+  /** How thick the static crawling over it is, 0..1. */
+  readonly static: number;
+}
+
+/**
+ * An item a body passes itself off as, lying in the world: which item, and the state it shows
+ * with, if any.
+ */
+export interface PosedItem {
+  readonly item: string;
+  readonly state?: ItemState | undefined;
 }
 
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
@@ -115,6 +146,11 @@ export interface EntityDefinition<S> {
    */
   readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
   /**
+   * Whether it pulls the gaze of every body that could look at it by turning, given its state,
+   * and how; see gaze-pull.ts. It pulls none when left out or null.
+   */
+  readonly pullsGaze?: (entity: WorldEntity, data: S) => GazePull | null;
+  /**
    * The one body that perceives it, by id, given its state; null for no body at all. Only that
    * body finds it among the living bodies (to hunt, strike, trap, shoot or bump into), hears the
    * noise it makes and, on that body's own client, sees it drawn and hears its sounds; the world
@@ -129,10 +165,36 @@ export interface EntityDefinition<S> {
    */
   readonly seenInDark?: boolean;
   /**
+   * Whether it shows as an apparition, given its state, and how: see-through, shaking and
+   * crawling with static over whatever `draw` draws of it. Drawn solid when left out or null.
+   */
+  readonly apparition?: (entity: WorldEntity, data: S) => Apparition | null;
+  /**
    * Whether it passes itself off as a wall: wherever it shows, the cell it stands in is drawn as
    * a wall cell, joined to the walls round it as they join one another.
    */
   readonly posesAsWall?: boolean;
+  /**
+   * The item it passes itself off as, given its state, or null while it passes for none. While it
+   * poses as one it carries `ITEM_TAG` among its kind tags, so whatever passes over items passes
+   * over it, and a player reaching for an item may reach for it; `grabbed` says what then.
+   */
+  readonly posesAsItem?: (entity: WorldEntity, data: S) => PosedItem | null;
+  /**
+   * Its next state once a body reaches to pick it up while it poses as an item. Runs only while
+   * hosting. Left out, the reach does nothing.
+   */
+  readonly grabbed?: (
+    entity: WorldEntity,
+    data: S,
+    by: { readonly id: string },
+    game: Session,
+  ) => S;
+  /**
+   * Whether it casts a shadow, blocking the lights given off round it as a wall does (#384); true
+   * when left out. False for a kind lying flat on the ground, such as a mine or a teleporter pad.
+   */
+  readonly castsShadow?: boolean;
   /**
    * Whether, given its state, no body perceives it but while it lies in deepdark: out of it, it
    * is neither drawn, found among bodies, heard nor picked up. Every body perceives a kind without
@@ -158,13 +220,10 @@ export interface EntityDefinition<S> {
   readonly vehicle?: VehicleSpec;
   /**
    * What it plays where it is, given its state, if anything, on every client: a car radio's
-   * station, say. Streamed as an item's is, following it as it moves.
+   * station and its engine, say, each under its own key. Streamed as an item's is, following it
+   * as it moves.
    */
-  readonly plays?: (
-    entity: WorldEntity,
-    data: S,
-    game: Session,
-  ) => Playing | null;
+  readonly plays?: (entity: WorldEntity, data: S, game: Session) => Plays;
   /**
    * Its body as a box rather than the disc of `radius`, such as a car's: `length` along the way
    * it points, which `heading` gives from its state, and `width` across. Walls stop it as it
@@ -241,13 +300,27 @@ export interface EntityType {
   /** How far round it it gives off darkness, in pixels; 0 for none. */
   darkness(entity: WorldEntity): number;
   eyes(entity: WorldEntity, game: Session): Eyes | null;
+  /** How it pulls the gaze of bodies that could look at it now; null for not at all. */
+  pullsGaze(entity: WorldEntity): GazePull | null;
   /** Whether only one body perceives it, the one `perceiver` names. */
   readonly restricted: boolean;
   /** The one body that perceives it, when `restricted`; null for none. */
   perceiver(entity: WorldEntity): string | null;
   readonly seenInDark: boolean;
+  /** How it shows as an apparition now; null while it is drawn solid. */
+  apparition(entity: WorldEntity): Apparition | null;
   /** Whether the cell it stands in is drawn as a wall wherever it shows. */
   readonly posesAsWall: boolean;
+  /** The item it poses as now; null while it poses as none. */
+  posedItem(entity: WorldEntity): PosedItem | null;
+  /** As the host, what it does as `by` reaches to pick it up while it poses as an item. */
+  grabbed(
+    entity: WorldEntity,
+    by: { readonly id: string },
+    game: Session,
+  ): void;
+  /** Whether it casts a shadow in the lights given off round it. */
+  readonly castsShadow: boolean;
   /** Whether it is perceived only while it lies in deepdark. */
   onlyInDeepdark(entity: WorldEntity, game: Session): boolean;
   minimap(
@@ -256,7 +329,7 @@ export interface EntityType {
     size: number,
     now: number,
   ): void;
-  plays(entity: WorldEntity, game: Session): Playing | null;
+  plays(entity: WorldEntity, game: Session): Plays;
   /**
    * Whether it lies dormant this step: its kind has a dormant range, none of `players` stands
    * within it, and it is not wakeful.
@@ -307,6 +380,8 @@ function hinge<S>(definition: EntityDefinition<S>): DoorHinge | null {
 function entityType<S>(definition: EntityDefinition<S>): EntityType {
   // Whether each state an entity of the kind has taken is perceived only in deepdark.
   const deepdarkOnly = new WeakMap<object, boolean>();
+  // The item each state an entity of the kind has taken poses as.
+  const posed = new WeakMap<object, PosedItem | null>();
   const { data: schema } = definition;
   return {
     radius: definition.radius,
@@ -346,6 +421,13 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       if (!parsed.success) return null;
       return definition.eyes?.(entity, parsed.data, game) ?? null;
     },
+    pullsGaze(entity) {
+      const { pullsGaze } = definition;
+      // Most kinds pull no gaze, and pay nothing to parse their state for it.
+      if (pullsGaze === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      return parsed.success ? pullsGaze(entity, parsed.data) : null;
+    },
     restricted: definition.perceivedBy !== undefined,
     perceiver(entity) {
       const { perceivedBy } = definition;
@@ -354,7 +436,35 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       return parsed.success ? perceivedBy(entity, parsed.data) : null;
     },
     seenInDark: definition.seenInDark ?? false,
+    apparition(entity) {
+      const { apparition } = definition;
+      // Most kinds are drawn solid, and pay nothing to parse their state for it.
+      if (apparition === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      return parsed.success ? apparition(entity, parsed.data) : null;
+    },
     posesAsWall: definition.posesAsWall ?? false,
+    posedItem(entity) {
+      const { posesAsItem } = definition;
+      // Most kinds pose as nothing, and pay nothing to parse their state for it.
+      if (posesAsItem === undefined) return null;
+      // Asked with every kind tag, so judged once for each state an entity takes.
+      const { data } = entity;
+      const keyed = typeof data === "object" && data !== null;
+      const known = keyed ? posed.get(data) : undefined;
+      if (known !== undefined) return known;
+      const parsed = schema.safeParse(data);
+      const item = parsed.success ? posesAsItem(entity, parsed.data) : null;
+      if (keyed) posed.set(data, item);
+      return item;
+    },
+    grabbed(entity, by, game) {
+      const { grabbed } = definition;
+      if (grabbed === undefined || !game.hosting) return;
+      const parsed = schema.safeParse(entity.data);
+      if (parsed.success) entity.data = grabbed(entity, parsed.data, by, game);
+    },
+    castsShadow: definition.castsShadow ?? true,
     onlyInDeepdark(entity, game) {
       const { onlyInDeepdark } = definition;
       // Most kinds show anywhere, and pay nothing to parse their state for it.
@@ -509,25 +619,36 @@ function runKind(game: Session, entity: WorldEntity, dt: number): void {
  * stunned one does.
  */
 export function updateEntities(game: Session, dt: number): void {
+  const pruning = profileStart();
   cullDeadEntities(game);
   pruneStatuses(game);
   pruneHurts(game);
+  profileEnd("entities:prune", pruning);
   const players = livingPlayers(game);
+  // A kind's name only while a profile is timing steps, so no label is built otherwise.
+  const kindNames = profiling()
+    ? new Map([...game.kindIds].map(([name, id]) => [id, name]))
+    : null;
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
+    const kind = kindNames?.get(entity.kind) ?? null;
 
+    let start = profileStart();
     if (
       isStunned(game, entity.id) ||
       game.entityTypes.get(entity.kind)?.dormant(entity, players, game) === true
     ) {
       entity.vx = 0;
       entity.vy = 0;
+      if (kind !== null) profileEnd(`kind:${kind}:still`, start);
     } else {
       runKind(game, entity, dt);
+      if (kind !== null) profileEnd(`kind:${kind}:run`, start);
       if (!game.entities.has(entity.id)) return;
     }
 
+    start = profileStart();
     if (entity.collides) {
       const type = game.entityTypes.get(entity.kind);
       if (type?.door === null) pressDoors(game, entity, type.opensDoors, dt);
@@ -544,6 +665,7 @@ export function updateEntities(game: Session, dt: number): void {
     }
     entity.tx = entity.x;
     entity.ty = entity.y;
+    if (kind !== null) profileEnd(`kind:${kind}:move`, start);
   });
 }
 

@@ -3,7 +3,8 @@ import {
   credit,
   effect,
   itemInstances,
-  revive, sound,
+  revive,
+  sound,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
 import reviveUrl from "./sfx/revive.mp3";

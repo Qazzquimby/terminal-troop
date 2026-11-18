@@ -38,8 +38,25 @@ import {
   drawRemembered,
   cellAt,
   poseAsWalls,
+  facedCells,
   interpolatedView,
+  wrapCaption,
 } from "./render.js";
+
+test("a caption wraps at spaces, splits a word too long for a line, and cuts what runs past its lines", () => {
+  expect(wrapCaption("Happy birthday to me!", 12, 3)).toEqual([
+    "Happy",
+    "birthday to",
+    "me!",
+  ]);
+  expect(wrapCaption("aaaaaaaaaa bb", 4, 5)).toEqual([
+    "aaaa",
+    "aaaa",
+    "aa",
+    "bb",
+  ]);
+  expect(wrapCaption("one two three four", 5, 2)).toEqual(["one", "two…"]);
+});
 
 test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
   const ctx = {
@@ -187,6 +204,35 @@ test("with no cell posing as a wall, the lit walls are left as they are", () => 
   expect(poseAsWalls(wallBesideOpen(), walls, [], { x: 0, y: 0 })).toBe(walls);
 });
 
+test("a lit face belongs to the wall cell behind it, so what stands in that cell shows", () => {
+  const map = wallBesideOpen();
+  const walls = new Map([
+    [
+      7,
+      [
+        {
+          from: { x: 10, y: 10 },
+          to: { x: 10, y: 20 },
+          normal: { x: 1, y: 0 },
+        },
+      ],
+    ],
+    [
+      8,
+      [
+        {
+          from: { x: 0, y: 30 },
+          to: { x: 10, y: 30 },
+          normal: { x: 0, y: 1 },
+        },
+      ],
+    ],
+  ]);
+  // The first is a face of the wall at column 0, row 1; the second of row 2, at the map's edge.
+  expect([...facedCells(map, walls)].sort()).toEqual([3, 6]);
+  expect(facedCells(map, new Map()).size).toBe(0);
+});
+
 const FIXED_DT = 1 / 60;
 
 const walkRight = {
@@ -219,7 +265,14 @@ test.each([
   ["an unhurt body", 40, 40, false],
   ["an unbreakable body, however hit", Infinity, Infinity, false],
 ])("%s shows a health bar: %s", (_label, health, maxHealth, shown) => {
-  const ctx = { fillStyle: "", fillRect: vi.fn() };
+  const ctx = {
+    fillStyle: "",
+    fillRect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+  };
   const body = { x: 100, y: 100, vx: 0, vy: 0, radius: 10, health, maxHealth };
   drawHealthBar(ctx, body, 80);
   expect(ctx.fillRect.mock.calls.length > 0).toBe(shown);
@@ -483,6 +536,8 @@ test("emojis are drawn opaque whatever translucent fill was set before them", ()
     restore() {
       ctx.fillStyle = saved.pop() ?? ctx.fillStyle;
     },
+    translate: (): void => undefined,
+    rotate: (): void => undefined,
     fillText(text: string) {
       drawn.push({ text, fill: ctx.fillStyle });
     },
@@ -519,6 +574,8 @@ test("a body drawn as a player shows its name, what it holds, and its bar where 
     arc: noop,
     fill: noop,
     stroke: noop,
+    translate: noop,
+    rotate: noop,
     fillText(text: string) {
       texts.push(text);
     },

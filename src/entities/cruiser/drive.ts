@@ -14,7 +14,8 @@ import {
   playersOutside,
   push,
   reachAlong,
-  rounded, sound,
+  rounded,
+  sound,
   touches,
   unseat,
 } from "../../sim/index.js";
@@ -24,8 +25,10 @@ import type {
   Handling,
   Impact,
   Player,
+  Playing,
   Point,
   Session,
+  Sound,
   VehicleSpec,
   WorldEntity,
 } from "../../sim/index.js";
@@ -33,32 +36,55 @@ import type {
 // the build. Until then each makes its noise without a sound.
 import idleUrl from "./sfx/idle.mp3";
 import engineUrl from "./sfx/engine.mp3";
+import reverseUrl from "./sfx/reverse.mp3";
 import crashUrl from "./sfx/crash.mp3";
 import ramUrl from "./sfx/ram.mp3";
 // import breakdownUrl from "./sfx/breakdown.mp3";
 import hornUrl from "./sfx/horn.mp3";
 
-const idleSound = sound({
-  url: idleUrl,
-  volume: 0.05,
-  range: 6,
-  noise: false,
+/** What its engine is doing: stopped, idling, driven forward or backing up. */
+const EngineRun = z.enum(["off", "idle", "drive", "reverse"]);
+type EngineRun = z.output<typeof EngineRun>;
+
+/** The long sound its engine holds while it runs, by what it is doing. */
+const engineUrls: Record<Exclude<EngineRun, "off">, string> = {
+  idle: idleUrl,
+  drive: engineUrl,
+  reverse: reverseUrl,
+};
+
+/**
+ * How loud one of its sounds plays, 0..1, and how far off it is heard, in pixels (not cells):
+ * the sound's own reach, apart from the noise it makes.
+ */
+export interface CruiserSound {
+  readonly volume: number;
+  /** In pixels. */
+  readonly range: number;
+}
+
+/** How each of its driving sounds plays. */
+export interface DrivingSounds {
+  /** Its engine's three held, looping sounds: standing fuelled, driven forward, backing up. */
+  readonly idle: CruiserSound;
+  readonly drive: CruiserSound;
+  readonly reverse: CruiserSound;
+  /** Knocking down a wall. */
+  readonly crash: CruiserSound;
+  /** Hitting a body. */
+  readonly ram: CruiserSound;
+}
+
+/**
+ * Its crash and ram sounds, declared as `sounds` says. Declared with its vehicle spec on every
+ * peer, so each client plays them when the host sends them.
+ */
+const impactSounds = (
+  sounds: DrivingSounds,
+): { readonly crash: Sound; readonly ram: Sound } => ({
+  crash: sound({ url: crashUrl, ...sounds.crash }),
+  ram: sound({ url: ramUrl, ...sounds.ram }),
 });
-const engineSound = sound({
-  url: engineUrl,
-  volume: 0.4,
-  range: 20,
-});
-const crashSound = sound({
-  url: crashUrl,
-  volume: 0.8,
-  range: 34
-})
-const ramSound = sound({
-  url: ramUrl,
-  volume: 0.5,
-  range: 22
-})
 
 /** How often the engine is heard, and how far. Seconds, pixels. */
 interface EngineBeat {
@@ -110,6 +136,8 @@ export interface DrivingConfig {
     /** How loud it plays, 0..1. */
     readonly volume: number;
   };
+  /** How its engine, crash and ram sounds play. */
+  readonly sounds: DrivingSounds;
 }
 
 /** The tag the engine's noise carries, past its maker's kind. */
@@ -118,7 +146,8 @@ const ENGINE_TAG = "engine";
 /**
  * The cruiser's state: seconds of driving its fuel has left, unpowered at 0; damage taken since
  * it last broke down; the way its front points, in radians; the station its radio plays, null
- * while it is off; whether its door is shut; and the power its door has left, 0..1 of full.
+ * while it is off; whether its door is shut; the power its door has left, 0..1 of full; and what
+ * its engine is doing, and since when on the world's clock.
  */
 export const CruiserState = z.object({
   fuel: rounded(2, z.number().min(0)),
@@ -127,12 +156,14 @@ export const CruiserState = z.object({
   station: z.number().int().min(0).nullable().default(null),
   shut: z.boolean().default(false),
   charge: rounded(2, z.number().min(0).max(1)).default(1),
+  engine: EngineRun.default("off"),
+  revved: rounded(2).default(0),
 });
 export type CruiserState = z.output<typeof CruiserState>;
 
 /**
  * A cruiser new to the world: unfuelled, undamaged, pointing right, towards the exit, radio off,
- * door open on full power.
+ * door open on full power, engine off.
  */
 export const FRESH: CruiserState = {
   fuel: 0,
@@ -141,6 +172,8 @@ export const FRESH: CruiserState = {
   station: null,
   shut: false,
   charge: 1,
+  engine: "off",
+  revved: 0,
 };
 
 /** `vehicle`'s state, or a fresh one if it does not parse. */
@@ -157,7 +190,12 @@ const isPowered = (vehicle: WorldEntity): boolean => stateOf(vehicle).fuel > 0;
  * down the walls it crashes into, and has a horn.
  */
 export function vehicle(config: DrivingConfig): VehicleSpec {
-  const hornSound = sound({ url: hornUrl, volume: config.horn.volume, range: config.horn.noiseRadius });
+  const hornSound = sound({
+    url: hornUrl,
+    volume: config.horn.volume,
+    range: config.horn.noiseRadius,
+  });
+  impactSounds(config.sounds);
   return {
     handling: config.handling,
     reach: config.reach,
@@ -203,7 +241,7 @@ function crash(
       at: impact.area.center,
       flash: { radius: entity.radius, hit: true },
       noise: config.crash.noiseRadius,
-      sound: crashSound,
+      sound: impactSounds(config.sounds).crash,
     },
     driver,
   );
@@ -288,35 +326,61 @@ function ram(
         at: { x: body.x, y: body.y },
         flash: { radius: body.radius * 2, hit: true },
         noise: config.ram.noiseRadius,
-        sound: ramSound,
+        sound: impactSounds(config.sounds).ram,
       },
       driver,
     );
   }
 }
 
-/** When each cruiser's engine is next heard, on the world's clock, by entity id, per session. */
+/** When each cruiser's engine next makes its noise, on the world's clock, by entity id, per session. */
 const nextBeat = new WeakMap<Session, Map<string, number>>();
 
 /**
- * The engine, while it has fuel: a quiet beat as it stands, a loud one, made by its driver, while
- * it is driven. Zombies pay a standing cruiser no mind, but hear one driven as they would its
- * driver.
+ * What the engine of a cruiser in `state` does now: off without fuel, idling as it stands, and
+ * otherwise driven forward or backing up as its `speed` goes; null for no one at the wheel.
+ */
+function engineRun(
+  state: CruiserState,
+  speed: number | null,
+  config: DrivingConfig,
+): EngineRun {
+  if (state.fuel <= 0) return "off";
+  if (speed === null || Math.abs(speed) <= config.standing) return "idle";
+  return speed > 0 ? "drive" : "reverse";
+}
+
+/** `state` with its engine doing `run`, since now if that is a change. */
+function revTo(
+  game: Session,
+  state: CruiserState,
+  run: EngineRun,
+): CruiserState {
+  return run === state.engine
+    ? state
+    : { ...state, engine: run, revved: game.worldTime };
+}
+
+/**
+ * The engine's noise, while it runs: a quiet beat as it idles, a loud one, made by its driver,
+ * while it is driven either way. Zombies pay a standing cruiser no mind, but hear one driven as
+ * they would its driver. What clients hear of it is `enginePlaying`.
  */
 function runEngine(
   game: Session,
   entity: WorldEntity,
-  driving: Player | null,
+  run: EngineRun,
+  driver: Player | null,
   config: DrivingConfig,
 ): void {
   const beats = nextBeat.get(game) ?? new Map<string, number>();
   nextBeat.set(game, beats);
-  if (!isPowered(entity)) {
+  if (run === "off") {
     beats.delete(entity.id);
     return;
   }
   if (game.worldTime < (beats.get(entity.id) ?? -Infinity)) return;
-  const beat = driving === null ? config.engine.idle : config.engine.drive;
+  const beat = run === "idle" ? config.engine.idle : config.engine.drive;
   beats.set(entity.id, game.worldTime + beat.interval);
   effect(
     game,
@@ -324,10 +388,30 @@ function runEngine(
       at: { x: entity.x, y: entity.y },
       noise: beat.radius,
       tags: [ENGINE_TAG],
-      sound: driving === null ? idleSound : engineSound,
     },
-    driving ?? entity,
+    run === "idle" || driver === null ? entity : driver,
   );
+}
+
+/**
+ * The engine's sound on every client, while it runs: one long sound looped for as long as it
+ * idles, drives or backs up, from its start each time that changes, so a client coming upon it
+ * joins it where the world's clock has it.
+ */
+export function enginePlaying(
+  state: CruiserState,
+  sounds: DrivingSounds,
+): Playing | null {
+  if (state.engine === "off") return null;
+  const { volume, range } = sounds[state.engine];
+  return {
+    key: `engine/${state.engine}`,
+    url: engineUrls[state.engine],
+    since: state.revved,
+    volume,
+    range,
+    loop: true,
+  };
 }
 
 /**
@@ -355,21 +439,24 @@ export function stepCruiser(
       },
       entity,
     );
-    return { ...state, fuel: 0, damage: 0 };
+    return revTo(game, { ...state, fuel: 0, damage: 0 }, "off");
   }
   const driver = driverOf(game, entity.id);
   const ride = driver?.ride ?? null;
   if (driver === null || ride === null) {
-    runEngine(game, entity, null, config);
-    return state;
+    const run = engineRun(state, null, config);
+    runEngine(game, entity, run, null, config);
+    return revTo(game, state, run);
   }
   entity.x = driver.x;
   entity.y = driver.y;
   const moving = Math.abs(ride.speed) > config.standing;
   const fuel = moving ? Math.max(0, state.fuel - config.burn * dt) : state.fuel;
   ram(game, entity, driver, ride.speed, ride.heading, config);
-  runEngine(game, entity, moving ? driver : null, config);
-  return { ...state, fuel, heading: ride.heading };
+  const next = { ...state, fuel, heading: ride.heading };
+  const run = engineRun(next, ride.speed, config);
+  runEngine(game, entity, run, driver, config);
+  return revTo(game, next, run);
 }
 
 /** The cruiser nearest `at`, within `reach` of touching its body; null for none. */

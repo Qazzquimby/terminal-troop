@@ -30,12 +30,10 @@ export interface DoorConfig {
   /** Half its cell: it fills the cell it stands in. */
   readonly radius: number;
   readonly maxHealth: number;
-  /** Mixed with the room's seed to choose which doorways get doors, and how they are left. */
+  /** Mixed with the room's seed to choose which doorways get doors. */
   readonly seed: number;
-  /** Share of the world's doorways, 0..1, that get a door: every cell of the doorway one each. */
+  /** Share of the world's 1-wide doorways, 0..1, that get a door; a wider one never does. */
   readonly frequency: number;
-  /** Share of the doors laid, 0..1, that a new world leaves shut. */
-  readonly closedShare: number;
   /** How far from its middle a player can open or close one, in pixels. */
   readonly reach: number;
   /** Seconds a body that opens doors presses one before it swings open. */
@@ -83,10 +81,13 @@ function corner(cell: number, at: Point): Point {
 
 /**
  * Shut, a slab of wood filling its cell, framed, its knob towards the middle; open, a plank swung
- * back against the hinge side of its doorway.
+ * flat against the wall on its hinge side, the way through it clear.
  */
-function drawDoor(
-  ctx: CanvasRenderingContext2D,
+export function drawDoor(
+  ctx: Pick<
+    CanvasRenderingContext2D,
+    "fillStyle" | "fillRect" | "beginPath" | "arc" | "fill"
+  >,
   cell: number,
   entity: WorldEntity,
   state: DoorState,
@@ -95,9 +96,13 @@ function drawDoor(
   const plank = Math.max(3, cell * 0.12);
   ctx.fillStyle = WOOD.frame;
   if (state.open) {
-    // Hinged at the top, or the left, swung flat against the wall.
-    if (state.across) ctx.fillRect(x, y, cell, plank);
-    else ctx.fillRect(x, y, plank, cell);
+    // Hinged on the wall above, or the wall to the left, and swung flat against it.
+    const thick = plank * 1.5;
+    const w = state.across ? cell : thick;
+    const h = state.across ? thick : cell;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = WOOD.face;
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
     return;
   }
   ctx.fillRect(x, y, cell, cell);
@@ -127,7 +132,7 @@ function wallAt(game: Session, col: number, row: number): boolean {
   return layout.area[row * map.cols + col] === AREA.wall;
 }
 
-/** The doorways of the world: each a run of door cells side by side, row-major indices. */
+/** The doorways of the world: each the door cells side by side making one, row-major indices. */
 function doorways(game: Session): number[][] {
   const { map, layout } = game.world;
   const { cols, rows } = map;
@@ -161,25 +166,39 @@ function doorways(game: Session): number[][] {
 }
 
 /**
- * Lays doors in a share of the world's doorways, seeded by the room: one in each cell of a doorway
- * chosen, some shut, some open.
+ * Whether the cell at `col`, `row` is a gap one cell wide, walled on two opposite sides and open
+ * on the other two: the way through it running left to right (`across`), or top to bottom; null
+ * for any other cell.
+ */
+function gap(
+  game: Session,
+  col: number,
+  row: number,
+): { readonly across: boolean } | null {
+  const up = wallAt(game, col, row - 1) && wallAt(game, col, row + 1);
+  const side = wallAt(game, col - 1, row) && wallAt(game, col + 1, row);
+  return up === side ? null : { across: up };
+}
+
+/**
+ * Lays doors, shut, in a share of the world's doorways one cell wide, seeded by the room. A wider
+ * doorway is left open: a door hangs only in a gap with a wall either side to swing back against.
  */
 function layDoors(config: DoorConfig): SpawnRule<DoorState> {
   return (spawn, game) => {
     const { cell, cols } = game.world.map;
     const rng = mulberry32(game.seed ^ config.seed);
     for (const way of doorways(game)) {
-      if (rng() >= config.frequency) continue;
-      const open = rng() >= config.closedShare;
-      for (const index of way) {
-        const col = index % cols;
-        const row = Math.floor(index / cols);
-        const across = wallAt(game, col, row - 1) && wallAt(game, col, row + 1);
-        spawn(
-          { x: (col + 0.5) * cell, y: (row + 0.5) * cell },
-          { open, across },
-        );
-      }
+      const [index] = way;
+      if (way.length !== 1 || index === undefined) continue;
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const fits = gap(game, col, row);
+      if (fits === null || rng() >= config.frequency) continue;
+      spawn(
+        { x: (col + 0.5) * cell, y: (row + 0.5) * cell },
+        { open: false, across: fits.across },
+      );
     }
   };
 }
@@ -223,6 +242,7 @@ function definition(config: DoorConfig): EntityDefinition<DoorState> {
     mass: Infinity,
     // Its cell is a wall while it is shut, and floor while it is open; it is no body to bump.
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: DoorState,
     door: hinge(config, sounds),
@@ -258,9 +278,10 @@ function definition(config: DoorConfig): EntityDefinition<DoorState> {
 }
 
 /**
- * A door: a wooden one fills a cell of a doorway, laid in a share of the world's doorways as it
- * is made, some shut and some open. Shut, its cell is a wall to everything: bodies, sight, light
- * and routes. A player opens or shuts it with the interact control, loudly; a body steered into it
+ * A door: a wooden one fills a doorway one cell wide, laid shut in a share of the world's 1-wide
+ * doorways as it is made. Shut, its cell is a wall to everything: bodies, sight, light and routes,
+ * yet it is drawn as a door wherever its wall's face is seen. Open, it lies flat against a wall
+ * beside it, out of the way. A player opens or shuts it with the interact control, loudly; a body steered into it
  * shut opens it after a moment if its kind opens doors, and bashes it otherwise, until it breaks.
  * Blasts hurt it as they would any body; the walls they knock down spare it. It breaks open as it
  * dies.

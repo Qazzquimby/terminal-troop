@@ -125,8 +125,8 @@ export default {
     ),
     rule(
       "config-outside-root",
-      "Only bootstrap.ts, the composition root, imports config.ts. A module declares the type of the config it needs and takes it as a parameter; a test builds its own values.",
-      { path: "^src/", pathNot: "^src/bootstrap\\.ts$" },
+      "Only bootstrap.ts, the composition root, and benchmarks (*.bench.ts), which run the game as shipped, import config.ts. A module declares the type of the config it needs and takes it as a parameter; a test builds its own values.",
+      { path: "^src/", pathNot: ["^src/bootstrap\\.ts$", "\\.bench\\.ts$"] },
       { path: "^src/config\\.ts$" },
     ),
     rule(

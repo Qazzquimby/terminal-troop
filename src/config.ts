@@ -14,7 +14,7 @@ import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, MinimapConfig, UiConfig } from "./ui/index.js";
-import type { WheelConfig } from "./input/index.js";
+import type { TurnConfig, WheelConfig } from "./input/index.js";
 
 import type {
   RadioSoundConfig,
@@ -46,10 +46,13 @@ interface AppConfig extends SimConfig {
   readonly voiceClips: VoiceClipConfig;
   readonly voiceDetector: VoiceDetectorConfig;
   readonly audio: SpatialFalloff;
+  /** The rate, in Hz, the speech synthesizer renders at. */
+  readonly speechSynth: { readonly sampleRate: number };
   readonly ui: UiConfig;
   readonly hud: HudConfig;
   readonly minimap: MinimapConfig;
   readonly wheel: WheelConfig;
+  readonly turn: TurnConfig;
   readonly worldLog: WorldLogConfig;
 }
 
@@ -59,6 +62,11 @@ const STAMINA_MAX = 100;
 const SHOVEL_DAMAGE = 15;
 /** The sleeper's full health: ten shovel hits. A body this hard to kill or harder drops a heart. */
 const SLEEPER_HEALTH = SHOVEL_DAMAGE * 10;
+/**
+ * The sleeper's share of the spawner's picks. The doppelganger runs from any kind brought this
+ * rarely or more rarely.
+ */
+const SLEEPER_SPAWN_WEIGHT = 50;
 /** A player's walking pace, in pixels a second, and how much faster it sprints. */
 const PLAYER_SPEED = 120;
 const SPRINT = 1.8;
@@ -161,9 +169,20 @@ export const config = {
     zoomRate: 13.4,
     followRate: 18,
     snapDistance: CELL * 4,
+    // With the rotating camera on (a setting, off by default): the turn eases a fifth of the way
+    // to the view's facing each 60Hz frame, about a tenth of a second to catch a quick flick,
+    // and the eye sits 62% of the way down the view, as in the prototype, so more of what lies
+    // ahead shows than behind.
+    roll: { rate: 13.4, anchor: 0.62 },
   },
-  // A ghost's free camera glides at 8 cells a second, nearly twice a sprint.
-  spectate: { speed: CELL * 8 },
+  // With the rotating camera on, the mouse turns the view 0.0028 radians a pixel, the prototype's
+  // own: about 560px of mouse for a half turn. Keys turned with the view steer one of 64 ways
+  // (5.6° apart), so turning while walking sends a new steer only every few degrees.
+  turn: { sensitivity: 0.0028, directions: 64 },
+  // A ghost's free camera glides at 8 cells a second, nearly twice a sprint. Each notch of the
+  // wheel zooms a ghost's view by a fifth, from half the living's zoom (twice as close) out to
+  // two and a half times it (about 2.5x as wide), eased at the camera's own zoom rate.
+  spectate: { speed: CELL * 8, zoom: { min: 0.5, max: 2.5, step: 1.2 } },
   // Noises the local player hears, each drawn as a ring snapping out to the noise's radius in
   // 0.15s, then fading over the rest of 0.9s. One made by something other than a player that it
   // can't see glows warm and soft at the screen's edge instead, the way it seemed to come from.
@@ -267,7 +286,10 @@ export const config = {
     // cruiser 4 cells across stays drawn while its nose is in view.
     footprintSpacing: CELL / 4,
   },
-  light: { range: CELL * 6 },
+  // A player carries a light 6 cells down its cone. Every body standing in a light given off or
+  // carried casts a shadow behind it, as a wall does; sunlight and a room's fixture cast none
+  // (#384). What lies in a body's shadow is dark to every rule that asks of light, as it looks.
+  light: { range: CELL * 6, shadows: { cast: true, gameplay: true } },
   // A world starts at 8am and reaches midnight in 20 minutes, when the spawner hits its end game.
   // Afternoon comes 10 minutes in, and daylight recedes to the road's centre line until night,
   // 17 minutes in, when none is left. Each turn is marked by a sound, at half volume.
@@ -323,6 +345,98 @@ export const config = {
   // A clip of a player's speech goes out at most 64,000 base64 characters, about 47KB: a
   // recorder's 5s at 32kbps fits with room to spare, well inside a broadcast's 256KB.
   echoes: { maxChars: 64_000 },
+  // Voices bodies say lines in, by id, for the speech synthesizer. Pitch in Hz (a man's about
+  // 120, a woman's 210, a child's 300); intonation in semitones over a line; rate in letters a
+  // second (12 is about 145 words a minute); formant scales the throat (above 1 smaller); roughness
+  // and breathiness 0..1; ring a ring modulator's Hz for a robot, 0 for none. Speech is heard,
+  // and makes a voice's noise, out to its range: talking about as far as a player's talking (4-5
+  // cells), a whisper 2, a shout 10. A line shows over its speaker 1.5s past its saying.
+  speech: {
+    voices: {
+      plain: {
+        pitch: 140,
+        intonation: 4,
+        rate: 12,
+        formant: 1,
+        roughness: 0.1,
+        breathiness: 0.1,
+        ring: 0,
+        volume: 0.8,
+        range: CELL * 5,
+      },
+      child: {
+        pitch: 300,
+        intonation: 7,
+        rate: 13,
+        formant: 1.25,
+        roughness: 0.05,
+        breathiness: 0.15,
+        ring: 0,
+        volume: 0.8,
+        range: CELL * 5,
+      },
+      shout: {
+        pitch: 260,
+        intonation: 9,
+        rate: 14,
+        formant: 1.2,
+        roughness: 0.35,
+        breathiness: 0.05,
+        ring: 0,
+        volume: 1,
+        range: CELL * 10,
+      },
+      robot: {
+        pitch: 110,
+        intonation: 0,
+        rate: 10,
+        formant: 1,
+        roughness: 0,
+        breathiness: 0,
+        ring: 50,
+        volume: 0.7,
+        range: CELL * 5,
+      },
+      creepy: {
+        pitch: 75,
+        intonation: 2,
+        rate: 7,
+        formant: 0.85,
+        roughness: 0.6,
+        breathiness: 0.4,
+        ring: 0,
+        volume: 0.7,
+        range: CELL * 4,
+      },
+      whisper: {
+        pitch: 150,
+        intonation: 2,
+        rate: 11,
+        formant: 1,
+        roughness: 0,
+        breathiness: 1,
+        ring: 0,
+        volume: 0.5,
+        range: CELL * 2,
+      },
+      gruff: {
+        pitch: 95,
+        intonation: 3,
+        rate: 11,
+        formant: 0.9,
+        roughness: 0.45,
+        breathiness: 0.1,
+        ring: 0,
+        volume: 0.9,
+        range: CELL * 6,
+      },
+    },
+    // A line in a voice no one named is said plainly.
+    fallback: "plain",
+    captionHold: 1.5,
+  },
+  // The synthesizer renders speech at 22.05kHz: plenty for a voice, half the work of 44.1kHz.
+  speechSynth: { sampleRate: 22_050 },
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {
@@ -340,7 +454,8 @@ export const config = {
   // Peers connect a second or two after joining; past this, a HELLO is news to no one.
   greeting: { replayMs: 10_000 },
   entities: {
-    // A door in half the world's doorways, every cell of the doorway one; half of them left shut.
+    // A door, shut, in three in four of the world's 1-wide doorways (about a third of them, doorways
+    // being 1 to 3 wide); a wider doorway gets none.
     // 300 health. A player within a cell and a bit of one works it; its swing carries 8 cells.
     // A body that opens doors takes half a second to; any other bashes it for 20 every second,
     // 15s to break one, and a route goes through one shut where that saves more than 10 cells.
@@ -348,8 +463,7 @@ export const config = {
       radius: CELL / 2,
       maxHealth: 300,
       seed: 4,
-      frequency: 0.5,
-      closedShare: 0.5,
+      frequency: 0.75,
       reach: CELL * 1.2,
       openSeconds: 0.5,
       bash: { damage: 20, cooldown: 1 },
@@ -440,12 +554,30 @@ export const config = {
       // Its horn, sounded by anyone inside, is heard 18 cells off: past a driven engine's 14,
       // short of a crash's 20.
       horn: { noiseRadius: CELL * 18, volume: 0.9 },
+      // How its engine, crash and ram sounds play: volume 0..1, and `range` in plain pixels, not
+      // cells (a cell is 50px), so 6 is an eighth of a cell: only those inside the car hear its
+      // idle, its driven and backing engine are heard a little past its body. How far monsters
+      // hear it is the noise above (engine, crash.noiseRadius, ram.noiseRadius), apart from these.
+      sounds: {
+        idle: { volume: 0.05, range: 6 },
+        drive: { volume: 0.4, range: 20 },
+        reverse: { volume: 0.4, range: 20 },
+        crash: { volume: 0.8, range: 34 },
+        ram: { volume: 0.5, range: 22 },
+      },
       // Two headlights at its front, one each side 38px from its middle, by the lamps drawn on
       // it, each a 40 degree cone reaching 12 cells.
       headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 38 },
       // Everyone in the exit escapes once the cruiser has waited there 20s, and only while the
       // team has 30$ banked (#402): 30 scrap, about five of the shop's dearer wares. It keeps it.
-      escape: { delay: 20, volume: 0.8, quota: 30 },
+      // Coming to rest in the exit it plays its departure at 0.3, heard 20px off (pixels, not
+      // cells), so by those in it.
+      escape: {
+        delay: 20,
+        volume: 0.8,
+        quota: 30,
+        depart: { volume: 0.3, range: 20 },
+      },
       // A corpse carried within a cell of the cruiser's body brings its player back beside it,
       // for 6$ of the team's credit, a pocketball's price, into debt if need be (#403).
       revive: { reach: CELL, volume: 0.3, cost: 6 },
@@ -684,17 +816,19 @@ export const config = {
     // She stays away 20s to 3min, then appears 4 to 12 cells off, at least 90 degrees past the
     // edge of her target's view cone (so within the 90 degrees straight behind it), with a clear
     // line to it; trying 24 spots, then again half a second later. She stares with 15 patience,
-    // losing 1 a second, gaining 2 while unseen and 1 while looked at. From 3 anger a look sets
+    // losing 1 a second, 2 more while unseen and 1 more while looked at. From 3 anger a look sets
     // her on her target 30% of the time, 10% more for each anger past 3. She chases at half a
     // sprint, a tenth of a sprint faster per anger past 3, never past 1.2 sprints, for 5 to 10s,
     // then flickers for 0.8s and vanishes. Touching her costs 20 health a second, 5 every 0.25s.
     // Slipping away, she walks at sprint to a spot within 8 cells her target cannot see,
     // trying 12 a step for 2s before making for the nearest wall; after 10s she is gone anyway.
-    // Her sounds carry 16 cells, past the furthest she appears.
+    // Her sounds carry 16 cells, past the furthest she appears. Out in the world she shows as an
+    // apparition: drawn at 70% opacity, trembling 1.5px every way, lurching 5px aside about one
+    // moment in 16, under static a third thick.
     ghostGirl: {
       spawning: {
         weight: 3,
-        after: 60*3,
+        after: 60 * 3,
         tries: 24,
         most: 1,
         unseenDistance: CELL * 14,
@@ -727,6 +861,12 @@ export const config = {
         giveUp: 10,
       },
       flicker: 0.8,
+      apparition: {
+        opacity: 0.7,
+        shake: 1.5,
+        jolt: { chance: 0.06, size: 5 },
+        static: 0.35,
+      },
       contact: { damage: 5, interval: 0.25 },
       soundRange: CELL * 16,
     },
@@ -847,7 +987,11 @@ export const config = {
     // stands within 14 cells to watch her go or she finds nowhere; her whisper as she goes and
     // comes carries 16 cells, just past where anyone could see it.
     sleeper: {
-      spawning: { weight: 50, tries: 24, unseenDistance: CELL * 14 },
+      spawning: {
+        weight: SLEEPER_SPAWN_WEIGHT,
+        tries: 24,
+        unseenDistance: CELL * 14,
+      },
       ignores: ["sleeper"],
       radius: 15,
       maxHealth: SLEEPER_HEALTH,
@@ -941,6 +1085,21 @@ export const config = {
       retreatSeconds: 25,
       enragedSeconds: 10,
       repathInterval: 0.5,
+      // Lying in wait: it guesses its quarry walks straight on the way it faces for 5s at a
+      // walk, stopping at walls, and once a second tries 12 spots up to 4 cells off that way,
+      // short of its end, for one no point of 4 along it sees, by its watch range. It keeps its
+      // spot unless a new one lies a cell nearer the way. Once the quarry has passed and stands
+      // within 3 cells, its back to it, it hunts.
+      ambush: {
+        lead: 5,
+        walkSpeed: PLAYER_SPEED,
+        range: CELL * 4,
+        tries: 12,
+        pathSamples: 4,
+        betterBy: CELL,
+        interval: 1,
+        pounce: CELL * 3,
+      },
       wander: { range: CELL * 6, pause: { min: 2, max: 5 } },
       sounds: { retreat: CELL * 6, enraged: CELL * 16, attack: CELL * 8 },
     },
@@ -1134,7 +1293,22 @@ export const config = {
         chance: 0.3,
         items: ["shovel", "bandage", "walkie", "scrap"],
       },
-      sounds: { attack: CELL * 5 },
+      // Seeing a monster the spawner brings as rarely as the sleeper or more rarely (spawning
+      // weight 50 or less: not zombies nor exploders), it sprints at a player's sprint to the
+      // best of 12 spots 8 cells off, stands 1.5s looking back, and, seeing nothing, walks
+      // another 8 cells off. Its gasp carries 4 cells, as far as talking.
+      // `by: "toughness"` instead has it fear any body as hard to kill as the sleeper or harder
+      // (full health 150 or more), the bodies that drop a heart, whatever their spawning weight.
+      fear: {
+        by: "rarity",
+        asRareAs: SLEEPER_SPAWN_WEIGHT,
+        toughness: SLEEPER_HEALTH,
+        sprintSpeed: PLAYER_SPEED * SPRINT,
+        flee: { leg: CELL * 8, tries: 12 },
+        lookBackSeconds: 1.5,
+      },
+      // A body it fells getting up as one of it is heard 8 cells off.
+      sounds: { attack: CELL * 5, startle: CELL * 4, turn: CELL * 8 },
     },
     // Alone, 2 minutes into a world on, never within 14 cells of a player; twice as common as the
     // stalker. A little bigger than a player; three shovel hits fell it. It runs at 1.2 times a
@@ -1167,10 +1341,11 @@ export const config = {
     // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker.
     // Smaller than a player; four shovel hits break it. It rides at 1.3 times a walk, to spots 10
     // to 25 cells off, of 12 tried the one setting off most nearly the way it heads, along ways 2
-    // cells wide where there are any. It runs down players alone, passing through every other
-    // body: one within 8 cells on its way hears its bell, at most every 2s, heard 10 cells off;
-    // one within 4 cells ahead slows it to 0.9 times a walk; one it touches takes 70, once a
-    // second. Its wheels creak every 0.8s, heard 3 cells off; a body run down, 6.
+    // cells wide where there are any, and, while a player is about, only to spots within 20 cells
+    // of one. It runs down players alone, passing through every other body: one within 8 cells
+    // on its way hears its bell, at most every 2s, heard 10 cells off; one within 4 cells ahead
+    // slows it to 0.9 times a walk; one it touches takes 70, once a second. Its wheels creak
+    // every 0.8s, heard 3 cells off; a body run down, 6.
     tricycle: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -1185,7 +1360,13 @@ export const config = {
       speedShare: 1.3,
       slowShare: 0.9,
       slowRange: CELL * 4,
-      ride: { min: CELL * 10, max: CELL * 25, tries: 12, width: CELL },
+      ride: {
+        min: CELL * 10,
+        max: CELL * 25,
+        tries: 12,
+        width: CELL,
+        near: CELL * 20,
+      },
       bellRange: CELL * 8,
       bellCooldown: 2,
       damage: 70,
@@ -1200,8 +1381,9 @@ export const config = {
     // sprint to the spot, where it looks round 10s; any killable body it sees within 10 cells of
     // the spot, or whatever hurts it, enrages it, and it chases where it last saw one at 0.8 times
     // a sprint, replanning every 0.5s, striking what it touches for 30 a second, until 10s pass
-    // with none seen. It sees 8 cells down its facing, as a zombie does. A balloon set down is
-    // heard 3 cells off, its rage cry 12, a blow 5.
+    // with none seen, crying out angrily as it enrages and every 10.8s (the cry's length) after.
+    // It sees 8 cells down its facing, as a zombie does. A balloon set down is heard 3 cells off,
+    // its rage cry 12, a blow 5.
     birthdayBoy: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -1224,9 +1406,30 @@ export const config = {
       lingerSeconds: 10,
       calmSeconds: 10,
       repathInterval: 0.5,
+      cryInterval: 10.8,
       damage: 30,
       attackCooldown: 1,
-      sounds: { place: CELL * 3, enrage: CELL * 12, attack: CELL * 5 },
+      sounds: { place: CELL * 3, angry: CELL * 12, attack: CELL * 5 },
+      // A child's voice as it wanders, saying something every other balloon it leaves; it shouts
+      // as it flies into a rage, heard 10 cells off.
+      speech: {
+        voice: "child",
+        angryVoice: "shout",
+        chatter: 0.5,
+        placing: [
+          "Happy birthday to me!",
+          "This one is for my party.",
+          "Everyone is invited!",
+          "Don't touch my balloons.",
+          "Is it time for cake yet?",
+        ],
+        enraged: [
+          "You popped my balloon!",
+          "That was mine!",
+          "Who popped it?",
+          "Now you can't come to my party!",
+        ],
+      },
     },
     // A birthday boy's balloon, small; its pop is heard 20 cells round.
     balloon: {
@@ -1263,6 +1466,77 @@ export const config = {
       quackGap: { min: 4, max: 10 },
       angryGap: { min: 1, max: 3 },
       sounds: { quack: CELL * 4, angry: CELL * 10, attack: CELL * 4 },
+    },
+    // The peeper, a lone eye that never moves. Alone, 3 minutes into a world on, never within 14
+    // cells of a player, at most 4 about; as rare as the stalker. Smaller than a player; four
+    // shovel hits burst it. Any body that could look at it by turning, within its view cone's
+    // reach (7 cells for a player) along a clear line, has its facing dragged onto it over 0.4s;
+    // each body looking at it, but another peeper, loses 10 health a second, 5 every half second.
+    // With no body it hunts within 14 cells for 2 minutes, it blinks out to wherever it might
+    // have arrived, trying again every 5s while a player is near enough to watch or it finds
+    // nowhere. Its sting as a gaze is caught carries 8 cells, its drone while held 6, its squelch
+    // as it is hit 4, its blink as it goes and comes 16, just past where anyone could see it.
+    peeper: {
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        most: 4,
+      },
+      ignores: ["peeper"],
+      radius: 12,
+      maxHealth: SHOVEL_DAMAGE * 4,
+      pullSeconds: 0.4,
+      stare: { damagePerSecond: 10, interval: 0.5 },
+      relocate: { after: 120, range: CELL * 14, retry: 5 },
+      sounds: {
+        seize: CELL * 8,
+        stare: CELL * 6,
+        squelch: CELL * 4,
+        blink: CELL * 16,
+      },
+    },
+    // The mimic, in packs of 2 to 4 within 2 cells of each other, never within 14 cells of a
+    // player, at most 12 about; a fifth as common as zombies. Small, near an item's size, half a
+    // player's mass; one shovel hit fells it. It goes at 0.8 times a walk whatever it does. It
+    // sees items and bodies 5 cells down its facing, as a zombie does, and walks to the nearest
+    // item it sees, stopping within 4px of touching it, to pose as it for 10 to 30s, unless
+    // another mimic poses within half a cell of it. It hides somewhere new when it can; back
+    // within a cell of where it last hid only 5s after it left. Hiding, any body it hunts within
+    // 2 cells along a clear line stirs it, and 0 to 3s later it springs; reaching for it or
+    // hurting it springs it at once. It then hunts as a zombie: 35 a bite within 30px, every 2s,
+    // replanning every 0.5s, until 8s pass with none seen. It spares exploders, as zombies do.
+    // Its squelch taking an item's shape is heard 2 cells off, its shriek 10, a bite 5.
+    mimic: {
+      dormantBeyond: DORMANT_BEYOND,
+      spawning: {
+        weight: 20,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        group: { min: 2, max: 4, spread: CELL * 2 },
+        most: 12,
+      },
+      ignores: ["mimic", "exploder"],
+      radius: 10,
+      mass: 0.5,
+      maxHealth: SHOVEL_DAMAGE,
+      speedShare: 0.8,
+      wanderRange: CELL * 5,
+      sightRange: CELL * 5,
+      noticeRange: CELL * 2,
+      hideSeconds: { min: 10, max: 30 },
+      springDelay: { min: 0, max: 3 },
+      rehideAfter: 5,
+      sameSpot: CELL,
+      spacing: CELL / 2,
+      settleGap: 4,
+      repathInterval: 0.5,
+      calmSeconds: 8,
+      attackDamage: 35,
+      attackRange: 30,
+      attackCooldown: 2,
+      sounds: { settle: CELL * 2, reveal: CELL * 10, attack: CELL * 5 },
     },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at

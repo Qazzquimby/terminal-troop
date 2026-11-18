@@ -111,7 +111,7 @@ const sounded = (game: Session, file: string): boolean =>
 const stared = (game: Session): boolean =>
   vi
     .mocked(game.sfx.play)
-    .mock.calls.some(([url]) => /stare-\d\.mp3$/.test(url));
+    .mock.calls.some(([url]) => /\/stare(-\d)?\.mp3$/.test(url));
 
 /** A staring girl with her stare's patience, `patience` past the default. */
 const staring = (state: Partial<GhostGirlState> = {}) => ({
@@ -181,7 +181,7 @@ test("her time come, she appears 4 to 12 cells behind her target, outside its vi
   expect(stared(game)).toBe(true);
 });
 
-test("a look angers her once a stare, and at 1 or 2 anger she only stares on, her patience held", () => {
+test("a look angers her once a stare, and at 1 or 2 anger she only stares on, her patience draining faster while watched", () => {
   const game = world(450, 300);
   const girl = girlAt(game, 750, 300, staring({ anger: 1 }));
   run(game, 2, { x: 900, y: 300 });
@@ -190,7 +190,8 @@ test("a look angers her once a stare, and at 1 or 2 anger she only stares on, he
     anger: 2,
     seen: true,
   });
-  expect(stateOf(girl).patience).toBeCloseTo(config.patience.start, 1);
+  const { start, drain, watched } = config.patience;
+  expect(stateOf(girl).patience).toBeCloseTo(start - (drain + watched) * 2, 1);
   expect(girl.x).toBe(750);
 });
 
@@ -204,12 +205,13 @@ test("in plain sight but unwatched her patience drains, and out of her target's 
   expect(girl.x).toBeLessThan(0);
 });
 
-test("with no clear line to her target her patience grows", () => {
+test("with no clear line to her target her patience drains faster", () => {
   // The pillar at (200..300, 50..150) stands between them.
   const game = world(100, 100);
   const girl = girlAt(game, 450, 100, staring({ seen: true }));
   run(game, 2, { x: 0, y: 100 });
-  expect(stateOf(girl).patience).toBeCloseTo(config.patience.start + 2, 1);
+  const { start, drain, unseen } = config.patience;
+  expect(stateOf(girl).patience).toBeCloseTo(start - (drain + unseen) * 2, 1);
 });
 
 test("slipping away while watched, she walks off and is gone once out of sight, or soon enough regardless", () => {
@@ -328,4 +330,13 @@ test("a client takes her from a snapshot even inside a wall", () => {
   const other = world(450, 300);
   applyEntitySnapshot(other, snapshot);
   expect(other.entities.get(girl.id)).toMatchObject({ x: 250, y: 100 });
+});
+
+test("out in the world she shows as an apparition; away, nothing of her shows", () => {
+  const game = world(450, 300);
+  const girl = girlAt(game, 800, 300, staring());
+  const kind = game.entityTypes.get(girl.kind);
+  expect(kind?.apparition(girl)).toEqual(config.apparition);
+  girl.data = { ...stateOf(girl), mode: "absent" };
+  expect(kind?.apparition(girl)).toBeNull();
 });

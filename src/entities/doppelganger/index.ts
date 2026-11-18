@@ -4,15 +4,22 @@ import {
   defineEntity,
   echoVoice,
   effect,
+  CORPSE_ITEM,
   FOOTSTEP_TAG,
+  hasKindTag,
+  heldSlotOf,
+  itemIn,
   layCorpse,
   livingPlayers,
   rounded,
   sound,
   soundDrop,
   spawnWorldItem,
+  take,
+  takeBodies,
 } from "../../sim/index.js";
 import type {
+  BodyTaker,
   Dormancy,
   EntityDefinition,
   Eyes,
@@ -23,10 +30,12 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { gazeOn, nearestSeenBody } from "../bodies.js";
-import type { Watching } from "../bodies.js";
+import { gazeOn, nearestSeenBody, seenFeared } from "../bodies.js";
+import type { Fearing, Watching } from "../bodies.js";
 import {
   clearestNoise,
+  fleeRoute,
+  nearest,
   NEVER_PREY,
   periodicCall,
   preyNear,
@@ -39,13 +48,28 @@ import {
   wanderLeg,
   withSeed,
 } from "../hunt.js";
-import type { Prey } from "../hunt.js";
+import type { Fleeing, Prey } from "../hunt.js";
 import { planRoute, steer } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
-// The file may not be in yet: a missing one plays nothing, but its noise is still made.
+// The files may not be in yet: a missing one plays nothing, but its noise is still made.
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
+const startleUrl = new URL("./sfx/startle.mp3", import.meta.url).href;
+const turnUrl = new URL("./sfx/turn.mp3", import.meta.url).href;
+
+/**
+ * What a doppelganger runs from and how: it sprints a leg away from any body it sees of a kind
+ * it fears, stops to look back the way it came, and, seeing nothing, walks a leg further off.
+ */
+interface DoppelgangerFear extends Fearing {
+  /** How fast it sprints away. */
+  readonly sprintSpeed: number;
+  /** Where each leg away takes it, sprinting or walking. */
+  readonly flee: Fleeing;
+  /** Seconds it stands looking back once a sprint ends. */
+  readonly lookBackSeconds: number;
+}
 
 /**
  * How a doppelganger passes for a player, hunts and speaks. Distances in pixels, speeds in pixels
@@ -87,8 +111,16 @@ export interface DoppelgangerConfig extends Watching, Dormancy {
     readonly chance: number;
     readonly items: readonly string[];
   };
+  /** What it runs from, and how. */
+  readonly fear: DoppelgangerFear;
   /** How far each of its other sounds is heard, and so how far the noise it makes carries. */
-  readonly sounds: { readonly attack: number };
+  readonly sounds: {
+    readonly attack: number;
+    /** Its gasp as it starts to run from something. */
+    readonly startle: number;
+    /** A body it fells getting up as one of it. */
+    readonly turn: number;
+  };
 }
 
 const NAME = "doppelganger";
@@ -100,11 +132,14 @@ const NAME = "doppelganger";
  *   head sweeping from `lookFrom`, until `lookUntil`, then picks the next
  * - approach: heads along `route` for `known`, where it last knew a body to be
  * - attack: runs at `quarry`, striking it once in reach
+ * - flee: sprints along `route` away from `threat`, where it last saw something it fears
+ * - lookBack: stands facing `threat` until `lookUntil`
+ * - retreat: walks along `route` further from `threat`
  * `watchedAt` is when a gaze last fell on it; `known`, where it last saw or heard a body; `stepAt`,
  * when it next makes a footstep's noise.
  */
 export const DoppelgangerState = z.object({
-  mode: z.enum(["wander", "approach", "attack"]),
+  mode: z.enum(["wander", "approach", "attack", "flee", "lookBack", "retreat"]),
   copies: z.string().min(1).max(64),
   name: z.string().max(64),
   held: z.string().max(64).nullable(),
@@ -115,6 +150,7 @@ export const DoppelgangerState = z.object({
   lookUntil: Time.nullable(),
   known: Waypoint.nullable(),
   quarry: z.string().nullable(),
+  threat: Waypoint.nullable().default(null),
   watchedAt: Time,
   barkAt: Time.nullable(),
   attackAt: Time,
@@ -151,6 +187,7 @@ export function freshDoppelganger(
     lookUntil: null,
     known: null,
     quarry: null,
+    threat: null,
     watchedAt: 0,
     barkAt: null,
     attackAt: 0,
@@ -261,6 +298,7 @@ const wandering = (state: DoppelgangerState): DoppelgangerState => ({
   mode: "wander",
   route: [],
   quarry: null,
+  threat: null,
   lookUntil: null,
 });
 
@@ -312,7 +350,65 @@ function approach(
 }
 
 /**
- * The state it moves to: a body it hunts within its attack range it runs at, as a zombie would;
+ * Where it runs from what it fears, or null to go on as it would. Seeing a body it fears, it
+ * sprints a leg away from it, a new leg each time one ends while it still sees one. Once a sprint
+ * ends it stands looking back the way it came; seeing nothing it fears there, it walks a leg
+ * further off, then goes about its business.
+ */
+function fear(
+  state: DoppelgangerState,
+  self: WorldEntity,
+  game: Session,
+  config: DoppelgangerConfig,
+): DoppelgangerState | null {
+  const now = game.worldTime;
+  const { fear: fearing } = config;
+  const feared = seenFeared(game, self, fearing, config.ignores);
+  const map = game.world.map;
+  if (feared.length > 0) {
+    const closest = nearest(self, feared) ?? feared[0];
+    const threat =
+      closest === undefined ? state.threat : { x: closest.x, y: closest.y };
+    const fleeing = state.mode === "flee" && state.route.length > 0;
+    return {
+      ...state,
+      mode: "flee",
+      threat,
+      route: fleeing ? state.route : fleeRoute(map, self, feared, fearing.flee),
+      quarry: null,
+      lookUntil: null,
+    };
+  }
+  const threat = state.threat ?? { x: self.x, y: self.y };
+  switch (state.mode) {
+    case "flee":
+      if (state.route.length > 0) return state;
+      return {
+        ...state,
+        mode: "lookBack",
+        lookUntil: now + fearing.lookBackSeconds,
+        facing: Math.atan2(threat.y - self.y, threat.x - self.x),
+      };
+    case "lookBack":
+      if (state.lookUntil !== null && now < state.lookUntil) return state;
+      return {
+        ...state,
+        mode: "retreat",
+        lookUntil: null,
+        route: fleeRoute(map, self, [threat], fearing.flee),
+      };
+    case "retreat":
+      return state.route.length > 0 ? state : null;
+    case "wander":
+    case "approach":
+    case "attack":
+      return null;
+  }
+}
+
+/**
+ * The state it moves to: a body it fears in sight it runs from (see `fear`); a body it hunts
+ * within its attack range it runs at, as a zombie would;
  * otherwise, under a gaze it heeds, it wanders as a player exploring would; unwatched long
  * enough, it approaches where it last knew a body to be, and wanders again once there.
  */
@@ -330,6 +426,8 @@ function think(
     game,
     config,
   );
+  const afraid = fear(state, self, game, config);
+  if (afraid !== null) return afraid;
   const quarry = quarryNear(self, game, config);
   if (quarry !== null)
     return {
@@ -381,7 +479,7 @@ function lookingRound(
   return state.lookFrom + config.lookSweep * Math.sin(t * Math.PI * 2);
 }
 
-/** Makes a walking player's footstep noise as it moves, at a walk's pace. */
+/** Makes a player's footstep noise as it moves, a sprinter's as it flees, at that gait's pace. */
 function footsteps(
   state: DoppelgangerState,
   self: WorldEntity,
@@ -390,7 +488,8 @@ function footsteps(
   const now = game.worldTime;
   const moving = self.vx !== 0 || self.vy !== 0;
   if (!moving || now < state.stepAt) return state;
-  const { interval, radius } = game.config.footsteps.walk;
+  const gait = state.mode === "flee" ? "sprint" : "walk";
+  const { interval, radius } = game.config.footsteps[gait];
   effect(game, { at: self, noise: radius, tags: [FOOTSTEP_TAG] }, self);
   return { ...state, stepAt: now + interval };
 }
@@ -403,10 +502,39 @@ function dropHeld(game: Session, self: WorldEntity, item: string): void {
   soundDrop(game, item, at, self);
 }
 
+/**
+ * Takes the body of a player one of its kind fells: it gets up as a doppelganger of that player,
+ * holding what the player held, with `turn` playing. What it held goes with it, as an item fresh
+ * from the world; the rest of what the player carried drops as it would.
+ */
+function taker(turn: Sound): BodyTaker {
+  return (game, player, by) => {
+    if (by === null || !game.entities.has(by) || !hasKindTag(game, by, [NAME]))
+      return null;
+    const slot = heldSlotOf(game, player);
+    const item = slot === null ? null : itemIn(game, player.id, slot);
+    // A corpse is whose it is only where it lies or is carried, so one held drops as it would.
+    const held =
+      slot === null || item === null || item === CORPSE_ITEM
+        ? null
+        : take(game, player, slot, item);
+    const seed = Math.floor(Math.random() * 2 ** 32);
+    return {
+      kind: NAME,
+      data: freshDoppelganger(seed, { id: player.id, name: player.name }, held),
+      sound: turn,
+    };
+  };
+}
+
 function definition(
   config: DoppelgangerConfig,
 ): EntityDefinition<DoppelgangerState> {
   const attack: Sound = sound({ url: attackUrl, range: config.sounds.attack });
+  const startle: Sound = sound({
+    url: startleUrl,
+    range: config.sounds.startle,
+  });
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
@@ -425,12 +553,18 @@ function definition(
         config.attackCooldown,
       );
       if (next.attacking) effect(game, { at: entity, sound: attack }, entity);
+      if (next.mode === "flee" && state.mode !== "flee")
+        effect(game, { at: entity, sound: startle }, entity);
       next = bark(next, entity, game, config);
-      const route = steer(entity, next.route, config.speed, dt);
+      const speed =
+        next.mode === "flee" ? config.fear.sprintSpeed : config.speed;
+      const route = steer(entity, next.route, speed, dt);
       const moving = entity.vx !== 0 || entity.vy !== 0;
       const facing = moving
         ? Math.atan2(entity.vy, entity.vx)
-        : lookingRound(next, now, config);
+        : next.mode === "wander"
+          ? lookingRound(next, now, config)
+          : next.facing;
       return footsteps({ ...next, route, facing }, entity, game);
     },
     strikes(entity, state, game): Strike[] {
@@ -471,21 +605,29 @@ function definition(
  * spot it comes to; unwatched for a while, it heads for where it last saw or heard a body. Any
  * body it hunts that comes within a few steps it runs at and strikes, as a zombie does. Every 6 to
  * 12 seconds it says something in its player's own recorded voice, which everyone hears but that
- * player. Felled, it drops what it held and leaves its player's corpse, which brought back rises
- * as the doppelganger again.
+ * player. Seeing a monster as rare as the sleeper or rarer, it gasps and sprints away, looks back
+ * once it stops, and walks further off if nothing is there (see `fear`). A player it fells gets
+ * up as a doppelganger of that player, holding what it held, rather than lying as a corpse; that
+ * player's ghost can still be brought back at a shrine, which takes its body back off the
+ * doppelganger. Felled, it drops what it held and leaves its player's corpse: one that got up in
+ * a fallen player's body leaves that player's own, which brings the player back; any other's,
+ * brought back, rises as the doppelganger again.
  */
-export const doppelganger = defineEntity(
-  NAME,
-  (config: DoppelgangerConfig) => ({
+export const doppelganger = defineEntity(NAME, (config: DoppelgangerConfig) => {
+  const enlisted = arrivals({
+    kind: NAME,
+    radius: config.radius,
+    config: config.spawning,
+    fresh: (seed: number, game: Session) =>
+      withSeed(Math.floor(seed * 2 ** 32), (rng) => arriving(rng, game, config))
+        .result,
+  });
+  const turn = sound({ url: turnUrl, range: config.sounds.turn });
+  return {
     ...definition(config),
-    ...arrivals({
-      kind: NAME,
-      radius: config.radius,
-      config: config.spawning,
-      fresh: (seed: number, game: Session) =>
-        withSeed(Math.floor(seed * 2 ** 32), (rng) =>
-          arriving(rng, game, config),
-        ).result,
-    }),
-  }),
-);
+    register(game: Session) {
+      enlisted.register(game);
+      takeBodies(game, taker(turn));
+    },
+  };
+});

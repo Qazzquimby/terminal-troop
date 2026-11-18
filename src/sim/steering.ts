@@ -5,6 +5,7 @@ import { separateBody, solidBodiesBut } from "./collision.js";
 import { contentEvent } from "./content-event.js";
 import { drive, driverOf, RideWire, wheelOf } from "./driving.js";
 import type { Ride } from "./driving.js";
+import { pulledAim } from "./gaze-pull.js";
 import { isGhost } from "./ghosts.js";
 import { heldSlot, weightOf } from "./inventories.js";
 import { cycleSlot, selectSlot } from "./inventory.js";
@@ -706,11 +707,16 @@ export function steerLocal(
 ): void {
   const { local, pilot } = game;
   const before = local.held;
-  if (controls.select !== null)
-    local.held = selectSlot(local.inventory, controls.select);
-  local.held = cycleSlot(local.inventory, local.held, controls.cycle);
+  // A ghost has no hands to switch with: its wheel zooms its view instead.
+  if (!isGhost(local)) {
+    if (controls.select !== null)
+      local.held = selectSlot(local.inventory, controls.select);
+    local.held = cycleSlot(local.inventory, local.held, controls.cycle);
+  }
   if (local.held !== before) hearSwitch(game);
-  local.aim = aimAt(local, controls.aim);
+  // A body pulling gazes that it could look at drags its aim round, as if the mouse were held
+  // over it.
+  local.aim = pulledAim(game, local, aimAt(local, controls.aim));
   const stunned = isStunned(game, local.id);
   const input: StepInput = pilot.halted
     ? { steer: { ...IDLE, held: local.held }, crouch: false, stunned }

@@ -117,6 +117,7 @@ export function createSettingsMenu(
   const muted = control("voice-muted");
   const voiceVolume = control("voice-volume");
   const masterVolume = control("master-volume");
+  const rotateCamera = control("rotate-camera");
   const micTest = control("mic-test");
   const input = element("#voice-input", HTMLSelectElement, dialog);
   const micStatus = element("#mic-status", HTMLParagraphElement, dialog);
@@ -146,6 +147,7 @@ export function createSettingsMenu(
     muted.checked = settings.voice.muted;
     voiceVolume.valueAsNumber = settings.voice.volume;
     masterVolume.valueAsNumber = settings.audio.masterVolume;
+    rotateCamera.checked = settings.view.rotateCamera;
     input.value = settings.voice.inputDevice ?? "";
   }
 
@@ -162,6 +164,7 @@ export function createSettingsMenu(
         inputDevice: input.value === "" ? null : input.value,
       },
       audio: { masterVolume: masterVolume.valueAsNumber },
+      view: { rotateCamera: rotateCamera.checked },
     });
   });
 

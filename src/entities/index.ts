@@ -27,7 +27,11 @@ import { door } from "./door/index.js";
 import { balloon, birthdayBoy } from "./birthday-boy/index.js";
 import { shrine } from "./shrine/index.js";
 import { apexPredator } from "./apex-predator/index.js";
+import { peeper } from "./peeper/index.js";
+import { mimic } from "./mimic/index.js";
 import { spawner } from "./spawning.js";
+
+export { arrive, arrivingKinds } from "./spawning.js";
 
 export {
   departingIn,
@@ -42,6 +46,7 @@ export { placeTurret } from "./turret/index.js";
 export { placeTeleporter } from "./teleporter/index.js";
 export { placeBomb } from "./bomb/index.js";
 export { fireFlare } from "./flare/index.js";
+export { freshDoppelganger } from "./doppelganger/index.js";
 export {
   POCKETBALL_ITEM,
   pocketballGlyph,
@@ -81,6 +86,8 @@ const ENTITIES = [
   balloon,
   shrine,
   apexPredator,
+  peeper,
+  mimic,
   // Registers no kind, so its place in the order numbers none; brings every kind above.
   spawner,
 ] as const;

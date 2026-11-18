@@ -30,6 +30,7 @@ import {
   facingEyes,
   isKillable,
   playEach,
+  sayOneOf,
   seenPrey,
   touching,
   touchStrikes,
@@ -52,7 +53,7 @@ import type { SpawningConfig } from "../spawning.js";
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
 const placeUrl = new URL("./sfx/place.mp3", import.meta.url).href;
 const popUrl = new URL("./sfx/pop.mp3", import.meta.url).href;
-const enrageUrl = new URL("./sfx/enrage.mp3", import.meta.url).href;
+const angryUrl = new URL("./sfx/angry.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 
 const NAME = "birthdayBoy";
@@ -105,6 +106,8 @@ export interface BirthdayBoyConfig extends Hunting, Dormancy {
   readonly calmSeconds: number;
   /** Seconds between plans of its way to where it last saw its quarry. */
   readonly repathInterval: number;
+  /** Seconds between its angry cries, the first as it enrages, for as long as it stays enraged. */
+  readonly cryInterval: number;
   /** Damage dealt each touch while enraged. */
   readonly damage: number;
   /** Seconds between two touches' damage. */
@@ -112,8 +115,21 @@ export interface BirthdayBoyConfig extends Hunting, Dormancy {
   /** How far each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly place: number;
-    readonly enrage: number;
+    readonly angry: number;
     readonly attack: number;
+  };
+  /** What it says aloud, and in which of the speech config's voices. */
+  readonly speech: {
+    /** Its voice as it wanders. */
+    readonly voice: string;
+    /** Its voice enraged. */
+    readonly angryVoice: string;
+    /** Chance, 0..1, that it says something as it leaves a balloon. */
+    readonly chatter: number;
+    /** What it may say as it leaves a balloon, one picked at random. */
+    readonly placing: readonly string[];
+    /** What it may say as it flies into a rage, one picked at random. */
+    readonly enraged: readonly string[];
   };
 }
 
@@ -129,7 +145,8 @@ export interface BalloonConfig {
  * - wander: walks slowly about, leaving balloons
  * - patrol: hurries to `spot`, where one of its balloons popped, and looks round it till
  *   `lingerUntil`
- * - enraged: chases where it last saw its quarry, `lastSeen`, at `seenAt`
+ * - enraged: chases where it last saw its quarry, `lastSeen`, at `seenAt`, crying out angrily
+ *   again at `cryAt`
  */
 export const BirthdayBoyState = z.object({
   colour: z
@@ -144,6 +161,7 @@ export const BirthdayBoyState = z.object({
   lingerUntil: Time.nullable(),
   lastSeen: Waypoint.nullable(),
   seenAt: Time,
+  cryAt: Time,
   repathAt: Time,
   balloonAt: Time,
   attackAt: Time,
@@ -196,6 +214,7 @@ export function freshBirthdayBoy(
     lingerUntil: null,
     lastSeen: null,
     seenAt: now,
+    cryAt: now,
     repathAt: now,
     balloonAt: now + config.balloonGap,
     attackAt: now,
@@ -337,14 +356,33 @@ function leaveBalloon(
     const balloon: BalloonState = { owner: self.id, colour: state.colour };
     spawn(game, BALLOON, { x: self.x, y: self.y }, balloon);
     playEach(game, self, [placed]);
+    const { speech } = config;
+    if (Math.random() < speech.chatter)
+      sayOneOf(game, self, speech.placing, speech.voice);
   }
   return { ...state, balloonAt: now + config.balloonGap };
 }
 
 interface BoySounds {
   readonly place: Sound;
-  readonly enrage: Sound;
+  readonly angry: Sound;
   readonly attack: Sound;
+}
+
+/**
+ * `next`, as it cries out angrily: as it enrages, from `previous`, and again each interval for as
+ * long as it stays enraged. A cry sets `cryAt` to when the next is due.
+ */
+function cry(
+  previous: BirthdayBoyState,
+  next: BirthdayBoyState,
+  now: number,
+  config: BirthdayBoyConfig,
+): BirthdayBoyState {
+  if (next.mode !== "enraged") return next;
+  const roused = previous.mode !== "enraged";
+  if (!roused && now < next.cryAt) return next;
+  return { ...next, cryAt: now + config.cryInterval };
 }
 
 /** How fast it turns its head, standing on patrol, in radians a second. */
@@ -377,16 +415,15 @@ function boyDefinition(
           touching(game, entity, config.ignores).length > 0,
         config.attackCooldown,
       );
+      const cried = cry(state, struck, now, config);
+      // As it flies into a rage, it shouts at whoever it blames.
+      if (state.mode !== "enraged" && cried.mode === "enraged")
+        sayOneOf(game, entity, config.speech.enraged, config.speech.angryVoice);
       playEach(game, entity, [
-        struck.mode === "enraged" && state.mode !== "enraged" && sounds.enrage,
-        struck.attacking && sounds.attack,
+        cried.cryAt !== struck.cryAt && sounds.angry,
+        cried.attacking && sounds.attack,
       ]);
-      const walked = walk(
-        entity,
-        struck,
-        speedOf(game, struck.mode, config),
-        dt,
-      );
+      const walked = walk(entity, cried, speedOf(game, cried.mode, config), dt);
       // Standing at a popped balloon, it looks all round for whoever popped it.
       const looking = walked.mode === "patrol" && walked.lingerUntil !== null;
       return looking
@@ -528,14 +565,14 @@ function drawBalloon(
  * A birthday boy: wanders slowly, leaving a balloon of its own colour behind every so often; no
  * two about wear the same colour. When one of its balloons pops it hurries there and looks round,
  * and the first killable body it sees near the spot, player or monster, the nearest it, sends it
- * into a rage: it chases that body down, wherever it last saw one, striking whatever it touches,
- * until it has seen none for a while. Whatever hurts it enrages it too. Its balloons all pop as it
- * falls.
+ * into a rage: it chases that body down, wherever it last saw one, crying out angrily over and
+ * over, striking whatever it touches, until it has seen none for a while. Whatever hurts it
+ * enrages it too. Its balloons all pop as it falls.
  */
 export const birthdayBoy = defineEntity(NAME, (config: BirthdayBoyConfig) => {
   const sounds: BoySounds = {
     place: sound({ url: placeUrl, range: config.sounds.place }),
-    enrage: sound({ url: enrageUrl, range: config.sounds.enrage }),
+    angry: sound({ url: angryUrl, range: config.sounds.angry }),
     attack: sound({ url: attackUrl, range: config.sounds.attack }),
   };
   return {

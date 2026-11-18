@@ -5,13 +5,13 @@ import type {
   Entity,
   Footprint,
   Interpolated,
-  LightSource,
   Player,
   Point,
   Session,
   TileMap,
   VisibilityPolygon,
   VisionSource,
+  Occluder,
   WallFace,
   World,
   WorldEntity,
@@ -42,9 +42,11 @@ import {
   isSolid,
   isVisible,
   perceives,
+  captionOf,
   pickupTarget,
   stunLeft,
-  lightSources,
+  sightLights,
+  litFrom,
   litWalls,
   movement,
   pocketRect,
@@ -52,10 +54,16 @@ import {
   renderAim,
   drawnLocal,
   renderPosition,
+  shadowCasters,
+  shadowsOf,
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
+import { drawApparition } from "./apparition.js";
+import { toViewSpace, worldToScreen } from "./camera.js";
 import type { Camera } from "./camera.js";
+import { upright, withRoll } from "../lib/upright/index.js";
+import type { UprightContext } from "../lib/upright/index.js";
 import { drawClock } from "./clock.js";
 import type { Eye } from "./spectate.js";
 import type {
@@ -75,14 +83,14 @@ interface Circle extends Point {
   readonly radius: number;
 }
 
-/** The width of the world the camera covers, in world units. */
+/** The width of the world-aligned box round all the camera covers, in world units. */
 function viewWidth(camera: Camera): number {
-  return camera.view.width * camera.zoom;
+  return camera.width;
 }
 
-/** The height of the world the camera covers, in world units. */
+/** The height of the world-aligned box round all the camera covers, in world units. */
 function viewHeight(camera: Camera): number {
-  return camera.view.height * camera.zoom;
+  return camera.height;
 }
 
 /** The part of the world the camera covers. */
@@ -203,9 +211,12 @@ function drawPlayer(
   if (away) {
     ctx.font = "10px system-ui";
     ctx.fillStyle = "#aaa";
-    ctx.fillText("away", player.x, player.y - player.radius - 22);
+    upright(ctx, player, () => {
+      ctx.fillText("away", player.x, player.y - player.radius - 22);
+    });
   }
   ctx.restore();
+  drawCaption(ctx, game, player);
 }
 
 /** Draws the white facing line from `at` in `direction` (radians) out to `radius`. */
@@ -233,18 +244,16 @@ export function drawFacing(
 const EMOJI_FILL = "#fff";
 
 /** What drawing a glyph needs of a context. */
-type TextContext = Pick<
-  CanvasRenderingContext2D,
-  | "save"
-  | "restore"
-  | "fillStyle"
-  | "font"
-  | "textAlign"
-  | "textBaseline"
-  | "fillText"
->;
+type TextContext = UprightContext &
+  Pick<
+    CanvasRenderingContext2D,
+    "fillStyle" | "font" | "textAlign" | "textBaseline" | "fillText"
+  >;
 
-/** Draws `glyph` centred on `at`, about `size` pixels tall, as opaque as the context's alpha. */
+/**
+ * Draws `glyph` centred on `at`, about `size` pixels tall, as opaque as the context's alpha,
+ * upright on the screen however the camera is turned.
+ */
 export function drawEmoji(
   ctx: TextContext,
   at: Point,
@@ -256,7 +265,9 @@ export function drawEmoji(
   ctx.font = `${String(size)}px system-ui`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(glyph, at.x, at.y);
+  upright(ctx, at, () => {
+    ctx.fillText(glyph, at.x, at.y);
+  });
   ctx.restore();
 }
 
@@ -290,18 +301,20 @@ function drawStunned(
   const seconds = now / 1000;
   const turn = ((seconds % STUN_SPIN) / STUN_SPIN) * Math.PI * 2;
   const above = entity.y - entity.radius - gap;
-  for (const offset of [0, Math.PI]) {
-    const angle = turn + offset;
-    drawEmoji(
-      ctx,
-      {
-        x: entity.x + Math.cos(angle) * entity.radius * 0.8,
-        y: above + Math.sin(angle) * 3,
-      },
-      "⭐",
-      9,
-    );
-  }
+  upright(ctx, entity, () => {
+    for (const offset of [0, Math.PI]) {
+      const angle = turn + offset;
+      drawEmoji(
+        ctx,
+        {
+          x: entity.x + Math.cos(angle) * entity.radius * 0.8,
+          y: above + Math.sin(angle) * 3,
+        },
+        "⭐",
+        9,
+      );
+    }
+  });
 }
 
 /** How large a crouching player's body is drawn, as a fraction of its radius. */
@@ -349,7 +362,9 @@ function drawBody(
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.fillStyle = "#eee";
-  ctx.fillText(name, body.x, body.y - body.radius - 8);
+  upright(ctx, body, () => {
+    ctx.fillText(name, body.x, body.y - body.radius - 8);
+  });
 }
 
 /** How far over a player's top its health bar shows, clear of its name. */
@@ -384,10 +399,12 @@ function drawStamina(
   const width = player.radius * 2;
   const x = player.x - player.radius;
   const y = player.y + player.radius + 6;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.fillRect(x - 1, y - 1, width + 2, 6);
-  ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
-  ctx.fillRect(x, y, (width * value) / max, 4);
+  upright(ctx, player, () => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(x - 1, y - 1, width + 2, 6);
+    ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
+    ctx.fillRect(x, y, (width * value) / max, 4);
+  });
 }
 
 /** The colour of the ring round the item interacting would pick up. */
@@ -415,9 +432,13 @@ function drawPickupTarget(
   ctx.restore();
 }
 
-/** A red health bar at `barY`, shown only once a body that can fall has taken damage. */
+/**
+ * A red health bar at `barY`, shown only once a body that can fall has taken damage; over its
+ * head on the screen however the camera is turned.
+ */
 export function drawHealthBar(
-  ctx: Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
+  ctx: UprightContext &
+    Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
   body: Entity,
   barY: number,
 ): void {
@@ -426,10 +447,12 @@ export function drawHealthBar(
 
   const width = radius * 2;
   const x = body.x - radius;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.fillRect(x - 1, barY - 1, width + 2, 5);
-  ctx.fillStyle = "#d8473a";
-  ctx.fillRect(x, barY, (width * health) / maxHealth, 3);
+  upright(ctx, body, () => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(x - 1, barY - 1, width + 2, 5);
+    ctx.fillStyle = "#d8473a";
+    ctx.fillRect(x, barY, (width * health) / maxHealth, 3);
+  });
 }
 
 /**
@@ -448,11 +471,13 @@ export function drawHeldItem(
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(
-    emoji,
-    holder.x + Math.cos(facing) * distance,
-    holder.y + Math.sin(facing) * distance,
-  );
+  const at = {
+    x: holder.x + Math.cos(facing) * distance,
+    y: holder.y + Math.sin(facing) * distance,
+  };
+  upright(ctx, at, () => {
+    ctx.fillText(emoji, at.x, at.y);
+  });
   ctx.restore();
 }
 
@@ -629,6 +654,28 @@ export function poseAsWalls(
 }
 
 /**
+ * The row-major index of each cell of `map` that one of `walls`, lit wall faces, is a face of:
+ * the cell half a cell in from the face's middle, against its normal.
+ */
+export function facedCells(
+  map: TileMap,
+  walls: VisibilityPolygon["walls"],
+): Set<number> {
+  const { cell, cols, rows } = map;
+  const faced = new Set<number>();
+  for (const faces of walls.values())
+    for (const { from, to, normal } of faces) {
+      const { col, row } = cellAt(map, {
+        x: (from.x + to.x) / 2 - (normal.x * cell) / 2,
+        y: (from.y + to.y) / 2 - (normal.y * cell) / 2,
+      });
+      if (col >= 0 && row >= 0 && col < cols && row < rows)
+        faced.add(row * cols + col);
+    }
+  return faced;
+}
+
+/**
  * The cell of `map` holding `at` drawn as a wall seen from `viewer` looks: dark through, with a lit
  * band along each face that looks onto open floor on the viewer's side, as `drawLitWalls` draws a
  * real wall's. For a body passing itself off as a wall.
@@ -724,10 +771,7 @@ function drawRipples(
 
 /** Where `point`, in world space, falls on the screen, in screen pixels. */
 function onScreen(point: Point, camera: Camera): Point {
-  return {
-    x: (point.x - camera.x) / camera.zoom,
-    y: (point.y - camera.y) / camera.zoom,
-  };
+  return worldToScreen(camera, point);
 }
 
 /**
@@ -773,14 +817,31 @@ function drawEdgeGlows(
   ctx.restore();
 }
 
-/** Visibility polygons for the sources that can reach the view, cut off at its far corner. */
+/**
+ * Visibility polygons for the sources that can reach the view, cut off at its far corner, and
+ * for lights, shadowed by `occluders`.
+ */
 function tracePolygons(
   map: TileMap,
   sources: readonly VisionSource[],
   camera: Camera,
   rays: number,
+  occluders: readonly Occluder[] = [],
 ): VisibilityPolygon[] {
-  const polygons: VisibilityPolygon[] = [];
+  return traceEach(map, sources, camera, rays, occluders).filter(
+    (polygon) => polygon !== null,
+  );
+}
+
+/** As `tracePolygons`, one for each of `sources`, null for one that cannot reach the view. */
+function traceEach(
+  map: TileMap,
+  sources: readonly VisionSource[],
+  camera: Camera,
+  rays: number,
+  occluders: readonly Occluder[] = [],
+): (VisibilityPolygon | null)[] {
+  const polygons: (VisibilityPolygon | null)[] = [];
 
   for (const source of sources) {
     const maxDistance = Math.hypot(
@@ -793,10 +854,12 @@ function tracePolygons(
         Math.abs(source.y - camera.y - viewHeight(camera)),
       ),
     );
-    if (!inView({ ...source, radius: source.range ?? maxDistance }, camera))
+    if (!inView({ ...source, radius: source.range ?? maxDistance }, camera)) {
+      polygons.push(null);
       continue;
+    }
 
-    polygons.push(visibilityPolygon(map, source, rays, maxDistance));
+    polygons.push(visibilityPolygon(map, source, rays, maxDistance, occluders));
   }
 
   return polygons;
@@ -876,16 +939,18 @@ function sized(layer: Layer, width: number, height: number): Layer {
   return layer;
 }
 
-/** Runs `render` with the context transformed from world space to view space. */
+/**
+ * Runs `render` with the context transformed from world space to view space, and known to be
+ * turned as the camera is, so what must stay readable can stand upright (see `upright`).
+ */
 function applyCamera(
   ctx: CanvasRenderingContext2D,
   camera: Camera,
   render: () => void,
 ): void {
   ctx.save();
-  ctx.scale(1 / camera.zoom, 1 / camera.zoom);
-  ctx.translate(-camera.x, -camera.y);
-  render();
+  toViewSpace(ctx, camera);
+  withRoll(ctx, camera.roll, render);
   ctx.restore();
 }
 
@@ -943,8 +1008,7 @@ function startMask(
   ctx.save();
   ctx.filter = `blur(${String(EDGE_FADE / 2)}px)`;
   ctx.translate(pad, pad);
-  ctx.scale(1 / camera.zoom, 1 / camera.zoom);
-  ctx.translate(-camera.x, -camera.y);
+  toViewSpace(ctx, camera);
   return mask;
 }
 
@@ -1144,7 +1208,10 @@ function layLight(scene: Layer, mask: Layer): void {
   scene.ctx.restore();
 }
 
-/** Draws world entity `entity` as its kind does, with its stun, and its health bar if it shows one. */
+/**
+ * Draws world entity `entity` as its kind does, as an apparition while its kind shows as one,
+ * with its stun, and its health bar if it shows one.
+ */
 function drawEntity(
   ctx: CanvasRenderingContext2D,
   game: Session,
@@ -1153,15 +1220,90 @@ function drawEntity(
 ): void {
   const definition = game.entityTypes.get(entity.kind);
   if (definition === undefined) return;
-  ctx.save();
-  // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
-  ctx.fillStyle = EMOJI_FILL;
-  definition.draw(ctx, entity, now, game);
-  ctx.restore();
+  const drawKind = (): void => {
+    ctx.save();
+    // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
+    ctx.fillStyle = EMOJI_FILL;
+    definition.draw(ctx, entity, now, game);
+    ctx.restore();
+  };
+  const apparition = definition.apparition(entity);
+  if (apparition === null) drawKind();
+  else drawApparition(ctx, entity, apparition, now, drawKind);
   if (isStunned(game, entity.id))
     drawStunned(ctx, entity, now, STUN_ABOVE.entity);
   if (definition.healthBar)
     drawHealthBar(ctx, entity, entity.y - entity.radius - 8);
+  drawCaption(ctx, game, entity);
+}
+
+/** Pixels over a body's top the bottom of the line it says shows, clear of a name and bar. */
+const CAPTION_ABOVE = 30;
+/** Widest a caption's line runs, in characters, before it wraps. */
+const CAPTION_WIDTH = 28;
+/** Most lines a caption shows; the rest is cut with an ellipsis. */
+const CAPTION_LINES = 3;
+
+/** `text` broken into lines of at most `width` characters, at spaces where it can be. */
+export function wrapCaption(
+  text: string,
+  width: number,
+  most: number,
+): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter((part) => part !== "")) {
+    let rest = word;
+    while (rest.length > 0) {
+      const joined = line === "" ? rest : `${line} ${rest}`;
+      if (joined.length <= width) {
+        line = joined;
+        rest = "";
+      } else if (line !== "") {
+        lines.push(line);
+        line = "";
+      } else {
+        lines.push(rest.slice(0, width));
+        rest = rest.slice(width);
+      }
+    }
+  }
+  if (line !== "") lines.push(line);
+  if (lines.length <= most) return lines;
+  const kept = lines.slice(0, most);
+  const last = kept[most - 1] ?? "";
+  kept[most - 1] = `${last.slice(0, Math.max(0, width - 1))}…`;
+  return kept;
+}
+
+/** The line `body` is saying, if any, in a dark box over it. */
+function drawCaption(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  body: Circle & { readonly id: string },
+): void {
+  const text = captionOf(game, body.id);
+  if (text === null) return;
+  const lines = wrapCaption(text, CAPTION_WIDTH, CAPTION_LINES);
+  const size = 11;
+  const lineHeight = size + 2;
+  ctx.save();
+  ctx.font = `${String(size)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
+  const bottom = body.y - body.radius - CAPTION_ABOVE;
+  const top = bottom - lines.length * lineHeight;
+  // Over its head on the screen, and readable, however the camera is turned.
+  upright(ctx, body, () => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(body.x - width / 2 - 4, top - 3, width + 8, bottom - top + 5);
+    ctx.fillStyle = "#fff";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, body.x, top + (index + 1) * lineHeight);
+    });
+  });
+  ctx.restore();
 }
 
 /**
@@ -1217,6 +1359,31 @@ function posingCells(
     cells.push(cellAt(game.world.map, entity));
   });
   return cells;
+}
+
+/**
+ * Every world entity in view standing in a wall cell, such as a shut door walling its own cell
+ * off, that `by` perceives and whose cell a face of `walls`, seen and lit, belongs to. It is the
+ * face of the wall the viewer looks at, so it is drawn over the darkness as wall faces are,
+ * filling its cell where a wall shows only its band.
+ */
+function drawInWalls(
+  ctx: CanvasRenderingContext2D,
+  game: Session,
+  camera: Camera,
+  now: number,
+  by: string,
+  walls: VisibilityPolygon["walls"],
+): void {
+  const { map } = game.world;
+  const faced = facedCells(map, walls);
+  if (faced.size === 0) return;
+  game.entities.forEach((entity) => {
+    const { col, row } = cellAt(map, entity);
+    if (!isSolid(map, col, row) || !faced.has(row * map.cols + col)) return;
+    if (!perceives(game, by, entity.id) || !inView(entity, camera)) return;
+    drawEntity(ctx, game, entity, now);
+  });
 }
 
 /**
@@ -1392,7 +1559,11 @@ export function draw(
       ? (game.players.get(eye.player.id) ?? game.local)
       : game.local;
   const sources = visionOrigins(game, viewer);
-  const lights = lightSources(game, viewer);
+  const sight = sightLights(game, viewer);
+  const lights = [...sight, ...emittedLights(game)];
+  // Every body standing in a light given off or carried shadows it (#384).
+  const occluders = shadowCasters(game);
+  const shadows = shadowsOf(occluders);
   const { map } = game.world;
   const { rays } = game.config.vision;
   const area = viewArea(camera);
@@ -1406,14 +1577,18 @@ export function draw(
   // Deepdark no light lights but out to its reach into it.
   const unlitDeep = (point: Point) =>
     deep(point) &&
-    !lights.some((light) => canSeeFrom(map, intoDeepdark(light), point));
+    !lights.some((light) =>
+      litFrom(map, intoDeepdark(light), point, shadows(light)),
+    );
   const dark = (point: Point) =>
     (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
   const sunlit = ambientPolygons(game.world, area, "sun", daylight, fronts);
   const fixtureLit = ambientPolygons(game.world, area, "fixture", 1, fronts);
   const seen = tracePolygons(map, sources, camera, rays);
+  // Each light traced once, its shadows cut out of it, for the light it gives and its tint.
+  const traced = traceEach(map, lights, camera, rays, occluders);
   const lit = [
-    ...tracePolygons(map, lights, camera, rays),
+    ...traced.filter((polygon) => polygon !== null),
     ...sunlit,
     ...fixtureLit,
   ];
@@ -1428,8 +1603,7 @@ export function draw(
       lights,
       body,
       game.config.vision.footprintSpacing,
-      ambient,
-      dark,
+      { ambient, dark, shadows },
     );
   // Bodies passing themselves off as walls, drawn as the walls they pose as: their cells join the
   // real walls round them, lit and banded as those are.
@@ -1498,21 +1672,17 @@ export function draw(
       featheredMask(mask, polygons, camera, width, height, colour),
     );
   }
-  // Each colour of emitted light laid on its own, a flare's red apart from a flashlight's yellow.
-  const byTint = new Map<string, LightSource[]>();
-  for (const light of emittedLights(game)) {
+  // Each colour of emitted light laid on its own, a flare's red apart from a flashlight's yellow:
+  // every light but the viewer's own sight, its first two.
+  const byTint = new Map<string, VisibilityPolygon[]>();
+  lights.forEach((light, i) => {
+    const polygon = traced[i];
+    if (i < sight.length || polygon === null || polygon === undefined) return;
     const colour = light.tint ?? LIGHT_TINT;
-    byTint.set(colour, [...(byTint.get(colour) ?? []), light]);
-  }
-  for (const [colour, emitted] of byTint) {
-    const tint = featheredMask(
-      mask,
-      tracePolygons(map, emitted, camera, rays),
-      camera,
-      width,
-      height,
-      colour,
-    );
+    byTint.set(colour, [...(byTint.get(colour) ?? []), polygon]);
+  });
+  for (const [colour, polygons] of byTint) {
+    const tint = featheredMask(mask, polygons, camera, width, height, colour);
     layLight(scene, tint);
   }
   if (darks.length > 0) {
@@ -1527,7 +1697,7 @@ export function draw(
       deepdarkMask(
         mask,
         fronts.deep,
-        tracePolygons(map, lights.map(intoDeepdark), camera, rays),
+        tracePolygons(map, lights.map(intoDeepdark), camera, rays, occluders),
         camera,
       ),
     );
@@ -1544,17 +1714,23 @@ export function draw(
     blind === 0 &&
     (ripple.player ||
       (inView({ ...ripple.origin, radius: 0 }, camera) &&
-        isVisible(map, sources, lights, ripple.origin, ambient, dark)));
+        isVisible(map, sources, lights, ripple.origin, {
+          ambient,
+          dark,
+          shadows,
+        })));
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));
 
-  // Above the darkness: lit wall faces; a stunned viewer's blindness over all it would see;
-  // then rings, the player and its HUD, then edge glows.
+  // Above the darkness: lit wall faces and the bodies standing in walls whose faces show, such as
+  // shut doors; a stunned viewer's blindness over all it would see; then rings, the player and its
+  // HUD, then edge glows.
   applyCamera(ctx, camera, () => {
     ctx.fillStyle = "#000";
     for (const { col, row } of posing)
       ctx.fillRect(col * cell, row * cell, cell, cell);
     drawLitWalls(ctx, walls);
+    drawInWalls(ctx, game, camera, now, viewer.id, walls);
     drawSeenInDark(ctx, game, camera, now, viewer, sources);
   });
   if (blind > 0) {

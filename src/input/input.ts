@@ -18,7 +18,10 @@ import type { Point, Controls, ViewConfig } from "../sim/index.js";
  * pressed on the canvas drive actions like keys, and the canvas keeps its context menu to
  * itself while the right button drives an action. Each notch of the wheel over the canvas taps
  * its `WHEEL` key, pressed and released at once, and the page never scrolls under it. UI actions
- * run immediately, outside the simulation step. `toWorld` turns a canvas point into a world point.
+ * run immediately, outside the simulation step. `toWorld` turns a canvas point into the world
+ * point aimed at. Sideways mouse movement is counted up for `takeTurn`, for a view the mouse
+ * turns; while capturing, a press on the canvas captures the mouse (pointer lock) so it can turn
+ * on without end.
  */
 export function createInput(
   canvas: HTMLCanvasElement,
@@ -31,6 +34,8 @@ export function createInput(
   getControls: (until: number) => Controls;
   mouseWorld: () => Point;
   setContext: (context: InputContext, time: number) => void;
+  takeTurn: () => number;
+  setCapture: (on: boolean) => void;
 } {
   const state = createActionState();
   const buttons = createButtonSource<Action, InputContext>(
@@ -41,14 +46,25 @@ export function createInput(
   const mouse = { x: view.width / 2, y: view.height / 2 };
   /** The mouse in world space, as `toWorld` currently maps it. */
   const mouseWorld = (): Point => toWorld(mouse);
+  /** Sideways mouse movement since `takeTurn` last read it, in CSS pixels. */
+  let turn = 0;
+  let capture = false;
+  const captured = (): boolean => document.pointerLockElement === canvas;
 
   canvas.addEventListener("pointermove", (event) => {
+    turn += event.movementX;
+    // A captured pointer stays where it was caught; only its movement counts.
+    if (captured()) return;
     const rect = canvas.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) * canvas.width) / rect.width;
     mouse.y = ((event.clientY - rect.top) * canvas.height) / rect.height;
   });
 
   canvas.addEventListener("pointerdown", (event) => {
+    if (capture && !captured()) {
+      // Refused or unsupported, the pointer is left free; the view still turns as it moves.
+      void Promise.resolve(canvas.requestPointerLock()).catch(() => undefined);
+    }
     const code = MOUSE_BUTTONS[event.button];
     if (code !== undefined) buttons.keyDown(code, false, event.timeStamp);
   });
@@ -108,6 +124,17 @@ export function createInput(
      */
     setContext(next, time) {
       buttons.setContext(next, time);
+    },
+    /** Sideways mouse movement since the last call, in CSS pixels: positive to the right. */
+    takeTurn() {
+      const taken = turn;
+      turn = 0;
+      return taken;
+    },
+    /** Whether a press on the canvas captures the mouse; turning it off frees a captured one. */
+    setCapture(on) {
+      capture = on;
+      if (!on && captured()) document.exitPointerLock();
     },
   };
 }

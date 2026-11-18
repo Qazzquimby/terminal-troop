@@ -119,6 +119,16 @@ interface Arriving<S> {
 }
 
 /**
+ * The names of the kinds the world's spawner brings no more often than `weight`: those whose
+ * spawning weight is at most it, as rare as that or rarer. Kinds the spawner never brings, those
+ * of no weight and those it does not enlist (items, traps, players), are none of them.
+ */
+export const kindsAsRareAs = (game: Session, weight: number): string[] =>
+  arrivalsOf(game)
+    .filter(({ config }) => config.weight > 0 && config.weight <= weight)
+    .map((arrival) => arrival.kind);
+
+/**
  * The part of a kind's spec that enlists it with the world's spawner: by its weight, once its
  * time has come, wherever its rules let it appear.
  */
@@ -137,6 +147,29 @@ export function arrivals<S>(kind: Arriving<S>) {
       enlisted.set(game, [...arrivalsOf(game), arrival]);
     },
   };
+}
+
+/** Each kind the spawner may bring to `game`, with its radius and spawn weight. */
+export function arrivingKinds(game: Session): {
+  readonly kind: string;
+  readonly radius: number;
+  readonly weight: number;
+}[] {
+  return arrivalsOf(game).map(({ kind, radius, config }) => ({
+    kind,
+    radius,
+    weight: config.weight,
+  }));
+}
+
+/**
+ * Brings one fresh `kind` to `at` as the spawner would, wherever that is, with none of its
+ * group; false, bringing nothing, for a kind the spawner never brings.
+ */
+export function arrive(game: Session, kind: string, at: Point): boolean {
+  const arrival = arrivalsOf(game).find((each) => each.kind === kind);
+  arrival?.spawn(game, at);
+  return arrival !== undefined;
 }
 
 /**

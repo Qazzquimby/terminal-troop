@@ -14,6 +14,7 @@ import {
 } from "../../sim/index.js";
 import type {
   Body,
+  Playing,
   Point,
   Session,
   Sound,
@@ -40,7 +41,7 @@ export interface RecallConfig {
   readonly flash: number;
   /**
    * How far, in pixels, each of its sounds is heard, and so how far its noise carries: the hum
-   * as it charges, the zap at both ends, the fizzle when it loses its body.
+   * as it charges, at both ends, the zap at both ends, the fizzle when it loses its body.
    */
   readonly sounds: {
     readonly hum: number;
@@ -110,6 +111,31 @@ export function startRecall(
   spawn(game, NAME, { x: target.x, y: target.y }, state);
 }
 
+/**
+ * The hum of a recall in `state` as it charges, at both ends at once: on the body, following it
+ * about, and at what sent for it, following that, so whoever is at either end hears the beam
+ * coming. Nothing once what sent for it is gone.
+ */
+function hums(
+  game: Session,
+  state: RecallState,
+  config: RecallConfig,
+): Playing[] {
+  const anchor = game.entities.get(state.anchor);
+  if (anchor === undefined) return [];
+  const hum = {
+    url: humUrl,
+    since: state.since,
+    volume: config.volume,
+    range: config.sounds.hum,
+    loop: true,
+  };
+  return [
+    { ...hum, key: "hum" },
+    { ...hum, key: "hum/anchor", at: { x: anchor.x, y: anchor.y } },
+  ];
+}
+
 /** The flash a body wide where a recall's zap lands. */
 const zapAt = (at: Point, sound: Sound, radius: number) => ({
   at,
@@ -119,8 +145,9 @@ const zapAt = (at: Point, sound: Sound, radius: number) => ({
 
 /**
  * A recall: locked on a body, it follows it about, humming as it charges, shimmering round it, the
- * hum heard by whatever is near and noise as the body's own. Once charged, everything the body
- * carries drops where it stands, and it is taken to whatever sent for it, with a flash and a zap
+ * hum heard by whatever is near and noise as the body's own; what sent for it hums along, its
+ * noise its own. Once charged, everything the body carries drops where it stands, and it is
+ * taken to whatever sent for it, with a flash and a zap
  * at both ends: inside it, for a vehicle that body can ride in and that lets it in, as if it had
  * got in; otherwise to a free spot near it. Should the body die, become a ghost or get inside a
  * vehicle, or what sent for it be gone, the recall fizzles out. Any body may be recalled; nothing
@@ -128,7 +155,6 @@ const zapAt = (at: Point, sound: Sound, radius: number) => ({
  */
 export const recall = defineEntity(NAME, (config: RecallConfig) => {
   const { volume } = config;
-  const hum = sound({ url: humUrl, volume, range: config.sounds.hum });
   const zap = sound({ url: zapUrl, volume, range: config.sounds.zap });
   const fizzle = sound({ url: fizzleUrl, volume, range: config.sounds.fizzle });
   return {
@@ -136,8 +162,10 @@ export const recall = defineEntity(NAME, (config: RecallConfig) => {
     maxHealth: Infinity,
     mass: Infinity,
     collides: false,
+    castsShadow: false,
     tags: [INERT_TAG],
     data: RecallState,
+    plays: (_entity, state, game) => hums(game, state, config),
     update(entity, state, _dt, game) {
       entity.vx = 0;
       entity.vy = 0;
@@ -156,8 +184,15 @@ export const recall = defineEntity(NAME, (config: RecallConfig) => {
       entity.y = body.y;
       const from = { x: body.x, y: body.y };
       if (!state.hummed) {
-        // The body's own noise: what hunts it hears it, as it would the body's steps.
-        effect(game, { at: from, sound: hum }, body);
+        // The body's own noise: what hunts it hears it, as it would the body's steps. The hum
+        // itself is `hums`, which every client plays at both ends.
+        const radius = config.sounds.hum;
+        effect(game, { at: from, noise: radius }, body);
+        effect(
+          game,
+          { at: { x: anchor.x, y: anchor.y }, noise: radius },
+          anchor,
+        );
         return { ...state, hummed: true };
       }
       if (game.worldTime < state.since + config.seconds) return state;

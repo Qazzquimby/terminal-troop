@@ -3,8 +3,10 @@ import { daylightNow } from "./day.js";
 import { darkFront, deepFront } from "./deepdark.js";
 import { AREA, exitDistance, isSolid } from "./map.js";
 import type { Session } from "./session.js";
+import { noShadows, shadowCasters, shadowsOf } from "./shadow.js";
+import type { ShadowsOf } from "./shadow.js";
 import { isShrouded } from "./status.js";
-import { canSeeFrom, emittedLights, wallKey } from "./vision.js";
+import { canSeeFrom, emittedLights, litFrom, wallKey } from "./vision.js";
 import type { LightSource, VisibilityPolygon, WallFace } from "./vision.js";
 
 /**
@@ -260,13 +262,16 @@ export function inDarkness(
  * something gives off there, such as a flashlight or the cruiser's headlights; and no darkness
  * something gives off reaches it, which no light lights. A player's own sight lights nothing.
  * Monsters ask it: they appear only where it is dark, and those that shun light avoid it. `lights`
- * and `darks` are those given off now, for a caller asking of many points at once.
+ * and `darks` are those given off now, for a caller asking of many points at once. Where a body
+ * shadows a light given off, that light does not light it, while the light config's shadows bear
+ * on play; the body `ignore`, by id, casts no shadow here.
  */
 export function isLit(
   game: Session,
   at: Point,
   lights: readonly LightSource[] = emittedLights(game),
   darks: readonly DarkSource[] = darkSources(game),
+  ignore: string | null = null,
 ): boolean {
   const { world } = game;
   if (inDarkness(world.map, darks, at)) return false;
@@ -274,14 +279,24 @@ export function isLit(
   if (ambientLightAt(world, at, daylightNow(game), fronts) !== null)
     return true;
   const deep = at.x < fronts.deep;
+  const shadows = game.config.light.shadows.gameplay
+    ? shadowsNow(game)
+    : noShadows;
   return lights.some((light) =>
-    canSeeFrom(world.map, deep ? intoDeepdark(light) : light, at),
+    litFrom(
+      world.map,
+      deep ? intoDeepdark(light) : light,
+      at,
+      shadows(light),
+      ignore,
+    ),
   );
 }
 
 /**
  * Whether `at` is lit as the body `id` takes it: as `isLit` has it, but never for a shrouded body,
- * which takes the whole world for dark. Whatever a body does by light should ask this.
+ * which takes the whole world for dark; and its own shadow, which goes where it goes, darkens
+ * nothing to it. Whatever a body does by light should ask this.
  */
 export function isLitTo(
   game: Session,
@@ -290,7 +305,36 @@ export function isLitTo(
   lights?: readonly LightSource[],
   darks?: readonly DarkSource[],
 ): boolean {
-  return !isShrouded(game, id) && isLit(game, at, lights, darks);
+  return !isShrouded(game, id) && isLit(game, at, lights, darks, id);
+}
+
+/** Each session's shadows, as of the step, world time and headcount they were found at. */
+const shadowsFound = new WeakMap<
+  Session,
+  { step: number; time: number; count: number; shadows: ShadowsOf }
+>();
+
+/**
+ * The bodies that can shadow each light now, as `shadowsOf` the bodies casting shadows, found
+ * once a step for rules asked many times a step, such as which bodies a stalker may hunt.
+ */
+function shadowsNow(game: Session): ShadowsOf {
+  const found = shadowsFound.get(game);
+  const count = game.entities.size + game.players.size;
+  if (
+    found?.step === game.step &&
+    found.time === game.worldTime &&
+    found.count === count
+  )
+    return found.shadows;
+  const shadows = shadowsOf(shadowCasters(game));
+  shadowsFound.set(game, {
+    step: game.step,
+    time: game.worldTime,
+    count,
+    shadows,
+  });
+  return shadows;
 }
 
 /** A box of the world, in pixels. */

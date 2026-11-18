@@ -5,6 +5,15 @@ import type { Controls, Player, Point, Session } from "../sim/index.js";
 export interface SpectateConfig {
   /** How fast the free camera moves, in pixels per second. */
   readonly speed: number;
+  /**
+   * How far the scroll wheel zooms its view, as a factor on the camera's own zoom: each notch
+   * multiplies it by `step` (down, out) or divides it (up, in), kept within `min` and `max`.
+   */
+  readonly zoom: {
+    readonly min: number;
+    readonly max: number;
+    readonly step: number;
+  };
 }
 
 /**
@@ -26,10 +35,12 @@ export interface Spectator {
   free: boolean;
   /** Where it looks from: the player it watches, or its free camera; null while alive. */
   at: Point | null;
+  /** Factor on the camera's zoom its view settles at: 1 as alive, larger shows more world. */
+  zoom: number;
 }
 
 export function createSpectator(): Spectator {
-  return { watching: null, free: false, at: null };
+  return { watching: null, free: false, at: null, zoom: 1 };
 }
 
 /** The living players a ghost may watch, in a fixed order to cycle through. */
@@ -46,13 +57,23 @@ function within(game: Session, at: Point): Point {
   };
 }
 
+/** `zoom` moved `notches` notches of the wheel, out for positive, kept within its bounds. */
+function zoomed(
+  zoom: number,
+  notches: number,
+  { min, max, step }: SpectateConfig["zoom"],
+): number {
+  return Math.min(Math.max(zoom * step ** notches, min), max);
+}
+
 /**
  * Steps the local player's view on `controls`, after the session's step. Alive, it has none.
  * A ghost watches a living player, the next or the one before on the use and secondary controls,
  * and goes on to the next once the one it watches leaves or dies; the view toggle switches to a
  * free camera, moved like a player, and back. With no one living to watch, it looks through the
  * free camera. A ghost hears from where it looks, so its body, which nothing else meets, goes
- * there.
+ * there. The scroll wheel, which switches items while alive, zooms a ghost's view in and out;
+ * coming back to life sets the zoom back.
  */
 export function stepSpectator(
   spectator: Spectator,
@@ -67,6 +88,7 @@ export function stepSpectator(
     return;
   }
   const from = spectator.at ?? { x: local.x, y: local.y };
+  spectator.zoom = zoomed(spectator.zoom, controls.cycle, config.zoom);
   if (controls.toggleView === true) spectator.free = !spectator.free;
   const living = watchable(game);
   if (spectator.free || living.length === 0) {
