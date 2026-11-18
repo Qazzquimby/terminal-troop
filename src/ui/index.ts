@@ -12,6 +12,7 @@ export { createHud } from "./hud.js";
 export type { HudConfig } from "./hud.js";
 export { controlsHintFor, hintMode } from "./controls-hint.js";
 export { createMicIndicatorView } from "./mic-indicator-view.js";
+export { createSpawnMenu } from "./debug-spawn-menu.js";
 export { createSettingsMenu, menuPeers } from "./settings-menu.js";
 export { voiceDebugLines } from "./voice-diagnostics.js";
 export { createStatusView } from "./status.js";

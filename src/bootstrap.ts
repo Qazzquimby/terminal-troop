@@ -33,6 +33,7 @@ import {
   createHud,
   createDebugOverlay,
   createMicIndicatorView,
+  createSpawnMenu,
   createSettingsMenu,
   createStatusView,
   menuPeers,
@@ -82,8 +83,12 @@ import {
   departingIn,
   entityContent,
   hasEscaped,
+  requestSpawn,
   shortOfQuota,
+  spawnChoices,
+  takesDebugSpawns,
 } from "./entities/index.js";
+import type { SpawnChoice } from "./entities/index.js";
 import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 import { createWorldLog, logsWorld } from "./world-log/index.js";
@@ -118,6 +123,7 @@ const hud = createHud(
   config.hud,
 );
 const debugEl = element("#debug", HTMLPreElement);
+const debugSpawnEl = element("#debug-spawn", HTMLDivElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
@@ -242,6 +248,22 @@ const counted = createCountingTransport(selectTransport(params), () =>
 const transport = counted.transport;
 const perf = createPerfStats();
 const debugOverlay = createDebugOverlay(debugEl, debug, config.ui);
+/** Whether the debug overlay, and the spawn menu with it, is showing. */
+let debugShown = debug;
+/**
+ * Whether this client takes debug spawns while it hosts: in development, under `?debug`, and in
+ * production when the config says so. Its spawn menu shows only then; another host may refuse.
+ */
+const debugSpawns = takesDebugSpawns(
+  config.entities.debugSpawn,
+  import.meta.env.DEV,
+  debug,
+);
+/** The session the spawn menu last listed the choices of. */
+let spawnFrom: Session | null = null;
+const spawnMenu = createSpawnMenu<SpawnChoice>(debugSpawnEl, (choice) => {
+  if (spawnFrom !== null) requestSpawn(spawnFrom, choice);
+});
 const micView = createMicIndicatorView(micEl);
 const sfx = createSfx(config.audio);
 const speech = createSpeechSynth(sfx, config.speechSynth.sampleRate);
@@ -322,7 +344,10 @@ const room = createRoom({
   config: config.room,
   sim: config,
   content: [
-    ...entityContent(config.entities),
+    ...entityContent({
+      ...config.entities,
+      debugSpawn: { ...config.entities.debugSpawn, enabled: debugSpawns },
+    }),
     ...itemContent(config.items),
     ...moveContent(config.moves),
   ],
@@ -394,6 +419,7 @@ const input = createInput(
     toggleDebug: {
       press() {
         debugOverlay.toggle();
+        debugShown = !debugShown;
       },
     },
     pushToTalk: pushToTalk(voice),
@@ -467,6 +493,15 @@ async function enterRoom(rawCode: string): Promise<void> {
     state.session.world.map,
   );
   snapCamera(camera, state.session.local);
+}
+
+/** Shows the spawn menu with the debug overlay, in a room, listing what `session` can spawn. */
+function showSpawnMenu(session: Session | null): void {
+  const visible = debugSpawns && debugShown && session !== null;
+  spawnMenu.setVisible(visible);
+  if (!visible || session === spawnFrom) return;
+  spawnFrom = session;
+  spawnMenu.setChoices(spawnChoices(session));
 }
 
 function debugInfo(): DebugInfo {
@@ -616,6 +651,7 @@ function frame(): void {
   status.show(room.state(), transport.label);
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
+  showSpawnMenu(session);
   settingsMenu.showVoice(now, () => voice.diagnostics());
   micView.show(session === null ? null : micIndicator(voice.status(), talkKey));
   requestAnimationFrame(frame);
