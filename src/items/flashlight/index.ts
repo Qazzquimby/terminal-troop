@@ -1,13 +1,15 @@
-import { defineItem } from "../../sim/index.js";
+import { defineItem, isOn, sound } from "../../sim/index.js";
 import type { ItemTraits } from "../../sim/index.js";
 import { powerSwitch } from "../switch.js";
 // The switch's click, once its asset lands; importing a missing file breaks the build.
 // import clickUrl from "./sfx/click.mp3";
+// Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
+const dropUrl = new URL("./sfx/drop.mp3", import.meta.url).href;
 
 /**
- * A flashlight: switched on and off with the use control, it lights a long cone the way its holder
- * faces while it is held and on. Its uses are its battery, spent one each `drain` seconds it
- * shines; a flat one is gone.
+ * A flashlight: switched on and off with the use control, it lights a long cone the way it points
+ * while it is on: the way its holder faces while held, and, dropped, the way it faced as it fell.
+ * Its uses are its battery, spent one each `drain` seconds it shines; a flat one is gone.
  */
 export interface FlashlightConfig extends ItemTraits {
   /** How far its beam reaches, in pixels. */
@@ -34,7 +36,7 @@ export const flashlight = defineItem(ITEM, (config: FlashlightConfig) => {
     name: "Flashlight",
     emoji: "🔦",
     traits: config,
-    player: power.on,
+    drop: sound({ url: dropUrl, volume: config.volume }),
     use: power.use(config.cooldown, {
       noise: config.clickNoiseRadius,
       // sound: click,
@@ -42,18 +44,15 @@ export const flashlight = defineItem(ITEM, (config: FlashlightConfig) => {
     draw() {
       // A switch shows only as the light it casts.
     },
-    light(_game, holder) {
-      if (!power.on.get(holder)) return null;
+    light({ state, facing }) {
+      if (!isOn(state)) return null;
       return {
         range: config.range,
-        shape: { kind: "cone", direction: holder.aim, angle: config.angle },
+        shape: { kind: "cone", direction: facing, angle: config.angle },
       };
     },
-    act(game) {
-      power.act(game);
-    },
     step(game, dt) {
-      power.drain(game, dt);
+      power.step(game, dt);
     },
   };
 });

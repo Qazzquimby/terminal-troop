@@ -1,4 +1,5 @@
-import { heldItemOf } from "./inventories.js";
+import { heldInstance, lyingInstance } from "./item-instances.js";
+import type { ItemInstance } from "./item-instances.js";
 import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
@@ -317,23 +318,27 @@ function placed(at: Point, emission: LightEmission, deep: number): LightSource {
 }
 
 /**
- * The lights entities and held items give off, such as a cruiser's headlights or a flashlight
- * switched on, apart from any viewer's own sight.
+ * The lights entities and items give off, such as a cruiser's headlights or a flashlight switched
+ * on, apart from any viewer's own sight. An item shines the same held or lying, from where it is
+ * the way it points; one carried in a pocket shines on nothing.
  */
 export function emittedLights(game: Session): LightSource[] {
   const lights: LightSource[] = [];
   const deep = game.config.deepdark.light;
+  const shine = (instance: ItemInstance | null): void => {
+    if (instance === null) return;
+    const emission = game.items.get(instance.item)?.light?.(instance, game);
+    if (emission !== undefined && emission !== null)
+      lights.push(placed(instance.at, emission, deep));
+  };
   game.entities.forEach((entity) => {
     const emissions = game.entityTypes.get(entity.kind)?.light(entity) ?? [];
     for (const emission of emissions)
       lights.push(placed(entity, emission, deep));
+    shine(lyingInstance(game, entity));
   });
   game.players.forEach((player) => {
-    const item = heldItemOf(game, player);
-    if (item === null) return;
-    const emission = game.items.get(item.id)?.light?.(game, player);
-    if (emission === undefined || emission === null) return;
-    lights.push(placed(player, emission, deep));
+    shine(heldInstance(game, player));
   });
   return lights;
 }

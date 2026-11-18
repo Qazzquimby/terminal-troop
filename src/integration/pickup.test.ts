@@ -1,3 +1,4 @@
+import { omit } from "lodash-es";
 import { expect, test, vi } from "vitest";
 import { entityContent } from "../entities/index.js";
 import { createScope } from "../lib/scope/index.js";
@@ -14,6 +15,7 @@ import {
   sound,
   spawnWorldItem,
   updateSession,
+  lyingItem,
 } from "../sim/index.js";
 import type { Controls, Point, Session, WorldEntity } from "../sim/index.js";
 import { targetLabel } from "../ui/index.js";
@@ -387,7 +389,8 @@ function boltsAt(room: Room, at: Point): number {
   return [...sessionOf(room).entities.values()].filter(
     (entity) =>
       Math.hypot(entity.x - at.x, entity.y - at.y) < 1 &&
-      JSON.stringify(entity.data) === JSON.stringify({ item: "bolt" }),
+      JSON.stringify(omit(lyingItem(sessionOf(room), entity), "facing")) ===
+        JSON.stringify({ item: "bolt" }),
   ).length;
 }
 

@@ -58,3 +58,29 @@ test("it beeps faster nearer, and drains its battery like a flashlight", async (
   far.step({ b: { ...facingRight, use: true } });
   expect(nearBeeps).toBeGreaterThan(far.count(4000, facingRight));
 });
+
+test("dropped switched on, it beeps on where it lies, as it points, whichever way its dropper turns", async () => {
+  const dropped = async (pointing: Controls): Promise<number> => {
+    const made = await room({ x: 500, y: 300 });
+    made.step({ b: { ...pointing, use: true } });
+    made.run(300, { b: pointing });
+    made.step({ b: { ...pointing, drop: true } });
+    made.run(300, { b: pointing });
+    // Turned the other way, the dropper's own facing must make no difference.
+    const away = pointing === facingRight ? facingLeft : facingRight;
+    return made.count(6000, away);
+  };
+  const facingIt = await dropped(facingRight);
+  const facingAway = await dropped(facingLeft);
+  expect(facingAway).toBeGreaterThan(0);
+  expect(facingIt).toBeGreaterThan(facingAway);
+});
+
+test("put away in a pocket it switches off and falls silent", async () => {
+  const { step, run, count } = await room({ x: 500, y: 300 });
+  step({ b: { ...facingRight, use: true } });
+  expect(count(2000, facingRight)).toBeGreaterThan(0);
+  run(300, { b: { ...facingRight, select: 0 } });
+  run(300, { b: { ...facingRight, select: 1 } });
+  expect(count(3000, facingRight)).toBe(0);
+});

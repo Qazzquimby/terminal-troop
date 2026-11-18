@@ -6,6 +6,7 @@ import {
   give,
   removeFromWorld,
   spawn,
+  spendUses,
   stateAt,
   take,
   usesAt,
@@ -18,15 +19,11 @@ import {
   removeEntity,
   spawnEntity,
 } from "./entities.js";
-import { hasRoom, isReaching, itemIn } from "./inventories.js";
-import {
-  glyphOf,
-  isFull,
-  isOn,
-  ItemId,
-  ItemState,
-  UsesLeft,
-} from "./inventory.js";
+import { hasRoom, isReaching, itemIn, setItemState } from "./inventories.js";
+import { glyphOf, isFull, isOn } from "./inventory.js";
+import type { ItemState } from "./inventory.js";
+import type { ItemInstance } from "./item-instances.js";
+import { lyingData, lyingItem, WORLD_ITEM, WorldItemData } from "./lying.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { controlHeldItem } from "./use.js";
@@ -42,20 +39,6 @@ export interface WorldItemConfig {
   /** Least time between one player's drops, as the host counts it. */
   readonly dropCooldown: number;
 }
-
-/** The kind every item lying in the world is, whatever the item. */
-const WORLD_ITEM = "core/world-item";
-
-/**
- * A lying item's state: which item it is, the uses it has left once it has spent some, and its
- * own state once it keeps any.
- */
-const WorldItemData = z.object({
-  item: ItemId,
-  left: UsesLeft.optional(),
-  state: ItemState.optional(),
-});
-type WorldItemData = z.infer<typeof WorldItemData>;
 
 /** The colour of the light an item switched on shows. */
 const ON_LIGHT = "#7dff8a";
@@ -161,27 +144,13 @@ export function drawLying(
   ctx.restore();
 }
 
-/**
- * A lying item's state: `item` with `left` uses left, or all its uses when left out, keeping
- * `state` of its own, if any.
- */
-const lyingData = (
-  item: string,
-  left?: number | null,
-  state?: ItemState,
-): WorldItemData => ({
-  item,
-  ...(left !== undefined && left !== null && { left }),
-  ...(state !== undefined && Object.keys(state).length > 0 && { state }),
-});
-
 /** Whether items can lie in `game`'s world: it has any items registered. */
 export const itemsCanLie = (game: Session): boolean =>
   game.kindIds.has(WORLD_ITEM);
 
 /**
  * Lays the item `item` in the world at `at`, with `left` uses left, or all its uses when left
- * out, keeping `state` of its own, if any.
+ * out, keeping `state` of its own, if any, pointing `facing` radians, 0 when left out.
  */
 export function spawnWorldItem(
   game: Session,
@@ -189,8 +158,9 @@ export function spawnWorldItem(
   item: string,
   left?: number,
   state?: ItemState,
+  facing?: number,
 ): WorldEntity {
-  const data = lyingData(item, left, state);
+  const data = lyingData(item, left, state, facing);
   return spawnEntity(game, WORLD_ITEM, at.x, at.y, data);
 }
 
@@ -208,19 +178,6 @@ export function soundDrop(
 ): void {
   const sound = game.itemDefinitions.get(item)?.drop;
   if (sound !== undefined) effect(game, { at, sound }, by);
-}
-
-/**
- * The item `entity` is, the uses it has left and its own state, if it is an item lying in the
- * world.
- */
-export function lyingItem(
-  game: Session,
-  entity: WorldEntity,
-): WorldItemData | null {
-  if (entity.kind !== game.kindIds.get(WORLD_ITEM)) return null;
-  const parsed = WorldItemData.safeParse(entity.data);
-  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -242,7 +199,7 @@ export function seemsItem(
  * As the host, leaves the lying item `entity` with `left` uses left, keeping its state; with none
  * left it is gone. Its snapshots carry that to every client. Returns whether it changed it.
  */
-export function setLyingUses(
+function setLyingUses(
   game: Session,
   entity: WorldEntity,
   left: number,
@@ -250,8 +207,60 @@ export function setLyingUses(
   const lying = lyingItem(game, entity);
   if (!game.hosting || lying === null) return false;
   if (left <= 0) removeEntity(game, entity.id);
-  else entity.data = lyingData(lying.item, left, lying.state);
+  else entity.data = lyingData(lying.item, left, lying.state, lying.facing);
   return true;
+}
+
+/**
+ * As the host, leaves the lying item `entity` keeping `state` of its own, none when undefined,
+ * as it was otherwise. Its snapshots carry that to every client. Returns whether it changed it.
+ */
+function setLyingState(
+  game: Session,
+  entity: WorldEntity,
+  state: ItemState | undefined,
+): boolean {
+  const lying = lyingItem(game, entity);
+  if (!game.hosting || lying === null) return false;
+  entity.data = lyingData(lying.item, lying.left, state, lying.facing);
+  return true;
+}
+
+/**
+ * As the host, spends `amount` of `instance`'s uses, wherever it is, outside any action: an item
+ * that spends its last use is gone, with its breaking sound. Does nothing to an item whose uses
+ * are unlimited. Returns the uses left; null when it spent none.
+ */
+export function spendInstanceUses(
+  game: Session,
+  instance: ItemInstance,
+  amount = 1,
+): number | null {
+  const { place } = instance;
+  if (!game.hosting || instance.left === null) return null;
+  if (!("lying" in place))
+    return spendUses(game, place.carrier, place.slot, amount);
+  const left = Math.max(0, instance.left - amount);
+  // Its breaking sound goes first, while it still lies there to be tagged as its maker.
+  const breaks = game.itemDefinitions.get(instance.item)?.breaks;
+  if (left === 0 && breaks !== undefined)
+    effect(game, { at: instance.at, sound: breaks }, place.lying);
+  return setLyingUses(game, place.lying, left) ? left : null;
+}
+
+/**
+ * As the host, leaves `instance` keeping `state` of its own, none when undefined, wherever it is,
+ * outside any action. Returns whether it did.
+ */
+export function setInstanceState(
+  game: Session,
+  instance: ItemInstance,
+  state: ItemState | undefined,
+): boolean {
+  const { place } = instance;
+  if (!game.hosting) return false;
+  if ("lying" in place) return setLyingState(game, place.lying, state);
+  return setItemState(game, place.carrier.id, place.slot, instance.item, state);
 }
 
 /**
@@ -300,21 +309,25 @@ export const pickUp = defineAction("pickUp", {
 
 /**
  * A player letting go of the item in a slot, where it stands. The host takes it if its record has
- * an item in the slot: it takes the item out of the slot and lays it in the world there. The
+ * an item in the slot: it takes the item out of the slot and lays it in the world there, as it
+ * was, pointing the way the player faced as it let go, as it sends it. The
  * player's own client shows it gone from its items at once, and every client hears it land, with
  * its item's drop sound, if it has one.
  */
 export const drop = defineAction("drop", {
-  input: z.object({ slot: z.number().int().min(0).max(63) }),
+  input: z.object({
+    slot: z.number().int().min(0).max(63),
+    aim: z.number().optional(),
+  }),
   cooldown: (game) => game.config.worldItems.dropCooldown,
   check: (game, player, { slot }) => itemIn(game, player.id, slot) !== null,
-  apply(game, player, { slot }) {
+  apply(game, player, { slot, aim = player.aim }) {
     const left = usesAt(game, player, slot);
     const state = stateAt(game, player, slot);
     const item = take(game, player, slot);
     if (item === null) return;
     const at = { x: player.x, y: player.y };
-    spawn(game, WORLD_ITEM, at, lyingData(item, left, state));
+    spawn(game, WORLD_ITEM, at, lyingData(item, left, state, aim));
     soundDrop(game, item, at);
   },
 });
@@ -376,5 +389,5 @@ export function interact(game: Session): void {
 export function dropHeld(game: Session): void {
   const slot = game.local.held;
   if (slot === null || (game.local.inventory[slot] ?? null) === null) return;
-  drop.perform(game, { slot });
+  drop.perform(game, { slot, aim: game.local.aim });
 }
