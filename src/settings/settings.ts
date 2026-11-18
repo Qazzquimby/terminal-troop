@@ -14,6 +14,8 @@ export interface Settings {
   };
   readonly audio: {
     readonly masterVolume: number;
+    /** Scales every radio's station, a car's or one carried, under the master volume. */
+    readonly radioVolume: number;
   };
   readonly view: {
     /** Whether the camera turns with the view's facing, so ahead is always up the screen. */
@@ -44,7 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
     volume: 1,
     inputDevice: null,
   },
-  audio: { masterVolume: 1 },
+  audio: { masterVolume: 1, radioVolume: 1 },
   view: { rotateCamera: false, mouseSensitivity: 1 },
 };
 
@@ -77,7 +79,10 @@ function schemaFallingBackTo(fallback: Settings) {
         })
         .catch(fallback.voice),
       audio: z
-        .object({ masterVolume: unit.catch(fallback.audio.masterVolume) })
+        .object({
+          masterVolume: unit.catch(fallback.audio.masterVolume),
+          radioVolume: unit.catch(fallback.audio.radioVolume),
+        })
         .catch(fallback.audio),
       view: z
         .object({

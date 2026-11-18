@@ -109,6 +109,57 @@ describe("sound made rather than loaded", () => {
   });
 });
 
+describe("a sound on a channel", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("is scaled by its channel's volume, as it changes, and others are not", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    sfx.setChannelVolume("radio", 0.5);
+    void sfx.play("song.mp3", null, null, { volume: 0.8, channel: "radio" });
+    void sfx.play("click.mp3", null, null, { volume: 0.8 });
+    void sfx.play("talk.mp3", null, null, { channel: "voices" });
+    await settle();
+    const [song, click, talk] = audio.sounds();
+    expect(song?.volume()).toBeCloseTo(0.4);
+    expect(click?.volume()).toBeCloseTo(0.8);
+    expect(talk?.volume()).toBe(1);
+
+    sfx.setChannelVolume("radio", 0);
+    expect(song?.volume()).toBe(0);
+    expect(click?.volume()).toBeCloseTo(0.8);
+    sfx.setChannelVolume("radio", 1);
+    expect(song?.volume()).toBeCloseTo(0.8);
+  });
+
+  test("keeps its channel's volume as it moves and as its own volume changes", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    sfx.setChannelVolume("radio", 0.5);
+    const near = { x: 0, y: 0 };
+    const handle = await sfx.play("song.mp3", near, near, {
+      range: 400,
+      channel: "radio",
+    });
+    const [song] = audio.sounds();
+    sfx.listen({ x: 0, y: 0 });
+    expect(song?.volume()).toBeCloseTo(0.5);
+    handle.setVolume(0.5);
+    expect(song?.volume()).toBeCloseTo(0.25);
+  });
+
+  test("once stopped, fades out whatever its channel's volume does next", async () => {
+    const audio = stubAudio();
+    const sfx = createSfx(falloff);
+    const handle = await sfx.play("song.mp3", null, null, { channel: "radio" });
+    handle.stop(0);
+    sfx.setChannelVolume("radio", 0.7);
+    expect(audio.sounds()[0]?.volume()).toBe(0);
+  });
+});
+
 describe("a positioned sound still playing", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

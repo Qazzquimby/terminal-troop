@@ -28,6 +28,8 @@ export interface Playing {
   readonly range?: number;
   /** Whether it starts again at its end. */
   readonly loop?: boolean;
+  /** The sound channel it plays on, whose volume each client sets for itself; none when left out. */
+  readonly channel?: string;
   /**
    * Where it plays from, when not where what holds it is: a teleporter's hum at the car that sent
    * for a body, say, held by the beam on the body. Followed as it moves, as its holder is.
@@ -112,6 +114,7 @@ export function followPlayings(game: Session): void {
         ...(sound.volume !== undefined && { volume: sound.volume }),
         ...(sound.range !== undefined && { range: sound.range }),
         ...(sound.loop !== undefined && { loop: sound.loop }),
+        ...(sound.channel !== undefined && { channel: sound.channel }),
       }),
     );
   }

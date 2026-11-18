@@ -30,7 +30,7 @@ test("a fresh store has the defaults", () => {
   const store = createSettingsStore(memoryStorage());
   expect(store.get()).toEqual({
     voice: { mode: "pushToTalk", muted: false, volume: 1, inputDevice: null },
-    audio: { masterVolume: 1 },
+    audio: { masterVolume: 1, radioVolume: 1 },
     view: { rotateCamera: false, mouseSensitivity: 1 },
   });
 });
@@ -44,7 +44,7 @@ test("update merges into the current settings and persists them", () => {
 
   const expected = {
     voice: { mode: "pushToTalk", muted: true, volume: 1, inputDevice: null },
-    audio: { masterVolume: 0.25 },
+    audio: { masterVolume: 0.25, radioVolume: 1 },
     view: { rotateCamera: false, mouseSensitivity: 1 },
   };
   expect(store.get()).toEqual(expected);
@@ -90,7 +90,7 @@ test("partially valid stored data keeps its valid fields", () => {
   const store = createSettingsStore(memoryStorage(stored));
   expect(store.get()).toEqual({
     voice: { mode: "pushToTalk", muted: false, volume: 0.4, inputDevice: null },
-    audio: { masterVolume: 1 },
+    audio: { masterVolume: 1, radioVolume: 1 },
     view: { rotateCamera: false, mouseSensitivity: 1 },
   });
 });
@@ -162,6 +162,27 @@ test("mouse sensitivity defaults to 1, persists, and is kept within its bounds",
   expect(store.get().view.mouseSensitivity).toBe(MOUSE_SENSITIVITY.min);
   store.update({ view: { mouseSensitivity: Number.NaN } });
   expect(store.get().view.mouseSensitivity).toBe(MOUSE_SENSITIVITY.min);
+});
+
+test("radio volume defaults to full, persists apart from the master volume, and is kept to 0..1", () => {
+  const storage = memoryStorage();
+  const store = createSettingsStore(storage);
+  expect(store.get().audio.radioVolume).toBe(1);
+  store.update({ audio: { radioVolume: 0.3 } });
+  expect(createSettingsStore(storage).get().audio).toEqual({
+    masterVolume: 1,
+    radioVolume: 0.3,
+  });
+  store.update({ audio: { radioVolume: 5 } });
+  expect(store.get().audio.radioVolume).toBe(1);
+});
+
+test("settings saved before there was a radio volume load it at full, keeping the master volume", () => {
+  const stored = JSON.stringify({ audio: { masterVolume: 0.4 } });
+  expect(createSettingsStore(memoryStorage(stored)).get().audio).toEqual({
+    masterVolume: 0.4,
+    radioVolume: 1,
+  });
 });
 
 test("a stored device that is not a string loads as the default", () => {

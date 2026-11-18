@@ -93,6 +93,7 @@ import {
 import type { SpawnChoice } from "./entities/index.js";
 import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
+import { RADIO_CHANNEL } from "./stations/index.js";
 import { createWorldLog, logsWorld } from "./world-log/index.js";
 
 /** Owns everything that lives as long as the page. */
@@ -341,6 +342,7 @@ let aimFrom: Session | null = null;
 
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
+  sfx.setChannelVolume(RADIO_CHANNEL, current.audio.radioVolume);
   voice.configure(current.voice);
 }
 applySettings(settings.get());
