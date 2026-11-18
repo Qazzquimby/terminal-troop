@@ -697,7 +697,9 @@ export const config = {
     // then flickers for 0.8s and vanishes. Touching her costs 20 health a second, 5 every 0.25s.
     // Slipping away, she walks at sprint to a spot within 8 cells her target cannot see,
     // trying 12 a step for 2s before making for the nearest wall; after 10s she is gone anyway.
-    // Her sounds carry 16 cells, past the furthest she appears.
+    // Her sounds carry 16 cells, past the furthest she appears. Out in the world she shows as an
+    // apparition: drawn at 70% opacity, trembling 1.5px every way, lurching 5px aside about one
+    // moment in 16, under static a third thick.
     ghostGirl: {
       spawning: {
         weight: 3,
@@ -734,6 +736,12 @@ export const config = {
         giveUp: 10,
       },
       flicker: 0.8,
+      apparition: {
+        opacity: 0.7,
+        shake: 1.5,
+        jolt: { chance: 0.06, size: 5 },
+        static: 0.35,
+      },
       contact: { damage: 5, interval: 0.25 },
       soundRange: CELL * 16,
     },
@@ -1189,10 +1197,11 @@ export const config = {
     // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker.
     // Smaller than a player; four shovel hits break it. It rides at 1.3 times a walk, to spots 10
     // to 25 cells off, of 12 tried the one setting off most nearly the way it heads, along ways 2
-    // cells wide where there are any. It runs down players alone, passing through every other
-    // body: one within 8 cells on its way hears its bell, at most every 2s, heard 10 cells off;
-    // one within 4 cells ahead slows it to 0.9 times a walk; one it touches takes 70, once a
-    // second. Its wheels creak every 0.8s, heard 3 cells off; a body run down, 6.
+    // cells wide where there are any, and, while a player is about, only to spots within 20 cells
+    // of one. It runs down players alone, passing through every other body: one within 8 cells
+    // on its way hears its bell, at most every 2s, heard 10 cells off; one within 4 cells ahead
+    // slows it to 0.9 times a walk; one it touches takes 70, once a second. Its wheels creak
+    // every 0.8s, heard 3 cells off; a body run down, 6.
     tricycle: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -1207,7 +1216,13 @@ export const config = {
       speedShare: 1.3,
       slowShare: 0.9,
       slowRange: CELL * 4,
-      ride: { min: CELL * 10, max: CELL * 25, tries: 12, width: CELL },
+      ride: {
+        min: CELL * 10,
+        max: CELL * 25,
+        tries: 12,
+        width: CELL,
+        near: CELL * 20,
+      },
       bellRange: CELL * 8,
       bellCooldown: 2,
       damage: 70,
@@ -1222,8 +1237,9 @@ export const config = {
     // sprint to the spot, where it looks round 10s; any killable body it sees within 10 cells of
     // the spot, or whatever hurts it, enrages it, and it chases where it last saw one at 0.8 times
     // a sprint, replanning every 0.5s, striking what it touches for 30 a second, until 10s pass
-    // with none seen. It sees 8 cells down its facing, as a zombie does. A balloon set down is
-    // heard 3 cells off, its rage cry 12, a blow 5.
+    // with none seen, crying out angrily as it enrages and every 10.8s (the cry's length) after.
+    // It sees 8 cells down its facing, as a zombie does. A balloon set down is heard 3 cells off,
+    // its rage cry 12, a blow 5.
     birthdayBoy: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -1246,9 +1262,10 @@ export const config = {
       lingerSeconds: 10,
       calmSeconds: 10,
       repathInterval: 0.5,
+      cryInterval: 10.8,
       damage: 30,
       attackCooldown: 1,
-      sounds: { place: CELL * 3, enrage: CELL * 12, attack: CELL * 5 },
+      sounds: { place: CELL * 3, angry: CELL * 12, attack: CELL * 5 },
     },
     // A birthday boy's balloon, small; its pop is heard 20 cells round.
     balloon: {

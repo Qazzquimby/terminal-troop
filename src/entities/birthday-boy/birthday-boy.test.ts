@@ -31,9 +31,10 @@ const { birthdayBoy: config, balloon: balloonConfig } = testEntitiesConfig;
 
 /**
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
- * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y).
+ * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y). Birthday boys are
+ * as `boyConfig` has them, the test config's by default.
  */
-function world(x: number, y: number): Session {
+function world(x: number, y: number, boyConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
@@ -48,7 +49,7 @@ function world(x: number, y: number): Session {
     setPosition: () => undefined,
   });
   registerContent(game, [
-    boyContent.create({ birthdayBoy: config }),
+    boyContent.create({ birthdayBoy: boyConfig }),
     balloonContent.create({ balloon: balloonConfig }),
     snailContent.create({ snail: testEntitiesConfig.snail }),
   ]);
@@ -105,6 +106,13 @@ function balloonAt(game: Session, at: Point, owner: WorldEntity): WorldEntity {
 
 const stateOf = (entity: WorldEntity): BirthdayBoyState =>
   BirthdayBoyState.parse(entity.data);
+
+/** Counts, when called, how many times `file` has been played so far. */
+const sound =
+  (game: Session, file: string): (() => number) =>
+  () =>
+    vi.mocked(game.sfx.play).mock.calls.filter(([url]) => url.endsWith(file))
+      .length;
 
 /** A corner far from where these tests run, behind a pillar from the middle. */
 const FAR = { x: 875, y: 575 };
@@ -174,7 +182,7 @@ test("on patrol, a killable body it sees near the popped balloon enrages it, and
   expect(
     vi
       .mocked(game.sfx.play)
-      .mock.calls.some(([url]) => url.endsWith("enrage.mp3")),
+      .mock.calls.some(([url]) => url.endsWith("angry.mp3")),
   ).toBe(true);
   run(game, 3);
   const lost = game.local.maxHealth - game.local.health;
@@ -211,6 +219,32 @@ test("enraged, with no body seen for 10s, it calms and wanders again", () => {
   expect(stateOf(boy).mode).toBe("enraged");
   run(game, 1.5);
   expect(stateOf(boy).mode).toBe("wander");
+});
+
+test("enraged, it cries out angrily again each interval, and falls quiet once it calms", () => {
+  const boyConfig = { ...config, cryInterval: 3 };
+  const game = world(FAR.x, FAR.y, boyConfig);
+  const angry = sound(game, "angry.mp3");
+  boyAt(
+    game,
+    { x: 425, y: 325 },
+    {
+      mode: "enraged",
+      facing: Math.PI,
+      lastSeen: { x: 425, y: 325 },
+      seenAt: 0,
+      cryAt: 0,
+      balloonAt: 1000,
+    },
+  );
+  const cries = run(game, 9.5).filter(
+    (noise) => noise.radius === config.sounds.angry,
+  );
+  // At 0, 3, 6 and 9s, each a noise as far as the cry is heard.
+  expect(angry()).toBe(4);
+  expect(cries).toHaveLength(4);
+  run(game, boyConfig.calmSeconds);
+  expect(angry()).toBe(4);
 });
 
 test("as it falls, all its balloons pop", () => {
