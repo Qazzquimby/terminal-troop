@@ -42,12 +42,14 @@ export interface TricycleConfig extends Hunting, Dormancy {
   /**
    * Its rides: to spots `min` to `max` off, as the crow flies, the one heading most nearly the way
    * it already faces of `tries` tried, along ways at least `width` across where there are any.
+   * While any body it runs down is about, it rides only to spots within `near` of one.
    */
   readonly ride: {
     readonly min: number;
     readonly max: number;
     readonly tries: number;
     readonly width: number;
+    readonly near: number;
   };
   /** How far down its way it rings at a body it runs down standing on it. */
   readonly bellRange: number;
@@ -124,28 +126,72 @@ function wideRoute(
   );
 }
 
+/** `tries` spots evenly round `self`, each `min` to `max` off, from a random start. */
+function spotsRound(self: Point, config: TricycleConfig): Point[] {
+  const { min, max, tries } = config.ride;
+  const offset = Math.random() * Math.PI * 2;
+  return Array.from({ length: tries }, (_, attempt) => {
+    const angle = offset + (attempt / tries) * Math.PI * 2;
+    const distance = min + (max - min) * Math.random();
+    return {
+      x: self.x + Math.cos(angle) * distance,
+      y: self.y + Math.sin(angle) * distance,
+    };
+  });
+}
+
+/** `tries` spots each within `near` of one of `bodies`, drawn at random; none for no bodies. */
+function spotsNear(bodies: readonly Point[], config: TricycleConfig): Point[] {
+  const { tries, near } = config.ride;
+  return Array.from({ length: tries }).flatMap(() => {
+    const body = bodies[Math.floor(Math.random() * bodies.length)];
+    if (body === undefined) return [];
+    const angle = Math.random() * Math.PI * 2;
+    // Spread evenly over the disc, not bunched at its middle.
+    const distance = near * Math.sqrt(Math.random());
+    return [
+      {
+        x: body.x + Math.cos(angle) * distance,
+        y: body.y + Math.sin(angle) * distance,
+      },
+    ];
+  });
+}
+
 /**
- * Its next ride, once the last is done: of spots tried evenly round it, those it fits at, the one
- * whose way sets off most nearly the way it faces, so it doubles back only when nothing else
- * goes. Empty when none is reached.
+ * Where it may ride next: spots round it, but, while any of `bodies` it runs down is about, only
+ * those within its `near` of one; should none be, spots round those bodies instead, so it never
+ * strays far from them.
+ */
+function destinations(
+  self: Point,
+  bodies: readonly Point[],
+  config: TricycleConfig,
+): Point[] {
+  const round = spotsRound(self, config);
+  if (bodies.length === 0) return round;
+  const { near } = config.ride;
+  const nearOne = round.filter((spot) =>
+    bodies.some((body) => Math.hypot(body.x - spot.x, body.y - spot.y) <= near),
+  );
+  return nearOne.length > 0 ? nearOne : spotsNear(bodies, config);
+}
+
+/**
+ * Its next ride, once the last is done: of the spots it may ride to (see `destinations`), those
+ * it fits at, the one whose way sets off most nearly the way it faces, so it doubles back only
+ * when nothing else goes. Empty when none is reached.
  */
 function nextRide(
   game: Session,
   self: WorldEntity,
   facing: number,
+  bodies: readonly Point[],
   config: TricycleConfig,
 ): Point[] {
   const { map } = game.world;
-  const { min, max, tries } = config.ride;
-  const offset = Math.random() * Math.PI * 2;
   let best: { route: Point[]; score: number } | null = null;
-  for (let attempt = 0; attempt < tries; attempt++) {
-    const angle = offset + (attempt / tries) * Math.PI * 2;
-    const distance = min + (max - min) * Math.random();
-    const to = {
-      x: self.x + Math.cos(angle) * distance,
-      y: self.y + Math.sin(angle) * distance,
-    };
+  for (const to of destinations(self, bodies, config)) {
     if (!isAreaFree(map, to.x, to.y, self.radius)) continue;
     const route = wideRoute(game, self, to, config);
     if (route === null) continue;
@@ -221,11 +267,11 @@ function think(
   config: TricycleConfig,
 ): TricycleState {
   const now = game.worldTime;
+  const bodies = quarries(game, self, config);
   const route =
     state.route.length > 0
       ? state.route
-      : nextRide(game, self, state.facing, config);
-  const bodies = quarries(game, self, config);
+      : nextRide(game, self, state.facing, bodies, config);
   const blocked = bodies.some((body) =>
     onWay(self, route, body, config.bellRange),
   );
@@ -338,7 +384,8 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
 
 /**
  * The tricycle: no one rides it, but it rides on all the same, along the wide ways, picking each
- * ride to set off the way it already heads, so it rarely doubles back. It passes through every
+ * ride to set off the way it already heads, so it rarely doubles back, and never to a spot far
+ * from every body it runs down, so it keeps coming back round to them. It passes through every
  * body but those it runs down, players as shipped, and those it strikes hard as it passes. One
  * standing on its way ahead hears its bell; near and ahead of it, it slows. Its wheels creak as it
  * goes.

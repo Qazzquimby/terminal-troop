@@ -331,3 +331,12 @@ test("a client takes her from a snapshot even inside a wall", () => {
   applyEntitySnapshot(other, snapshot);
   expect(other.entities.get(girl.id)).toMatchObject({ x: 250, y: 100 });
 });
+
+test("out in the world she shows as an apparition; away, nothing of her shows", () => {
+  const game = world(450, 300);
+  const girl = girlAt(game, 800, 300, staring());
+  const kind = game.entityTypes.get(girl.kind);
+  expect(kind?.apparition(girl)).toEqual(config.apparition);
+  girl.data = { ...stateOf(girl), mode: "absent" };
+  expect(kind?.apparition(girl)).toBeNull();
+});

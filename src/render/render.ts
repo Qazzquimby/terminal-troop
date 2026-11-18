@@ -55,6 +55,7 @@ import {
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
+import { drawApparition } from "./apparition.js";
 import type { Camera } from "./camera.js";
 import { drawClock } from "./clock.js";
 import type { Eye } from "./spectate.js";
@@ -1166,7 +1167,10 @@ function layLight(scene: Layer, mask: Layer): void {
   scene.ctx.restore();
 }
 
-/** Draws world entity `entity` as its kind does, with its stun, and its health bar if it shows one. */
+/**
+ * Draws world entity `entity` as its kind does, as an apparition while its kind shows as one,
+ * with its stun, and its health bar if it shows one.
+ */
 function drawEntity(
   ctx: CanvasRenderingContext2D,
   game: Session,
@@ -1175,11 +1179,16 @@ function drawEntity(
 ): void {
   const definition = game.entityTypes.get(entity.kind);
   if (definition === undefined) return;
-  ctx.save();
-  // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
-  ctx.fillStyle = EMOJI_FILL;
-  definition.draw(ctx, entity, now, game);
-  ctx.restore();
+  const drawKind = (): void => {
+    ctx.save();
+    // Each kind draws from an opaque fill, so a glyph it draws is never faint for what came before.
+    ctx.fillStyle = EMOJI_FILL;
+    definition.draw(ctx, entity, now, game);
+    ctx.restore();
+  };
+  const apparition = definition.apparition(entity);
+  if (apparition === null) drawKind();
+  else drawApparition(ctx, entity, apparition, now, drawKind);
   if (isStunned(game, entity.id))
     drawStunned(ctx, entity, now, STUN_ABOVE.entity);
   if (definition.healthBar)

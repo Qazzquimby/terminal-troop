@@ -68,6 +68,25 @@ export interface Strike {
   readonly by?: string | null;
 }
 
+/**
+ * How a kind shows as an apparition, as a ghost on a bad signal: see-through, shaking where it
+ * stands, now and then lurching aside, and crawling with static. Any kind can take one, from its
+ * config, as `apparition` on its definition.
+ */
+export interface Apparition {
+  /** How opaque it is drawn, 0..1, on top of whatever opacity it draws itself with. */
+  readonly opacity: number;
+  /** How far, in pixels, it trembles every way, afresh each frame. */
+  readonly shake: number;
+  /**
+   * Its jolts: the share of moments, 0..1, it lurches `size` pixels sideways, a faint copy of it
+   * left where it stood.
+   */
+  readonly jolt: { readonly chance: number; readonly size: number };
+  /** How thick the static crawling over it is, 0..1. */
+  readonly static: number;
+}
+
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
 export interface EntityDefinition<S> {
   readonly radius: number;
@@ -128,6 +147,11 @@ export interface EntityDefinition<S> {
    * is lit, as any body does.
    */
   readonly seenInDark?: boolean;
+  /**
+   * Whether it shows as an apparition, given its state, and how: see-through, shaking and
+   * crawling with static over whatever `draw` draws of it. Drawn solid when left out or null.
+   */
+  readonly apparition?: (entity: WorldEntity, data: S) => Apparition | null;
   /**
    * Whether it passes itself off as a wall: wherever it shows, the cell it stands in is drawn as
    * a wall cell, joined to the walls round it as they join one another.
@@ -243,6 +267,8 @@ export interface EntityType {
   /** The one body that perceives it, when `restricted`; null for none. */
   perceiver(entity: WorldEntity): string | null;
   readonly seenInDark: boolean;
+  /** How it shows as an apparition now; null while it is drawn solid. */
+  apparition(entity: WorldEntity): Apparition | null;
   /** Whether the cell it stands in is drawn as a wall wherever it shows. */
   readonly posesAsWall: boolean;
   /** Whether it is perceived only while it lies in deepdark. */
@@ -351,6 +377,13 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       return parsed.success ? perceivedBy(entity, parsed.data) : null;
     },
     seenInDark: definition.seenInDark ?? false,
+    apparition(entity) {
+      const { apparition } = definition;
+      // Most kinds are drawn solid, and pay nothing to parse their state for it.
+      if (apparition === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      return parsed.success ? apparition(entity, parsed.data) : null;
+    },
     posesAsWall: definition.posesAsWall ?? false,
     onlyInDeepdark(entity, game) {
       const { onlyInDeepdark } = definition;
