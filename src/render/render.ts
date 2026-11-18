@@ -4,6 +4,7 @@ import type {
   DarkSource,
   Entity,
   Footprint,
+  Fronts,
   Interpolated,
   Player,
   Point,
@@ -23,6 +24,7 @@ import {
   footprintPoints,
   ambientPolygons,
   canSeeFrom,
+  edgeAt,
   eyesOf,
   intoDeepdark,
   isDeepdark,
@@ -1112,27 +1114,54 @@ function drawShrouds(
 }
 
 /**
- * A mask of the deepdark behind its front, at `front` pixels across the world, but where `lit`,
- * lights traced out to their reach into deepdark, reaches; edges soft, as `featheredMask`'s.
+ * The deepdark behind `edge`, the deepdark front's ragged edge in a world of `cell`-px rows, that
+ * `camera` shows: a polygon from the view's left side out to the edge, row centre by row centre,
+ * as `isDeepdark` judges it; or null where the front has not reached the view.
+ */
+function behindFront(
+  edge: Fronts["deep"],
+  cell: number,
+  camera: Camera,
+): Point[] | null {
+  const pad = EDGE_FADE * camera.zoom;
+  const left = camera.x - pad;
+  const top = camera.y - pad;
+  const bottom = camera.y + viewHeight(camera) + pad;
+  const ys = [top];
+  for (
+    let row = Math.max(0, Math.ceil(top / cell - 0.5));
+    (row + 0.5) * cell < bottom;
+    row++
+  )
+    ys.push((row + 0.5) * cell);
+  ys.push(bottom);
+  const along = ys.map((y) => ({ x: edgeAt(edge, cell, y), y }));
+  if (along.every(({ x }) => x <= left)) return null;
+  return [
+    { x: left, y: top },
+    ...along.map(({ x, y }) => ({ x: Math.max(left, x), y })),
+    { x: left, y: bottom },
+  ];
+}
+
+/**
+ * A mask of the deepdark within `outline`, but where `lit`, lights traced out to their reach into
+ * deepdark, reaches; edges soft, as `featheredMask`'s.
  */
 function deepdarkMask(
   layer: Layer,
-  front: number,
+  outline: readonly Point[],
   lit: readonly VisibilityPolygon[],
   camera: Camera,
 ): Layer {
   const { width, height } = camera.view;
-  const pad = EDGE_FADE;
   const mask = startMask(layer, camera, width, height);
   const { ctx } = mask;
   ctx.fillStyle = "#000";
-  const left = camera.x - pad * camera.zoom;
-  ctx.fillRect(
-    left,
-    camera.y - pad * camera.zoom,
-    front - left,
-    viewHeight(camera) + pad * 2 * camera.zoom,
-  );
+  ctx.beginPath();
+  for (const { x, y } of outline) ctx.lineTo(x, y);
+  ctx.closePath();
+  ctx.fill();
   ctx.globalCompositeOperation = "destination-out";
   fillPolygons(ctx, lit);
   ctx.restore();
@@ -1677,12 +1706,13 @@ export function draw(
       unlight(scene, featheredMask(mask, shade, camera, width, height, "#000"));
   }
   // Behind the deepdark front, all is black but what lights reach, out to their reach into it.
-  if (fronts.deep > camera.x)
+  const deepOutline = behindFront(fronts.deep, map.cell, camera);
+  if (deepOutline !== null)
     unlight(
       scene,
       deepdarkMask(
         mask,
-        fronts.deep,
+        deepOutline,
         tracePolygons(map, lights.map(intoDeepdark), camera, rays, occluders),
         camera,
       ),

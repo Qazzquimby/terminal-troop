@@ -93,6 +93,7 @@ export const testSimConfig: SimConfig = {
     memoryFade: 3,
     eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
     fronts: { dark: Infinity, deep: Infinity, end: 1200 },
+    ragged: { amplitude: 0, scale: 12, octaves: 2, drift: 0 }, // straight, unless a test sets its own
   },
   net: { smoothing: 12, glide: 0.15, predictionHold: 0.5, snap: 350 },
   noise: { blur: 0.2 },
