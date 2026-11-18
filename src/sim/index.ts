@@ -165,13 +165,16 @@ export { isGhost, livingPlayers } from "./ghosts.js";
 export {
   CORPSE_ITEM,
   corpseAt,
-  ghostCorpses,
   dropAll,
   isRevivable,
   itemName,
   layCorpse,
+  revivableGhosts,
   revive,
+  reviveGhost,
+  takeBodies,
 } from "./death.js";
+export type { BodyTaker } from "./death.js";
 export { arrivalPoint } from "./arrival.js";
 export { bodiesIn, circleAhead, playersIn } from "./reach.js";
 export type { Circle } from "./reach.js";
@@ -227,6 +230,7 @@ export {
   giveItem,
   heldItemOf,
   heldSlot,
+  heldSlotOf,
   itemIn,
   itemsOf,
   takeItem,

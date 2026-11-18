@@ -3,12 +3,12 @@ import {
   addVoiceChannel,
   defineEntity,
   effect,
-  ghostCorpses,
   ghostEarChannel,
   INERT_TAG,
   itemInstances,
   removeFromWorld,
-  revive,
+  revivableGhosts,
+  reviveGhost,
   rounded,
   sound,
   spawnWorldItem,
@@ -113,9 +113,9 @@ function offered(
 }
 
 /**
- * Takes the first item lying on `shrine` it can take: one that revives, while a ghost's corpse is
- * anywhere to bring back, brings that ghost back beside it; one it transforms becomes its other
- * item where it lay. Returns whether it took one.
+ * Takes the first item lying on `shrine` it can take: one that revives, while a ghost's body is
+ * anywhere to bring back, a corpse or worn by something, brings that ghost back beside it; one it
+ * transforms becomes its other item where it lay. Returns whether it took one.
  */
 function takeOffering(
   game: Session,
@@ -126,11 +126,12 @@ function takeOffering(
   for (const item of offered(game, shrine, config.reach)) {
     const at: Point = { x: item.place.lying.x, y: item.place.lying.y };
     if (item.item === config.revives) {
-      const corpses = ghostCorpses(game);
-      const corpse = corpses[Math.floor(Math.random() * corpses.length)];
-      if (corpse === undefined) continue;
+      // A ghost whose body something else wears comes back too, and that thing is gone.
+      const ghosts = revivableGhosts(game);
+      const ghost = ghosts[Math.floor(Math.random() * ghosts.length)];
+      if (ghost === undefined) continue;
       removeFromWorld(game, item.place.lying);
-      const risen = revive(game, corpse.state, shrine, shrine.id);
+      const risen = reviveGhost(game, ghost.id, shrine, shrine.id);
       effect(
         game,
         {
@@ -233,7 +234,7 @@ function drawShrine(
  * A shrine: a new world lays a few, rarely and far from the road. It is a ghost ear: every
  * ghost's voice is heard from it, fading with distance, and every ghost hears whoever speaks
  * within its reach. An item laid on it is offered: one that revives brings a random ghost back
- * beside it, while any ghost's corpse is about; one it transforms becomes its other item. Past
+ * beside it, while any ghost's body is about, a corpse or worn; one it transforms becomes its other item. Past
  * its first offerings, each may crumble it. It whispers now and then, and glows faintly.
  */
 export const shrine = defineEntity(NAME, (config: ShrineConfig) => {

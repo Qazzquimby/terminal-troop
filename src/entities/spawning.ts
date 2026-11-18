@@ -119,6 +119,16 @@ interface Arriving<S> {
 }
 
 /**
+ * The names of the kinds the world's spawner brings no more often than `weight`: those whose
+ * spawning weight is at most it, as rare as that or rarer. Kinds the spawner never brings, those
+ * of no weight and those it does not enlist (items, traps, players), are none of them.
+ */
+export const kindsAsRareAs = (game: Session, weight: number): string[] =>
+  arrivalsOf(game)
+    .filter(({ config }) => config.weight > 0 && config.weight <= weight)
+    .map((arrival) => arrival.kind);
+
+/**
  * The part of a kind's spec that enlists it with the world's spawner: by its weight, once its
  * time has come, wherever its rules let it appear.
  */

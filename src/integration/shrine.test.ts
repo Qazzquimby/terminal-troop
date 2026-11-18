@@ -1,11 +1,13 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { entityContent } from "../entities/index.js";
+import { entityContent, freshDoppelganger } from "../entities/index.js";
 import type { EntitiesConfig } from "../entities/index.js";
 import { z } from "zod";
 import { itemContent } from "../items/index.js";
 import type { ItemsConfig } from "../items/index.js";
 import type { Room } from "../room/index.js";
+
 import {
+  hurt,
   hurtPlayer,
   isGhost,
   itemInstances,
@@ -148,6 +150,36 @@ test("a heart laid on a shrine brings a ghost back beside it, and is gone", asyn
     expect(isGhost(b)).toBe(false);
     expect(distance(b, SHRINE)).toBeLessThan(150);
     expect(itemInstances(sessionOf(each), "heart")).toEqual([]);
+  }
+});
+
+test("a heart laid on a shrine brings back a ghost whose body a doppelganger wears, and the doppelganger is gone", async () => {
+  const { rooms, room, run } = await crew("a", "b");
+  const host = sessionOf(room("a"));
+  const doppelganger = host.kindIds.get("doppelganger");
+  const doubles = () =>
+    [...host.entities.values()].filter((each) => each.kind === doppelganger);
+  spawnEntity(host, "shrine", SHRINE.x, SHRINE.y, FRESH);
+  const killer = spawnEntity(
+    host,
+    "doppelganger",
+    SPOTS.c.x,
+    SPOTS.c.y,
+    freshDoppelganger(1, { id: "a", name: "a" }),
+  );
+  hurt(host, playerOn(room("a"), "b"), Infinity, killer.id);
+  run(100);
+  expect(isGhost(playerOn(room("a"), "b"))).toBe(true);
+  expect(itemInstances(host, "corpse")).toEqual([]);
+  const worn = doubles().find((each) => each !== killer);
+  if (worn === undefined) throw new Error("b did not get up as a doppelganger");
+  spawnWorldItem(host, { x: SHRINE.x + 10, y: SHRINE.y }, "heart");
+  run(500);
+  expect(host.entities.has(worn.id)).toBe(false);
+  for (const each of rooms.values()) {
+    const b = playerOn(each, "b");
+    expect(isGhost(b)).toBe(false);
+    expect(distance(b, SHRINE)).toBeLessThan(150);
   }
 });
 

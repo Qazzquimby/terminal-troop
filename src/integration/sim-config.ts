@@ -621,7 +621,13 @@ export const testEntitiesConfig = {
     barkGap: { min: 6, max: 12 },
     barkRange: 200,
     holds: { chance: 0, items: ["shovel"] },
-    sounds: { attack: 250 },
+    fear: {
+      asRareAs: 50,
+      sprintSpeed: 396,
+      flee: { leg: 300, tries: 12 },
+      lookBackSeconds: 1.5,
+    },
+    sounds: { attack: 250, startle: 200, turn: 400 },
   },
   thumper: {
     spawning: { ...NEVER, unseenDistance: 700 },

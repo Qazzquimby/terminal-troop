@@ -19,6 +19,7 @@ import type {
 } from "../sim/index.js";
 import { NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
+import { kindsAsRareAs } from "./spawning.js";
 
 /**
  * Eyes as a player's, down `facing`: its view cone and surroundings, both out to `range`. For a
@@ -281,4 +282,36 @@ export function isKillable(game: Session, body: Body): boolean {
   if (entity === null) return true;
   const kind = game.entityTypes.get(entity.kind);
   return kind !== undefined && Number.isFinite(kind.maxHealth);
+}
+
+/** What a kind runs from, which its config says. */
+export interface Fearing {
+  /**
+   * It fears the kinds the world's spawner brings this rarely or more rarely: those whose
+   * spawning weight is at most this.
+   */
+  readonly asRareAs: number;
+}
+
+/**
+ * Every living body `self` fears that it sees with its kind's eyes: those of the kinds `fearing`
+ * names, but the kind tags in `ignores`. A stunned or blind entity sees none.
+ */
+export function seenFeared(
+  game: Session,
+  self: WorldEntity,
+  fearing: Fearing,
+  ignores: readonly string[],
+): Body[] {
+  const sight = eyesOf(game, self);
+  if (sight === null) return [];
+  const kinds = kindsAsRareAs(game, fearing.asRareAs);
+  if (kinds.length === 0) return [];
+  return livingBodies(game, self.id).filter(
+    (body) =>
+      body.id !== self.id &&
+      hasKindTag(game, body.id, kinds) &&
+      !hasKindTag(game, body.id, ignores) &&
+      inView(game, sight, body),
+  );
 }
