@@ -1515,7 +1515,7 @@ export const config = {
       noiseRadius: CELL * 6,
     },
   },
-  sim: { fixedDt: 1 / 60, maxCatchUpS: 30, maxStepsPerFrame: 240 },
+  sim: { fixedDt: 1 / 60, maxCatchUpS: 0.25, maxStepsPerFrame: 4 }, // overloaded: slow-mo, no backlog
   // full: px out at full volume; silent: px out at silence; pan: px for a full pan.
   voice: {
     full: 100,

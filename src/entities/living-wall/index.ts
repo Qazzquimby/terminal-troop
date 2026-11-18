@@ -18,7 +18,7 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { gazeOn, nearestPrey, preyFor, touching } from "../bodies.js";
+import { nearestPrey, preyFor, touching, watchedAt } from "../bodies.js";
 import type { Watching } from "../bodies.js";
 import type { Fleeing, Prey } from "../hunt.js";
 import {
@@ -188,7 +188,7 @@ function lurk(
   config: LivingWallConfig,
 ): LivingWallState {
   const now = game.worldTime;
-  if (gazeOn(game, self, config)(self)) return { ...state, held: true };
+  if (watchedAt(game, self, config, self)) return { ...state, held: true };
   const quarry = nearestPrey(game, self, config, config.noticeRange);
   if (quarry === null) {
     const middle = cellMiddle(game, self);

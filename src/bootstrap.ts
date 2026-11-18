@@ -732,6 +732,9 @@ on(document, "visibilitychange", () => {
   if (document.hidden) {
     mapMemory.flush();
     positions.flush();
+  } else {
+    // Time spent hidden is dropped, not replayed: alone, the world waits while the page is away.
+    clock.reset(performance.now());
   }
 });
 

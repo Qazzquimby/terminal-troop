@@ -157,6 +157,11 @@ export interface BenchResult {
   readonly parts: readonly (readonly [string, number])[];
   /** How many of each kind the world held at the end, by name. */
   readonly kinds: ReadonlyMap<string, number>;
+  /**
+   * A hash of every body as the timed steps left it: where it is, its health and state. Two builds
+   * that step alike give the same, so a change meant only to be faster can show it changed nothing.
+   */
+  readonly digest: string;
 }
 
 const still: Controls = {
@@ -524,6 +529,7 @@ function measure(config: BenchConfig, options: BenchOptions): BenchResult {
     kept.topUp();
   }
   const entitiesAtEnd = game.entities.size;
+  const digest = digestOf(game);
   const replaced = kept.replaced() - replacedBefore;
 
   const totals = new Map<string, number>();
@@ -550,7 +556,37 @@ function measure(config: BenchConfig, options: BenchOptions): BenchResult {
     send: timing(sends),
     parts: partsOf(totals, options.steps),
     kinds: kindCounts(game),
+    digest,
   };
+}
+
+/** A hash of every body in `game`: its place, velocity, health and state, entities and players. */
+function digestOf(game: Session): string {
+  const text = JSON.stringify([
+    [...game.entities.values()].map(
+      ({ id, kind, x, y, vx, vy, health, data }) => [
+        id,
+        kind,
+        x,
+        y,
+        vx,
+        vy,
+        health,
+        data,
+      ],
+    ),
+    [...game.players.values()].map(({ id, x, y, health }) => [
+      id,
+      x,
+      y,
+      health,
+    ]),
+  ]);
+  // FNV-1a, 32 bits: enough to tell two runs apart.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++)
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 /** How many of each kind the world holds, by name. */

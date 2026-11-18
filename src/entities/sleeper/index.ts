@@ -430,7 +430,7 @@ function bodyNear(
   config: SleeperConfig,
 ): boolean {
   const { range } = config.relocate;
-  return preyFor(game, self, config).some(
+  return preyFor(game, self, config, { at: self, range }).some(
     (body) => Math.hypot(body.x - self.x, body.y - self.y) <= range,
   );
 }
