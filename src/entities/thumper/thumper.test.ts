@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { z } from "zod";
 import {
   testEntitiesConfig,
   testItemsConfig,
@@ -7,8 +8,12 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  hurt,
+  INERT_TAG,
+  isLit,
   receiveEvent,
   registerContent,
+  registerEntityType,
   spawnEntity,
   updateSession,
 } from "../../sim/index.js";
@@ -18,6 +23,7 @@ import {
   ThumperState,
   freshThumper,
 } from "./index.js";
+import type { ThumperConfig } from "./index.js";
 
 const DT = 1 / 60;
 const { thumper: config } = testEntitiesConfig;
@@ -32,7 +38,7 @@ const RUN_SPEED =
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
  * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y).
  */
-function world(x: number, y: number, kind = config): Session {
+function world(x: number, y: number, kind: ThumperConfig = config): Session {
   const game = createSession(
     "me",
     "ME",
@@ -201,4 +207,91 @@ test("it strikes any body it runs into, not only players", () => {
   const other = thumperAt(game, { x: 300, y: 325 }, { until: 1000 });
   run(game, 1.5);
   expect(other.health).toBeLessThan(other.maxHealth);
+});
+
+/** Registers a lamp kind, lighting 160px round it, and sets one down at `at`. */
+function lampAt(game: Session, at: Point): WorldEntity {
+  registerEntityType(game, "lamp", {
+    radius: 5,
+    // Inert: no body hunts or strikes it, so a thumper leaves the light on.
+    maxHealth: 1,
+    tags: [INERT_TAG],
+    collides: false,
+    data: z.object({}),
+    light: () => ({ range: 160 }),
+    draw: () => undefined,
+  });
+  return spawnEntity(game, "lamp", at.x, at.y, {});
+}
+
+const played = (game: Session, file: string): boolean =>
+  vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith(file));
+
+test("light falling on it, it recoils with a snort and makes for the dark before the body it saw", () => {
+  const game = world(625, 325);
+  const thumper = thumperAt(game, { x: 225, y: 325 }, { facing: 0 });
+  run(game, DT * 2);
+  expect(stateOf(thumper).target).toMatchObject({ x: 625, y: 325 });
+  lampAt(game, { x: thumper.x + 20, y: thumper.y });
+  run(game, DT);
+  const fleeing = stateOf(thumper);
+  expect(fleeing.fleeing).toBe(true);
+  expect(fleeing.mode).toBe("run");
+  expect(fleeing.target).not.toBeNull();
+  expect(Math.cos(fleeing.facing)).toBeLessThan(0);
+  expect(isLit(game, fleeing.target ?? thumper)).toBe(false);
+  expect(played(game, "recoil.mp3")).toBe(true);
+  // It runs from the lamp, away from the body it saw, until it stands in the dark.
+  run(game, 1.5);
+  expect(isLit(game, thumper)).toBe(false);
+  expect(stateOf(thumper).fleeing).toBe(false);
+});
+
+test("light on it as it stands to turn, it cuts the turn short for the dark", () => {
+  const game = world(FAR.x, FAR.y);
+  const thumper = thumperAt(game, { x: 425, y: 325 }, { until: 1000 });
+  lampAt(game, { x: 425, y: 325 });
+  run(game, DT);
+  expect(stateOf(thumper).mode).toBe("run");
+  expect(stateOf(thumper).fleeing).toBe(true);
+  run(game, 1.5);
+  expect(isLit(game, thumper)).toBe(false);
+});
+
+test("hurt, it rages with a bellow, minding no light, and goes for whatever hurt it", () => {
+  const game = world(625, 325);
+  const thumper = thumperAt(game, { x: 225, y: 325 }, { until: 1000 });
+  lampAt(game, { x: 225, y: 325 });
+  hurt(game, thumper, 10, game.localId);
+  run(game, DT * 2);
+  const state = stateOf(thumper);
+  expect(state.enraged).toBe(true);
+  expect(state.fleeing).toBe(false);
+  expect(state.target).toMatchObject({ x: 625, y: 325 });
+  expect(played(game, "enrage.mp3")).toBe(true);
+  expect(played(game, "recoil.mp3")).toBe(false);
+});
+
+test("its rage spent, light sends it for the dark again", () => {
+  const game = world(FAR.x, FAR.y);
+  const thumper = thumperAt(game, { x: 425, y: 325 }, { until: 1000 });
+  lampAt(game, { x: 425, y: 325 });
+  hurt(game, thumper, 10, null);
+  run(game, DT * 2);
+  expect(stateOf(thumper).enraged).toBe(true);
+  // Back in the light as the rage ends, wherever it ran meanwhile.
+  run(game, config.rageSeconds);
+  Object.assign(thumper, { x: 425, y: 325 });
+  run(game, DT);
+  expect(stateOf(thumper).enraged).toBe(false);
+  expect(stateOf(thumper).fleeing).toBe(true);
+});
+
+test("a kind that does not seek the dark pays light no mind", () => {
+  const game = world(625, 325, { ...config, seeksDark: false });
+  const thumper = thumperAt(game, { x: 225, y: 325 }, { facing: 0 });
+  lampAt(game, { x: 225, y: 325 });
+  run(game, DT * 2);
+  expect(stateOf(thumper).fleeing).toBe(false);
+  expect(stateOf(thumper).target).toMatchObject({ x: 625, y: 325 });
 });

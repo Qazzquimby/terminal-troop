@@ -701,7 +701,9 @@ export const testEntitiesConfig = {
     damage: 30,
     attackCooldown: 1,
     thumpInterval: 0.25,
-    sounds: { thump: 600, slam: 500, attack: 250 },
+    seeksDark: true,
+    rageSeconds: 6,
+    sounds: { thump: 600, slam: 500, attack: 250, recoil: 300, enrage: 500 },
   },
   tricycle: {
     spawning: { ...NEVER, unseenDistance: 700 },
