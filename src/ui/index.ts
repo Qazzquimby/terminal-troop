@@ -1,7 +1,11 @@
 import "./style.css";
 
 export { trackInputContext } from "./app-context.js";
-export { createDebugOverlay, roomDebugInfo } from "./debug-overlay.js";
+export {
+  createDebugOverlay,
+  roomDebugInfo,
+  targetLabel,
+} from "./debug-overlay.js";
 export type { DebugInfo, UiConfig } from "./debug-overlay.js";
 export { element } from "./dom.js";
 export { createHud } from "./hud.js";
