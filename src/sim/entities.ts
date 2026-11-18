@@ -20,6 +20,7 @@ import type { VehicleSpec } from "./driving.js";
 import type { Plays } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
 import { pressDoors } from "./doors.js";
+import { profileEnd, profileStart, profiling } from "./profile.js";
 import type { DoorHinge, Hinge } from "./doors.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
@@ -539,25 +540,36 @@ function runKind(game: Session, entity: WorldEntity, dt: number): void {
  * stunned one does.
  */
 export function updateEntities(game: Session, dt: number): void {
+  const pruning = profileStart();
   cullDeadEntities(game);
   pruneStatuses(game);
   pruneHurts(game);
+  profileEnd("entities:prune", pruning);
   const players = livingPlayers(game);
+  // A kind's name only while a profile is timing steps, so no label is built otherwise.
+  const kindNames = profiling()
+    ? new Map([...game.kindIds].map(([name, id]) => [id, name]))
+    : null;
   // Snapshot first: an update may spawn or remove entities.
   [...game.entities.values()].forEach((entity) => {
     if (!game.entities.has(entity.id)) return;
+    const kind = kindNames?.get(entity.kind) ?? null;
 
+    let start = profileStart();
     if (
       isStunned(game, entity.id) ||
       game.entityTypes.get(entity.kind)?.dormant(entity, players, game) === true
     ) {
       entity.vx = 0;
       entity.vy = 0;
+      if (kind !== null) profileEnd(`kind:${kind}:still`, start);
     } else {
       runKind(game, entity, dt);
+      if (kind !== null) profileEnd(`kind:${kind}:run`, start);
       if (!game.entities.has(entity.id)) return;
     }
 
+    start = profileStart();
     if (entity.collides) {
       const type = game.entityTypes.get(entity.kind);
       if (type?.door === null) pressDoors(game, entity, type.opensDoors, dt);
@@ -574,6 +586,7 @@ export function updateEntities(game: Session, dt: number): void {
     }
     entity.tx = entity.x;
     entity.ty = entity.y;
+    if (kind !== null) profileEnd(`kind:${kind}:move`, start);
   });
 }
 

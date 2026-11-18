@@ -66,6 +66,7 @@ import { dropHeld, interact } from "./world-items.js";
 import { followWalls } from "./walls.js";
 import type { WorldItemConfig } from "./world-items.js";
 import { followPlayings } from "./item-sounds.js";
+import { profileEnd, profileStart } from "./profile.js";
 
 /** How clients follow the host. */
 interface SyncConfig {
@@ -352,20 +353,15 @@ const handsInside = (controls: Controls): Controls => ({
   holdingUse: false,
 });
 
-export function updateSession(
-  game: Session,
-  controls: Controls,
-  dt: number,
-): void {
-  game.time += dt;
-  game.step += 1;
-  game.worldTime += dt;
-  game.noises.length = 0;
-  game.flashes.length = 0;
-  movingBodies(game).forEach(storePrevious);
-  followWalls(game);
-  followDoors(game);
-  steerLocal(game, controls, dt);
+/** Runs `part` of a step, timed under `label` while a profile is on (see `profileSteps`). */
+function phase(label: string, part: () => void): void {
+  const start = profileStart();
+  part();
+  profileEnd(label, start);
+}
+
+/** What the local player's controls do this step, once it has moved. */
+function actLocally(game: Session, controls: Controls): void {
   const acting = isAboard(game.local) ? handsInside(controls) : controls;
   if (!isGhost(game.local)) {
     if (acting.use) useHeldItem(game);
@@ -379,28 +375,74 @@ export function updateSession(
       cabinCommand(game, acting.cabin);
   }
   for (const content of game.contents) content.act?.(game, acting);
+}
 
-  applyEvents(game);
-  moveRemotePlayers(game, dt);
-  followInventories(game);
-  emitFootsteps(game, dt);
-  emitVoices(game, dt);
-  settlePredictions(game);
-  if (game.hosting) {
+/** The host's part of a step: the entities, the bodies laid, each content's step, separation. */
+function hostStep(game: Session, dt: number): void {
+  phase("entities", () => {
     updateEntities(game, dt);
+  });
+  phase("layBodies", () => {
     layBodies(game);
-    for (const content of game.contents) content.step?.(game, dt);
+  });
+  for (const content of game.contents) {
+    if (content.step === undefined) continue;
+    const start = profileStart();
+    content.step(game, dt);
+    profileEnd(`content:${content.name}`, start);
+  }
+  phase("separate", () => {
     separateEntities(game);
-  } else followEntities(game, dt);
+  });
+}
 
-  followHealth(game);
-  followPlayings(game);
-  followEchoes(game);
-  // Sounds still playing are heard from where the local player is now, a ghost's view included.
-  game.sfx.listen(game.local);
-  hearStatuses(game);
-  hearDay(game);
-  hearFronts(game);
+export function updateSession(
+  game: Session,
+  controls: Controls,
+  dt: number,
+): void {
+  game.time += dt;
+  game.step += 1;
+  game.worldTime += dt;
+  game.noises.length = 0;
+  game.flashes.length = 0;
+  phase("interpolation", () => {
+    movingBodies(game).forEach(storePrevious);
+  });
+  phase("wallsDoors", () => {
+    followWalls(game);
+    followDoors(game);
+  });
+  phase("steerLocal", () => {
+    steerLocal(game, controls, dt);
+  });
+  phase("localActions", () => {
+    actLocally(game, controls);
+  });
+  phase("players", () => {
+    applyEvents(game);
+    moveRemotePlayers(game, dt);
+    followInventories(game);
+    emitFootsteps(game, dt);
+    emitVoices(game, dt);
+    settlePredictions(game);
+  });
+  if (game.hosting) hostStep(game, dt);
+  else
+    phase("followEntities", () => {
+      followEntities(game, dt);
+    });
+
+  phase("follow", () => {
+    followHealth(game);
+    followPlayings(game);
+    followEchoes(game);
+    // Sounds still playing are heard from where the local player is now, a ghost's view included.
+    game.sfx.listen(game.local);
+    hearStatuses(game);
+    hearDay(game);
+    hearFronts(game);
+  });
 }
 
 /** Drops a remote player; false when there is none by that id. */

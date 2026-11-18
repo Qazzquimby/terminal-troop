@@ -149,6 +149,29 @@ export function arrivals<S>(kind: Arriving<S>) {
   };
 }
 
+/** Each kind the spawner may bring to `game`, with its radius and spawn weight. */
+export function arrivingKinds(game: Session): {
+  readonly kind: string;
+  readonly radius: number;
+  readonly weight: number;
+}[] {
+  return arrivalsOf(game).map(({ kind, radius, config }) => ({
+    kind,
+    radius,
+    weight: config.weight,
+  }));
+}
+
+/**
+ * Brings one fresh `kind` to `at` as the spawner would, wherever that is, with none of its
+ * group; false, bringing nothing, for a kind the spawner never brings.
+ */
+export function arrive(game: Session, kind: string, at: Point): boolean {
+  const arrival = arrivalsOf(game).find((each) => each.kind === kind);
+  arrival?.spawn(game, at);
+  return arrival !== undefined;
+}
+
 /**
  * How strongly a kind keeping `rules` favours appearing at `at`: by its danger, more the farther
  * it is from the road and the nearer the exit's side of the world; 0 where it may not appear.
