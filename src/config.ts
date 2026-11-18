@@ -818,6 +818,9 @@ export const config = {
       radius: 16,
       mass: 10,
       sightRange: CELL * 16, // all round
+      watchRange: Infinity, // as far as each looker looks
+      watchMargin: WATCH_MARGIN, // radians each side of a view cone
+      watchPad: 12, // px it counts as bigger when asking if seen, for screen lag
       // A patrol round `distance` long, give or take `spread`; retry: seconds between failed plans.
       patrol: { distance: CELL * 30, spread: CELL * 5, tries: 16, retry: 2 },
       huntSeconds: 10, // of moving
@@ -1148,6 +1151,7 @@ export const config = {
       wanderShare: 1.0, // of a player's walk
       wanderRange: CELL * 20,
       sightRange: CELL * 7,
+      followRange: CELL * 12, // keeps after its target, seen or not, until it is this far off
       standGap: CELL / 4, // stands this far in front of the body it notices
       repathInterval: 0.3,
       calmSeconds: 8,

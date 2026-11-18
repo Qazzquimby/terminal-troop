@@ -7,13 +7,16 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  footprintOf,
   hurtPlayer,
+  INERT_TAG,
   mulberry32,
   registerContent,
   registerEntityType,
   spawnEntity,
   stun,
   updateSession,
+  viewOf,
 } from "../../sim/index.js";
 import type { Point, Session, WorldEntity } from "../../sim/index.js";
 import { freshSleeper, sleeper as sleeperContent } from "../sleeper/index.js";
@@ -281,4 +284,79 @@ test("a kind it ignores it neither hunts nor strikes", () => {
   run(game, 1);
   expect(stateOf(statue).mode).toBe("patrol");
   expect(post.health).toBe(1000);
+});
+
+/** A lamp at `at`, lighting `range` round it: a body with no will that only gives off light. */
+function lampAt(game: Session, at: Point, range: number): WorldEntity {
+  if (!game.kindIds.has("lamp"))
+    registerEntityType(game, "lamp", {
+      radius: 5,
+      maxHealth: 1,
+      tags: [INERT_TAG],
+      collides: false,
+      data: z.object({}),
+      light: () => ({ range }),
+      draw: () => undefined,
+    });
+  return spawnEntity(game, "lamp", at.x, at.y, {});
+}
+
+test("lit past where its player looks, in plain view on their screen, it is held", () => {
+  const at = { x: 100 + testSimConfig.vision.lookRange + 100, y: 300 };
+  const game = world(100, 300, nearSighted);
+  lampAt(game, { x: at.x + 40, y: at.y }, 200);
+  const statue = statueAt(game, at.x, at.y);
+  run(game, 0.5, { x: 2000, y: 300 });
+  expect(viewOf(game, game.local).shows(footprintOf(game, statue))).toBe(true);
+  expect(stateOf(statue).frozen).toBe(true);
+  expect(statue.x).toBe(at.x);
+});
+
+test("an edge of it in view holds it, though its middle is out of the cone", () => {
+  const game = world(300, 300, nearSighted);
+  // Its middle just past the cone's edge: 45 degrees off the aim, the watch margin's 10 more and
+  // a little over.
+  const off = Math.PI / 4 + Math.PI / 18 + 0.05;
+  const at = { x: 300 + Math.cos(off) * 150, y: 300 + Math.sin(off) * 150 };
+  lampAt(game, { x: 300, y: 300 }, 400);
+  const statue = statueAt(game, at.x, at.y);
+  run(game, 0.3, { x: 2000, y: 300 });
+  expect(stateOf(statue).frozen).toBe(true);
+  expect(statue.x).toBe(at.x);
+});
+
+test("wherever its player's screen draws it, but in the small circle round them, it never moves", () => {
+  const { surroundingsRadius } = testSimConfig.vision;
+  const aim = { x: 2000, y: 300 };
+  let drawn = 0;
+  let hidden = 0;
+  for (let distance = 100; distance <= 600; distance += 100)
+    for (let turn = 0; turn < 24; turn++) {
+      const angle = (turn / 24) * Math.PI * 2;
+      const game = world(500, 300, nearSighted);
+      lampAt(game, { x: 500, y: 300 }, 450);
+      const x = 500 + Math.cos(angle) * distance;
+      const y = 300 + Math.sin(angle) * distance;
+      const statue = statueAt(game, x, y);
+      run(game, DT, aim);
+      const shows = viewOf(game, game.local).shows(footprintOf(game, statue));
+      const near =
+        Math.hypot(x - 500, y - 300) <= surroundingsRadius + statue.radius;
+      if (!shows || near) {
+        hidden++;
+        continue;
+      }
+      drawn++;
+      run(game, 0.2, aim);
+      expect(stateOf(statue).frozen, `at ${String(x)}, ${String(y)}`).toBe(
+        true,
+      );
+      expect(
+        { x: statue.x, y: statue.y },
+        `at ${String(x)}, ${String(y)}`,
+      ).toEqual({ x, y });
+    }
+  // Both kinds of spot came up, so the test sampled something.
+  expect(drawn).toBeGreaterThan(5);
+  expect(hidden).toBeGreaterThan(5);
 });

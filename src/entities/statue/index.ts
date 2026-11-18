@@ -3,11 +3,14 @@ import { drawEmoji } from "../../render/index.js";
 import {
   defineEntity,
   effect,
-  hasKindTag,
+  eyesOf,
+  footprintOf,
+  footprintPoints,
   isAreaFree,
   livingBody,
-  isLookedAt,
+  livingPlayers,
   isLitTo,
+  showsTo,
   sound,
   SHUNS_LIGHT_TAG,
   UNNOTICED_TAG,
@@ -20,9 +23,15 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { drawRing, nearestSeenBody, touching } from "../bodies.js";
+import {
+  drawRing,
+  gazeOn,
+  heeds,
+  nearestSeenBody,
+  touching,
+} from "../bodies.js";
+import type { Watching } from "../bodies.js";
 import { Route, strikeEach, strikeIf, Time, Waypoint } from "../hunt.js";
-import type { Hunting } from "../hunt.js";
 import { avoidingLight, planRoute, steer } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -36,13 +45,18 @@ const strikeUrl = new URL("./sfx/strike.mp3", import.meta.url).href;
  * move while anyone looks at it. Distances in pixels, times in sim seconds; it moves at a player's
  * sprint.
  */
-export interface StatueConfig extends Hunting {
+export interface StatueConfig extends Watching {
   readonly spawning: SpawningConfig;
   readonly radius: number;
   /** How hard it is to push, in player masses; sized to its radius when left out. */
   readonly mass?: number;
   /** How far it sees, all round it, along a clear line. */
   readonly sightRange: number;
+  /**
+   * Pixels it counts as bigger than it is when asking whether anyone sees it, so a screen a little
+   * behind the host, or aiming a little ahead of it, never shows it move.
+   */
+  readonly watchPad: number;
   /** Its round: back and forth between where it arrived and a point about this far off. */
   readonly patrol: {
     /** How far the far end lies from where it arrived, as the crow flies. */
@@ -311,6 +325,37 @@ function freeze(
   };
 }
 
+/**
+ * Whether anyone holds it still, counting it `watchPad` bigger than it is:
+ * - a body whose gaze it heeds looks at any part of it, down its view cone widened by the watch
+ *   margin, as far as that body looks, light or no light; or
+ * - any part of it shows on the screen of a player whose gaze it heeds, by the very test the
+ *   screen draws by (#457), lit, out of the dark and unshadowed, the view cone widened by the watch
+ *   margin. Only the small circle a player sees all round them does not count: there, and only
+ *   there, a player may see it move.
+ * Only players have screens, so only they hold it the second way; any body's gaze holds it the first.
+ * A stunned or dead body's does neither.
+ */
+function isHeld(
+  game: Session,
+  self: WorldEntity,
+  config: StatueConfig,
+): boolean {
+  const body = footprintOf(game, self);
+  const padded = { ...body, radius: body.radius + config.watchPad };
+  const gaze = gazeOn(game, self, config);
+  const { footprintSpacing } = game.config.vision;
+  if (footprintPoints(padded, footprintSpacing).some(gaze)) return true;
+  const view = { near: false, margin: config.watchMargin };
+  return livingPlayers(game).some(
+    (player) =>
+      player.id !== self.id &&
+      heeds(game, player, config) &&
+      eyesOf(game, player) !== null &&
+      showsTo(game, player, padded, view),
+  );
+}
+
 /** Its stone tread while it moves: a heavy step every so often. */
 function tread(
   state: StatueState,
@@ -346,10 +391,8 @@ function definition(config: StatueConfig): EntityDefinition<StatueState> {
         arrived.home === null
           ? { ...arrived, home: { x: entity.x, y: entity.y } }
           : arrived;
-      const held = isLookedAt(game, entity, {
-        except: (body) => hasKindTag(game, body.id, [NAME]),
-      });
-      if (held) return freeze(state, entity, dt, game, config);
+      if (isHeld(game, entity, config))
+        return freeze(state, entity, dt, game, config);
       const next = attack(
         think({ ...state, frozen: false }, entity, game, config),
         entity,
@@ -379,10 +422,10 @@ function definition(config: StatueConfig): EntityDefinition<StatueState> {
  * dark point about thirty cells off, never setting foot on lit ground, its tread heard far off.
  * Once it sees a body all round it of a kind it targets (players, as configured), it hunts it for a
  * while: it always knows where it is and goes straight for it at a sprint, and whatever it touches,
- * targeted or not, takes a heavy blow. While any living body but another statue looks at it, down its view cone and
- * within its reach, along a clear line, a player or a zombie alike, it cannot move, strike, nor run
- * down its hunt's clock; being near one, within the small circle it sees all round it, does not
- * hold it. It arrives rarely, out of the world's start, the light and every player's sight.
+ * targeted or not, takes a heavy blow. While any living body but another statue looks at any part
+ * of it, down its view cone and within its reach, along a clear line, a player or a zombie alike,
+ * or it shows anywhere on a player's screen, it cannot move, strike, nor run down its hunt's clock;
+ * being near one, within the small circle it sees all round it, does not hold it. It arrives rarely, out of the world's start, the light and every player's sight.
  */
 export const statue = defineEntity(NAME, (config: StatueConfig) => ({
   ...definition(config),

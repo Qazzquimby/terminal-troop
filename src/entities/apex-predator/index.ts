@@ -21,6 +21,7 @@ import {
   touching,
 } from "../bodies.js";
 import {
+  keptTarget,
   nearest,
   periodicCall,
   Route,
@@ -60,6 +61,11 @@ export interface ApexPredatorConfig extends Hunting, Dormancy {
   readonly wanderRange: number;
   /** How far it sees, down its facing or close round it. */
   readonly sightRange: number;
+  /**
+   * How far off the body it follows, calm or angry, it keeps after it, seen or not: a moment out
+   * of its sight does not lose it, only getting this far away does.
+   */
+  readonly followRange: number;
   /** How far past the edge of the body it stands before it leaves between them. */
   readonly standGap: number;
   /** Seconds between plans of its way. */
@@ -84,14 +90,15 @@ export interface ApexPredatorConfig extends Hunting, Dormancy {
 
 /**
  * Everyone reads its mode and facing, to draw it; the rest only the host reads.
- * - calm: goes to stand just in front of the nearest body it notices, facing it
- * - angry: chases `foe`, whoever last hurt it, or failing that any killable body it sees
+ * - calm: goes to stand just in front of `target`, the nearest body it noticed, facing it
+ * - angry: chases `target`, whoever last hurt it, or failing that any killable body it sees
+ * Either way it keeps to `target`, seen or not, until it is beyond the follow range.
  */
 export const ApexPredatorState = z.object({
   mode: z.enum(["calm", "angry"]),
   route: Route,
   facing: rounded(2),
-  foe: z.string().max(64).nullable(),
+  target: z.string().max(64).nullable(),
   seenAt: Time,
   repathAt: Time,
   attackAt: Time,
@@ -111,7 +118,7 @@ export function freshApexPredator(
     mode: "calm",
     route: [],
     facing: 0,
-    foe: null,
+    target: null,
     seenAt: now,
     repathAt: now,
     attackAt: now,
@@ -167,8 +174,8 @@ const routeTo = (game: Session, self: WorldEntity, to: Point): Point[] =>
   planRoute(game.world.map, self.radius, self, to) ?? [to];
 
 /**
- * Who it goes after, angry: whatever just hurt it; else the foe it has, while it sees it; else the
- * nearest killable body it sees. Null for none.
+ * Who it goes after, angry: whatever just hurt it; else the target it has, seen or not, while it is
+ * within its follow range; else the nearest killable body it sees. Null for none.
  */
 function quarry(
   state: ApexPredatorState,
@@ -179,10 +186,12 @@ function quarry(
   const hitter = hitterOf(game, self, config);
   if (hitter !== null) return hitter;
   if (state.mode !== "angry") return null;
+  const kept = keptTarget(game, self, state.target, config.followRange);
+  if (kept !== null && isKillable(game, kept)) return kept;
   const seen = seenPrey(game, self, config, config.sightRange).filter((body) =>
     isKillable(game, body),
   );
-  return seen.find((body) => body.id === state.foe) ?? nearest(self, seen);
+  return nearest(self, seen);
 }
 
 /** What it does next, by its mode and what it sees. */
@@ -195,12 +204,12 @@ function think(
   const now = game.worldTime;
   const found = quarry(state, self, game, config);
   if (found !== null) {
-    const fresh = state.mode !== "angry" || found.id !== state.foe;
+    const fresh = state.mode !== "angry" || found.id !== state.target;
     const replan = fresh || now >= state.repathAt || state.route.length === 0;
     return {
       ...state,
       mode: "angry",
-      foe: found.id,
+      target: found.id,
       seenAt: now,
       route: replan ? routeTo(game, self, found) : state.route,
       repathAt: replan ? now + config.repathInterval : state.repathAt,
@@ -208,38 +217,42 @@ function think(
   }
   if (state.mode === "angry") {
     if (now - state.seenAt < config.calmSeconds) return state;
-    return { ...state, mode: "calm", foe: null, route: [] };
+    return { ...state, mode: "calm", target: null, route: [] };
   }
-  // Calm: the nearest body it notices, any body at all, is the one it gets in front of.
-  const you = nearest(self, seenPrey(game, self, config, config.sightRange));
+  // Calm: the body it follows, while within its follow range, seen or not; else the nearest body
+  // it notices, any body at all, is the one it gets in front of.
+  const you =
+    keptTarget(game, self, state.target, config.followRange) ??
+    nearest(self, seenPrey(game, self, config, config.sightRange));
   if (you !== null) {
-    if (now < state.repathAt && state.route.length > 0) return state;
+    if (now < state.repathAt && state.route.length > 0)
+      return state.target === you.id ? state : { ...state, target: you.id };
     const [spot, front] = towardsFront(game, self, you, config);
     const there =
       front && Math.hypot(spot.x - self.x, spot.y - self.y) <= self.radius / 2;
     return {
       ...state,
-      foe: null,
+      target: you.id,
       route: there ? [] : routeTo(game, self, spot),
       repathAt: now + config.repathInterval,
       // Standing in your way, it looks you in the eye.
       facing: there ? Math.atan2(you.y - self.y, you.x - self.x) : state.facing,
     };
   }
-  return wanderOn(state, self, game.world.map, config.wanderRange);
+  // What it followed got away, if anything did: it ambles off.
+  const free =
+    state.target === null ? state : { ...state, target: null, route: [] };
+  return wanderOn(free, self, game.world.map, config.wanderRange);
 }
 
 /** Its speed: brisker than a walk with someone to stand before or chase, an amble without. */
 function speedOf(
   game: Session,
   state: ApexPredatorState,
-  self: WorldEntity,
   config: ApexPredatorConfig,
 ): number {
   const { speed } = game.config.player;
-  const busy =
-    state.mode === "angry" ||
-    seenPrey(game, self, config, config.sightRange).length > 0;
+  const busy = state.mode === "angry" || state.target !== null;
   return speed * (busy ? config.speedShare : config.wanderShare);
 }
 
@@ -291,12 +304,7 @@ function duckDefinition(
         seed: call.seed,
       };
       const standing = quacked.route.length === 0;
-      const walked = walk(
-        entity,
-        quacked,
-        speedOf(game, quacked, entity, config),
-        dt,
-      );
+      const walked = walk(entity, quacked, speedOf(game, quacked, config), dt);
       return standing ? { ...walked, facing: quacked.facing } : walked;
     },
     strikes: strikesOnTouch(config),

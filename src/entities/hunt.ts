@@ -7,12 +7,14 @@ import {
   ITEM_TAG,
   UNNOTICED_TAG,
   livingBodies,
+  livingBody,
   isAreaFree,
   mulberry32Next,
   noisesHeardBy,
   rounded,
 } from "../sim/index.js";
 import type {
+  Body,
   Heard,
   Point,
   Rng,
@@ -193,6 +195,23 @@ export function nearest<T extends Point>(
     }
   }
   return best;
+}
+
+/**
+ * The body `id` that `self` keeps after once it has picked it, seen or not, while it lives, is out
+ * in the world and stands within `range` of `self`, centre to centre; null once it is gone or
+ * further. A moment out of sight, round a corner or behind its back, does not lose it; only getting
+ * away does. Any kind that follows a body it picked can keep its id and take this (#456).
+ */
+export function keptTarget(
+  game: Session,
+  self: Point,
+  id: string | null,
+  range: number,
+): Body | null {
+  const body = livingBody(game, id);
+  if (body === null) return null;
+  return Math.hypot(body.x - self.x, body.y - self.y) <= range ? body : null;
 }
 
 /** Random points tried for a wander leg before standing a while longer. */

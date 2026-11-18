@@ -123,7 +123,7 @@ test("hurt, it turns angry on whatever hurt it, with an angry quack, and pecks i
   run(game, DT * 2);
   const state = stateOf(duck);
   expect(state.mode).toBe("angry");
-  expect(state.foe).toBe(game.localId);
+  expect(state.target).toBe(game.localId);
   expect(played(game, "angry-quack.mp3")).toBe(true);
   run(game, 3);
   const lost = game.local.maxHealth - game.local.health;
@@ -143,7 +143,7 @@ test("hurt by a monster, it turns on the monster: any body, not just players", (
   );
   hurt(game, duck, 1, zombie.id);
   run(game, DT * 2);
-  expect(stateOf(duck).foe).toBe(zombie.id);
+  expect(stateOf(duck).target).toBe(zombie.id);
 });
 
 test("angry, with no body seen for a while, it calms", () => {
@@ -153,6 +153,52 @@ test("angry, with no body seen for a while, it calms", () => {
   expect(stateOf(duck).mode).toBe("angry");
   run(game, 1.5);
   expect(stateOf(duck).mode).toBe("calm");
+});
+
+test("calm, it keeps following the body it picked when it loses sight of it, while it is near", () => {
+  const game = world(425, 325);
+  // Facing away, 200px off: past what it sees all round it, so it does not see the player.
+  const duck = duckAt(
+    game,
+    { x: 225, y: 325 },
+    { facing: Math.PI, target: "me" },
+  );
+  run(game, DT);
+  expect(stateOf(duck).target).toBe(game.localId);
+  expect(duck.vx).toBeGreaterThan(0);
+  run(game, 6);
+  expect(Math.hypot(duck.x - game.local.x, duck.y - game.local.y)).toBeLessThan(
+    game.local.radius + duck.radius + config.standGap + 15,
+  );
+});
+
+test("calm, it lets the body it followed go once it is beyond its follow range", () => {
+  const game = world(875, 575);
+  const duck = duckAt(
+    game,
+    { x: 125, y: 75 },
+    { facing: Math.PI, target: "me" },
+  );
+  expect(Math.hypot(875 - 125, 575 - 75)).toBeGreaterThan(config.followRange);
+  run(game, DT);
+  expect(stateOf(duck).target).toBeNull();
+});
+
+test("angry, it keeps after its target out of sight while it is within its follow range", () => {
+  const game = world(625, 325);
+  const duck = duckAt(
+    game,
+    { x: 225, y: 325 },
+    {
+      mode: "angry",
+      facing: Math.PI,
+      target: "me",
+      seenAt: 0,
+    },
+  );
+  run(game, config.calmSeconds + 1);
+  expect(stateOf(duck)).toMatchObject({ mode: "angry", target: "me" });
+  expect(game.local.health).toBeLessThan(game.local.maxHealth);
 });
 
 test("a sprint outruns it, a walk does not", () => {
