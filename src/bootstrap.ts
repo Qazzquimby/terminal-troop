@@ -58,6 +58,7 @@ import {
   createZoomFit,
   eyeOf,
   stepSpectator,
+  pulledView,
   viewHeading,
 } from "./render/index.js";
 import type { Eye } from "./render/index.js";
@@ -313,6 +314,27 @@ function mouseTurnsView(): boolean {
  * facing, so turning the camera on starts from there.
  */
 let heading = -Math.PI / 2;
+/** Where a body pulling the local player's gaze last had the turned view; null while none does. */
+let pulledTo: number | null = null;
+
+/**
+ * The way the turned view faces now: on foot, a body pulling the gaze turns it with the aim, and
+ * leaves the heading where it let go. Otherwise the heading.
+ */
+function holdView(session: Session, rotating: boolean): number {
+  if (
+    !rotating ||
+    eyeOf(spectator, session).kind !== "self" ||
+    session.local.ride !== null
+  ) {
+    pulledTo = null;
+    return heading;
+  }
+  const view = pulledView(session, { heading, held: pulledTo });
+  ({ heading, held: pulledTo } = view);
+  return view.facing;
+}
+
 /** The session drawn last frame, whose local player the turned view aims from. */
 let aimFrom: Session | null = null;
 
@@ -557,6 +579,8 @@ function frame(): void {
     heading = rotating
       ? viewHeading(heading, eyeOf(spectator, session), session.local, turn)
       : session.local.aim;
+    // A pull let go since the last frame leaves the heading where it was, before the steps aim.
+    holdView(session, rotating);
     // The mouse is captured to turn the view on foot or as a ghost; in a vehicle the view follows
     // it, and the cabin wants the pointer.
     input.setCapture(mouseTurnsView() && !settingsDialog.open);
@@ -592,6 +616,7 @@ function frame(): void {
     room.frame(now);
     const eye = eyeOf(spectator, session);
     if (rotating) heading = viewHeading(heading, eye, session.local, 0);
+    const facing = holdView(session, rotating);
     const target = eyeTarget(session, eye, alpha);
     // The zoom fits how far the eye sees, and a ghost's wheel zoom multiplies with it.
     const fitted = zoomFit.step(
@@ -606,7 +631,7 @@ function frame(): void {
       target,
       frameSeconds,
       fitted * spectator.zoom,
-      rotating ? heading : null,
+      rotating ? facing : null,
     );
     const drawStart = performance.now();
     draw(

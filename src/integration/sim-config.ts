@@ -737,6 +737,7 @@ export const testEntitiesConfig = {
   peeper: {
     spawning: { ...NEVER, unseenDistance: 700, most: 4 },
     ignores: ["peeper"],
+    targets: ["player"],
     radius: 12,
     // Four test shovel hits.
     maxHealth: 100,

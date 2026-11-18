@@ -1170,6 +1170,7 @@ export const config = {
         most: 4,
       },
       ignores: ["peeper"],
+      targets: ["player"], // pulls and hurts players only; drop for any body with eyes
       radius: 12,
       maxHealth: SHOVEL_DAMAGE * 4,
       pullSeconds: 0.4, // to drag a body's facing onto it

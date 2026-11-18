@@ -42,6 +42,7 @@ import {
   movement,
   pocketRect,
   pocketsIn,
+  pulledAim,
   renderAim,
   drawnLocal,
   renderPosition,
@@ -1491,7 +1492,8 @@ function drawEyeBanner(
 /**
  * A render-time copy of the session with every body blended `alpha` of the way from its
  * pre-step position to its current one. Remote players turn along the shortest arc; the local
- * player faces `mouse` (a world point) from where it is drawn. The simulation is left untouched.
+ * player faces `mouse` (a world point) from where it is drawn, dragged round as the simulation
+ * drags it by any body pulling its gaze. The simulation is left untouched.
  */
 export function interpolatedView(
   game: Session,
@@ -1503,7 +1505,11 @@ export function interpolatedView(
     ...renderPosition(body, alpha),
   });
   const placed = { ...game.local, ...drawnLocal(game, alpha) };
-  const local = { ...placed, aim: aimAt(placed, mouse) };
+  // Drawn from the mouse alone, a body pulling the gaze would never be seen to.
+  const local = {
+    ...placed,
+    aim: pulledAim(game, placed, aimAt(placed, mouse)),
+  };
   const players = new Map(
     [...game.players].map(([id, player]) => [
       id,
