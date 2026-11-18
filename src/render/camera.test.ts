@@ -53,6 +53,21 @@ test("no time passing leaves the zoom as it is", () => {
   expect(camera.zoom).toBe(1);
 });
 
+test("a zoom scale eases the camera to its configured zoom times the scale, and back without", () => {
+  const camera = createCamera(view, {
+    zoom: 1.5,
+    zoomRate: 10,
+    followRate: 10,
+    snapDistance: 200,
+  });
+  for (let frame = 0; frame < 600; frame++)
+    updateCamera(camera, { x: 0, y: 0 }, 1 / 60, 2);
+  expect(camera.zoom).toBeCloseTo(3, 5);
+  for (let frame = 0; frame < 600; frame++)
+    updateCamera(camera, { x: 0, y: 0 }, 1 / 60);
+  expect(camera.zoom).toBeCloseTo(1.5, 5);
+});
+
 test("screenToWorld inverts the view transform at any zoom", () => {
   const camera = createCamera(view, {
     zoom: 2,

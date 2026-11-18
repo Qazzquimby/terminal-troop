@@ -474,7 +474,12 @@ function frame(): void {
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
     const eye = eyeOf(spectator, session);
-    updateCamera(camera, eyeTarget(session, eye, alpha), frameSeconds);
+    updateCamera(
+      camera,
+      eyeTarget(session, eye, alpha),
+      frameSeconds,
+      spectator.zoom,
+    );
     const drawStart = performance.now();
     draw(
       ctx,

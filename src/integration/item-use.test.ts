@@ -11,6 +11,8 @@ import {
   giveItem,
   heldItemOf,
   heldSlot,
+  hurtPlayer,
+  isGhost,
   mulberry32,
   receiveEvent,
   registerContent,
@@ -157,6 +159,36 @@ test("the cycle control steps the held slot as a number key would, wrapping, wit
   updateSession(game, idle, DT);
   expect(game.local.held).toBe(1);
   expect(played).toHaveLength(3);
+});
+
+test("a ghost's wheel and number keys switch no slot, and make no click: its wheel zooms instead", () => {
+  const played: string[] = [];
+  const sfx = testSfx();
+  const game = createSession(
+    "me",
+    "ME",
+    "ITEMS",
+    "dev",
+    {
+      ...sfx,
+      play: (url, ...rest) => {
+        if (url.endsWith("slot-switch.mp3")) played.push(url);
+        return sfx.play(url, ...rest);
+      },
+    },
+    testSimConfig,
+  );
+  registerContent(game, itemContent(testItemsConfig));
+  hurtPlayer(game, game.local, game.local.maxHealth);
+  updateSession(game, idle, DT);
+  expect(isGhost(game.local)).toBe(true);
+  const held = game.local.held;
+  updateSession(game, { ...idle, cycle: 1 }, DT);
+  updateSession(game, { ...idle, cycle: -1 }, DT);
+  updateSession(game, { ...idle, select: 2 }, DT);
+  expect(isGhost(game.local)).toBe(true);
+  expect(game.local.held).toBe(held);
+  expect(played).toHaveLength(0);
 });
 
 test("with six slots, keys 7 to 9 select nothing: the player holds no item", () => {
