@@ -46,6 +46,8 @@ interface AppConfig extends SimConfig {
   readonly voiceClips: VoiceClipConfig;
   readonly voiceDetector: VoiceDetectorConfig;
   readonly audio: SpatialFalloff;
+  /** The rate, in Hz, the speech synthesizer renders at. */
+  readonly speechSynth: { readonly sampleRate: number };
   readonly ui: UiConfig;
   readonly hud: HudConfig;
   readonly minimap: MinimapConfig;
@@ -330,6 +332,98 @@ export const config = {
   // A clip of a player's speech goes out at most 64,000 base64 characters, about 47KB: a
   // recorder's 5s at 32kbps fits with room to spare, well inside a broadcast's 256KB.
   echoes: { maxChars: 64_000 },
+  // Voices bodies say lines in, by id, for the speech synthesizer. Pitch in Hz (a man's about
+  // 120, a woman's 210, a child's 300); intonation in semitones over a line; rate in letters a
+  // second (12 is about 145 words a minute); formant scales the throat (above 1 smaller); roughness
+  // and breathiness 0..1; ring a ring modulator's Hz for a robot, 0 for none. Speech is heard,
+  // and makes a voice's noise, out to its range: talking about as far as a player's talking (4-5
+  // cells), a whisper 2, a shout 10. A line shows over its speaker 1.5s past its saying.
+  speech: {
+    voices: {
+      plain: {
+        pitch: 140,
+        intonation: 4,
+        rate: 12,
+        formant: 1,
+        roughness: 0.1,
+        breathiness: 0.1,
+        ring: 0,
+        volume: 0.8,
+        range: CELL * 5,
+      },
+      child: {
+        pitch: 300,
+        intonation: 7,
+        rate: 13,
+        formant: 1.25,
+        roughness: 0.05,
+        breathiness: 0.15,
+        ring: 0,
+        volume: 0.8,
+        range: CELL * 5,
+      },
+      shout: {
+        pitch: 260,
+        intonation: 9,
+        rate: 14,
+        formant: 1.2,
+        roughness: 0.35,
+        breathiness: 0.05,
+        ring: 0,
+        volume: 1,
+        range: CELL * 10,
+      },
+      robot: {
+        pitch: 110,
+        intonation: 0,
+        rate: 10,
+        formant: 1,
+        roughness: 0,
+        breathiness: 0,
+        ring: 50,
+        volume: 0.7,
+        range: CELL * 5,
+      },
+      creepy: {
+        pitch: 75,
+        intonation: 2,
+        rate: 7,
+        formant: 0.85,
+        roughness: 0.6,
+        breathiness: 0.4,
+        ring: 0,
+        volume: 0.7,
+        range: CELL * 4,
+      },
+      whisper: {
+        pitch: 150,
+        intonation: 2,
+        rate: 11,
+        formant: 1,
+        roughness: 0,
+        breathiness: 1,
+        ring: 0,
+        volume: 0.5,
+        range: CELL * 2,
+      },
+      gruff: {
+        pitch: 95,
+        intonation: 3,
+        rate: 11,
+        formant: 0.9,
+        roughness: 0.45,
+        breathiness: 0.1,
+        ring: 0,
+        volume: 0.9,
+        range: CELL * 6,
+      },
+    },
+    // A line in a voice no one named is said plainly.
+    fallback: "plain",
+    captionHold: 1.5,
+  },
+  // The synthesizer renders speech at 22.05kHz: plenty for a voice, half the work of 44.1kHz.
+  speechSynth: { sampleRate: 22_050 },
   // Items lying about: a 16px glyph, picked up at most five times a second.
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
   room: {
@@ -1288,6 +1382,26 @@ export const config = {
       damage: 30,
       attackCooldown: 1,
       sounds: { place: CELL * 3, angry: CELL * 12, attack: CELL * 5 },
+      // A child's voice as it wanders, saying something every other balloon it leaves; it shouts
+      // as it flies into a rage, heard 10 cells off.
+      speech: {
+        voice: "child",
+        angryVoice: "shout",
+        chatter: 0.5,
+        placing: [
+          "Happy birthday to me!",
+          "This one is for my party.",
+          "Everyone is invited!",
+          "Don't touch my balloons.",
+          "Is it time for cake yet?",
+        ],
+        enraged: [
+          "You popped my balloon!",
+          "That was mine!",
+          "Who popped it?",
+          "Now you can't come to my party!",
+        ],
+      },
     },
     // A birthday boy's balloon, small; its pop is heard 20 cells round.
     balloon: {

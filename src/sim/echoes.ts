@@ -1,10 +1,10 @@
 import { z } from "zod";
-import type { SoundHandle } from "../audio/index.js";
 import { effect } from "./actions.js";
 import { contentEvent } from "./content-event.js";
 import type { WorldEntity } from "./entities.js";
 import { playerData } from "./player-data.js";
 import type { Session } from "./session.js";
+import { followSpeakers, speakFrom } from "./speech.js";
 import { VOICE_TAG } from "./voice-noise.js";
 
 /*
@@ -86,18 +86,17 @@ const echo = contentEvent({
     if (game.clips.muted(sender)) return;
     const entity = game.entities.get(by);
     if (entity === undefined) return;
-    const playing = game.sfx.play(
-      `data:${mime};base64,${data}`,
-      entity,
-      game.local,
-      { range, volume: game.clips.volume(), cache: false },
+    // A speaker says one thing at a time, in a voice of its own or an echo: what it said before
+    // stops.
+    speakFrom(
+      game,
+      by,
+      game.sfx.play(`data:${mime};base64,${data}`, entity, game.local, {
+        range,
+        volume: game.clips.volume(),
+        cache: false,
+      }),
     );
-    const echoes = echoesOf(game);
-    // An entity says one thing at a time: what it said before stops.
-    void echoes.get(by)?.then((handle) => {
-      handle.stop();
-    });
-    echoes.set(by, playing);
   },
 });
 
@@ -119,18 +118,6 @@ const ask = contentEvent({
 
 /** The events echoes travel by, by key. */
 export const echoEvents = { ask, echo };
-
-/** Each session's echoes playing, by the entity each plays from. */
-const playing = new WeakMap<Session, Map<string, Promise<SoundHandle>>>();
-
-function echoesOf(game: Session): Map<string, Promise<SoundHandle>> {
-  let echoes = playing.get(game);
-  if (echoes === undefined) {
-    echoes = new Map();
-    playing.set(game, echoes);
-  }
-  return echoes;
-}
 
 /**
  * As the host, has `by` speak in player `of`'s voice, heard out to `range`: clip `pick` of those
@@ -154,20 +141,11 @@ export function echoVoice(
 }
 
 /**
- * Each step on every client: reports how many clips the local player holds, and moves each echo
- * playing to where its entity now stands, stopping those whose entity is gone.
+ * Each step on every client: reports how many clips the local player holds, and moves what each
+ * speaker says, echoes among it, to where it now stands, stopping it once the speaker is gone.
  */
 export function followEchoes(game: Session): void {
   const held = game.clips.count();
   if (clipsHeld.get(game.local) !== held) clipsHeld.set(game.local, held);
-  const echoes = playing.get(game);
-  if (echoes === undefined) return;
-  for (const [id, handle] of echoes) {
-    const entity = game.entities.get(id);
-    void handle.then((sound) => {
-      if (entity === undefined) sound.stop();
-      else sound.setPosition(entity, game.local);
-    });
-    if (entity === undefined) echoes.delete(id);
-  }
+  followSpeakers(game);
 }

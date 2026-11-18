@@ -94,6 +94,18 @@ export function stubAudio(): { readonly sounds: () => readonly FakeSound[] } {
       createBufferSource(): FakeSource {
         return new FakeSource();
       }
+      /** A buffer of made sound, played as if from the url `samples:<length>@<rate>`. */
+      createBuffer(
+        _channels: number,
+        length: number,
+        rate: number,
+      ): { readonly url: string; getChannelData: () => Float32Array } {
+        const data = new Float32Array(length);
+        return {
+          url: `samples:${String(length)}@${String(rate)}`,
+          getChannelData: () => data,
+        };
+      }
       decodeAudioData(data: ArrayBuffer): Promise<{ readonly url: string }> {
         return Promise.resolve({ url: new TextDecoder().decode(data) });
       }

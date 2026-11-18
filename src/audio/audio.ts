@@ -36,6 +36,9 @@ interface PlayOptions {
   cache?: boolean;
 }
 
+/** How sound made rather than loaded plays: never looped, nor kept. */
+type SampleOptions = Omit<PlayOptions, "loop" | "cache">;
+
 interface StreamOptions extends PlayOptions {
   /** Seconds into the sound it starts from; 0 when left out. */
   offset?: number;
@@ -75,6 +78,17 @@ export interface Sfx {
     listener: Point | null,
     options?: StreamOptions,
   ) => SoundHandle;
+  /**
+   * Plays `samples`, mono at `sampleRate` Hz, once, placed as a sound from a file is: sound made
+   * here rather than loaded, such as a synthesized voice.
+   */
+  playSamples: (
+    samples: Float32Array,
+    sampleRate: number,
+    origin: Point | null,
+    listener: Point | null,
+    options?: SampleOptions,
+  ) => Promise<SoundHandle>;
   stop: (id: string, fadeTime?: number) => void;
   /**
    * Hears every positioned sound still playing from `listener` now, as sounds started from here
@@ -215,12 +229,39 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     url: string,
     origin: Point | null,
     listener: Point | null,
-    { volume = 1, loop = false, range, cache = true }: PlayOptions = {},
+    { cache = true, ...options }: PlayOptions = {},
+  ): Promise<SoundHandle> {
+    const buffer = await loadBuffer(url, cache);
+    if (buffer === null) return silentHandle;
+    return playBuffer(buffer, origin, listener, options);
+  }
+
+  function playSamples(
+    samples: Float32Array,
+    sampleRate: number,
+    origin: Point | null,
+    listener: Point | null,
+    options: SampleOptions = {},
+  ): Promise<SoundHandle> {
+    if (samples.length === 0) return Promise.resolve(silentHandle);
+    const buffer = getAudioContext().createBuffer(
+      1,
+      samples.length,
+      sampleRate,
+    );
+    buffer.getChannelData(0).set(samples);
+    return playBuffer(buffer, origin, listener, options);
+  }
+
+  /** Plays `buffer` from `origin` for `listener`, as `play` does once its sound has loaded. */
+  async function playBuffer(
+    buffer: AudioBuffer,
+    origin: Point | null,
+    listener: Point | null,
+    { volume = 1, loop = false, range }: Omit<PlayOptions, "cache">,
   ): Promise<SoundHandle> {
     const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
-    const buffer = await loadBuffer(url, cache);
-    if (buffer === null) return silentHandle;
 
     // Browsers usually require an AudioContext to be resumed after a user interaction.
     await context.resume();
@@ -509,6 +550,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
 
   return {
     play,
+    playSamples,
     playLoop,
     stream,
     stop,

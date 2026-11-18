@@ -40,7 +40,23 @@ import {
   poseAsWalls,
   facedCells,
   interpolatedView,
+  wrapCaption,
 } from "./render.js";
+
+test("a caption wraps at spaces, splits a word too long for a line, and cuts what runs past its lines", () => {
+  expect(wrapCaption("Happy birthday to me!", 12, 3)).toEqual([
+    "Happy",
+    "birthday to",
+    "me!",
+  ]);
+  expect(wrapCaption("aaaaaaaaaa bb", 4, 5)).toEqual([
+    "aaaa",
+    "aaaa",
+    "aa",
+    "bb",
+  ]);
+  expect(wrapCaption("one two three four", 5, 2)).toEqual(["one", "two…"]);
+});
 
 test("lit walls draw a shallow band into the wall instead of a whole tile", () => {
   const ctx = {

@@ -122,6 +122,34 @@ export const testSimConfig: SimConfig = {
     interval: 0.4,
   },
   echoes: { maxChars: 1000 },
+  speech: {
+    voices: {
+      plain: {
+        pitch: 140,
+        intonation: 4,
+        rate: 10,
+        formant: 1,
+        roughness: 0.1,
+        breathiness: 0.1,
+        ring: 0,
+        volume: 0.8,
+        range: 250,
+      },
+      shout: {
+        pitch: 260,
+        intonation: 9,
+        rate: 10,
+        formant: 1.2,
+        roughness: 0.3,
+        breathiness: 0,
+        ring: 0,
+        volume: 1,
+        range: 500,
+      },
+    },
+    fallback: "plain",
+    captionHold: 1,
+  },
   worldItems: { radius: 8, cooldown: 0.2, dropCooldown: 0.2 },
 };
 
@@ -703,6 +731,13 @@ export const testEntitiesConfig = {
     damage: 30,
     attackCooldown: 1,
     sounds: { place: 150, angry: 600, attack: 250 },
+    speech: {
+      voice: "plain",
+      angryVoice: "shout",
+      chatter: 0,
+      placing: ["Happy birthday to me!"],
+      enraged: ["You popped my balloon!"],
+    },
   },
   // Its pop carries 20 test cells.
   balloon: { radius: 8, sounds: { pop: 1000 } },
@@ -1009,6 +1044,7 @@ export function testSfx(): Sfx {
   return {
     ...createSfx({ full: 0, silent: 1000, pan: 500 }),
     play: () => Promise.resolve(SILENT),
+    playSamples: () => Promise.resolve(SILENT),
     playLoop: () => Promise.resolve(SILENT),
     stream: () => SILENT,
   };

@@ -6,6 +6,7 @@ import {
   onAir,
   renderPosition,
   remotePlayers,
+  sayHere,
   speak,
   updateSession,
 } from "./sim/index.js";
@@ -67,6 +68,7 @@ import { createSupabaseTransport } from "./adapters/supabase-transport/index.js"
 import { createBroadcastChannelTransport } from "./adapters/broadcast-channel-transport/index.js";
 import { createTrysteroTransport } from "./adapters/trystero-transport/index.js";
 import { createWebRtcVoice } from "./adapters/webrtc-voice/index.js";
+import { createSpeechSynth } from "./adapters/speech-synth/index.js";
 import { createScope } from "./lib/scope/index.js";
 import {
   departingIn,
@@ -232,6 +234,7 @@ const perf = createPerfStats();
 const debugOverlay = createDebugOverlay(debugEl, debug, config.ui);
 const micView = createMicIndicatorView(micEl);
 const sfx = createSfx(config.audio);
+const speech = createSpeechSynth(sfx, config.speechSynth.sampleRate);
 const nameKey = "world:name";
 const settingsKey = "terminal-troop:settings";
 const settings = createSettingsStore({
@@ -269,6 +272,7 @@ const room = createRoom({
   transport,
   voice,
   sfx,
+  speech,
   scope: app,
   clock: {
     now: () => performance.now(),
@@ -295,7 +299,7 @@ const room = createRoom({
     if (debug) console.info("Voice connection failed", id);
   },
 });
-// Debug hook for driving voice and reading presence, ripples, flashes, map memory and positions from the console or a test browser.
+// Debug hook for driving voice, trying speech voices, and reading presence, ripples, flashes, map memory and positions from the console or a test browser.
 if (debug)
   Object.assign(window, {
     voice,
@@ -304,6 +308,15 @@ if (debug)
     flashes,
     mapMemory,
     positions,
+    /**
+     * Has the local player say `text` in the voice `voice` names, on this client alone: for
+     * trying voices out. No one else hears it, nor does anything in the world.
+     */
+    say(text: string, voice = "plain") {
+      const session = joinedSession(room.state());
+      if (session !== null)
+        sayHere(session, session.localId, session.local, { text, voice });
+    },
   });
 /**
  * What happens in the world, printed to the console and read from it as `window.log`: on in
