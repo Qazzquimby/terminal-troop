@@ -3,8 +3,8 @@ import { daylightNow } from "./day.js";
 import { darkFront, deepFront } from "./deepdark.js";
 import { AREA, exitDistance, isSolid } from "./map.js";
 import type { Session } from "./session.js";
-import { shadowCasters } from "./shadow.js";
-import type { Occluder } from "./shadow.js";
+import { noShadows, shadowCasters, shadowsOf } from "./shadow.js";
+import type { ShadowsOf } from "./shadow.js";
 import { isShrouded } from "./status.js";
 import { canSeeFrom, emittedLights, litFrom, wallKey } from "./vision.js";
 import type { LightSource, VisibilityPolygon, WallFace } from "./vision.js";
@@ -279,13 +279,15 @@ export function isLit(
   if (ambientLightAt(world, at, daylightNow(game), fronts) !== null)
     return true;
   const deep = at.x < fronts.deep;
-  const occluders = game.config.light.shadows.gameplay ? castersNow(game) : [];
+  const shadows = game.config.light.shadows.gameplay
+    ? shadowsNow(game)
+    : noShadows;
   return lights.some((light) =>
     litFrom(
       world.map,
       deep ? intoDeepdark(light) : light,
       at,
-      occluders,
+      shadows(light),
       ignore,
     ),
   );
@@ -306,33 +308,33 @@ export function isLitTo(
   return !isShrouded(game, id) && isLit(game, at, lights, darks, id);
 }
 
-/** Each session's shadow casters, as of the step, world time and headcount they were found at. */
-const castersFound = new WeakMap<
+/** Each session's shadows, as of the step, world time and headcount they were found at. */
+const shadowsFound = new WeakMap<
   Session,
-  { step: number; time: number; count: number; casters: Occluder[] }
+  { step: number; time: number; count: number; shadows: ShadowsOf }
 >();
 
 /**
- * Every body casting a shadow now, as `shadowCasters`, found once a step for rules asked many
- * times a step, such as which bodies a stalker may hunt.
+ * The bodies that can shadow each light now, as `shadowsOf` the bodies casting shadows, found
+ * once a step for rules asked many times a step, such as which bodies a stalker may hunt.
  */
-function castersNow(game: Session): Occluder[] {
-  const found = castersFound.get(game);
+function shadowsNow(game: Session): ShadowsOf {
+  const found = shadowsFound.get(game);
   const count = game.entities.size + game.players.size;
   if (
     found?.step === game.step &&
     found.time === game.worldTime &&
     found.count === count
   )
-    return found.casters;
-  const casters = shadowCasters(game);
-  castersFound.set(game, {
+    return found.shadows;
+  const shadows = shadowsOf(shadowCasters(game));
+  shadowsFound.set(game, {
     step: game.step,
     time: game.worldTime,
     count,
-    casters,
+    shadows,
   });
-  return casters;
+  return shadows;
 }
 
 /** A box of the world, in pixels. */

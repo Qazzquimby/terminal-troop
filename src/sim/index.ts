@@ -296,7 +296,7 @@ export {
   isLitTo,
 } from "./light.js";
 export type { DarkSource } from "./light.js";
-export { shadowCasters } from "./shadow.js";
+export { shadowCasters, shadowsOf } from "./shadow.js";
 export type { Occluder } from "./shadow.js";
 export { darkFront, deepFront, frontAt, hearFronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";

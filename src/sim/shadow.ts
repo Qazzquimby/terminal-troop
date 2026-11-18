@@ -109,6 +109,31 @@ export function shadowing(
   );
 }
 
+/** A light as shadows bear on it: where it shines from, and how far, unbounded when left out. */
+type Shone = Point & { readonly range?: number };
+
+/** The bodies that can shadow what a light lights, as `shadowing` has them, for each light. */
+export type ShadowsOf = (light: Shone) => readonly Occluder[];
+
+/** No body shadows any light. */
+export const noShadows: ShadowsOf = () => [];
+
+/**
+ * Those of `occluders` that can shadow each light, as `shadowing` has them, found once for each
+ * light asked of, so a caller asking of many points in the same lights pays for it once.
+ */
+export function shadowsOf(occluders: readonly Occluder[]): ShadowsOf {
+  if (occluders.length === 0) return noShadows;
+  const found = new WeakMap<Shone, Occluder[]>();
+  return (light) => {
+    const known = found.get(light);
+    if (known !== undefined) return known;
+    const near = shadowing(occluders, light, light.range ?? Infinity);
+    found.set(light, near);
+    return near;
+  };
+}
+
 /**
  * How far a ray from `origin` down the unit vector `direction` goes before the far side of the
  * first of `occluders` it passes through stops it, at most `maxDist`.

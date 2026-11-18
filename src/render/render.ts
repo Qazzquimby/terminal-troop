@@ -55,6 +55,7 @@ import {
   drawnLocal,
   renderPosition,
   shadowCasters,
+  shadowsOf,
   visibilityPolygon,
   visionOrigins,
 } from "../sim/index.js";
@@ -1562,6 +1563,7 @@ export function draw(
   const lights = [...sight, ...emittedLights(game)];
   // Every body standing in a light given off or carried shadows it (#384).
   const occluders = shadowCasters(game);
+  const shadows = shadowsOf(occluders);
   const { map } = game.world;
   const { rays } = game.config.vision;
   const area = viewArea(camera);
@@ -1576,7 +1578,7 @@ export function draw(
   const unlitDeep = (point: Point) =>
     deep(point) &&
     !lights.some((light) =>
-      litFrom(map, intoDeepdark(light), point, occluders),
+      litFrom(map, intoDeepdark(light), point, shadows(light)),
     );
   const dark = (point: Point) =>
     (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
@@ -1601,7 +1603,7 @@ export function draw(
       lights,
       body,
       game.config.vision.footprintSpacing,
-      { ambient, dark, occluders },
+      { ambient, dark, shadows },
     );
   // Bodies passing themselves off as walls, drawn as the walls they pose as: their cells join the
   // real walls round them, lit and banded as those are.
@@ -1715,7 +1717,7 @@ export function draw(
         isVisible(map, sources, lights, ripple.origin, {
           ambient,
           dark,
-          occluders,
+          shadows,
         })));
   const rings = ripples.list.filter(seenMade);
   const glows = ripples.list.filter((ripple) => !seenMade(ripple));

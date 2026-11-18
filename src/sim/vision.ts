@@ -2,8 +2,14 @@ import { heldItemOf } from "./inventories.js";
 import type { Point, TileMap } from "./map.js";
 import { isSolid } from "./map.js";
 import type { Session } from "./session.js";
-import { edgeAngles, inShadow, occludedDistance, shadowing } from "./shadow.js";
-import type { Occluder } from "./shadow.js";
+import {
+  edgeAngles,
+  inShadow,
+  noShadows,
+  occludedDistance,
+  shadowing,
+} from "./shadow.js";
+import type { Occluder, ShadowsOf } from "./shadow.js";
 import { footprintPoints } from "./shape.js";
 import type { Footprint } from "./shape.js";
 
@@ -366,15 +372,15 @@ interface Lighting {
   readonly dark?: (point: Point) => boolean;
   /** Whether a point is deepdark, which no place's own light lights. */
   readonly deep?: (point: Point) => boolean;
-  /** The bodies casting shadows in the lights. */
-  readonly occluders?: readonly Occluder[];
+  /** The bodies that can shadow each light, as `shadowsOf` finds them. */
+  readonly shadows?: ShadowsOf;
 }
 
 const never = (): boolean => false;
 
 /**
  * Whether `point` is both seen from some source and lit: by some light that reaches it unshadowed
- * by `lighting`'s occluders, or where its `ambient` says the place's own light does; and not where
+ * by `lighting`'s shadows, or where its `ambient` says the place's own light does; and not where
  * its `dark` says darkness given off reaches it. Where its `deep` says it is deepdark, no place's
  * own light lights it, and each light reaches it only out to its `deepRange`.
  */
@@ -386,7 +392,7 @@ export function isVisible(
   lighting: Lighting = {},
 ): boolean {
   const { ambient = never, dark = never, deep = never } = lighting;
-  const { occluders = [] } = lighting;
+  const { shadows = noShadows } = lighting;
   if (dark(point) || !sources.some((source) => canSeeFrom(map, source, point)))
     return false;
   const deepdark = deep(point);
@@ -396,7 +402,7 @@ export function isVisible(
       map,
       deepdark ? { ...light, range: light.deepRange ?? light.range } : light,
       point,
-      occluders,
+      shadows(light),
     ),
   );
 }
