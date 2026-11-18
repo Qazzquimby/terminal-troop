@@ -4,11 +4,13 @@ import {
   defineItem,
   effect,
   hasKindTag,
+  instanceKey,
+  makerOf,
   sound,
 } from "../../sim/index.js";
 import type {
+  ItemInstance,
   ItemTraits,
-  Player,
   Point,
   Session,
   WorldEntity,
@@ -17,9 +19,10 @@ import { powerSwitch } from "../switch.js";
 
 /**
  * A scanner: switched on and off with the use control, like a flashlight, its uses its battery,
- * spent one each `drain` seconds it is on. On, it beeps, a sound heard and a noise made wherever
- * its holder stands, more often the nearer the best target it senses and the more squarely its
- * holder faces it; with nothing in range it is silent.
+ * spent one each `drain` seconds it is on. On, it beeps, a sound heard and a noise made where it
+ * is, more often the nearer the best target it senses and the more squarely it points at it; with
+ * nothing in range it is silent. Dropped switched on, it beeps on where it lies, pointing the way
+ * it faced as it fell.
  */
 export interface ScannerConfig extends ItemTraits {
   /** How far it senses a target, in pixels. */
@@ -85,10 +88,11 @@ interface ScannerSpec {
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
 const clickUrl = new URL("./sfx/click.mp3", import.meta.url).href;
+const dropUrl = new URL("./sfx/drop.mp3", import.meta.url).href;
 
 /**
- * The scanner `id`: switched on, the host beeps it for each player holding it, at the pace the
- * strongest signal among what it senses sets.
+ * The scanner `id`: switched on, the host beeps each one held or lying, at the pace the strongest
+ * signal among what it senses sets.
  */
 function defineScanner<N extends string>(id: N, spec: ScannerSpec) {
   return defineItem(id, (config: ScannerConfig) => {
@@ -103,15 +107,19 @@ function defineScanner<N extends string>(id: N, spec: ScannerSpec) {
       volume: config.volume,
       range: config.clickRange,
     });
-    /** Seconds since each player's last beep, per session, while its scanner is on. */
+    /** Seconds since each one's last beep, by instance, per session, while it is on. */
     const sinceBeep = new WeakMap<Session, Map<string, number>>();
 
-    /** The strongest signal `player` senses, 0 for none. */
-    const strongest = (game: Session, player: Player): number => {
+    /** The strongest signal `scanner` senses, 0 for none; never itself, lying. */
+    const strongest = (game: Session, scanner: ItemInstance): number => {
       let best = 0;
+      const self = "lying" in scanner.place ? scanner.place.lying : null;
       for (const entity of game.entities.values()) {
-        if (!spec.senses(game, entity)) continue;
-        best = Math.max(best, signal(player, player.aim, entity, config));
+        if (entity === self || !spec.senses(game, entity)) continue;
+        best = Math.max(
+          best,
+          signal(scanner.at, scanner.facing, entity, config),
+        );
       }
       return best;
     };
@@ -120,31 +128,25 @@ function defineScanner<N extends string>(id: N, spec: ScannerSpec) {
       name: spec.name,
       emoji: spec.emoji,
       traits: config,
-      player: power.on,
+      drop: sound({ url: dropUrl, volume: config.volume }),
       use: power.use(config.cooldown, { sound: click }),
       draw() {
         // A switch shows only as the beeps it makes.
-      },
-      act(game) {
-        power.act(game);
       },
       step(game, dt) {
         const previous = sinceBeep.get(game) ?? new Map<string, number>();
         const times = new Map<string, number>();
         sinceBeep.set(game, times);
-        for (const { player } of power.drain(game, dt)) {
-          const since = (previous.get(player.id) ?? 0) + dt;
-          const strength = strongest(game, player);
+        for (const scanner of power.step(game, dt)) {
+          const key = instanceKey(scanner);
+          const since = (previous.get(key) ?? 0) + dt;
+          const strength = strongest(game, scanner);
           if (strength === 0 || since < beepInterval(strength, config)) {
-            times.set(player.id, since);
+            times.set(key, since);
             continue;
           }
-          times.set(player.id, 0);
-          effect(
-            game,
-            { at: { x: player.x, y: player.y }, sound: beep },
-            player,
-          );
+          times.set(key, 0);
+          effect(game, { at: scanner.at, sound: beep }, makerOf(scanner));
         }
       },
     };

@@ -1,90 +1,71 @@
-import { z } from "zod";
 import {
   effect,
-  heldItemOf,
-  heldSlot,
-  itemIn,
-  playerData,
-  spendUses,
+  instanceKey,
+  isOn,
+  itemInstances,
+  setInstanceState,
+  setStateAt,
+  spendInstanceUses,
+  stateAt,
 } from "../sim/index.js";
-import type {
-  Effect,
-  PlayerData,
-  Player,
-  Session,
-  UseSpec,
-} from "../sim/index.js";
+import type { Effect, ItemInstance, Session, UseSpec } from "../sim/index.js";
 
 /**
- * A held item's power switch, as a flashlight has: using it flips it on or off, it goes off once
- * its player holds it no more, and while on and held its uses are its battery, one spent each
- * `drain` seconds; a flat one is gone. Whether it is on is the player's to report.
+ * An item's power switch, as a flashlight has: using it flips it on or off, kept in the item's
+ * own state, so it stays as it was wherever the item goes. While on, held or lying, its uses are
+ * its battery, one spent each `drain` seconds; a flat one is gone. Put away in a pocket it goes
+ * off.
  */
 export interface PowerSwitch {
-  /** Whether each player's one is switched on; the item's player data. */
-  readonly on: PlayerData<boolean>;
-  /** The slot `player` holds one in, by the host's record, or null when it holds none. */
-  slotOf(game: Session, player: Player): number | null;
   /**
    * The item's use: flips the switch, at most once each `cooldown` seconds, spending no use, and
-   * clicks as `click` says, where its user stands.
+   * clicks as `click` says, where its user stands. Its user's own client shows it at once.
    */
   use(cooldown: number, click: Omit<Effect, "at">): UseSpec;
-  /** Switches the local player's off once it holds none: the item's `act`. */
-  act(game: Session): void;
   /**
-   * As the host, runs the battery of every player's that is on and held, `dt` seconds on, and
-   * returns those players with the slot each holds it in.
+   * As the host, switches off each one put away in a pocket, runs the battery of each one still
+   * on, `dt` seconds on, and returns those, held or lying.
    */
-  drain(
-    game: Session,
-    dt: number,
-  ): { readonly player: Player; readonly slot: number }[];
+  step(game: Session, dt: number): ItemInstance[];
 }
 
 /** A power switch for the item `item`, its battery a use each `drain` seconds it is on. */
 export function powerSwitch(item: string, drain: number): PowerSwitch {
-  const on = playerData({ schema: z.boolean(), initial: () => false });
-  /** Seconds each player's has been on since it last spent a use, per session. */
+  /** Seconds each one has been on since it last spent a use, by instance, per session. */
   const spent = new WeakMap<Session, Map<string, number>>();
-  const slotOf = (game: Session, player: Player): number | null => {
-    const slot = heldSlot.get(player);
-    return slot !== null && itemIn(game, player.id, slot) === item
-      ? slot
-      : null;
-  };
   return {
-    on,
-    slotOf,
     use: (cooldown, click) => ({
       cooldown,
       spends: 0,
-      apply(game, user) {
-        // The switch is the player's to report: only its own client flips it.
-        if (user === game.local) on.set(user, !on.get(user));
+      apply(game, user, { slot }) {
+        const on = !isOn(stateAt(game, user, slot));
+        setStateAt(game, user, slot, item, on ? { on: true } : undefined, {
+          predict: true,
+        });
         effect(game, { ...click, at: { x: user.x, y: user.y } });
       },
     }),
-    act(game) {
-      const { local } = game;
-      if (on.get(local) && heldItemOf(game, local)?.id !== item)
-        on.set(local, false);
-    },
-    drain(game, dt) {
-      const times = spent.get(game) ?? new Map<string, number>();
+    step(game, dt) {
+      const before = spent.get(game) ?? new Map<string, number>();
+      const times = new Map<string, number>();
       spent.set(game, times);
-      const running: { player: Player; slot: number }[] = [];
-      for (const player of game.players.values()) {
-        const slot = slotOf(game, player);
-        if (!on.get(player) || slot === null) continue;
-        running.push({ player, slot });
-        const time = (times.get(player.id) ?? 0) + dt;
-        if (time < drain) {
-          times.set(player.id, time);
+      const running: ItemInstance[] = [];
+      for (const instance of itemInstances(game, item)) {
+        if (!isOn(instance.state)) continue;
+        const { place } = instance;
+        if ("held" in place && !place.held) {
+          setInstanceState(game, instance, undefined);
           continue;
         }
-        times.set(player.id, time - drain);
-        spendUses(game, player, slot);
+        const key = instanceKey(instance);
+        const time = (before.get(key) ?? 0) + dt;
+        if (time < drain) {
+          times.set(key, time);
+          running.push(instance);
+          continue;
+        }
+        times.set(key, time - drain);
+        if (spendInstanceUses(game, instance) !== 0) running.push(instance);
       }
       return running;
     },

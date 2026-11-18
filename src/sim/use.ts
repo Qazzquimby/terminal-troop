@@ -4,6 +4,7 @@ import type { Action } from "./actions.js";
 import { itemIn } from "./inventories.js";
 import { heldItem } from "./inventory.js";
 import type { ItemDefinition } from "./inventory.js";
+import type { ItemInstance } from "./item-instances.js";
 import type { ItemPlays } from "./item-sounds.js";
 import type { Point } from "./map.js";
 import type { Player } from "./player.js";
@@ -67,8 +68,8 @@ export interface ItemBehaviour {
   draw?(ctx: CanvasRenderingContext2D, use: ItemUse, time: number): void;
   /** The action of working its control, sent under its content entry as `control`, if any. */
   readonly control?: Action<ItemControlInput>;
-  /** The light it gives off while `holder` holds it, if any, from the holder's centre. */
-  light?(game: Session, holder: Player): LightEmission | null;
+  /** The light `instance` of it gives off, held or lying, if any, from where it is. */
+  light?(instance: ItemInstance, game: Session): LightEmission | null;
   /** What one of it plays where it is now, if anything: a radio's song, say. */
   readonly plays?: ItemPlays;
 }

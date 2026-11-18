@@ -1082,11 +1082,17 @@ export const config = {
       slowShare: 0.9, // with a player within slowRange ahead
       slowRange: CELL * 4,
       ride: {
-        min: CELL * 10,
-        max: CELL * 25,
-        tries: 12,
+        min: CELL * 14,
+        max: CELL * 28,
+        tries: 8, // spots round it
+        through: 4, // spots past a player
+        overshoot: { min: CELL * 6, max: CELL * 12 }, // past that player
         width: CELL, // prefers ways at least this wide
         near: CELL * 20, // while a player is about, only to spots this near one
+        pass: CELL * 3, // a way this near a player passes them
+        pull: 1.2, // a pass's score; setting off straight ahead scores 1, sideways 0
+        rest: 15, // seconds after passing a player before it wants to again
+        retry: 0.5, // seconds it waits to look again on finding no ride
       },
       bellRange: CELL * 8, // rings at a player this near on its way
       bellCooldown: 2,
