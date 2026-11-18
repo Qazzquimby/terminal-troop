@@ -447,12 +447,30 @@ export const config = {
       // Its horn, sounded by anyone inside, is heard 18 cells off: past a driven engine's 14,
       // short of a crash's 20.
       horn: { noiseRadius: CELL * 18, volume: 0.9 },
+      // How its engine, crash and ram sounds play: volume 0..1, and `range` in plain pixels, not
+      // cells (a cell is 50px), so 6 is an eighth of a cell: only those inside the car hear its
+      // idle, its driven and backing engine are heard a little past its body. How far monsters
+      // hear it is the noise above (engine, crash.noiseRadius, ram.noiseRadius), apart from these.
+      sounds: {
+        idle: { volume: 0.05, range: 6 },
+        drive: { volume: 0.4, range: 20 },
+        reverse: { volume: 0.4, range: 20 },
+        crash: { volume: 0.8, range: 34 },
+        ram: { volume: 0.5, range: 22 },
+      },
       // Two headlights at its front, one each side 38px from its middle, by the lamps drawn on
       // it, each a 40 degree cone reaching 12 cells.
       headlights: { range: CELL * 12, angle: Math.PI * (2 / 9), spread: 38 },
       // Everyone in the exit escapes once the cruiser has waited there 20s, and only while the
       // team has 30$ banked (#402): 30 scrap, about five of the shop's dearer wares. It keeps it.
-      escape: { delay: 20, volume: 0.8, quota: 30 },
+      // Coming to rest in the exit it plays its departure at 0.3, heard 20px off (pixels, not
+      // cells), so by those in it.
+      escape: {
+        delay: 20,
+        volume: 0.8,
+        quota: 30,
+        depart: { volume: 0.3, range: 20 },
+      },
       // A corpse carried within a cell of the cruiser's body brings its player back beside it,
       // for 6$ of the team's credit, a pocketball's price, into debt if need be (#403).
       revive: { reach: CELL, volume: 0.3, cost: 6 },
@@ -1157,8 +1175,12 @@ export const config = {
       // weight 50 or less: not zombies nor exploders), it sprints at a player's sprint to the
       // best of 12 spots 8 cells off, stands 1.5s looking back, and, seeing nothing, walks
       // another 8 cells off. Its gasp carries 4 cells, as far as talking.
+      // `by: "toughness"` instead has it fear any body as hard to kill as the sleeper or harder
+      // (full health 150 or more), the bodies that drop a heart, whatever their spawning weight.
       fear: {
+        by: "rarity",
         asRareAs: SLEEPER_SPAWN_WEIGHT,
+        toughness: SLEEPER_HEALTH,
         sprintSpeed: PLAYER_SPEED * SPRINT,
         flee: { leg: CELL * 8, tries: 12 },
         lookBackSeconds: 1.5,

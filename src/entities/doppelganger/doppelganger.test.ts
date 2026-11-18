@@ -37,6 +37,7 @@ import { arrivals } from "../spawning.js";
 import {
   doppelganger as doppelgangerContent,
   DoppelgangerState,
+  type DoppelgangerConfig,
   freshDoppelganger,
 } from "./index.js";
 
@@ -45,9 +46,14 @@ const { doppelganger: config } = testEntitiesConfig;
 
 /**
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
- * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y).
+ * and x 600-700, y 450-550, all dark; the local player, ME, stands at (x, y). Doppelgangers fear
+ * as `fear` says, by default as the test config's do.
  */
-function world(x: number, y: number): Session {
+function world(
+  x: number,
+  y: number,
+  fear: DoppelgangerConfig["fear"] = config.fear,
+): Session {
   const game = createSession(
     "me",
     "ME",
@@ -62,7 +68,7 @@ function world(x: number, y: number): Session {
     setPosition: () => undefined,
   });
   registerContent(game, [
-    doppelgangerContent.create({ doppelganger: config }),
+    doppelgangerContent.create({ doppelganger: { ...config, fear } }),
     ...itemContent(testItemsConfig),
   ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
@@ -298,19 +304,21 @@ test("felled, a doppelganger wearing a player's body leaves that player's corpse
 });
 
 /**
- * Two kinds that stand still: a rare one, brought as rarely as the doppelganger fears, and a
- * common one, brought more often; the spawner never brings either while a test runs.
+ * Kinds that stand still: a rare one, brought as rarely as the doppelganger fears; a common one,
+ * brought more often; and a tough one, as common, but as hard to kill as the doppelganger fears
+ * by toughness, the others a little less. The spawner never brings any while a test runs.
  */
 const kinds: WorldContent = {
   name: "entity/test-kinds",
   register(session) {
-    for (const [kind, weight] of [
-      ["rare", config.fear.asRareAs],
-      ["common", config.fear.asRareAs + 1],
+    for (const [kind, weight, maxHealth] of [
+      ["rare", config.fear.asRareAs, config.fear.toughness - 1],
+      ["common", config.fear.asRareAs + 1, config.fear.toughness - 1],
+      ["tough", config.fear.asRareAs + 1, config.fear.toughness],
     ] as const) {
       registerEntityType(session, kind, {
         radius: 14,
-        maxHealth: 100,
+        maxHealth,
         data: z.object({}),
         update: (entity) => {
           entity.vx = 0;
@@ -331,12 +339,15 @@ const kinds: WorldContent = {
 };
 
 /** ME far off at the bottom right, a doppelganger at (425, 325) facing right, a `kind` before it. */
-function facing(kind: string): {
+function facing(
+  kind: string,
+  fear: DoppelgangerConfig["fear"] = config.fear,
+): {
   game: Session;
   double: WorldEntity;
   other: WorldEntity;
 } {
-  const game = world(875, 575);
+  const game = world(875, 575, fear);
   registerContent(game, [kinds]);
   const double = doubleAt(game, 425, 325);
   const other = spawnEntity(game, kind, 525, 325, {});
@@ -357,10 +368,22 @@ test("seeing a monster as rare as it fears, it gasps and sprints away", () => {
   ).toBe(true);
 });
 
-test("a commoner monster it pays no mind", () => {
-  const { game, double } = facing("common");
-  run(game, 0.5, AWAY);
-  expect(stateOf(double).mode).not.toBe("flee");
+test("a commoner monster it pays no mind, however hard to kill", () => {
+  for (const kind of ["common", "tough"]) {
+    const { game, double } = facing(kind);
+    run(game, 0.5, AWAY);
+    expect(stateOf(double).mode).not.toBe("flee");
+  }
+});
+
+test("fearing by toughness, it runs from a body as hard to kill as it fears, however common", () => {
+  const byToughness = { ...config.fear, by: "toughness" } as const;
+  const tough = facing("tough", byToughness);
+  run(tough.game, 0.2, AWAY);
+  expect(stateOf(tough.double).mode).toBe("flee");
+  const rare = facing("rare", byToughness);
+  run(rare.game, 0.5, AWAY);
+  expect(stateOf(rare.double).mode).not.toBe("flee");
 });
 
 test("its sprint over, it looks back the way it came, then, seeing nothing, walks further off", () => {

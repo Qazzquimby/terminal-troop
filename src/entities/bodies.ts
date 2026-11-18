@@ -287,15 +287,30 @@ export function isKillable(game: Session, body: Body): boolean {
 /** What a kind runs from, which its config says. */
 export interface Fearing {
   /**
-   * It fears the kinds the world's spawner brings this rarely or more rarely: those whose
-   * spawning weight is at most this.
+   * The measure it fears by: "rarity", the kinds the world's spawner brings as rarely as
+   * `asRareAs` or more rarely; "toughness", any body whose full health is `toughness` or more.
+   */
+  readonly by: "rarity" | "toughness";
+  /**
+   * By rarity, it fears the kinds the world's spawner brings this rarely or more rarely: those
+   * whose spawning weight is at most this.
    */
   readonly asRareAs: number;
+  /** By toughness, it fears any body whose full health is at least this. */
+  readonly toughness: number;
+}
+
+/** Whether a body is one `fearing` fears, by the measure it names. */
+function fears(game: Session, fearing: Fearing): (body: Body) => boolean {
+  if (fearing.by === "toughness")
+    return (body) => body.maxHealth >= fearing.toughness;
+  const kinds = kindsAsRareAs(game, fearing.asRareAs);
+  return (body) => kinds.length > 0 && hasKindTag(game, body.id, kinds);
 }
 
 /**
- * Every living body `self` fears that it sees with its kind's eyes: those of the kinds `fearing`
- * names, but the kind tags in `ignores`. A stunned or blind entity sees none.
+ * Every living body `self` fears that it sees with its kind's eyes: those `fearing` names, by
+ * rarity or by toughness, but the kind tags in `ignores`. A stunned or blind entity sees none.
  */
 export function seenFeared(
   game: Session,
@@ -305,12 +320,11 @@ export function seenFeared(
 ): Body[] {
   const sight = eyesOf(game, self);
   if (sight === null) return [];
-  const kinds = kindsAsRareAs(game, fearing.asRareAs);
-  if (kinds.length === 0) return [];
+  const isFeared = fears(game, fearing);
   return livingBodies(game, self.id).filter(
     (body) =>
       body.id !== self.id &&
-      hasKindTag(game, body.id, kinds) &&
+      isFeared(body) &&
       !hasKindTag(game, body.id, ignores) &&
       inView(game, sight, body),
   );
