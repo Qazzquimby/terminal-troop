@@ -2,6 +2,7 @@ import { asEntity, asPlayer, livingBodies } from "./bodies.js";
 import type { Body } from "./bodies.js";
 import { isGhost } from "./ghosts.js";
 import { isDeepdark } from "./light.js";
+import { pulledFacing } from "./gaze-pull.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { isStunned } from "./status.js";
@@ -61,7 +62,13 @@ export function eyesOf(game: Session, body: Body): Sight | null {
   const entity = asEntity(game, body);
   if (entity === null || entity.health <= 0) return null;
   const eyes = game.entityTypes.get(entity.kind)?.eyes(entity, game) ?? null;
-  return eyes === null ? null : { x: entity.x, y: entity.y, ...eyes };
+  if (eyes === null) return null;
+  // A body pulling gazes that it could look at drags its view cone round, as a player's aim is
+  // dragged as it steers.
+  const { cone } = eyes;
+  if (cone === null) return { x: entity.x, y: entity.y, ...eyes };
+  const direction = pulledFacing(game, entity, cone.direction, cone.range);
+  return { x: entity.x, y: entity.y, ...eyes, cone: { ...cone, direction } };
 }
 
 /** Whether `sight` sees `at` down its cone, within `range`, along a clear line. */

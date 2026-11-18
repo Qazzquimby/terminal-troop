@@ -1326,6 +1326,36 @@ export const config = {
       angryGap: { min: 1, max: 3 },
       sounds: { quack: CELL * 4, angry: CELL * 10, attack: CELL * 4 },
     },
+    // The peeper, a lone eye that never moves. Alone, 3 minutes into a world on, never within 14
+    // cells of a player, at most 4 about; as rare as the stalker. Smaller than a player; four
+    // shovel hits burst it. Any body that could look at it by turning, within its view cone's
+    // reach (7 cells for a player) along a clear line, has its facing dragged onto it over 0.4s;
+    // each body looking at it, but another peeper, loses 10 health a second, 5 every half second.
+    // With no body it hunts within 14 cells for 2 minutes, it blinks out to wherever it might
+    // have arrived, trying again every 5s while a player is near enough to watch or it finds
+    // nowhere. Its sting as a gaze is caught carries 8 cells, its drone while held 6, its squelch
+    // as it is hit 4, its blink as it goes and comes 16, just past where anyone could see it.
+    peeper: {
+      spawning: {
+        weight: 10,
+        after: 180,
+        tries: 24,
+        unseenDistance: CELL * 14,
+        most: 4,
+      },
+      ignores: ["peeper"],
+      radius: 12,
+      maxHealth: SHOVEL_DAMAGE * 4,
+      pullSeconds: 0.4,
+      stare: { damagePerSecond: 10, interval: 0.5 },
+      relocate: { after: 120, range: CELL * 14, retry: 5 },
+      sounds: {
+        seize: CELL * 8,
+        stare: CELL * 6,
+        squelch: CELL * 4,
+        blink: CELL * 16,
+      },
+    },
     // The world's spawner rolls every 10s. As a world begins half the rolls bring nothing, the
     // chance falling evenly until, 20 minutes in, every roll brings something: one every 20s at
     // first, one every 10s from then on. Each roll that brings something picks a kind by its

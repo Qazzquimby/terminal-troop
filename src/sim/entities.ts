@@ -16,6 +16,7 @@ import type { Session } from "./session.js";
 import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
 import type { Eyes } from "./eyes.js";
+import type { GazePull } from "./gaze-pull.js";
 import type { VehicleSpec } from "./driving.js";
 import type { Plays } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
@@ -134,6 +135,11 @@ export interface EntityDefinition<S> {
    * whatever this says; `eyesOf` sees to that.
    */
   readonly eyes?: (entity: WorldEntity, data: S, game: Session) => Eyes | null;
+  /**
+   * Whether it pulls the gaze of every body that could look at it by turning, given its state,
+   * and how; see gaze-pull.ts. It pulls none when left out or null.
+   */
+  readonly pullsGaze?: (entity: WorldEntity, data: S) => GazePull | null;
   /**
    * The one body that perceives it, by id, given its state; null for no body at all. Only that
    * body finds it among the living bodies (to hunt, strike, trap, shoot or bump into), hears the
@@ -263,6 +269,8 @@ export interface EntityType {
   /** How far round it it gives off darkness, in pixels; 0 for none. */
   darkness(entity: WorldEntity): number;
   eyes(entity: WorldEntity, game: Session): Eyes | null;
+  /** How it pulls the gaze of bodies that could look at it now; null for not at all. */
+  pullsGaze(entity: WorldEntity): GazePull | null;
   /** Whether only one body perceives it, the one `perceiver` names. */
   readonly restricted: boolean;
   /** The one body that perceives it, when `restricted`; null for none. */
@@ -369,6 +377,13 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return null;
       return definition.eyes?.(entity, parsed.data, game) ?? null;
+    },
+    pullsGaze(entity) {
+      const { pullsGaze } = definition;
+      // Most kinds pull no gaze, and pay nothing to parse their state for it.
+      if (pullsGaze === undefined) return null;
+      const parsed = schema.safeParse(entity.data);
+      return parsed.success ? pullsGaze(entity, parsed.data) : null;
     },
     restricted: definition.perceivedBy !== undefined,
     perceiver(entity) {
