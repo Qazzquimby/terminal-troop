@@ -17,7 +17,7 @@ import { isStunned, pruneStatuses } from "./status.js";
 import type { LightEmission } from "./vision.js";
 import type { Eyes } from "./eyes.js";
 import type { VehicleSpec } from "./driving.js";
-import type { Playing } from "./item-sounds.js";
+import type { Plays } from "./item-sounds.js";
 import type { BoxPose, BoxSize } from "./shape.js";
 import { pressDoors } from "./doors.js";
 import type { DoorHinge, Hinge } from "./doors.js";
@@ -158,13 +158,10 @@ export interface EntityDefinition<S> {
   readonly vehicle?: VehicleSpec;
   /**
    * What it plays where it is, given its state, if anything, on every client: a car radio's
-   * station, say. Streamed as an item's is, following it as it moves.
+   * station and its engine, say, each under its own key. Streamed as an item's is, following it
+   * as it moves.
    */
-  readonly plays?: (
-    entity: WorldEntity,
-    data: S,
-    game: Session,
-  ) => Playing | null;
+  readonly plays?: (entity: WorldEntity, data: S, game: Session) => Plays;
   /**
    * Its body as a box rather than the disc of `radius`, such as a car's: `length` along the way
    * it points, which `heading` gives from its state, and `width` across. Walls stop it as it
@@ -256,7 +253,7 @@ export interface EntityType {
     size: number,
     now: number,
   ): void;
-  plays(entity: WorldEntity, game: Session): Playing | null;
+  plays(entity: WorldEntity, game: Session): Plays;
   /**
    * Whether it lies dormant this step: its kind has a dormant range, none of `players` stands
    * within it, and it is not wakeful.

@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { entityContent, placeStunTrap } from "../entities/index.js";
 import { itemContent } from "../items/index.js";
 import type { ItemsConfig } from "../items/index.js";
@@ -171,4 +171,51 @@ test("any living body out in the world may be teleported, not only a player", as
   ask("b", { teleport: trap.id });
   made.run(config.seconds * 1000 + 200);
   expect(near(trap, cruiser, config.spread + 1)).toBe(true);
+});
+
+test("a dead player, though the cabin may follow its corpse, cannot be sent for", async () => {
+  const { made, host, cruiser, ask } = await teleporterCrew();
+  const a = playerOn(made.room("a"), "a");
+  hurtPlayer(host, a, a.maxHealth);
+  made.run(500);
+  ask("b", { teleport: "a" });
+  made.run(500);
+  expect(cabinTeleporter(host, cruiser.id)).toEqual({ sending: null });
+  made.run(config.seconds * 1000);
+  expect(playerOn(made.room("a"), "a").ride).toBeNull();
+});
+
+test("its hum is heard on every client both at the body it charges on and at the cruiser, until it takes the body", async () => {
+  const { made, game, cruiser, ask } = await teleporterCrew();
+  /** Each client's hum streams: where each started, and whether it has stopped. */
+  const hums = new Map<string, { at: Point | null; stopped: boolean }[]>();
+  for (const id of ["a", "b"]) {
+    const list: { at: Point | null; stopped: boolean }[] = [];
+    hums.set(id, list);
+    vi.spyOn(game(id).sfx, "stream").mockImplementation((url, origin) => {
+      const hum = { at: origin, stopped: false };
+      if (typeof url === "string" && url.includes("hum")) list.push(hum);
+      return {
+        stop: () => {
+          hum.stopped = true;
+        },
+        setVolume: () => undefined,
+        setPosition: () => undefined,
+      };
+    });
+  }
+  ask("b", { teleport: "a" });
+  made.run(1000);
+  for (const id of ["a", "b"]) {
+    const list = hums.get(id) ?? [];
+    expect(list).toHaveLength(2);
+    expect(list.some(({ at }) => at !== null && near(at, OUT, 5))).toBe(true);
+    expect(list.some(({ at }) => at !== null && near(at, cruiser, 1))).toBe(
+      true,
+    );
+    expect(list.every(({ stopped }) => !stopped)).toBe(true);
+  }
+  made.run(config.seconds * 1000);
+  for (const id of ["a", "b"])
+    expect((hums.get(id) ?? []).every(({ stopped }) => stopped)).toBe(true);
 });
