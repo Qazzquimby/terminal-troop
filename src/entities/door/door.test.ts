@@ -19,7 +19,7 @@ import {
 } from "../../sim/index.js";
 import type { Session, WorldEntity } from "../../sim/index.js";
 import { planRoute } from "../route.js";
-import { door as doorContent, DoorState } from "./index.js";
+import { door as doorContent, DoorState, drawDoor } from "./index.js";
 
 const DT = 1 / 60;
 const config = testEntitiesConfig.door;
@@ -118,7 +118,7 @@ const doorwaySolid = (game: Session) =>
 const isOpen = (door: WorldEntity) => DoorState.parse(door.data).open;
 
 describe("doors", () => {
-  test("a new world lays a door in every cell of the share of its doorways it picks", () => {
+  test("a new world lays a shut door in each 1-wide doorway it picks, and none in a wider one", () => {
     const game = createSession(
       "me",
       "ME",
@@ -131,15 +131,44 @@ describe("doors", () => {
     registerContent(game, [content]);
     content.populate(game);
     const { map, layout } = game.world;
-    const doors = [...game.entities.values()];
+    const { cols, rows } = map;
+    const area = (col: number, row: number) =>
+      col < 0 || row < 0 || col >= cols || row >= rows
+        ? AREA.wall
+        : layout.area[row * cols + col];
+    const wall = (col: number, row: number) => area(col, row) === AREA.wall;
+    const isDoor = (col: number, row: number) => area(col, row) === AREA.door;
+    // Each door cell with no door cell beside it and walls on two opposite sides: a 1-wide gap.
+    const gaps: { col: number; row: number; across: boolean }[] = [];
+    for (let row = 0; row < rows; row++)
+      for (let col = 0; col < cols; col++) {
+        if (!isDoor(col, row)) continue;
+        if (
+          isDoor(col - 1, row) ||
+          isDoor(col + 1, row) ||
+          isDoor(col, row - 1) ||
+          isDoor(col, row + 1)
+        )
+          continue;
+        const up = wall(col, row - 1) && wall(col, row + 1);
+        const side = wall(col - 1, row) && wall(col + 1, row);
+        if (up !== side) gaps.push({ col, row, across: up });
+      }
     const doorCells = layout.area.filter((code) => code === AREA.door).length;
-    expect(doorCells).toBeGreaterThan(0);
-    expect(doors).toHaveLength(doorCells);
+    expect(gaps.length).toBeGreaterThan(0);
+    // The world has wider doorways too, which get no door.
+    expect(doorCells).toBeGreaterThan(gaps.length);
+    const doors = [...game.entities.values()];
+    expect(doors).toHaveLength(gaps.length);
     for (const door of doors) {
-      const index =
-        Math.floor(door.y / map.cell) * map.cols +
-        Math.floor(door.x / map.cell);
-      expect(layout.area[index]).toBe(AREA.door);
+      const col = Math.floor(door.x / map.cell);
+      const row = Math.floor(door.y / map.cell);
+      const found = gaps.find((g) => g.col === col && g.row === row);
+      expect(found).toBeDefined();
+      expect(DoorState.parse(door.data)).toEqual({
+        open: false,
+        across: found?.across,
+      });
     }
     const none = createSession(
       "me",
@@ -153,6 +182,37 @@ describe("doors", () => {
     registerContent(none, [off]);
     off.populate(none);
     expect(none.entities.size).toBe(0);
+  });
+
+  test("an open door is drawn flat against the wall it hangs on, leaving its doorway clear", () => {
+    for (const across of [true, false]) {
+      const game = world(100, 300);
+      const door = addDoor(game, true);
+      const rects: [number, number, number, number][] = [];
+      const ctx = {
+        fillStyle: "",
+        fillRect: (x: number, y: number, w: number, h: number) => {
+          rects.push([x, y, w, h]);
+        },
+        beginPath: () => undefined,
+        arc: () => undefined,
+        fill: () => undefined,
+      };
+      drawDoor(ctx, CELL, door, { open: true, across });
+      const left = DOOR.col * CELL;
+      const top = DOOR.row * CELL;
+      expect(rects.length).toBeGreaterThan(0);
+      for (const [x, y, w, h] of rects) {
+        // Across, the way runs left to right: the door lies along the wall above, a thin strip.
+        if (across) {
+          expect(y).toBeGreaterThanOrEqual(top);
+          expect(y + h).toBeLessThanOrEqual(top + CELL * 0.25);
+        } else {
+          expect(x).toBeGreaterThanOrEqual(left);
+          expect(x + w).toBeLessThanOrEqual(left + CELL * 0.25);
+        }
+      }
+    }
   });
 
   test("a closed door walls its cell off; open, or broken, it is floor", () => {

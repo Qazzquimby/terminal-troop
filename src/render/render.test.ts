@@ -38,6 +38,7 @@ import {
   drawRemembered,
   cellAt,
   poseAsWalls,
+  facedCells,
   interpolatedView,
 } from "./render.js";
 
@@ -185,6 +186,35 @@ test("cells posing as walls side by side show one another no face, as walls do",
 test("with no cell posing as a wall, the lit walls are left as they are", () => {
   const walls = new Map();
   expect(poseAsWalls(wallBesideOpen(), walls, [], { x: 0, y: 0 })).toBe(walls);
+});
+
+test("a lit face belongs to the wall cell behind it, so what stands in that cell shows", () => {
+  const map = wallBesideOpen();
+  const walls = new Map([
+    [
+      7,
+      [
+        {
+          from: { x: 10, y: 10 },
+          to: { x: 10, y: 20 },
+          normal: { x: 1, y: 0 },
+        },
+      ],
+    ],
+    [
+      8,
+      [
+        {
+          from: { x: 0, y: 30 },
+          to: { x: 10, y: 30 },
+          normal: { x: 0, y: 1 },
+        },
+      ],
+    ],
+  ]);
+  // The first is a face of the wall at column 0, row 1; the second of row 2, at the map's edge.
+  expect([...facedCells(map, walls)].sort()).toEqual([3, 6]);
+  expect(facedCells(map, new Map()).size).toBe(0);
 });
 
 const FIXED_DT = 1 / 60;
