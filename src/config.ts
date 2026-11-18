@@ -1341,7 +1341,7 @@ export const config = {
         seed: 2,
         clearance: CELL * 3,
         danger: 0.8,
-        offRoad: 1,
+        offRoad: 10,
       },
     },
     goldenScrap: {
@@ -1356,7 +1356,7 @@ export const config = {
         seed: 3,
         clearance: CELL * 3,
         danger: 3,
-        offRoad: 1,
+        offRoad: 18,
       },
     },
     // Seen and picked up only while it lies in deepdark.
@@ -1503,7 +1503,7 @@ export const config = {
         seed: 4,
         clearance: CELL * 3,
         danger: 0.8,
-        offRoad: 1,
+        offRoad: 10,
       },
       // Laid on top of the loot. spread "x": one in each equal band of the width, start to exit.
       guaranteed: [
