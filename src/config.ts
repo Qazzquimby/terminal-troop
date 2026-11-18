@@ -1316,7 +1316,10 @@ export const config = {
     // cells down its facing, as a zombie does, and makes for any body it sees or that hurts it,
     // but its own kind and exploders, which it would set off. It strikes what it touches for 30,
     // once a second. Its feet thump 4 times a second, heard 12 cells off, past a sprint's 7; a
-    // slam into a wall carries 10, a blow 5.
+    // slam into a wall carries 10, a blow 5. Light on it, it recoils for the nearest dark before
+    // anything else, a snort heard 6 cells off, and keeps its ways off lit ground where it can;
+    // `seeksDark: false` has it pay light no mind. Each hurt sets it raging 6s, a bellow heard 10
+    // cells off, the while minding no light.
     thumper: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -1335,7 +1338,15 @@ export const config = {
       damage: 30,
       attackCooldown: 1,
       thumpInterval: 0.25,
-      sounds: { thump: CELL * 12, slam: CELL * 10, attack: CELL * 5 },
+      seeksDark: true,
+      rageSeconds: 6,
+      sounds: {
+        thump: CELL * 12,
+        slam: CELL * 10,
+        attack: CELL * 5,
+        recoil: CELL * 6,
+        enrage: CELL * 10,
+      },
     },
     // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker.
     // Smaller than a player; four shovel hits break it. It rides at 1.3 times a walk, to spots 10
