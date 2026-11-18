@@ -3,12 +3,14 @@ import { onScreenAngle, upright } from "../../lib/upright/index.js";
 import { drawEmoji } from "../../render/index.js";
 import { defineEntity, isAreaFree, rounded, sound } from "../../sim/index.js";
 import type {
+  Body,
   Dormancy,
   EntityDefinition,
   Point,
   Session,
   Sound,
   Strike,
+  TileMap,
   WorldEntity,
 } from "../../sim/index.js";
 import { playEach, preyFor, touching } from "../bodies.js";
@@ -41,16 +43,24 @@ export interface TricycleConfig extends Hunting, Dormancy {
   /** How near a body it runs down must be, ahead of it, to slow it. */
   readonly slowRange: number;
   /**
-   * Its rides: to spots `min` to `max` off, as the crow flies, the one heading most nearly the way
-   * it already faces of `tries` tried, along ways at least `width` across where there are any.
-   * While any body it runs down is about, it rides only to spots within `near` of one.
+   * Its rides: to spots `min` to `max` off, as the crow flies, along ways at least `width` across
+   * where there are any. It tries `tries` spots round it and `through` spots past bodies it runs
+   * down, each `overshoot` beyond one; while any such body is about, it rides only to spots within
+   * `near` of one. Of those it reaches, it takes the one that best sets off the way it faces, plus
+   * `pull` for a ride whose way passes within `pass` of a body it runs down that it has not passed
+   * in the last `rest` seconds (a share of `pull` for one passed more lately).
    */
   readonly ride: {
     readonly min: number;
     readonly max: number;
     readonly tries: number;
+    readonly through: number;
+    readonly overshoot: { readonly min: number; readonly max: number };
     readonly width: number;
     readonly near: number;
+    readonly pass: number;
+    readonly pull: number;
+    readonly rest: number;
   };
   /** How far down its way it rings at a body it runs down standing on it. */
   readonly bellRange: number;
@@ -74,6 +84,9 @@ const NAME = "tricycle";
 
 const GLYPH = "🚲";
 
+/** What a short ride loses of its score: more than any setting off and pass can make up. */
+const SHORT = 100;
+
 /** Seconds its bell shows over it after a ring. */
 const BELL_SHOWN = 0.6;
 
@@ -84,6 +97,8 @@ const BELL_SHOWN = 0.6;
 export const TricycleState = z.object({
   route: Route,
   facing: rounded(2),
+  // When it last passed each body it runs down, by id, until `ride.rest` has run out.
+  passed: z.record(z.string(), Time),
   slowed: z.boolean(),
   bellAt: Time,
   rangAt: Time.nullable(),
@@ -99,6 +114,7 @@ export function freshTricycle(now: number, facing = 0): TricycleState {
   return {
     route: [],
     facing,
+    passed: {},
     slowed: false,
     bellAt: now,
     rangAt: null,
@@ -160,12 +176,51 @@ function spotsNear(bodies: readonly Point[], config: TricycleConfig): Point[] {
 }
 
 /**
+ * `through` spots past `bodies`, each on the far side of one drawn at random, as seen from `self`,
+ * give or take an eighth of a turn: `overshoot` beyond it, further should that leave the ride
+ * under `min`, but never past `near`; should that spot be in a wall, the nearest it fits at back
+ * along the line, a cell at a time, while still `pass` beyond. Riding to one, it rides by that
+ * body and on, rather than up to it to turn round.
+ */
+function spotsPast(
+  map: TileMap,
+  self: WorldEntity,
+  bodies: readonly Point[],
+  config: TricycleConfig,
+): Point[] {
+  const { through, overshoot, min, near, pass } = config.ride;
+  return Array.from({ length: through }).flatMap(() => {
+    const body = bodies[Math.floor(Math.random() * bodies.length)];
+    if (body === undefined) return [];
+    const off = Math.hypot(body.x - self.x, body.y - self.y);
+    const angle =
+      Math.atan2(body.y - self.y, body.x - self.x) +
+      (Math.random() - 0.5) * (Math.PI / 4);
+    const sampled =
+      overshoot.min + (overshoot.max - overshoot.min) * Math.random();
+    for (
+      let beyond = Math.min(near, Math.max(sampled, min - off));
+      beyond > pass;
+      beyond -= map.cell
+    ) {
+      const spot = {
+        x: body.x + Math.cos(angle) * beyond,
+        y: body.y + Math.sin(angle) * beyond,
+      };
+      if (isAreaFree(map, spot.x, spot.y, self.radius)) return [spot];
+    }
+    return [];
+  });
+}
+
+/**
  * Where it may ride next: spots round it, but, while any of `bodies` it runs down is about, only
- * those within its `near` of one; should none be, spots round those bodies instead, so it never
- * strays far from them.
+ * those within its `near` of one (should none be, spots round those bodies instead, so it never
+ * strays far from them), and spots past those bodies.
  */
 function destinations(
-  self: Point,
+  map: TileMap,
+  self: WorldEntity,
   bodies: readonly Point[],
   config: TricycleConfig,
 ): Point[] {
@@ -175,24 +230,91 @@ function destinations(
   const nearOne = round.filter((spot) =>
     bodies.some((body) => Math.hypot(body.x - spot.x, body.y - spot.y) <= near),
   );
-  return nearOne.length > 0 ? nearOne : spotsNear(bodies, config);
+  return [
+    ...(nearOne.length > 0 ? nearOne : spotsNear(bodies, config)),
+    ...spotsPast(map, self, bodies, config),
+  ];
+}
+
+/**
+ * How much it wants to pass `body` at `now`, `passed` the last time it passed each: not at all
+ * just after passing it, rising to wholly once `rest` has run out.
+ */
+function freshness(
+  passed: Readonly<Record<string, number>>,
+  body: Body,
+  now: number,
+  rest: number,
+): number {
+  const at = passed[body.id];
+  if (at === undefined || rest <= 0) return 1;
+  return Math.min(1, Math.max(0, (now - at) / rest));
+}
+
+/**
+ * Whether `route`, ridden from `from`, rides by `body`: within `range` of it on the way, and on
+ * to end more than `range` past it, not at it.
+ */
+function ridesBy(
+  from: Point,
+  route: readonly Point[],
+  body: Point,
+  range: number,
+): boolean {
+  const end = route.at(-1);
+  if (end === undefined) return false;
+  if (Math.hypot(end.x - body.x, end.y - body.y) <= range) return false;
+  return passes(from, route, body, range);
+}
+
+/** How far `route` runs, ridden from `from`. */
+function lengthOf(from: Point, route: readonly Point[]): number {
+  let length = 0;
+  let a = from;
+  for (const b of route) {
+    length += Math.hypot(b.x - a.x, b.y - a.y);
+    a = b;
+  }
+  return length;
+}
+
+/** Whether `route`, ridden from `from`, passes within `range` of `body`. */
+function passes(
+  from: Point,
+  route: readonly Point[],
+  body: Point,
+  range: number,
+): boolean {
+  let a = from;
+  for (const b of route) {
+    if (fromSegment(body, a, b) <= range) return true;
+    a = b;
+  }
+  return false;
 }
 
 /**
  * Its next ride, once the last is done: of the spots it may ride to (see `destinations`), those
- * it fits at, the one whose way sets off most nearly the way it faces, so it doubles back only
- * when nothing else goes. Empty when none is reached.
+ * it fits at, the one scoring best: how nearly its way sets off the way it faces, so it doubles
+ * back only when nothing else goes, plus `pull` times the freshest body it runs down that the way
+ * rides by (on past it, not to it), so it rides by one it has not lately passed. Empty when none
+ * is reached.
  */
 function nextRide(
   game: Session,
   self: WorldEntity,
-  facing: number,
-  bodies: readonly Point[],
+  state: TricycleState,
+  bodies: readonly Body[],
   config: TricycleConfig,
 ): Point[] {
   const { map } = game.world;
+  const { pass, pull, rest } = config.ride;
+  const wants = bodies.map((body) => ({
+    body,
+    fresh: freshness(state.passed, body, game.worldTime, rest),
+  }));
   let best: { route: Point[]; score: number } | null = null;
-  for (const to of destinations(self, bodies, config)) {
+  for (const to of destinations(map, self, bodies, config)) {
     if (!isAreaFree(map, to.x, to.y, self.radius)) continue;
     const route = wideRoute(game, self, to, config);
     if (route === null) continue;
@@ -203,10 +325,37 @@ function nextRide(
       ) ?? route.at(-1);
     if (first === undefined) continue;
     const setsOff = Math.atan2(first.y - self.y, first.x - self.x);
-    const score = Math.cos(setsOff - facing);
+    let drawn = 0;
+    for (const { body, fresh } of wants)
+      if (fresh > drawn && ridesBy(self, route, body, pass)) drawn = fresh;
+    // A ride short of `min` along its way, its end nudged in off the walls, goes only when no
+    // longer one does.
+    const short = lengthOf(self, route) < config.ride.min ? SHORT : 0;
+    const score = Math.cos(setsOff - state.facing) + pull * drawn - short;
     if (best === null || score > best.score) best = { route, score };
   }
   return best?.route ?? [];
+}
+
+/**
+ * `passed` brought up to `now`: each of `bodies` within `ride.pass` of `self` passed now, and any
+ * passed `ride.rest` or more ago forgotten, so it keeps only what still sways it.
+ */
+function passing(
+  passed: Readonly<Record<string, number>>,
+  self: Point,
+  bodies: readonly Body[],
+  now: number,
+  config: TricycleConfig,
+): Record<string, number> {
+  const { pass, rest } = config.ride;
+  const kept = Object.fromEntries(
+    Object.entries(passed).filter(([, at]) => now - at < rest),
+  );
+  for (const body of bodies)
+    if (Math.hypot(body.x - self.x, body.y - self.y) <= pass)
+      kept[body.id] = now;
+  return kept;
 }
 
 /** How far `at` is from the segment `a` to `b`. */
@@ -235,13 +384,7 @@ export function onWay(
   range: number,
 ): boolean {
   if (Math.hypot(body.x - self.x, body.y - self.y) > range) return false;
-  const reach = self.radius + body.radius;
-  let from: Point = self;
-  for (const to of route) {
-    if (fromSegment(body, from, to) <= reach) return true;
-    from = to;
-  }
-  return false;
+  return passes(self, route, body, self.radius + body.radius);
 }
 
 /** Whether `body` is within `range` of it and ahead of it, the way it faces. */
@@ -269,10 +412,11 @@ function think(
 ): TricycleState {
   const now = game.worldTime;
   const bodies = quarries(game, self, config);
+  const passed = passing(state.passed, self, bodies, now, config);
   const route =
     state.route.length > 0
       ? state.route
-      : nextRide(game, self, state.facing, bodies, config);
+      : nextRide(game, self, { ...state, passed }, bodies, config);
   const blocked = bodies.some((body) =>
     onWay(self, route, body, config.bellRange),
   );
@@ -286,6 +430,7 @@ function think(
     {
       ...state,
       route,
+      passed,
       slowed,
       bellAt: rings ? now + config.bellCooldown : state.bellAt,
       rangAt: rings ? now : state.rangAt,
@@ -388,7 +533,9 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
 /**
  * The tricycle: no one rides it, but it rides on all the same, along the wide ways, picking each
  * ride to set off the way it already heads, so it rarely doubles back, and never to a spot far
- * from every body it runs down, so it keeps coming back round to them. It passes through every
+ * from every body it runs down. It sweeps by them rather than at them: its rides are long, and it
+ * takes one whose way passes a body it runs down, on and past it, over one that does not,
+ * favouring whichever it has gone longest without passing, so among many it does the rounds. It passes through every
  * body but those it runs down, players as shipped, and those it strikes hard as it passes. One
  * standing on its way ahead hears its bell; near and ahead of it, it slows. Its wheels creak as it
  * goes.
