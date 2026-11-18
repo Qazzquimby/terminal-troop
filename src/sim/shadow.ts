@@ -226,8 +226,8 @@ export function edgeAngles(
 /**
  * Every body in `game` that casts a shadow now: each living player out in the world, not aboard
  * a vehicle, and each world entity but those of a kind that casts none, one only some body
- * perceives, or one showing as an apparition. None at all while the light config's shadows are
- * off.
+ * perceives, or one showing as an apparition or passing for an item. None at all while the light
+ * config's shadows are off.
  */
 export function shadowCasters(game: Session): Occluder[] {
   if (!game.config.light.shadows.cast) return [];
@@ -244,7 +244,8 @@ export function shadowCasters(game: Session): Occluder[] {
   game.entities.forEach((entity) => {
     const type = game.entityTypes.get(entity.kind);
     if (type === undefined || !type.castsShadow || type.restricted) return;
-    if (type.apparition(entity) !== null) return;
+    if (type.apparition(entity) !== null || type.posedItem(entity) !== null)
+      return;
     casters.push({
       id: entity.id,
       x: entity.x,
