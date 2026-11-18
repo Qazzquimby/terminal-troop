@@ -684,7 +684,7 @@ export const config = {
     // She stays away 20s to 3min, then appears 4 to 12 cells off, at least 90 degrees past the
     // edge of her target's view cone (so within the 90 degrees straight behind it), with a clear
     // line to it; trying 24 spots, then again half a second later. She stares with 15 patience,
-    // losing 1 a second, gaining 2 while unseen and 1 while looked at. From 3 anger a look sets
+    // losing 1 a second, 2 more while unseen and 1 more while looked at. From 3 anger a look sets
     // her on her target 30% of the time, 10% more for each anger past 3. She chases at half a
     // sprint, a tenth of a sprint faster per anger past 3, never past 1.2 sprints, for 5 to 10s,
     // then flickers for 0.8s and vanishes. Touching her costs 20 health a second, 5 every 0.25s.
@@ -694,7 +694,7 @@ export const config = {
     ghostGirl: {
       spawning: {
         weight: 3,
-        after: 60*3,
+        after: 60 * 3,
         tries: 24,
         most: 1,
         unseenDistance: CELL * 14,

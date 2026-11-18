@@ -33,9 +33,7 @@ import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
-const stareUrls = [
-  new URL("./sfx/stare.mp3", import.meta.url).href,
-];
+const stareUrls = [new URL("./sfx/stare.mp3", import.meta.url).href];
 const chaseUrl = new URL("./sfx/chase.mp3", import.meta.url).href;
 const appearUrl = new URL("./sfx/appear.mp3", import.meta.url).href;
 const vanishUrl = new URL("./sfx/vanish.mp3", import.meta.url).href;
@@ -610,7 +608,9 @@ function drawStatic(ctx: CanvasRenderingContext2D, size: number): void {
 
 function definition(config: GhostGirlConfig): EntityDefinition<GhostGirlState> {
   const sounds: Sounds = {
-    stare: stareUrls.map((url) => sound({ url, volume: 0.5, range: config.soundRange })),
+    stare: stareUrls.map((url) =>
+      sound({ url, volume: 0.5, range: config.soundRange }),
+    ),
     chase: sound({ url: chaseUrl, range: config.soundRange }),
     appear: sound({ url: appearUrl, range: config.soundRange }),
     vanish: sound({ url: vanishUrl, range: config.soundRange }),

@@ -5,7 +5,8 @@ import {
   effect,
   INERT_TAG,
   inRect,
-  livingPlayers, sound,
+  livingPlayers,
+  sound,
   worldData,
 } from "../../sim/index.js";
 import type {
@@ -175,7 +176,14 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
   }
   if (held.since === null) {
     departure.set(game, { ...held, since: game.worldTime });
-    effect(game, { at, sound: sound({url:departUrl, range: 20, volume: 0.3, noise: false}) }, game.local);
+    effect(
+      game,
+      {
+        at,
+        sound: sound({ url: departUrl, range: 20, volume: 0.3, noise: false }),
+      },
+      game.local,
+    );
     return;
   }
   if (game.worldTime < held.since + config.delay) return;
@@ -192,7 +200,7 @@ function stepDeparture(game: Session, config: EscapeConfig): void {
       {
         at: { x: player.x, y: player.y },
         flash: { radius: player.radius * ESCAPE_FLASH, hit: true },
-        sound: sound({url:escapeUrl, noise: false}),
+        sound: sound({ url: escapeUrl, noise: false }),
       },
       player,
     );

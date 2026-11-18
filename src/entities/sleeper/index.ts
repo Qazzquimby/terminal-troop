@@ -39,8 +39,8 @@ import type { SpawningConfig } from "../spawning.js";
 const barkUrl = new URL("./sfx/bark.mp3", import.meta.url).href;
 const growlUrl = new URL("./sfx/growl.mp3", import.meta.url).href;
 const enrageUrl = new URL("./sfx/enrage.mp3", import.meta.url).href;
-const rageBarkUrl = new URL("./sfx/rage-bark.mp3", import.meta.url).href;
-const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
+const rageBarkUrl = new URL("./sfx/rage-bark.wav", import.meta.url).href;
+const attackUrl = new URL("./sfx/attack.wav", import.meta.url).href;
 const vanishUrl = new URL("./sfx/vanish.mp3", import.meta.url).href;
 
 /** Seconds between two sounds of one kind, drawn between the two. */

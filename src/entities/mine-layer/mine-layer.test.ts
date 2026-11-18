@@ -107,6 +107,16 @@ function firstMine(game: Session): WorldEntity {
 const sounded = (game: Session, file: string): boolean =>
   vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith(`/${file}`));
 
+/**
+ * How many times a mine has played `file`. Its arm, beep and trigger share one file, so the tests
+ * count plays of it rather than tell them apart.
+ */
+const mineSounds = (game: Session, file: "beep.wav" | "blast.wav"): number =>
+  vi
+    .mocked(game.sfx.play)
+    .mock.calls.filter(([url]) => url.endsWith(`/land-mine/sfx/${file}`))
+    .length;
+
 const distance = (a: Point, b: Point): number =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -118,13 +128,12 @@ describe("land mine", () => {
     const mine = firstMine(game);
     run(game, mineConfig.armSeconds - 0.1);
     expect(mineState(mine).beepAt).toBeNull();
-    expect(sounded(game, "arm.mp3")).toBe(false);
+    expect(mineSounds(game, "beep.wav")).toBe(0);
     run(game, 0.2);
     expect(mineState(mine).beepAt).not.toBeNull();
-    expect(sounded(game, "arm.mp3")).toBe(true);
-    expect(sounded(game, "beep.mp3")).toBe(false);
+    expect(mineSounds(game, "beep.wav")).toBe(1);
     run(game, mineConfig.beepGap);
-    expect(sounded(game, "beep.mp3")).toBe(true);
+    expect(mineSounds(game, "beep.wav")).toBe(2);
     expect(mines(game)).toHaveLength(1);
   });
 
@@ -136,11 +145,12 @@ describe("land mine", () => {
     run(game, mineConfig.armSeconds - 0.1);
     expect(game.local.health).toBe(testSimConfig.player.maxHealth);
     run(game, 0.2);
-    expect(sounded(game, "trigger.mp3")).toBe(true);
-    expect(sounded(game, "blast.mp3")).toBe(false);
+    // Its arming beep, then its trigger's.
+    expect(mineSounds(game, "beep.wav")).toBe(2);
+    expect(mineSounds(game, "blast.wav")).toBe(0);
     expect(game.local.health).toBe(testSimConfig.player.maxHealth);
     run(game, mineConfig.fuse);
-    expect(sounded(game, "blast.mp3")).toBe(true);
+    expect(mineSounds(game, "blast.wav")).toBe(1);
     // 50px off, halfway out: 90 damage.
     expect(testSimConfig.player.maxHealth - game.local.health).toBeCloseTo(90);
     expect(lastHurtBy(game, game.localId)).toBe(mine.id);
@@ -164,9 +174,10 @@ describe("land mine", () => {
     const game = world();
     standAt(game, 450, 300 + mineConfig.triggerRange + 40);
     layMine(game, { x: 450, y: 300 });
-    run(game, mineConfig.armSeconds + 2);
+    run(game, mineConfig.armSeconds + mineConfig.beepGap / 2);
     expect(mines(game)).toHaveLength(1);
-    expect(sounded(game, "trigger.mp3")).toBe(false);
+    // Its arming beep alone: no trigger.
+    expect(mineSounds(game, "beep.wav")).toBe(1);
   });
 
   test("any body sets it off, a monster too, but neither a mine layer nor another mine does", () => {

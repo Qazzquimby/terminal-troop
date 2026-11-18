@@ -139,7 +139,11 @@ export function gamble(config: FinancesConfig): VehicleGamble {
       effect(game, {
         at: { x: vehicle.x, y: vehicle.y },
         noise: config.coinToss.range,
-        sound: sound({ url: flipUrl, volume: config.coinToss.volume, range: config.coinToss.range }),
+        sound: sound({
+          url: flipUrl,
+          volume: config.coinToss.volume,
+          range: config.coinToss.range,
+        }),
       });
     },
   };
@@ -176,7 +180,11 @@ export function stepCoinToss(
       at: { x: cruiser.x, y: cruiser.y },
       noise: config.range,
       ...(won && { flash: { radius: WIN_FLASH, hit: true } }),
-      sound: sound({ url: won ? winUrl : loseUrl, volume: config.volume, range: config.range }),
+      sound: sound({
+        url: won ? winUrl : loseUrl,
+        volume: config.volume,
+        range: config.range,
+      }),
     },
     cruiser,
   );

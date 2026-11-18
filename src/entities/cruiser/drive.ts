@@ -14,7 +14,8 @@ import {
   playersOutside,
   push,
   reachAlong,
-  rounded, sound,
+  rounded,
+  sound,
   touches,
   unseat,
 } from "../../sim/index.js";
@@ -52,13 +53,13 @@ const engineSound = sound({
 const crashSound = sound({
   url: crashUrl,
   volume: 0.8,
-  range: 34
-})
+  range: 34,
+});
 const ramSound = sound({
   url: ramUrl,
   volume: 0.5,
-  range: 22
-})
+  range: 22,
+});
 
 /** How often the engine is heard, and how far. Seconds, pixels. */
 interface EngineBeat {
@@ -157,7 +158,11 @@ const isPowered = (vehicle: WorldEntity): boolean => stateOf(vehicle).fuel > 0;
  * down the walls it crashes into, and has a horn.
  */
 export function vehicle(config: DrivingConfig): VehicleSpec {
-  const hornSound = sound({ url: hornUrl, volume: config.horn.volume, range: config.horn.noiseRadius });
+  const hornSound = sound({
+    url: hornUrl,
+    volume: config.horn.volume,
+    range: config.horn.noiseRadius,
+  });
   return {
     handling: config.handling,
     reach: config.reach,

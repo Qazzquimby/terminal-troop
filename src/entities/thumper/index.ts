@@ -33,7 +33,7 @@ import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
-const thumpUrl = new URL("./sfx/thump.mp3", import.meta.url).href;
+const thumpUrl = new URL("./sfx/thump.wav", import.meta.url).href;
 const slamUrl = new URL("./sfx/slam.mp3", import.meta.url).href;
 const attackUrl = new URL("./sfx/attack.mp3", import.meta.url).href;
 
