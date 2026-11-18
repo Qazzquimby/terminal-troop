@@ -158,6 +158,7 @@ export function itemName(
 export function dropAll(game: Session, id: string, at: Point): void {
   if (!game.hosting || !itemsCanLie(game)) return;
   const { radius } = game.config.worldItems;
+  const facing = game.players.get(id)?.aim;
   itemsOf(game, id).forEach((item, slot) => {
     if (item === null || !takeItem(game, id, slot, item.id)) return;
     const spot = arrivalPoint(
@@ -167,7 +168,14 @@ export function dropAll(game: Session, id: string, at: Point): void {
       game.config.death.scatter,
       Math.random,
     );
-    const lying = spawnWorldItem(game, spot, item.id, item.left, item.state);
+    const lying = spawnWorldItem(
+      game,
+      spot,
+      item.id,
+      item.left,
+      item.state,
+      facing,
+    );
     soundDrop(game, item.id, spot, lying);
   });
 }

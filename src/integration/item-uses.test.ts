@@ -1,3 +1,4 @@
+import { omit } from "lodash-es";
 import { expect, test, vi } from "vitest";
 import type { Room } from "../room/index.js";
 import {
@@ -9,6 +10,7 @@ import {
   spendUses,
   usesAt,
   usesLeft,
+  lyingItem,
 } from "../sim/index.js";
 import type { Controls, Session } from "../sim/index.js";
 import { crew, idle, playerOn, sessionOf } from "./crew.js";
@@ -128,7 +130,7 @@ test("a part-spent item dropped and picked up again keeps the uses it had left",
   run(300);
   const lying = [...host.entities.values()].find(
     (entity) =>
-      JSON.stringify(entity.data) ===
+      JSON.stringify(omit(lyingItem(host, entity), "facing")) ===
       JSON.stringify({ item: "flare", left: 2 }),
   );
   expect(lying).toBeDefined();

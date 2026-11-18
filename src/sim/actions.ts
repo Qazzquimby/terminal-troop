@@ -740,7 +740,9 @@ export function stateAt(
 /**
  * Leaves the item in `actor`'s `slot`, if it is `item`, keeping `state` of its own, which only
  * the host does: its record of the actor's items carries that to every client. The actor's own
- * client is not predicted to change it, so content may draw it at random. Returns whether it did.
+ * client is not predicted to change it, so content may draw it at random, unless `predict` says
+ * so: then the actor's own client shows it at once, as a flashlight's switch does, and takes the
+ * host's record once the host answers. Returns whether it did.
  */
 export function setStateAt(
   game: Session,
@@ -748,7 +750,17 @@ export function setStateAt(
   slot: number,
   item: string,
   state: ItemState | undefined,
+  { predict = false }: { readonly predict?: boolean } = {},
 ): boolean {
+  const run = predicting(game);
+  if (predict && run !== null && actor === game.local) {
+    const held = itemAt(game, actor, slot);
+    if (held?.id !== item) return false;
+    predictItems(game, run, (inventory) => {
+      inventory[slot] = withState(held, state);
+    });
+    return true;
+  }
   if (scope(game) !== "world") return false;
   return setItemState(game, actor.id, slot, item, state);
 }

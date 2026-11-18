@@ -33,6 +33,7 @@ export {
   soundDrop,
   spawnWorldItem,
 } from "./world-items.js";
+export { lyingItem } from "./lying.js";
 export {
   driverOf,
   driversOf,
@@ -111,7 +112,8 @@ export { lerpAngle, renderAim, renderPosition } from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
 export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";
-export { itemInstances, makerOf, spendInstanceUses } from "./item-instances.js";
+export { instanceKey, itemInstances, makerOf } from "./item-instances.js";
+export { setInstanceState, spendInstanceUses } from "./world-items.js";
 export type { ItemInstance } from "./item-instances.js";
 export { addVoiceChannel, onAir, voiceRoutes } from "./voice-routes.js";
 export { ghostEarChannel } from "./ghost-ears.js";
@@ -213,7 +215,6 @@ export { fan, shoot } from "./shot.js";
 export type { Entity } from "./entity.js";
 export { aimAt, createPlayer } from "./player.js";
 export { playerData } from "./player-data.js";
-export type { PlayerData } from "./player-data.js";
 export {
   applyWorldEntries,
   takeWorldEntries,

@@ -1,3 +1,4 @@
+import { omit } from "lodash-es";
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 import { entityContent } from "../entities/index.js";
@@ -15,6 +16,7 @@ import {
   spawnWorldItem,
   takeItem,
   updateSession,
+  lyingItem,
 } from "../sim/index.js";
 import type {
   Controls,
@@ -225,7 +227,9 @@ async function room() {
   /** How many of item `item` lie in the world, as client `id` knows it. */
   const lying = (id: string, item: string): number =>
     ofKind(client(id).game(), "core/world-item").filter(
-      (entity) => JSON.stringify(entity.data) === JSON.stringify({ item }),
+      (entity) =>
+        JSON.stringify(omit(lyingItem(client(id).game(), entity), "facing")) ===
+        JSON.stringify({ item }),
     ).length;
   /** As the host, gives client `id` scrap in `slot`, and lets the record reach it. */
   const stock = (id: string, slot: number): void => {

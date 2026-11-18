@@ -22,11 +22,12 @@ import type { PlayerData } from "./player-data.js";
 import type { LightEmission } from "./vision.js";
 import { registerWorldData } from "./world-data.js";
 import type { WorldDataSet } from "./world-data.js";
-import type { Controls, Player } from "./player.js";
+import type { Controls } from "./player.js";
 import type { Session } from "./session.js";
 import { itemControl, itemUse, registerItem } from "./use.js";
 import type { ControlSpec, ItemUse, UseSpec } from "./use.js";
 import type { ItemLoot } from "./loot.js";
+import type { ItemInstance } from "./item-instances.js";
 import type { ItemPlays } from "./item-sounds.js";
 import { addVoiceChannel } from "./voice-routes.js";
 import type { VoiceChannel } from "./voice-routes.js";
@@ -526,10 +527,11 @@ interface ItemBase extends Omit<
    */
   act?(game: Session, controls: Controls): void;
   /**
-   * The light it gives off while `holder` holds it, if any, such as a flashlight switched on:
-   * every client draws it, and it lights the world for `isLit`.
+   * The light `instance` of it gives off, if any, such as a flashlight switched on: from where it
+   * is, the way it points, held or lying, but never from a pocket. Every client draws it, and it
+   * lights the world for `isLit`.
    */
-  light?(game: Session, holder: Player): LightEmission | null;
+  light?(instance: ItemInstance, game: Session): LightEmission | null;
 }
 
 /** An item a player uses while it holds it, on the use control. */
