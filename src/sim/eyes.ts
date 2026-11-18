@@ -6,7 +6,7 @@ import { pulledFacing } from "./gaze-pull.js";
 import type { Point } from "./map.js";
 import type { Session } from "./session.js";
 import { isStunned } from "./status.js";
-import { canSeeFrom } from "./vision.js";
+import { canSeeFrom, withinVision } from "./vision.js";
 
 /*
  * Every body can have eyes: a player by its aim, a world entity by its kind's `eyes`. Eyes see two
@@ -80,15 +80,24 @@ export function inCone(
 ): boolean {
   const cone = sight?.cone ?? null;
   if (sight === null || cone === null) return false;
+  const shape = {
+    kind: "cone" as const,
+    direction: cone.direction,
+    angle: cone.angle,
+  };
+  // Outside the cone, or past the most it reaches, deepdark or not, it is not seen, and costs no
+  // look at the darkness round it.
+  const most = Math.min(
+    cone.range * Math.max(1, game.config.deepdark.sight),
+    range,
+  );
+  if (!withinVision({ x: sight.x, y: sight.y, range: most, shape }, at))
+    return false;
   const source = {
     x: sight.x,
     y: sight.y,
     range: Math.min(cone.range * reachInto(game, at), range),
-    shape: {
-      kind: "cone" as const,
-      direction: cone.direction,
-      angle: cone.angle,
-    },
+    shape,
   };
   return canSeeFrom(game.world.map, source, at);
 }

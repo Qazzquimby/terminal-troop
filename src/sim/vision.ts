@@ -93,7 +93,8 @@ interface Viewer extends Point {
   readonly aim: number;
 }
 
-function withinVision(source: VisionSource, point: Point): boolean {
+/** Whether `point` lies within `source`'s range and shape, walls aside. */
+export function withinVision(source: VisionSource, point: Point): boolean {
   const dx = point.x - source.x;
   const dy = point.y - source.y;
   const distance = Math.hypot(dx, dy);
