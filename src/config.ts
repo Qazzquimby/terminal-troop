@@ -591,7 +591,7 @@ export const config = {
         seed: 7,
         clearance: CELL * 20,
         spread: "x",
-        danger: 3,
+        danger: 1,
         terms: { right: 0, exit: 0 },
       },
       reach: CELL, // an item this near its middle counts as offered
@@ -1201,14 +1201,14 @@ export const config = {
       ignores: ["mimic", "exploder"],
       radius: 10,
       mass: 0.5,
-      maxHealth: SHOVEL_DAMAGE,
-      speedShare: 1.1, // of a player's walk
+      maxHealth: SHOVEL_DAMAGE * 2,
+      speedShare: 1.2, // of a player's walk
       wanderRange: CELL * 5,
       sightRange: CELL * 5, // down its facing
       noticeRange: CELL * 2, // a body this near stirs it while hiding
       hideSeconds: { min: 10, max: 30 },
       springDelay: { min: 0, max: 1 },
-      revealSeconds: 0.25, // its burst of teeth on springing
+      revealSeconds: 0.1, // its burst of teeth on springing
       rehideAfter: 5, // seconds before it may copy the item it last copied again
       sameSpot: CELL, // what counts as near the item it last copied
       spacing: CELL / 2, // its hiding spot from any item or posing body
@@ -1453,7 +1453,7 @@ export const config = {
       // Items a new world lays, each picked by loot weight. danger: exponent on danger weight;
       // offRoad: 1 lays none on the road. A scatter may also set its own danger `terms`.
       scatter: {
-        count: 50,
+        count: 40,
         seed: 4,
         clearance: CELL * 3,
         danger: 1,
