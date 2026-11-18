@@ -9,6 +9,7 @@ import {
   sayHere,
   speak,
   updateSession,
+  viewOf,
 } from "./sim/index.js";
 import { NetEvent, carries, createCountingTransport } from "./net/index.js";
 import type { CabinCommand, Point, Session } from "./sim/index.js";
@@ -61,7 +62,7 @@ import {
   pulledView,
   viewHeading,
 } from "./render/index.js";
-import type { Eye } from "./render/index.js";
+import type { Eye, Sees } from "./render/index.js";
 import { createSfx } from "./audio/index.js";
 import { micIndicator, createNullVoice, pushToTalk } from "./voice/index.js";
 import { createPerfStats } from "./perf-stats/index.js";
@@ -553,6 +554,16 @@ function eyeTarget(session: Session, eye: Eye, alpha: number): Point {
   }
 }
 
+/**
+ * What shows on the screen for `eye`, by the one test the renderer draws by (#457): what the
+ * watched body, or the local one, sees and has lit. A free ghost's eye shows all the map in sight.
+ */
+function eyeSees(session: Session, eye: Eye): Sees {
+  if (eye.kind === "free") return () => true;
+  const viewer = eye.kind === "watch" ? eye.player : session.local;
+  return viewOf(session, viewer).sees;
+}
+
 /** When the last frame ran, on the `performance.now()` clock. */
 let lastFrame = performance.now();
 
@@ -625,6 +636,7 @@ function frame(): void {
       target,
       frameSeconds,
       rotating,
+      () => eyeSees(session, eye),
     );
     updateCamera(
       camera,

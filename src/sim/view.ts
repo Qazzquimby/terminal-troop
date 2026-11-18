@@ -20,6 +20,7 @@ import {
   directionalVision,
   emittedLights,
   isBodyVisible,
+  isVisible,
   litFrom,
   sightLights,
 } from "./vision.js";
@@ -89,6 +90,8 @@ export interface View {
   readonly deep: (point: Point) => boolean;
   /** Whether no light can show a point: darkness given off, or deepdark no light reaches. */
   readonly dark: (point: Point) => boolean;
+  /** Whether `point` shows on the viewer's screen: seen and lit, as each point of a body is. */
+  readonly sees: (point: Point) => boolean;
   /** Whether any part of `body` shows on the viewer's screen. */
   readonly shows: (body: Footprint) => boolean;
 }
@@ -121,6 +124,8 @@ export function viewOf(
     );
   const dark = (point: Point): boolean =>
     (darks.length > 0 && inDarkness(map, darks, point)) || unlitDeep(point);
+  const sees = (point: Point): boolean =>
+    isVisible(map, sources, lights, point, { ambient, dark, shadows });
   const { footprintSpacing } = game.config.vision;
   const shows = (body: Footprint): boolean =>
     isBodyVisible(map, sources, lights, body, footprintSpacing, {
@@ -140,6 +145,7 @@ export function viewOf(
     ambient,
     deep,
     dark,
+    sees,
     shows,
   };
 }
