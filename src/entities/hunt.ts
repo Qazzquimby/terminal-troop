@@ -304,6 +304,49 @@ export function strikeIf<
 }
 
 /**
+ * Where a body following a way last made headway along it, and the seconds it has been held short
+ * of making more since, counted only in steps it takes, so a stun or dormancy counts for nothing;
+ * null while it is on no way. Exact, as only the host reads it.
+ */
+export const Headway = z
+  .object({ x: rounded(1), y: rounded(1), held: z.number() })
+  .nullable();
+
+export type Headway = z.output<typeof Headway>;
+
+/** How far a body on its way must get, and within how many seconds, to be making headway. */
+export interface Stalling {
+  readonly distance: number;
+  readonly seconds: number;
+}
+
+/**
+ * `headway` brought up a step of `dt` for a body standing `at`, on its way when `going`: set
+ * afresh wherever it has got `stall.distance` from where it last made headway, and dropped while
+ * it is on no way. `stalled` once it has made none for `stall.seconds`, as a body held up by
+ * something its way did not foresee, such as a door shut since it planned: it should give up
+ * that way and plan another. Any kind that follows ways can keep one.
+ */
+export function headwayOf(
+  headway: Headway,
+  at: Point,
+  dt: number,
+  going: boolean,
+  stall: Stalling,
+): { readonly headway: Headway; readonly stalled: boolean } {
+  if (!going) return { headway: null, stalled: false };
+  if (
+    headway === null ||
+    Math.hypot(at.x - headway.x, at.y - headway.y) >= stall.distance
+  )
+    return { headway: { x: at.x, y: at.y, held: 0 }, stalled: false };
+  const held = headway.held + dt;
+  if (held < stall.seconds)
+    return { headway: { ...headway, held }, stalled: false };
+  return { headway: null, stalled: true };
+}
+
+/**
  * When a rage hurt sets off ends, as of world time `now`: `seconds` on when it was `hurt` this
  * step, each hurt starting it afresh, else `until` as it was. Any kind can keep a `Time` for it
  * and declare its seconds in its config; it rages while `now` is short of the time.

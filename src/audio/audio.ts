@@ -34,6 +34,11 @@ interface PlayOptions {
    * for a sound played once, such as a clip of a player's voice sent as a data url.
    */
   cache?: boolean;
+  /**
+   * The channel it plays on, such as the radios': its volume, set with `setChannelVolume`, scales
+   * it, on top of its own volume and the master volume. None when left out.
+   */
+  channel?: string;
 }
 
 /** How sound made rather than loaded plays: never looped, nor kept. */
@@ -99,6 +104,8 @@ export interface Sfx {
   stopAll: (fadeTime?: number) => void;
   /** Scales every sound; 0..1. */
   setMasterVolume: (value: number) => void;
+  /** Scales every sound on `channel`, playing now or played from here on; 0..1, full until set. */
+  setChannelVolume: (channel: string, value: number) => void;
   /** The one shared AudioContext, created on first use. */
   audioContext: () => AudioContext;
   /** The master gain: audio connected here plays at the master volume. */
@@ -146,6 +153,8 @@ interface Placed {
   setPosition: (origin: Point | null, listener: Point | null) => void;
   /** Mixes it anew for `listener`, from where it was last placed. */
   listen: (listener: Point | null) => void;
+  /** Sets its gain anew for its channel's volume now. */
+  rescale: () => void;
   /** Leaves its mix as it is from now on, as it fades out. */
   release: () => void;
   disconnect: () => void;
@@ -206,6 +215,18 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     if (master !== null) master.gain.value = value;
   }
 
+  /** How loud each channel plays, by name: full for one never set. */
+  const channelVolumes = new Map<string, number>();
+  /** Every sound playing on a channel, by channel, rescaled as its volume changes. */
+  const onChannel = new Map<string, Set<Placed>>();
+  const channelVolume = (channel: string | undefined): number =>
+    channel === undefined ? 1 : (channelVolumes.get(channel) ?? 1);
+
+  function setChannelVolume(channel: string, value: number): void {
+    channelVolumes.set(channel, value);
+    for (const out of onChannel.get(channel) ?? []) out.rescale();
+  }
+
   /**
    * The decoded sound at `url`, fetched once. A sound that fails to load or decode resolves to
    * null, warned about once, and is not fetched again: assets can lag behind the code using them.
@@ -258,7 +279,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     buffer: AudioBuffer,
     origin: Point | null,
     listener: Point | null,
-    { volume = 1, loop = false, range }: Omit<PlayOptions, "cache">,
+    { volume = 1, loop = false, range, channel }: Omit<PlayOptions, "cache">,
   ): Promise<SoundHandle> {
     const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
@@ -267,7 +288,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     await context.resume();
 
     const source = context.createBufferSource();
-    const out = placed(context, fades, origin, listener, volume);
+    const out = placed(context, fades, origin, listener, volume, channel);
     const { gain } = out;
 
     source.buffer = buffer;
@@ -314,7 +335,8 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
   /**
    * A gain and a panner, into the master, that place a sound at `volume` from `origin` for
    * `listener`, fading by `fades`; sound goes in at the gain. While it has an origin, `listen`
-   * mixes it anew for wherever the listener goes.
+   * mixes it anew for wherever the listener goes. On a `channel`, that channel's volume scales it
+   * too, as it changes.
    */
   function placed(
     context: AudioContext,
@@ -322,6 +344,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     origin: Point | null,
     listener: Point | null,
     volume: number,
+    channel?: string,
   ): Placed {
     // Copied: the origin is where the sound was made, not whatever the caller's point does next.
     const copy = (point: Point | null) =>
@@ -332,20 +355,28 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     let released = false;
     const gain = context.createGain();
     const panner = context.createStereoPanner();
-    gain.gain.value = mix.volume * baseVolume;
+    const level = () => mix.volume * baseVolume * channelVolume(channel);
+    gain.gain.value = level();
     panner.pan.value = mix.pan;
     gain.connect(panner);
     panner.connect(getMaster(context));
+    const sharing =
+      channel === undefined
+        ? null
+        : (onChannel.get(channel) ?? new Set<Placed>());
     const out: Placed = {
       gain,
       setVolume(value: number): void {
         baseVolume = value;
-        gain.gain.value = mix.volume * baseVolume;
+        gain.gain.value = level();
+      },
+      rescale(): void {
+        if (!released) gain.gain.value = level();
       },
       setPosition(newOrigin: Point | null, newListener: Point | null): void {
         from = copy(newOrigin);
         mix = spatialMix(from, newListener, fades);
-        gain.gain.value = mix.volume * baseVolume;
+        gain.gain.value = level();
         panner.pan.value = mix.pan;
         if (from === null || released) positioned.delete(out);
         else positioned.add(out);
@@ -356,6 +387,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
       release(): void {
         released = true;
         positioned.delete(out);
+        sharing?.delete(out);
       },
       disconnect(): void {
         out.release();
@@ -364,6 +396,10 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
       },
     };
     if (from !== null) positioned.add(out);
+    if (channel !== undefined && sharing !== null) {
+      sharing.add(out);
+      onChannel.set(channel, sharing);
+    }
     return out;
   }
 
@@ -450,7 +486,13 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     url: string | readonly string[],
     origin: Point | null,
     listener: Point | null,
-    { volume = 1, loop = false, range, offset = 0 }: StreamOptions = {},
+    {
+      volume = 1,
+      loop = false,
+      range,
+      offset = 0,
+      channel,
+    }: StreamOptions = {},
   ): SoundHandle {
     const fades = rangedFalloff(falloff, range);
     const context = getAudioContext();
@@ -458,7 +500,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     element.preload = "auto";
 
     const source = context.createMediaElementSource(element);
-    const out = placed(context, fades, origin, listener, volume);
+    const out = placed(context, fades, origin, listener, volume, channel);
     const { gain } = out;
     source.connect(gain);
     let stopped = false;
@@ -557,6 +599,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     listen,
     stopAll,
     setMasterVolume,
+    setChannelVolume,
     audioContext: getAudioContext,
     output: () => getMaster(getAudioContext()),
   };

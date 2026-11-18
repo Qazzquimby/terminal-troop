@@ -72,7 +72,7 @@ export const radioPlaying = (
   state: CruiserState,
   config: CruiserRadioConfig,
 ): Playing | null =>
-  state.station === null ? null : stationPlaying(state.station, 0, config);
+  state.station === null ? null : stationPlaying(state.station, config);
 
 /** The name of the station `vehicle`'s radio plays, as this client has it; null while it is off. */
 export function stationOf(vehicle: WorldEntity): string | null {

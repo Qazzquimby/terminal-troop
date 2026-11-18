@@ -206,6 +206,7 @@ test("a radio switched on plays a song on every client from where the world's cl
     lists.push(list);
     expect(streams[0]?.[3]).toMatchObject({
       loop: true,
+      channel: "radio",
       range: testItemsConfig.radio.range,
     });
   }
