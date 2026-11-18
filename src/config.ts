@@ -1082,6 +1082,21 @@ export const config = {
       retreatSeconds: 25,
       enragedSeconds: 10,
       repathInterval: 0.5,
+      // Lying in wait: it guesses its quarry walks straight on the way it faces for 5s at a
+      // walk, stopping at walls, and once a second tries 12 spots up to 4 cells off that way,
+      // short of its end, for one no point of 4 along it sees, by its watch range. It keeps its
+      // spot unless a new one lies a cell nearer the way. Once the quarry has passed and stands
+      // within 3 cells, its back to it, it hunts.
+      ambush: {
+        lead: 5,
+        walkSpeed: PLAYER_SPEED,
+        range: CELL * 4,
+        tries: 12,
+        pathSamples: 4,
+        betterBy: CELL,
+        interval: 1,
+        pounce: CELL * 3,
+      },
       wander: { range: CELL * 6, pause: { min: 2, max: 5 } },
       sounds: { retreat: CELL * 6, enraged: CELL * 16, attack: CELL * 8 },
     },

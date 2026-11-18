@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   canSeeFrom,
+  distanceToWall,
   hasKindTag,
   INERT_TAG,
   ITEM_TAG,
@@ -382,4 +383,132 @@ export function coverRoute(
     inSightOfAny(map, eyes, at, self.radius, range);
   if (!seen(self)) return [];
   return routeToNearest(map, self.radius, self, (at) => !seen(at));
+}
+
+/** How a kind lies in wait for a body: where it guesses the body will walk, and where it hides. */
+export interface Ambushing {
+  /** Seconds of walking straight ahead the body's path is guessed for. */
+  readonly lead: number;
+  /** The walk it is guessed to keep up along that path, in pixels a second. */
+  readonly walkSpeed: number;
+  /** Furthest a spot lies off that path, either side, in pixels. */
+  readonly range: number;
+  /** Spots tried each time it looks for a better one. */
+  readonly tries: number;
+  /** Points along the path, its ends included, that a spot must be out of sight of. */
+  readonly pathSamples: number;
+  /** How much nearer the path, in pixels, a new spot must lie to be taken over the one it has. */
+  readonly betterBy: number;
+}
+
+/** A body's guessed path: from where it stands, straight ahead as it faces, stopping at walls. */
+export interface ForeseenPath {
+  readonly from: Point;
+  readonly to: Point;
+}
+
+/**
+ * Where a body facing `facing` from `from` would walk in `ambushing.lead` seconds straight ahead,
+ * stopping short of the first wall.
+ */
+export function foreseenPath(
+  map: TileMap,
+  from: Point & { readonly radius: number },
+  facing: number,
+  ambushing: Ambushing,
+): ForeseenPath {
+  const direction = { x: Math.cos(facing), y: Math.sin(facing) };
+  const reach = ambushing.lead * ambushing.walkSpeed;
+  const length = Math.max(
+    0,
+    distanceToWall(map, from, direction, reach + from.radius) - from.radius,
+  );
+  return {
+    from: { x: from.x, y: from.y },
+    to: { x: from.x + direction.x * length, y: from.y + direction.y * length },
+  };
+}
+
+/**
+ * How well `at` lies in wait along `path` for a body of `radius`, lower better: its distance off
+ * the path. Null when it is no ambush at all: not beside the path ahead of the walker and short of
+ * the path's end, so behind where the walker will be by then; further off it than `range`; not
+ * free to stand in; or in sight, within `sightRange` and whichever way it looks, of any of the
+ * path's samples.
+ */
+function ambushScore(
+  map: TileMap,
+  path: ForeseenPath,
+  at: Point,
+  radius: number,
+  sightRange: number,
+  ambushing: Ambushing,
+): number | null {
+  const dx = path.to.x - path.from.x;
+  const dy = path.to.y - path.from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return null;
+  const ax = at.x - path.from.x;
+  const ay = at.y - path.from.y;
+  const along = (ax * dx + ay * dy) / length;
+  if (along <= 0 || along >= length) return null;
+  const off = Math.abs(ax * dy - ay * dx) / length;
+  if (off > ambushing.range) return null;
+  if (!isAreaFree(map, at.x, at.y, radius)) return null;
+  const samples = Math.max(2, ambushing.pathSamples);
+  const eyes = Array.from({ length: samples }, (_, index) => ({
+    x: path.from.x + (dx * index) / (samples - 1),
+    y: path.from.y + (dy * index) / (samples - 1),
+  }));
+  if (inSightOfAny(map, eyes, at, radius, sightRange)) return null;
+  return off;
+}
+
+/**
+ * Where a body of `radius` best lies in wait for one walking `path`: a spot beside the path, short
+ * of its end, out of sight of the whole path out to `sightRange`, so the walker passes it unseeing
+ * and leaves it behind. Of `ambushing.tries` spots drawn with `random` round the path, and
+ * `current`, the one nearest the path; `current` is kept, while it still serves, unless a new one
+ * lies nearer by `ambushing.betterBy`. Null for none. Its cost is bounded by the tries and the
+ * path's samples, not by the map. Any kind that lies in wait can take it.
+ */
+export function ambushSpot(
+  map: TileMap,
+  radius: number,
+  path: ForeseenPath,
+  sightRange: number,
+  ambushing: Ambushing,
+  random: Rng,
+  current: Point | null,
+): Point | null {
+  const score = (at: Point): number | null =>
+    ambushScore(map, path, at, radius, sightRange, ambushing);
+  const dx = path.to.x - path.from.x;
+  const dy = path.to.y - path.from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return null;
+  const across = { x: -dy / length, y: dx / length };
+  let best: Point | null = null;
+  let bestScore = Infinity;
+  for (let attempt = 0; attempt < ambushing.tries; attempt++) {
+    const along = random() * length;
+    const off = (random() * 2 - 1) * ambushing.range;
+    const at = {
+      x: path.from.x + (dx * along) / length + across.x * off,
+      y: path.from.y + (dy * along) / length + across.y * off,
+    };
+    const value = score(at);
+    if (value !== null && value < bestScore) {
+      best = at;
+      bestScore = value;
+    }
+  }
+  const kept = current === null ? null : score(current);
+  if (
+    current !== null &&
+    kept !== null &&
+    kept <= bestScore + ambushing.betterBy
+  )
+    return current;
+  return best;
 }
