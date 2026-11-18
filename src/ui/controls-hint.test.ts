@@ -87,3 +87,12 @@ test("with the rotating camera on, the hint says the mouse turns, on foot and as
     controlsHintFor("driving", false),
   );
 });
+
+test("while the mouse that turns the view is not captured, the hint asks for a click first", () => {
+  expect(controlsHintFor("foot", false, true, false)).toMatch(
+    /^Click to capture the mouse · Mouse to turn · WASD/,
+  );
+  expect(controlsHintFor("foot", false, false, false)).toBe(
+    controlsHintFor("foot", false),
+  );
+});

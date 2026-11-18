@@ -33,6 +33,7 @@ import {
   createHud,
   createDebugOverlay,
   createMicIndicatorView,
+  createSpawnMenu,
   createSettingsMenu,
   createStatusView,
   menuPeers,
@@ -54,6 +55,7 @@ import {
   snapCamera,
   updateCamera,
   createSpectator,
+  createZoomFit,
   eyeOf,
   stepSpectator,
   viewHeading,
@@ -81,8 +83,12 @@ import {
   departingIn,
   entityContent,
   hasEscaped,
+  requestSpawn,
   shortOfQuota,
+  spawnChoices,
+  takesDebugSpawns,
 } from "./entities/index.js";
+import type { SpawnChoice } from "./entities/index.js";
 import { credit, itemContent } from "./items/index.js";
 import { moveContent } from "./moves/index.js";
 import { createWorldLog, logsWorld } from "./world-log/index.js";
@@ -117,6 +123,7 @@ const hud = createHud(
   config.hud,
 );
 const debugEl = element("#debug", HTMLPreElement);
+const debugSpawnEl = element("#debug-spawn", HTMLDivElement);
 const micEl = element("#mic-indicator", HTMLParagraphElement);
 const settingsDialog = element("#settings", HTMLDialogElement);
 const settingsBtn = element("#settings-open", HTMLButtonElement);
@@ -217,6 +224,8 @@ const defaultName = identity.current().slice(0, 4).toUpperCase();
 const camera = createCamera(config.view, config.camera);
 /** What the local player watches while it is a ghost. */
 const spectator = createSpectator();
+/** The zoom that fits how far the local view sees, while the camera turns with it. */
+const zoomFit = createZoomFit(config.zoomFit);
 /** Blurred with `Math.random`: what each player hears is drawn on its own client alone. */
 const ripples = createRipples(config.ripples, Math.random);
 const flashes = createFlashes(config.flashes);
@@ -239,6 +248,22 @@ const counted = createCountingTransport(selectTransport(params), () =>
 const transport = counted.transport;
 const perf = createPerfStats();
 const debugOverlay = createDebugOverlay(debugEl, debug, config.ui);
+/** Whether the debug overlay, and the spawn menu with it, is showing. */
+let debugShown = debug;
+/**
+ * Whether this client takes debug spawns while it hosts: in development, under `?debug`, and in
+ * production when the config says so. Its spawn menu shows only then; another host may refuse.
+ */
+const debugSpawns = takesDebugSpawns(
+  config.entities.debugSpawn,
+  import.meta.env.DEV,
+  debug,
+);
+/** The session the spawn menu last listed the choices of. */
+let spawnFrom: Session | null = null;
+const spawnMenu = createSpawnMenu<SpawnChoice>(debugSpawnEl, (choice) => {
+  if (spawnFrom !== null) requestSpawn(spawnFrom, choice);
+});
 const micView = createMicIndicatorView(micEl);
 const sfx = createSfx(config.audio);
 const speech = createSpeechSynth(sfx, config.speechSynth.sampleRate);
@@ -262,8 +287,24 @@ function showControlsHint(session: Session | null): void {
     session === null ? "foot" : hintMode(session.local),
     settings.get().voice.mode === "pushToTalk",
     settings.get().view.rotateCamera,
+    input.captured(),
   );
   if (controlsHint.textContent !== text) controlsHint.textContent = text;
+  // A turning camera draws the player just above the inventory, where the hint would sit over it.
+  controlsHint.classList.toggle("top", settings.get().view.rotateCamera);
+}
+
+/**
+ * Whether the mouse turns the local view: with the rotating camera on, on foot or as a ghost. In a
+ * vehicle the view follows it, and the cabin wants the pointer.
+ */
+function mouseTurnsView(): boolean {
+  const session = joinedSession(room.state());
+  return (
+    settings.get().view.rotateCamera &&
+    session !== null &&
+    session.local.ride === null
+  );
 }
 
 /**
@@ -303,7 +344,10 @@ const room = createRoom({
   config: config.room,
   sim: config,
   content: [
-    ...entityContent(config.entities),
+    ...entityContent({
+      ...config.entities,
+      debugSpawn: { ...config.entities.debugSpawn, enabled: debugSpawns },
+    }),
     ...itemContent(config.items),
     ...moveContent(config.moves),
   ],
@@ -365,6 +409,7 @@ const input = createInput(
       : screenToWorld(camera, point),
   config.view,
   config.wheel,
+  config.turn,
   {
     toggleSettings: {
       press(time) {
@@ -374,6 +419,7 @@ const input = createInput(
     toggleDebug: {
       press() {
         debugOverlay.toggle();
+        debugShown = !debugShown;
       },
     },
     pushToTalk: pushToTalk(voice),
@@ -385,6 +431,9 @@ const settingsMenu = createSettingsMenu(settingsDialog, settings, {
   onOpenChange(open, time) {
     if (open) refreshPeers(room.state());
     inputContext.set(open ? "menu" : "play", time);
+    // Closing settings is a press, so the browser lets the mouse be captured again at once,
+    // rather than waiting for a click on the game.
+    if (!open && mouseTurnsView()) input.requestCapture();
   },
   onPeerMutedChange(id, muted) {
     voice.setPeerMuted(id, muted);
@@ -446,6 +495,15 @@ async function enterRoom(rawCode: string): Promise<void> {
   snapCamera(camera, state.session.local);
 }
 
+/** Shows the spawn menu with the debug overlay, in a room, listing what `session` can spawn. */
+function showSpawnMenu(session: Session | null): void {
+  const visible = debugSpawns && debugShown && session !== null;
+  spawnMenu.setVisible(visible);
+  if (!visible || session === spawnFrom) return;
+  spawnFrom = session;
+  spawnMenu.setChoices(spawnChoices(session));
+}
+
 function debugInfo(): DebugInfo {
   const now = performance.now();
   const session = joinedSession(room.state());
@@ -488,17 +546,20 @@ function frame(): void {
 
   const session = joinedSession(room.state());
   aimFrom = session;
-  const rotating = settings.get().view.rotateCamera;
-  const turn = input.takeTurn() * config.turn.sensitivity;
+  const { rotateCamera: rotating, mouseSensitivity } = settings.get().view;
+  // The mouse's movement turns the view, and a free pointer held at the game's side keeps turning
+  // it, so it never sticks at the edge.
+  const turn =
+    (input.takeTurn() * config.turn.sensitivity +
+      input.edgePush() * config.turn.edge.rate * frameSeconds) *
+    mouseSensitivity;
   if (session !== null) {
     heading = rotating
       ? viewHeading(heading, eyeOf(spectator, session), session.local, turn)
       : session.local.aim;
     // The mouse is captured to turn the view on foot or as a ghost; in a vehicle the view follows
     // it, and the cabin wants the pointer.
-    input.setCapture(
-      rotating && !settingsDialog.open && session.local.ride === null,
-    );
+    input.setCapture(mouseTurnsView() && !settingsDialog.open);
     // On foot or through a free camera, the keys steer as the screen shows the world: up the
     // screen is ahead. A vehicle's keys work its pedals and wheel, turned or not.
     const steerOnScreen = rotating && session.local.ride === null;
@@ -531,11 +592,20 @@ function frame(): void {
     room.frame(now);
     const eye = eyeOf(spectator, session);
     if (rotating) heading = viewHeading(heading, eye, session.local, 0);
+    const target = eyeTarget(session, eye, alpha);
+    // The zoom fits how far the eye sees, and a ghost's wheel zoom multiplies with it.
+    const fitted = zoomFit.step(
+      camera,
+      session.world.map,
+      target,
+      frameSeconds,
+      rotating,
+    );
     updateCamera(
       camera,
-      eyeTarget(session, eye, alpha),
+      target,
       frameSeconds,
-      spectator.zoom,
+      fitted * spectator.zoom,
       rotating ? heading : null,
     );
     const drawStart = performance.now();
@@ -581,6 +651,7 @@ function frame(): void {
   status.show(room.state(), transport.label);
   perf.recordFrame(frameStats);
   debugOverlay.update(now, debugInfo);
+  showSpawnMenu(session);
   settingsMenu.showVoice(now, () => voice.diagnostics());
   micView.show(session === null ? null : micIndicator(voice.status(), talkKey));
   requestAnimationFrame(frame);

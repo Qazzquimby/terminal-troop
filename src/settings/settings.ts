@@ -18,6 +18,8 @@ export interface Settings {
   readonly view: {
     /** Whether the camera turns with the view's facing, so ahead is always up the screen. */
     readonly rotateCamera: boolean;
+    /** How fast the mouse turns the view, as a factor on the configured turn per pixel. */
+    readonly mouseSensitivity: number;
   };
 }
 
@@ -43,11 +45,21 @@ export const DEFAULT_SETTINGS: Settings = {
     inputDevice: null,
   },
   audio: { masterVolume: 1 },
-  view: { rotateCamera: false },
+  view: { rotateCamera: false, mouseSensitivity: 1 },
 };
 
 /** Out-of-range volumes are clamped to 0..1; NaN and non-numbers are invalid. */
 const unit = z.number().transform((value) => Math.min(1, Math.max(0, value)));
+
+/** The slowest and fastest mouse sensitivity, as a factor on the configured turn per pixel. */
+export const MOUSE_SENSITIVITY = { min: 0.2, max: 4 } as const;
+
+/** Out-of-range sensitivities are clamped to `MOUSE_SENSITIVITY`; NaN and non-numbers are invalid. */
+const sensitivity = z
+  .number()
+  .transform((value) =>
+    Math.min(MOUSE_SENSITIVITY.max, Math.max(MOUSE_SENSITIVITY.min, value)),
+  );
 
 /**
  * Parses field by field: any invalid field, or missing group, takes its value from `fallback`.
@@ -70,6 +82,7 @@ function schemaFallingBackTo(fallback: Settings) {
       view: z
         .object({
           rotateCamera: z.boolean().catch(fallback.view.rotateCamera),
+          mouseSensitivity: sensitivity.catch(fallback.view.mouseSensitivity),
         })
         .catch(fallback.view),
     })

@@ -85,6 +85,10 @@ canvas {
   border: 1px solid #333;
   cursor: crosshair;
 }
+/* The mouse turns the view rather than pointing: no cursor over the game. */
+canvas.turning {
+  cursor: none;
+}
 .controls-hint {
   position: absolute;
   bottom: 88px;
@@ -99,6 +103,11 @@ canvas {
   text-align: center;
   pointer-events: none;
 }
+/* A turning camera draws the player just above the inventory, where the hint would sit over it. */
+.controls-hint.top {
+  top: 12px;
+  bottom: auto;
+}
 .debug-overlay {
   position: absolute;
   top: 8px;
@@ -112,6 +121,52 @@ canvas {
     12px/1.35 ui-monospace,
     monospace;
   pointer-events: none;
+}
+.debug-spawn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 200px;
+  max-height: calc(100% - 16px);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #090b0eb3;
+  color: #9fe6a0;
+  font:
+    12px/1.35 ui-monospace,
+    monospace;
+}
+.debug-spawn[hidden] {
+  display: none;
+}
+.debug-spawn-filter {
+  font: inherit;
+}
+.debug-spawn-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.debug-spawn-group {
+  margin: 4px 0 2px;
+  color: #6b8f6c;
+  text-transform: uppercase;
+}
+.debug-spawn-list button {
+  padding: 1px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.debug-spawn-list button:hover,
+.debug-spawn-list button:focus-visible {
+  background: #9fe6a033;
 }
 .mic-indicator {
   position: absolute;

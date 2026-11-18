@@ -6,6 +6,7 @@ import {
   emittedLights,
   isAreaFree,
   isLit,
+  isLitTo,
   isShrouded,
   isSweepFree,
 } from "../sim/index.js";
@@ -315,6 +316,39 @@ export function avoidingLight(game: Session, id: string): Avoid {
   return avoidingWhere(game.world.map, (at) =>
     isLit(game, at, lights, darks, id),
   );
+}
+
+/**
+ * The way for the body `self` out of the light, to the nearest ground dark to it as `isLitTo` has
+ * it, straight through lit ground, so the soonest it can be in the dark: its last point is the
+ * dark spot. Null when it stands in the dark already, takes the world for dark, or can reach no
+ * dark ground. For any kind that makes for the dark when light falls on it; see `DarkSeeking`.
+ */
+export function wayToDark(
+  game: Session,
+  self: Point & { readonly id: string; readonly radius: number },
+): Point[] | null {
+  if (!isLitTo(game, self.id, self)) return null;
+  const { map } = game.world;
+  const lights = emittedLights(game);
+  const darks = darkSources(game);
+  const route = routeToNearest(
+    map,
+    self.radius,
+    self,
+    (at) => !isLit(game, at, lights, darks, self.id),
+  );
+  if (route === null) return null;
+  return route.length > 0 ? route : [centreOf(map, cellOf(map, self))];
+}
+
+/** A kind that, opting in, makes for the dark before anything else when light falls on it. */
+export interface DarkSeeking {
+  /**
+   * Whether light falling on it sends it to the nearest dark ground first, by `wayToDark`, and
+   * keeps its ways off lit ground where it can. A kind that opts in takes `SHUNS_LIGHT_TAG`.
+   */
+  readonly seeksDark: boolean;
 }
 
 /**

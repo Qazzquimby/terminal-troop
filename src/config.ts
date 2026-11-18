@@ -6,6 +6,7 @@ import type {
   MapMemoryConfig,
   RippleConfig,
   SpectateConfig,
+  ZoomFitConfig,
 } from "./render/index.js";
 import type { PositionMemoryConfig } from "./position-memory/index.js";
 import type { RoomConfig } from "./room/index.js";
@@ -32,6 +33,7 @@ interface AppConfig extends SimConfig {
   /** For transports whose peers connect some time after joining. */
   readonly greeting: GreetingConfig;
   readonly camera: CameraConfig;
+  readonly zoomFit: ZoomFitConfig;
   readonly spectate: SpectateConfig;
   readonly ripples: RippleConfig;
   readonly flashes: FlashConfig;
@@ -171,14 +173,35 @@ export const config = {
     snapDistance: CELL * 4,
     // With the rotating camera on (a setting, off by default): the turn eases a fifth of the way
     // to the view's facing each 60Hz frame, about a tenth of a second to catch a quick flick,
-    // and the eye sits 62% of the way down the view, as in the prototype, so more of what lies
-    // ahead shows than behind.
-    roll: { rate: 13.4, anchor: 0.62 },
+    // and the eye sits 78% of the way down the view: about 130px up from the bottom of a 600px
+    // view, just above the inventory bar, so most of the screen shows what lies ahead.
+    roll: { rate: 13.4, anchor: 0.78 },
+  },
+  // With the rotating camera on, the zoom follows how far the eye sees: 48 rays round it find the
+  // furthest of the map in sight, and the zoom eases (about 0.4s to settle) to fit it with 15% to
+  // spare, from 1 (a little closer than the usual 1.25, in a cupboard) out to 2.2 (under twice as
+  // wide, out of doors). `always` fits it with the camera upright too.
+  zoomFit: {
+    always: false,
+    rays: 48,
+    margin: 1.15,
+    min: 1,
+    max: 2.2,
+    rate: 2.5,
   },
   // With the rotating camera on, the mouse turns the view 0.0028 radians a pixel, the prototype's
-  // own: about 560px of mouse for a half turn. Keys turned with the view steer one of 64 ways
-  // (5.6° apart), so turning while walking sends a new steer only every few degrees.
-  turn: { sensitivity: 0.0028, directions: 64 },
+  // own: about 560px of mouse for a half turn, times the player's mouse sensitivity setting. Keys
+  // turned with the view steer one of 64 ways (5.6° apart), so turning while walking sends a new
+  // steer only every few degrees. A single movement of more than 300px is a browser's glitch and
+  // dropped. Should the browser leave the mouse uncaptured, a cursor within a tenth of the game's
+  // width of either side turns the view that way at up to 3 radians a second (about a second for
+  // a half turn), so it never sticks at the edge.
+  turn: {
+    sensitivity: 0.0028,
+    directions: 64,
+    spike: 300,
+    edge: { band: 0.1, rate: 3 },
+  },
   // A ghost's free camera glides at 8 cells a second, nearly twice a sprint. Each notch of the
   // wheel zooms a ghost's view by a fifth, from half the living's zoom (twice as close) out to
   // two and a half times it (about 2.5x as wide), eased at the camera's own zoom rate.
@@ -1316,7 +1339,10 @@ export const config = {
     // cells down its facing, as a zombie does, and makes for any body it sees or that hurts it,
     // but its own kind and exploders, which it would set off. It strikes what it touches for 30,
     // once a second. Its feet thump 4 times a second, heard 12 cells off, past a sprint's 7; a
-    // slam into a wall carries 10, a blow 5.
+    // slam into a wall carries 10, a blow 5. Light on it, it recoils for the nearest dark before
+    // anything else, a snort heard 6 cells off, and keeps its ways off lit ground where it can;
+    // `seeksDark: false` has it pay light no mind. Each hurt sets it raging 6s, a bellow heard 10
+    // cells off, the while minding no light.
     thumper: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
@@ -1335,7 +1361,15 @@ export const config = {
       damage: 30,
       attackCooldown: 1,
       thumpInterval: 0.25,
-      sounds: { thump: CELL * 12, slam: CELL * 10, attack: CELL * 5 },
+      seeksDark: true,
+      rageSeconds: 6,
+      sounds: {
+        thump: CELL * 12,
+        slam: CELL * 10,
+        attack: CELL * 5,
+        recoil: CELL * 6,
+        enrage: CELL * 10,
+      },
     },
     // Alone, 3 minutes into a world on, never within 14 cells of a player; as rare as the stalker.
     // Smaller than a player; four shovel hits break it. It rides at 1.3 times a walk, to spots 10
@@ -1545,6 +1579,10 @@ export const config = {
       certainAfter: END_GAME,
       headStart: 600,
     },
+    // The F3 debug menu spawns a monster or item 10 cells ahead of whoever asks, short of any
+    // wall in the way, with a pop heard 8 cells out that stirs nothing. A host takes requests in
+    // development and under ?debug; `enabled` lets a production host without ?debug take them.
+    debugSpawn: { enabled: false, cells: 10, soundRange: CELL * 8 },
   },
   // Each item's weight in pounds; its uses, unlimited when left out; and its loot weight, its
   // share of the loot a new world lays, with its rarity.

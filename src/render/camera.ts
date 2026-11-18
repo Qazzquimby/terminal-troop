@@ -82,7 +82,7 @@ function focusOf(camera: Camera): Point {
 }
 
 /** `v` turned `angle` radians clockwise, as the screen sees it. */
-function turned(v: Point, angle: number): Point {
+export function turned(v: Point, angle: number): Point {
   if (angle === 0) return { x: v.x, y: v.y };
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);

@@ -284,6 +284,20 @@ export function strikeIf<
   return { ...state, attacking, attackAt: now + cooldown };
 }
 
+/**
+ * When a rage hurt sets off ends, as of world time `now`: `seconds` on when it was `hurt` this
+ * step, each hurt starting it afresh, else `until` as it was. Any kind can keep a `Time` for it
+ * and declare its seconds in its config; it rages while `now` is short of the time.
+ */
+export function rageFromHurt(
+  until: number,
+  now: number,
+  hurt: boolean,
+  seconds: number,
+): number {
+  return hurt ? Math.max(until, now + seconds) : until;
+}
+
 /** How a body flees: to the best of `tries` spots `leg` off, as `fleeRoute` scores them. */
 export interface Fleeing {
   readonly leg: number;

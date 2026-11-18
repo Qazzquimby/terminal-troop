@@ -222,6 +222,8 @@ const NEVER = { weight: 0, tries: 24 } as const;
  */
 export const testEntitiesConfig = {
   spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
+  // A test host takes debug spawns, 10 cells ahead.
+  debugSpawn: { enabled: true, cells: 10, soundRange: 400 },
   // No world laid by a test gets doors; a test of doors lays its own.
   door: {
     radius: 25,
@@ -701,7 +703,9 @@ export const testEntitiesConfig = {
     damage: 30,
     attackCooldown: 1,
     thumpInterval: 0.25,
-    sounds: { thump: 600, slam: 500, attack: 250 },
+    seeksDark: true,
+    rageSeconds: 6,
+    sounds: { thump: 600, slam: 500, attack: 250, recoil: 300, enrage: 500 },
   },
   tricycle: {
     spawning: { ...NEVER, unseenDistance: 700 },

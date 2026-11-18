@@ -10,6 +10,42 @@ export interface TurnConfig {
    * the view turns.
    */
   readonly directions: number;
+  /**
+   * A single mouse movement further sideways than this, in pixels, is dropped: some browsers
+   * report a jump of hundreds of pixels as the pointer is captured or freed.
+   */
+  readonly spike: number;
+  /**
+   * While the mouse turns the view but is not captured, it can reach the side of the game. Within
+   * `band` (a fraction of the game's width) of either side, or past it, the view keeps turning
+   * that way at up to `rate` radians a second, so it never stops at the edge.
+   */
+  readonly edge: { readonly band: number; readonly rate: number };
+}
+
+/** A sideways mouse movement, in pixels, kept to what counts: a spike counts as none. */
+export function turnMovement(movementX: number, spike: number): number {
+  return Number.isFinite(movementX) && Math.abs(movementX) <= spike
+    ? movementX
+    : 0;
+}
+
+/**
+ * How hard a free pointer at `x` pushes the view round, given a game `width` wide from `left`:
+ * from 0 short of `band` (a fraction of the width) from either side, up to -1 (left) or 1
+ * (right) at the side and past it.
+ */
+export function edgePush(
+  x: number,
+  left: number,
+  width: number,
+  band: number,
+): number {
+  if (width <= 0 || band <= 0) return 0;
+  const across = (x - left) / width;
+  if (across < band) return -Math.min(1, (band - across) / band);
+  if (across > 1 - band) return Math.min(1, (across - (1 - band)) / band);
+  return 0;
 }
 
 /**
