@@ -63,7 +63,8 @@ export interface TricycleConfig extends Hunting, Dormancy {
    * `near` of one. Of those it reaches, it takes the one that best sets off the way it faces, plus
    * `pull` for a ride whose way passes within `pass` of a body it runs down that it has not passed
    * in the last `rest` seconds (a share of `pull` for one passed more lately). Finding no ride, it
-   * looks again after `retry` seconds.
+   * looks again after `retry` seconds. At most `plansPerStep` tricycles plan a ride in one step,
+   * as planning one is costly; one due to plan past that waits for a later step.
    */
   readonly ride: {
     readonly min: number;
@@ -77,6 +78,7 @@ export interface TricycleConfig extends Hunting, Dormancy {
     readonly pull: number;
     readonly rest: number;
     readonly retry: number;
+    readonly plansPerStep: number;
   };
   /**
    * Hurt by any body, it rages for `seconds` from each hurt: it rides at `speedShare` of a walk,
@@ -570,7 +572,10 @@ function think(
   if (foe !== null) return raging(state, rageUntil, foe, self, game, config);
   const bodies = quarries(game, self, config);
   const passed = passing(state.passed, self, bodies, now, config);
-  const plans = state.route.length === 0 && now >= state.planAt;
+  const plans =
+    state.route.length === 0 &&
+    now >= state.planAt &&
+    mayPlan(game, config.ride.plansPerStep);
   const route = plans
     ? nextRide(game, self, { ...state, passed }, bodies, config)
     : state.route;
@@ -611,6 +616,28 @@ function runOver(
   return touching(game, self, config.ignores).filter(({ id }) =>
     bodies.has(id),
   );
+}
+
+/** Each session's ride plans made in a step, as of the step and world time they were counted at. */
+const plansMade = new WeakMap<
+  Session,
+  { readonly step: number; readonly time: number; made: number }
+>();
+
+/**
+ * Whether a tricycle due to plan a ride may this step: fewer than `most` have so far. Counts it
+ * as planning when it may.
+ */
+function mayPlan(game: Session, most: number): boolean {
+  const found = plansMade.get(game);
+  const counted =
+    found?.step === game.step && found.time === game.worldTime
+      ? found
+      : { step: game.step, time: game.worldTime, made: 0 };
+  plansMade.set(game, counted);
+  if (counted.made >= most) return false;
+  counted.made += 1;
+  return true;
 }
 
 interface Sounds {
