@@ -256,7 +256,7 @@ export const config = {
     memoryFade: 3, // multiplier on remembered terrain's fade speed
     eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
     // Seconds in when dark / deepdark set out from the left edge; both reach the right at `end`.
-    fronts: { dark: 3 * 60, deep: 6 * 60, end: END_GAME },
+    fronts: { dark: 2 * 60, deep: 4 * 60, end: END_GAME },
   },
   // smoothing: ease rate; glide: seconds to reach a reported position; predictionHold: seconds a
   // guest holds a predicted hit; snap: a jump further than this is placed, not glided.
@@ -1318,7 +1318,7 @@ export const config = {
         count: 50,
         seed: 2,
         clearance: CELL * 3,
-        danger: 1,
+        danger: 0.8,
         offRoad: 1,
       },
     },
@@ -1340,7 +1340,7 @@ export const config = {
     // Seen and picked up only while it lies in deepdark.
     darkScrap: {
       weight: 15,
-      value: 3,
+      value: 5,
       cashoutRadius: CELL * 3,
       sellInterval: 0.25,
       volume: 0.8,
@@ -1374,7 +1374,7 @@ export const config = {
       reach: CELL * 1.5, // ghosts hear speakers within this of it
     },
     flashlight: {
-      weight: 2,
+      weight: 0,
       uses: 300, // seconds of battery
       loot: { weight: 20, rarity: "common" },
       range: CELL * 14,
@@ -1480,7 +1480,7 @@ export const config = {
         count: 40,
         seed: 4,
         clearance: CELL * 3,
-        danger: 1,
+        danger: 0.8,
         offRoad: 1,
       },
       // Laid on top of the loot. spread "x": one in each equal band of the width, start to exit.
@@ -1492,7 +1492,7 @@ export const config = {
             seed: 5,
             clearance: CELL * 3,
             spread: "x",
-            danger: 2,
+            danger: 1,
             offRoad: 1,
           },
         },
