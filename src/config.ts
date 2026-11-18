@@ -1098,12 +1098,23 @@ export const config = {
         rest: 15, // seconds after passing a player before it wants to again
         retry: 0.5, // seconds it waits to look again on finding no ride
       },
+      rage: {
+        seconds: 6, // after a hurt
+        speedShare: 2, // of a player's walk, past a sprint
+        overshoot: CELL * 6, // past whatever hurt it
+        reaim: 0.75, // seconds between aims at it
+      },
       bellRange: CELL * 8, // rings at a player this near on its way
       bellCooldown: 2,
       damage: 70,
       attackCooldown: 1,
       creakInterval: 0.8,
-      sounds: { bell: CELL * 10, creak: CELL * 3, hit: CELL * 6 },
+      sounds: {
+        bell: CELL * 10,
+        creak: CELL * 3,
+        hit: CELL * 6,
+        rage: CELL * 14,
+      },
     },
     birthdayBoy: {
       dormantBeyond: DORMANT_BEYOND,

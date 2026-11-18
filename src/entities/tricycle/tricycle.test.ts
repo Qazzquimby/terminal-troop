@@ -6,6 +6,7 @@ import {
 } from "../../integration/sim-config.js";
 import {
   createSession,
+  hurt,
   receiveEvent,
   registerContent,
   spawnEntity,
@@ -27,10 +28,15 @@ const WALK = testSimConfig.player.speed;
 /**
  * The dev square, 18x12 cells of 50px, walled round its edge, its pillars at x 200-300, y 50-150
  * and x 600-700, y 450-550; the local player, ME, stands at (x, y). A thumper may be spawned too,
- * as a body that is not a player. Tricycles are as `trikeConfig` has them, the test config's by
- * default.
+ * as a body that is not a player. Tricycles are as `trikeConfig` has them and thumpers as
+ * `thumpers` has them, the test config's by default.
  */
-function world(x: number, y: number, trikeConfig = config): Session {
+function world(
+  x: number,
+  y: number,
+  trikeConfig = config,
+  thumpers = thumperConfig,
+): Session {
   const game = createSession(
     "me",
     "ME",
@@ -46,7 +52,7 @@ function world(x: number, y: number, trikeConfig = config): Session {
   });
   registerContent(game, [
     tricycleContent.create({ tricycle: trikeConfig }),
-    thumperContent.create({ thumper: thumperConfig }),
+    thumperContent.create({ thumper: thumpers }),
   ]);
   Object.assign(game.local, { x, y, prevX: x, prevY: y });
   return game;
@@ -147,8 +153,14 @@ test("it runs a player down for 70", () => {
   expect(game.local.health).toBe(game.local.maxHealth - config.damage);
 });
 
+/** The test thumper, but sparing tricycles, so one passing through it does not hurt it. */
+const sparing = {
+  ...thumperConfig,
+  ignores: [...thumperConfig.ignores, "tricycle"],
+};
+
 test("it rides through a body it does not run down, leaving it unhurt and where it stood", () => {
-  const game = world(FAR.x, FAR.y);
+  const game = world(FAR.x, FAR.y, config, sparing);
   const trike = tricycleAt(game, { x: 75, y: 325 }, ROW);
   const other = spawnEntity(game, "thumper", 300, 325, {
     ...freshThumper(game.worldTime),
@@ -382,4 +394,62 @@ test("it forgets passing a body once its rest has run out", () => {
   });
   run(game, DT);
   expect(Object.keys(stateOf(trike).passed)).toEqual(["lately"]);
+});
+
+const raged = (game: Session): boolean =>
+  vi.mocked(game.sfx.play).mock.calls.some(([url]) => url.endsWith("rage.mp3"));
+
+test("hurt by a player, it rages with a furious ring, charging them at twice a walk", () => {
+  // Behind it, so it would never turn for them calm.
+  const game = world(125, 325);
+  const trike = tricycleAt(game, { x: 300, y: 325 }, ROW);
+  hurt(game, trike, 10, game.localId);
+  run(game, 0.3);
+  const state = stateOf(trike);
+  expect(state.foe).toBe(game.localId);
+  expect(raged(game)).toBe(true);
+  expect(trike.vx).toBeLessThan(0);
+  expect(Math.hypot(trike.vx, trike.vy)).toBeCloseTo(
+    WALK * config.rage.speedShare,
+  );
+});
+
+test("raging, it rides on through whatever hurt it, past them, rather than stopping at them", () => {
+  const game = world(400, 325);
+  const trike = tricycleAt(game, { x: 700, y: 325 }, ROW);
+  hurt(game, trike, 10, game.localId);
+  run(game, DT);
+  const end = stateOf(trike).route.at(-1);
+  expect(end?.x).toBeLessThan(400 - config.ride.pass);
+  run(game, 1);
+  expect(game.local.health).toBe(game.local.maxHealth - config.damage);
+});
+
+test("its rage ends after its rage seconds, and it rides on calm", () => {
+  const game = world(125, 325);
+  const trike = tricycleAt(game, { x: 300, y: 325 }, ROW);
+  hurt(game, trike, 10, game.localId);
+  run(game, DT);
+  expect(stateOf(trike).foe).not.toBeNull();
+  // Out of reach in the far corner, so it never runs them down meanwhile.
+  Object.assign(game.local, { x: FAR.x, y: FAR.y, prevX: FAR.x, prevY: FAR.y });
+  run(game, config.rage.seconds);
+  expect(stateOf(trike).foe).toBeNull();
+  expect(Math.hypot(trike.vx, trike.vy)).toBeLessThanOrEqual(
+    WALK * config.speedShare + 1e-6,
+  );
+});
+
+test("hurt by a body it does not run down, it rages at that body and strikes it", () => {
+  const game = world(FAR.x, FAR.y);
+  const trike = tricycleAt(game, { x: 75, y: 325 }, ROW);
+  const other = spawnEntity(game, "thumper", 400, 325, {
+    ...freshThumper(game.worldTime),
+    until: 1000,
+  });
+  hurt(game, trike, 10, other.id);
+  run(game, 0.1);
+  expect(stateOf(trike).foe).toBe(other.id);
+  run(game, 1.5);
+  expect(other.health).toBeLessThan(other.maxHealth);
 });
