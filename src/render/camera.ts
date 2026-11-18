@@ -51,12 +51,18 @@ function frame(camera: Camera, focus: Point): void {
 }
 
 /**
- * Eases the zoom and the view's centre towards `target` over `dt` seconds. A camera with no
- * focus yet, or one further than its snap distance from `target`, jumps straight to it.
+ * Eases the zoom towards its configured zoom times `scale`, and the view's centre towards
+ * `target`, over `dt` seconds. A camera with no focus yet, or one further than its snap distance
+ * from `target`, jumps straight to it.
  */
-export function updateCamera(camera: Camera, target: Point, dt: number): void {
+export function updateCamera(
+  camera: Camera,
+  target: Point,
+  dt: number,
+  scale = 1,
+): void {
   const { zoom, zoomRate, followRate, snapDistance } = camera.config;
-  camera.zoom = ease(camera.zoom, zoom, zoomRate, dt);
+  camera.zoom = ease(camera.zoom, zoom * scale, zoomRate, dt);
   const { focus } = camera;
   if (
     focus === null ||

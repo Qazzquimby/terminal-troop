@@ -706,9 +706,12 @@ export function steerLocal(
 ): void {
   const { local, pilot } = game;
   const before = local.held;
-  if (controls.select !== null)
-    local.held = selectSlot(local.inventory, controls.select);
-  local.held = cycleSlot(local.inventory, local.held, controls.cycle);
+  // A ghost has no hands to switch with: its wheel zooms its view instead.
+  if (!isGhost(local)) {
+    if (controls.select !== null)
+      local.held = selectSlot(local.inventory, controls.select);
+    local.held = cycleSlot(local.inventory, local.held, controls.cycle);
+  }
   if (local.held !== before) hearSwitch(game);
   local.aim = aimAt(local, controls.aim);
   const stunned = isStunned(game, local.id);

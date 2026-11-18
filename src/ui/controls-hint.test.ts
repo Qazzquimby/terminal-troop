@@ -36,7 +36,7 @@ test("a ghost is shown only how to spectate", () => {
   const text = controlsHintFor("ghost", false);
   expect(text).toBe(
     "Click to watch next · Right click to watch previous · Space to toggle free camera · " +
-      "WASD / ↑←↓→ to move free camera · Esc for settings",
+      "WASD / ↑←↓→ to move free camera · Scroll to zoom · Esc for settings",
   );
   expect(text).not.toMatch(/pick up|kick|drop/);
 });

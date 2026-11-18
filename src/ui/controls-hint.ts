@@ -54,6 +54,7 @@ export const CONTROLS_HINT: Readonly<Record<HintMode, readonly HintEntry[]>> = {
     { actions: ["secondary"], does: "to watch previous" },
     { actions: ["toggleView"], does: "to toggle free camera" },
     { actions: MOVE, does: "to move free camera" },
+    { actions: ["slotPrevious", "slotNext"], does: "to zoom" },
     SETTINGS,
   ],
 };

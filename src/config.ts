@@ -162,8 +162,10 @@ export const config = {
     followRate: 18,
     snapDistance: CELL * 4,
   },
-  // A ghost's free camera glides at 8 cells a second, nearly twice a sprint.
-  spectate: { speed: CELL * 8 },
+  // A ghost's free camera glides at 8 cells a second, nearly twice a sprint. Each notch of the
+  // wheel zooms a ghost's view by a fifth, from half the living's zoom (twice as close) out to
+  // two and a half times it (about 2.5x as wide), eased at the camera's own zoom rate.
+  spectate: { speed: CELL * 8, zoom: { min: 0.5, max: 2.5, step: 1.2 } },
   // Noises the local player hears, each drawn as a ring snapping out to the noise's radius in
   // 0.15s, then fading over the rest of 0.9s. One made by something other than a player that it
   // can't see glows warm and soft at the screen's edge instead, the way it seemed to come from.
