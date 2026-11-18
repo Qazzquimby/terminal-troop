@@ -3,9 +3,11 @@ import {
   effect,
   eyesOf,
   hasKindTag,
+  hurtSinceLastStep,
   inCone,
   inView,
   livingBodies,
+  livingBody,
 } from "../sim/index.js";
 import type {
   Body,
@@ -17,9 +19,22 @@ import type {
   Strike,
   WorldEntity,
 } from "../sim/index.js";
-import { NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
+import { avenged, NEVER_PREY, preyNear, strikeEach } from "./hunt.js";
 import type { Hunting, Prey } from "./hunt.js";
 import { kindsAsRareAs } from "./spawning.js";
+
+/**
+ * The living body that hurt `self` since its last step, as one it would turn on: none for one it
+ * spares, itself or no one; null for none.
+ */
+export function hitterOf(
+  game: Session,
+  self: { readonly id: string },
+  hunting: Pick<Hunting, "targets">,
+): Body | null {
+  const hurt = hurtSinceLastStep(game, self.id);
+  return livingBody(game, avenged(game, self, hurt?.by ?? null, hunting));
+}
 
 /**
  * Eyes as a player's, down `facing`: its view cone and surroundings, both out to `range`. For a

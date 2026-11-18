@@ -1,6 +1,6 @@
 import type { MessageRates } from "../net/index.js";
 import type { PerfSnapshot } from "../perf-stats/index.js";
-import { lyingItem, pickupTarget, remotePlayers } from "../sim/index.js";
+import { pickupTarget, remotePlayers, seemsItem } from "../sim/index.js";
 import type { Corrections, Session } from "../sim/index.js";
 
 /** UI tuning. */
@@ -46,7 +46,7 @@ interface RoomDebugInfo {
 export function targetLabel(session: Session): string {
   const target = pickupTarget(session);
   if (target === null) return "none";
-  const item = lyingItem(session, target)?.item;
+  const item = seemsItem(session, target)?.item;
   const name =
     item === undefined
       ? "?"

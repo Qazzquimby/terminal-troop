@@ -23,6 +23,7 @@ import type { BoxPose, BoxSize } from "./shape.js";
 import { pressDoors } from "./doors.js";
 import { profileEnd, profileStart, profiling } from "./profile.js";
 import type { DoorHinge, Hinge } from "./doors.js";
+import type { ItemState } from "./inventory.js";
 
 export interface WorldEntity extends Entity, Interpolated, Tracked {
   readonly id: string;
@@ -87,6 +88,15 @@ export interface Apparition {
   readonly jolt: { readonly chance: number; readonly size: number };
   /** How thick the static crawling over it is, 0..1. */
   readonly static: number;
+}
+
+/**
+ * An item a body passes itself off as, lying in the world: which item, and the state it shows
+ * with, if any.
+ */
+export interface PosedItem {
+  readonly item: string;
+  readonly state?: ItemState | undefined;
 }
 
 /** A kind of entity, typed by the state `S` it keeps in `data`. */
@@ -164,6 +174,22 @@ export interface EntityDefinition<S> {
    * a wall cell, joined to the walls round it as they join one another.
    */
   readonly posesAsWall?: boolean;
+  /**
+   * The item it passes itself off as, given its state, or null while it passes for none. While it
+   * poses as one it carries `ITEM_TAG` among its kind tags, so whatever passes over items passes
+   * over it, and a player reaching for an item may reach for it; `grabbed` says what then.
+   */
+  readonly posesAsItem?: (entity: WorldEntity, data: S) => PosedItem | null;
+  /**
+   * Its next state once a body reaches to pick it up while it poses as an item. Runs only while
+   * hosting. Left out, the reach does nothing.
+   */
+  readonly grabbed?: (
+    entity: WorldEntity,
+    data: S,
+    by: { readonly id: string },
+    game: Session,
+  ) => S;
   /**
    * Whether, given its state, no body perceives it but while it lies in deepdark: out of it, it
    * is neither drawn, found among bodies, heard nor picked up. Every body perceives a kind without
@@ -280,6 +306,14 @@ export interface EntityType {
   apparition(entity: WorldEntity): Apparition | null;
   /** Whether the cell it stands in is drawn as a wall wherever it shows. */
   readonly posesAsWall: boolean;
+  /** The item it poses as now; null while it poses as none. */
+  posedItem(entity: WorldEntity): PosedItem | null;
+  /** As the host, what it does as `by` reaches to pick it up while it poses as an item. */
+  grabbed(
+    entity: WorldEntity,
+    by: { readonly id: string },
+    game: Session,
+  ): void;
   /** Whether it is perceived only while it lies in deepdark. */
   onlyInDeepdark(entity: WorldEntity, game: Session): boolean;
   minimap(
@@ -339,6 +373,8 @@ function hinge<S>(definition: EntityDefinition<S>): DoorHinge | null {
 function entityType<S>(definition: EntityDefinition<S>): EntityType {
   // Whether each state an entity of the kind has taken is perceived only in deepdark.
   const deepdarkOnly = new WeakMap<object, boolean>();
+  // The item each state an entity of the kind has taken poses as.
+  const posed = new WeakMap<object, PosedItem | null>();
   const { data: schema } = definition;
   return {
     radius: definition.radius,
@@ -401,6 +437,26 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       return parsed.success ? apparition(entity, parsed.data) : null;
     },
     posesAsWall: definition.posesAsWall ?? false,
+    posedItem(entity) {
+      const { posesAsItem } = definition;
+      // Most kinds pose as nothing, and pay nothing to parse their state for it.
+      if (posesAsItem === undefined) return null;
+      // Asked with every kind tag, so judged once for each state an entity takes.
+      const { data } = entity;
+      const keyed = typeof data === "object" && data !== null;
+      const known = keyed ? posed.get(data) : undefined;
+      if (known !== undefined) return known;
+      const parsed = schema.safeParse(data);
+      const item = parsed.success ? posesAsItem(entity, parsed.data) : null;
+      if (keyed) posed.set(data, item);
+      return item;
+    },
+    grabbed(entity, by, game) {
+      const { grabbed } = definition;
+      if (grabbed === undefined || !game.hosting) return;
+      const parsed = schema.safeParse(entity.data);
+      if (parsed.success) entity.data = grabbed(entity, parsed.data, by, game);
+    },
     onlyInDeepdark(entity, game) {
       const { onlyInDeepdark } = definition;
       // Most kinds show anywhere, and pay nothing to parse their state for it.
