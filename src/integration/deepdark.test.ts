@@ -7,8 +7,11 @@ import {
   createSession,
   darkFront,
   deepFront,
+  driftPeriod,
+  edgeAt,
   eyesOf,
   frontAt,
+  frontsNow,
   hearFronts,
   inView,
   isDeepdark,
@@ -16,6 +19,7 @@ import {
   perceives,
   registerContent,
   registerEntityType,
+  rowNoise,
   spawnEntity,
   spawnWorldItem,
 } from "../sim/index.js";
@@ -114,14 +118,17 @@ describe("fronts", () => {
     );
     if (sun === undefined || fixture === undefined)
       throw new Error("no lit cells");
-    const passed = (cell: Point) => cell.x + CELL;
+    // A straight edge just past `cell`, the same in every row.
+    const passed = (cell: Point): number[] =>
+      new Array<number>(world.map.rows).fill(cell.x + CELL);
+    const unset: number[] = [];
     expect(
-      ambientLightAt(world, sun, 1, { dark: passed(sun), deep: -Infinity }),
+      ambientLightAt(world, sun, 1, { dark: passed(sun), deep: unset }),
     ).toBeNull();
     expect(
       ambientLightAt(world, fixture, 1, {
         dark: passed(fixture),
-        deep: -Infinity,
+        deep: unset,
       }),
     ).toBe("fixture");
     expect(
@@ -130,6 +137,79 @@ describe("fronts", () => {
         deep: passed(fixture),
       }),
     ).toBeNull();
+  });
+
+  test("row noise is the same for the same seed, bounded, and uneven", () => {
+    const noise = rowNoise(7, 0, 60, 12, 2);
+    expect(rowNoise(7, 0, 60, 12, 2)).toEqual(noise);
+    expect(rowNoise(8, 0, 60, 12, 2)).not.toEqual(noise);
+    expect(rowNoise(7, 1, 60, 12, 2)).not.toEqual(noise);
+    expect(noise.every((value) => value >= -1 && value <= 1)).toBe(true);
+    expect(Math.max(...noise) - Math.min(...noise)).toBeGreaterThan(0.3);
+  });
+
+  /** A front sweeping the dev square from 0s to 200s, rows up to two cells ahead or behind. */
+  const ragged = (drift: number): SimConfig => ({
+    ...sweeping,
+    deepdark: {
+      ...sweeping.deepdark,
+      ragged: { amplitude: CELL * 2, scale: 4, octaves: 2, drift },
+    },
+  });
+
+  test("a ragged front's rows lie unevenly about its mean, alike in every session of the room", () => {
+    const game = square(ragged(10));
+    const twin = square(ragged(10));
+    game.worldTime = twin.worldTime = 100;
+    const { deep } = frontsNow(game);
+    expect(frontsNow(twin).deep).toEqual(deep);
+    const mean = deepFront(game);
+    expect(mean).toBeCloseTo(450);
+    const rows = Array.from(deep);
+    expect(rows.every((x) => Math.abs(x - mean) <= CELL * 2 + 1e-9)).toBe(true);
+    expect(Math.max(...rows) - Math.min(...rows)).toBeGreaterThan(CELL / 2);
+    // Deepdark is wherever the edge has passed in its own row.
+    rows.forEach((x, row) => {
+      const y = (row + 0.5) * CELL;
+      expect(edgeAt(deep, CELL, y)).toBeCloseTo(x);
+      expect(isDeepdark(game, { x: x - 1, y })).toBe(true);
+      expect(isDeepdark(game, { x: x + 1, y })).toBe(false);
+    });
+  });
+
+  test("a ragged front sets out and arrives on time", () => {
+    const game = square(ragged(10));
+    const { W } = game.world;
+    game.worldTime = 0;
+    expect(Array.from(frontsNow(game).deep).every((x) => x <= 0)).toBe(true);
+    game.worldTime = 200;
+    expect(Array.from(frontsNow(game).deep).every((x) => x >= W)).toBe(true);
+  });
+
+  test("a drifting front never takes back a row it has darkened", () => {
+    const game = square(ragged(1));
+    expect(
+      driftPeriod(
+        game.world.W,
+        ragged(1).deepdark.fronts,
+        ragged(1).deepdark.ragged,
+      ),
+    ).toBeGreaterThan(1);
+    let last = Array.from(frontsNow(game).deep);
+    for (let time = 0; time <= 200; time += 0.5) {
+      game.worldTime = time;
+      const now = Array.from(frontsNow(game).deep);
+      const back = now.filter((x, row) => x < (last[row] ?? -Infinity) - 1e-9);
+      expect(back).toEqual([]);
+      last = now;
+    }
+    // Past its end it drifts on, but never back into the world.
+    for (let time = 200; time <= 400; time += 5) {
+      game.worldTime = time;
+      expect(
+        Array.from(frontsNow(game).deep).every((x) => x >= game.world.W),
+      ).toBe(true);
+    }
   });
 
   test("each front is heard as it sets out, but not by a clock that jumps past it", () => {

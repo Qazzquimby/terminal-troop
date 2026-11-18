@@ -93,6 +93,7 @@ export const testSimConfig: SimConfig = {
     memoryFade: 3,
     eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
     fronts: { dark: Infinity, deep: Infinity, end: 1200 },
+    ragged: { amplitude: 0, scale: 12, octaves: 2, drift: 0 }, // straight, unless a test sets its own
   },
   net: { smoothing: 12, glide: 0.15, predictionHold: 0.5, snap: 350 },
   noise: { blur: 0.2 },
@@ -177,7 +178,13 @@ const NEVER = { weight: 0, tries: 24 } as const;
 // The spawner brings nothing unless a test gives a kind weight; kinds appear only when a test
 // spawns them.
 export const testEntitiesConfig = {
-  spawner: { period: 5, nothing: 0.5, certainAfter: 20, headStart: 30 },
+  spawner: {
+    period: 5,
+    nothing: 0.5,
+    certainAfter: 20,
+    headStart: 30,
+    offRoad: 1,
+  },
   debugSpawn: { enabled: true, cells: 10, soundRange: 400 },
   // No world laid by a test gets doors; a test of doors lays its own.
   door: {
@@ -682,6 +689,14 @@ export const testEntitiesConfig = {
     speedShare: 1.3,
     slowShare: 0.9,
     slowRange: 200,
+    handling: {
+      acceleration: 600,
+      braking: 800,
+      turnRate: 4,
+      cornerShare: 0.35,
+      lookahead: 50,
+      reach: 25,
+    },
     ride: {
       min: 200,
       max: 500,
@@ -696,14 +711,21 @@ export const testEntitiesConfig = {
       retry: 0.5,
       plansPerStep: 2,
     },
-    rage: { seconds: 6, speedShare: 2, overshoot: 300, reaim: 0.75 },
+    rage: {
+      seconds: 6,
+      speedShare: 2,
+      overshoot: 300,
+      reaim: 0.75,
+      turnRate: 6,
+    },
     stall: { distance: 50, seconds: 1 },
     bellRange: 400,
     bellCooldown: 2,
     damage: 70,
     attackCooldown: 1,
     creakInterval: 0.8,
-    sounds: { bell: 500, creak: 150, hit: 300, rage: 700 },
+    skidCooldown: 1.5,
+    sounds: { bell: 500, creak: 150, skid: 250, hit: 300, rage: 700 },
   },
   birthdayBoy: {
     spawning: { ...NEVER, unseenDistance: 700, most: 8 },

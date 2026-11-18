@@ -110,7 +110,12 @@ export type {
   SpawnRule,
   WorldContent,
 } from "./content.js";
-export { lerpAngle, renderAim, renderPosition } from "./interpolation.js";
+export {
+  lerpAngle,
+  renderAim,
+  renderPosition,
+  wrapAngle,
+} from "./interpolation.js";
 export type { Interpolated } from "./interpolation.js";
 export type { CarriedItem, HeldSlot, Inventory } from "./inventory.js";
 export { carriedWeight, glyphOf, isOn, usesLeft } from "./inventory.js";
@@ -289,7 +294,6 @@ export {
   ambientLightAt,
   ambientPolygons,
   darkSources,
-  frontsNow,
   intoDeepdark,
   isDeepdark,
   nearDeepdark,
@@ -298,8 +302,18 @@ export {
 } from "./light.js";
 export type { DarkSource } from "./light.js";
 export type { Occluder } from "./shadow.js";
-export { darkFront, deepFront, frontAt, hearFronts } from "./deepdark.js";
+export {
+  darkFront,
+  deepFront,
+  driftPeriod,
+  edgeAt,
+  frontAt,
+  frontsNow,
+  hearFronts,
+  rowNoise,
+} from "./deepdark.js";
+export type { Fronts } from "./deepdark.js";
 export { clockFace, clockMinutes, daylightNow } from "./day.js";
-export { areaAt } from "./map.js";
+export { areaAt, roadDistanceAt } from "./map.js";
 export type { AmbientLight } from "./light.js";
 export { showsTo, viewOf } from "./view.js";

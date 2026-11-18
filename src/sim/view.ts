@@ -1,9 +1,9 @@
 import { daylightNow } from "./day.js";
-import type { Fronts } from "./light.js";
+import { frontsNow } from "./deepdark.js";
+import type { Fronts } from "./deepdark.js";
 import {
   ambientLightAt,
   darkSources,
-  frontsNow,
   inDarkness,
   intoDeepdark,
   isDeepdark,

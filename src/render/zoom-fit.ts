@@ -146,6 +146,14 @@ export function createZoomFit(config: ZoomFitConfig) {
   let wait = 0;
   return {
     /**
+     * Stops fitting, for a view that never fits, such as a ghost's free camera, whatever
+     * `config.always` says: the factor is 1, the configured zoom, and fitting again starts afresh.
+     */
+    rest(): number {
+      spring = null;
+      return 1;
+    },
+    /**
      * The factor on `camera`'s configured zoom to ease to this frame, `dt` seconds on, with its
      * eye at `eye` on `map`, fitting what the test `sees` gives says shows; it is asked for only
      * when what fits is measured, and without it all the map in sight shows. With the camera not

@@ -7,6 +7,7 @@ import {
   livingBody,
   rounded,
   sound,
+  wrapAngle,
 } from "../../sim/index.js";
 import type {
   Body,
@@ -21,6 +22,7 @@ import type {
 } from "../../sim/index.js";
 import { drawRing, hitterOf, playEach, preyFor, touching } from "../bodies.js";
 import {
+  drive,
   Headway,
   headwayOf,
   rageFromHurt,
@@ -28,9 +30,9 @@ import {
   strikeEach,
   strikeIf,
   Time,
-  walk,
 } from "../hunt.js";
-import type { Hunting, Stalling } from "../hunt.js";
+import type { Handling, Hunting, Stalling } from "../hunt.js";
+import { steer } from "../route.js";
 import { planRoute } from "../route.js";
 import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
@@ -38,6 +40,7 @@ import type { SpawningConfig } from "../spawning.js";
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
 const bellUrl = new URL("./sfx/bell.mp3", import.meta.url).href;
 const creakUrl = new URL("./sfx/creak.mp3", import.meta.url).href;
+const skidUrl = new URL("./sfx/skid.mp3", import.meta.url).href;
 const hitUrl = new URL("./sfx/bell.mp3", import.meta.url).href;
 const rageUrl = new URL("./sfx/rage.mp3", import.meta.url).href;
 
@@ -58,6 +61,8 @@ export interface TricycleConfig extends Hunting, Dormancy {
   readonly slowShare: number;
   /** How near a body it runs down must be, ahead of it, to slow it. */
   readonly slowRange: number;
+  /** How it rides: gaining and shedding speed, and turning, as a vehicle does, not on the spot. */
+  readonly handling: Handling;
   /**
    * Its rides: to spots `min` to `max` off, as the crow flies, along ways at least `width` across
    * where there are any. It tries `tries` spots round it and `through` spots past bodies it runs
@@ -85,13 +90,15 @@ export interface TricycleConfig extends Hunting, Dormancy {
   /**
    * Hurt by any body, it rages for `seconds` from each hurt: it rides at `speedShare` of a walk,
    * slowing for no one, straight at whatever hurt it and through it, to a spot up to `overshoot`
-   * past it, aiming afresh every `reaim` seconds and on reaching each spot.
+   * past it, aiming afresh every `reaim` seconds and on reaching each spot. It turns at
+   * `turnRate` meanwhile, sharper than calm, so its charges still find their mark.
    */
   readonly rage: {
     readonly seconds: number;
     readonly speedShare: number;
     readonly overshoot: number;
     readonly reaim: number;
+    readonly turnRate: number;
   };
   /**
    * On a way, getting less than `distance` along it in `seconds`, it gives that way up and plans
@@ -108,10 +115,13 @@ export interface TricycleConfig extends Hunting, Dormancy {
   readonly attackCooldown: number;
   /** Seconds between creaks of its wheels as it rides. */
   readonly creakInterval: number;
+  /** Seconds between skids of its wheels as it brakes into a turn. */
+  readonly skidCooldown: number;
   /** How far each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly bell: number;
     readonly creak: number;
+    readonly skid: number;
     readonly hit: number;
     readonly rage: number;
   };
@@ -124,6 +134,9 @@ const GLYPH = "🚲";
 /** What a short ride loses of its score: more than any setting off and pass can make up. */
 const SHORT = 100;
 
+/** The share of its turn rate a step's turn must pass for it to count as turning. */
+const TURNING = 0.25;
+
 /** Seconds its bell shows over it after a ring. */
 const BELL_SHOWN = 0.6;
 
@@ -135,13 +148,16 @@ const RAGE_COLOUR = "#d8262a";
  */
 export const TricycleState = z.object({
   route: Route,
+  // Its heading, which turns no faster than its handling lets it.
   facing: rounded(2),
+  speed: rounded(1),
   // When it last passed each body it runs down, by id, until `ride.rest` has run out.
   passed: z.record(z.string(), Time),
   slowed: z.boolean(),
   bellAt: Time,
   rangAt: Time.nullable(),
   creakAt: Time,
+  skidAt: Time,
   planAt: Time,
   attackAt: Time,
   attacking: z.boolean(),
@@ -158,11 +174,13 @@ export function freshTricycle(now: number, facing = 0): TricycleState {
   return {
     route: [],
     facing,
+    speed: 0,
     passed: {},
     slowed: false,
     bellAt: now,
     rangAt: null,
     creakAt: now,
+    skidAt: now,
     planAt: now,
     attackAt: now,
     attacking: false,
@@ -669,6 +687,7 @@ function mayPlan(game: Session, most: number): boolean {
 interface Sounds {
   readonly bell: Sound;
   readonly creak: Sound;
+  readonly skid: Sound;
   readonly hit: Sound;
   readonly rage: Sound;
 }
@@ -696,6 +715,7 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
   const sounds: Sounds = {
     bell: sound({ url: bellUrl, range: config.sounds.bell }),
     creak: sound({ url: creakUrl, range: config.sounds.creak }),
+    skid: sound({ url: skidUrl, range: config.sounds.skid }),
     hit: sound({ url: hitUrl, range: config.sounds.hit }),
     rage: sound({ url: rageUrl, range: config.sounds.rage }),
   };
@@ -705,6 +725,10 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
   };
   const speedOf = (game: Session, state: TricycleState): number =>
     game.config.player.speed * shareOf(state);
+  const handlingOf = (state: TricycleState): Handling =>
+    state.foe === null
+      ? config.handling
+      : { ...config.handling, turnRate: config.rage.turnRate };
   return {
     radius: config.radius,
     maxHealth: config.maxHealth,
@@ -728,19 +752,46 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
         config,
       );
       cue(entity, state, next, game, sounds);
-      const moved = walk(entity, next, speedOf(game, next), dt);
+      const handling = handlingOf(next);
+      const moved = drive(entity, next, speedOf(game, next), dt, handling);
+      // Turning, it is getting somewhere, though it may come round near where it was: only a
+      // tricycle held up while it heads straight on has stalled.
+      const turning =
+        Math.abs(wrapAngle(moved.facing - next.facing)) >
+        handling.turnRate * dt * TURNING;
+      // Braking into a turn, its wheels skid.
+      const skids =
+        turning && moved.speed < next.speed && game.worldTime >= next.skidAt;
+      if (skids) playEach(game, entity, [sounds.skid]);
+      const going = {
+        ...moved,
+        headway: turning ? null : moved.headway,
+        skidAt: skids ? game.worldTime + config.skidCooldown : moved.skidAt,
+      };
       // Passing through bodies, it does not meet walls as a body does: its way keeps it clear of
-      // them, and one in the way since it planned stops it, to plan anew.
-      const ahead = isAreaFree(
-        game.world.map,
-        entity.x + entity.vx * dt,
-        entity.y + entity.vy * dt,
-        entity.radius,
-      );
-      if (ahead) return moved;
+      // them. Should a curve cut a corner into one, it takes that step straight down its way, as
+      // planned; a wall in that too, as a door shut since it planned, stops it, to plan anew.
+      const { map } = game.world;
+      const clear = () =>
+        isAreaFree(
+          map,
+          entity.x + entity.vx * dt,
+          entity.y + entity.vy * dt,
+          entity.radius,
+        );
+      if (clear()) return going;
+      if (going.route.length > 0) {
+        const route = steer(entity, going.route, going.speed, dt);
+        if (clear() && (entity.vx !== 0 || entity.vy !== 0))
+          return {
+            ...going,
+            route,
+            facing: Math.atan2(entity.vy, entity.vx),
+          };
+      }
       entity.vx = 0;
       entity.vy = 0;
-      return { ...moved, route: [] };
+      return { ...going, route: [], speed: 0 };
     },
     strikes(entity, state, game): Strike[] {
       if (!state.attacking) return [];
@@ -782,7 +833,8 @@ function definition(config: TricycleConfig): EntityDefinition<TricycleState> {
  * favouring whichever it has gone longest without passing, so among many it does the rounds. It passes through every
  * body but those it runs down, players as shipped, and those it strikes hard as it passes. One
  * standing on its way ahead hears its bell; near and ahead of it, it slows. Its wheels creak as it
- * goes. Hurt by any body, it rages a while with a furious ringing: faster, slowing for no one, it
+ * goes. It rides as a vehicle does, never turning on the spot: it gathers speed on the straights
+ * and curves round corners, braking into sharp ones with a skid. Hurt by any body, it rages a while with a furious ringing: faster, slowing for no one, it
  * charges whatever hurt it, on through it, again and again.
  */
 export const tricycle = defineEntity(NAME, (config: TricycleConfig) => ({

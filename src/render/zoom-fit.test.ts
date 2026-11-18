@@ -97,6 +97,18 @@ test("the fitted zoom is kept within its bounds, and eases from the camera's own
   );
 });
 
+test("at rest, as for a ghost's free camera, it gives the camera's own zoom, even fitting always, and starts afresh after (#502)", () => {
+  const camera = createCamera(view, cameraConfig);
+  const zoom = createZoomFit({ ...fit, always: true });
+  const eye = { x: 75, y: 75 };
+  const map = room(3);
+  zoom.step(camera, map, eye, 1, true);
+  expect(zoom.step(camera, map, eye, 1, true)).toBeLessThan(1);
+  expect(zoom.rest()).toBe(1);
+  // Fitting again eases from the camera's own zoom, not from where it was left.
+  expect(zoom.step(camera, map, eye, 1, true)).toBe(1);
+});
+
 test("a bigger room zooms out further, up to the most it may", () => {
   const camera = createCamera(view, cameraConfig);
   const settle = (size: number) => {

@@ -147,7 +147,7 @@ function doorAhead(
   dt: number,
 ): string | null {
   const speed = Math.hypot(body.vx, body.vy);
-  if (speed === 0) return null;
+  if (speed === 0 || !Number.isFinite(speed)) return null;
   const { map } = game.world;
   const closed = closedDoors(map);
   if (closed.size === 0) return null;

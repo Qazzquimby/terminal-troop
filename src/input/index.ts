@@ -11,4 +11,6 @@ export { createInput } from "./input.js";
 export { whileHeld } from "./hold-button.js";
 export type { WheelConfig } from "./wheel.js";
 export { aimAhead, turnMove } from "./turn.js";
-export type { TurnConfig } from "./turn.js";
+export type { CursorConfig, TurnConfig } from "./turn.js";
+export { captureMode, createCaptureControl } from "./capture.js";
+export type { CaptureMode } from "./capture.js";

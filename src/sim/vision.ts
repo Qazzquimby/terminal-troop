@@ -178,6 +178,13 @@ function castRay(
   dy: number,
   maxDist: number,
 ): RayHit {
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(dx) ||
+    !Number.isFinite(dy)
+  )
+    return { distance: 0, wall: undefined };
   const cell = map.cell;
   let col = Math.floor(x / cell);
   let row = Math.floor(y / cell);
@@ -201,7 +208,11 @@ function castRay(
         ? (row * cell - y) / dy
         : Infinity;
 
-  for (;;) {
+  // Each pass crosses a cell boundary, and a ray `maxDist` long crosses no more than this many.
+  // An unbounded one is stopped by the solid ground round the map and its pockets.
+  const crossings = Math.ceil(((Math.abs(dx) + Math.abs(dy)) * maxDist) / cell);
+  const passes = Number.isFinite(crossings) ? crossings + 2 : Infinity;
+  for (let pass = 0; pass < passes; pass++) {
     const distance = Math.min(maxX, maxY);
     if (distance >= maxDist) return { distance: maxDist, wall: undefined };
 
@@ -230,6 +241,7 @@ function castRay(
       maxY += deltaY;
     }
   }
+  return { distance: maxDist, wall: undefined };
 }
 
 /**
@@ -736,6 +748,9 @@ export function visibilityPolygon(
   maxDist: number = Math.hypot(map.cols * map.cell, map.rows * map.cell),
   occluders: readonly Occluder[] = [],
 ): VisibilityPolygon {
+  // Its corner scan would walk endless rows from a point off at infinity.
+  if (!Number.isFinite(origin.x) || !Number.isFinite(origin.y))
+    return { points: [], walls: new Map() };
   const cone = origin.shape?.kind === "cone" ? origin.shape : undefined;
   const points: Point[] =
     cone === undefined ? [] : [{ x: origin.x, y: origin.y }];

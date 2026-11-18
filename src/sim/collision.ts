@@ -34,6 +34,8 @@ function resolveAxis(
 ): void {
   const velocityKey = VELOCITY[axis];
   const velocity = body[velocityKey];
+  // A body off at infinity spans endless cells; the step's guard puts it back (see `finite.ts`).
+  if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return;
   const [minRow, maxRow] = cellRange(body.y - half, body.y + half, map.cell);
   const [minCol, maxCol] = cellRange(body.x - half, body.x + half, map.cell);
   let collisionFace = velocity > 0 ? Infinity : -Infinity;
@@ -62,8 +64,10 @@ function sampleSegment(
 ): { steps: number; at: (t: number) => Point } {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
+  const steps = Math.ceil(Math.hypot(dx, dy) / FREE_POINT_STEP);
   return {
-    steps: Math.ceil(Math.hypot(dx, dy) / FREE_POINT_STEP),
+    // A non-finite segment is sampled at its ends only, never endlessly.
+    steps: Number.isFinite(steps) ? steps : 0,
     at: (t) => ({ x: from.x + dx * t, y: from.y + dy * t }),
   };
 }

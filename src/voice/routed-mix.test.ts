@@ -104,3 +104,27 @@ describe("interference on a voice carried by radio", () => {
     expect(mix.radio?.interference).toBe(0.1);
   });
 });
+
+describe("routedMix with the camera turned (#500)", () => {
+  test("pans the air and the radio as the screen shows them", () => {
+    // Facing east (roll -π/2): north shows on the left, south on the right.
+    const mix = routedMix(
+      listener,
+      [
+        { at: { x: 0, y: -300 }, via: "air" },
+        { at: { x: 0, y: 300 }, via: "radio" },
+      ],
+      falloff,
+      -Math.PI / 2,
+    );
+    expect(mix.pan).toBeCloseTo(-1);
+    expect(mix.radio?.pan).toBeCloseTo(1);
+  });
+
+  test("unturned, it pans as before", () => {
+    const routes = [{ at: { x: 150, y: 90 }, via: "air" as const }];
+    expect(routedMix(listener, routes, falloff, 0)).toEqual(
+      routedMix(listener, routes, falloff),
+    );
+  });
+});

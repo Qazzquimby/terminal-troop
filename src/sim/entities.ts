@@ -10,6 +10,7 @@ import type { Interpolated, Tracked } from "./interpolation.js";
 import { follow, glideToTarget } from "./interpolation.js";
 import { livingPlayers } from "./ghosts.js";
 import { isAreaFree } from "./map.js";
+import { guardEntity } from "./finite.js";
 import type { Point } from "./map.js";
 import { heardHealth, hearHealth, isHeld } from "./prediction.js";
 import type { Session } from "./session.js";
@@ -695,6 +696,7 @@ export function updateEntities(game: Session, dt: number): void {
       entity.x += entity.vx * dt;
       entity.y += entity.vy * dt;
     }
+    guardEntity(game, entity);
     entity.tx = entity.x;
     entity.ty = entity.y;
     if (kind !== null) profileEnd(`kind:${kind}:move`, start);

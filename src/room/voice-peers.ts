@@ -16,7 +16,7 @@ function mixFor(
   const player = session.players.get(id);
   if (player === undefined || id === session.localId) return null;
   const routes = voiceRoutes(session, player, session.local);
-  return routedMix(session.local, routes, falloff);
+  return routedMix(session.local, routes, falloff, session.sfx.earTurn());
 }
 
 /** Mixes the voice of each of `ids` by every way it reaches the local player. */

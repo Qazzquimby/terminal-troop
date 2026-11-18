@@ -2,6 +2,7 @@ import type { SpatialFalloff } from "./audio/index.js";
 import type { EntitiesConfig } from "./entities/index.js";
 import type {
   CameraConfig,
+  CursorLook,
   FlashConfig,
   MapMemoryConfig,
   RippleConfig,
@@ -15,7 +16,7 @@ import type { ItemsConfig } from "./items/index.js";
 import type { MovesConfig } from "./moves/index.js";
 import type { GreetingConfig } from "./net/index.js";
 import type { HudConfig, MinimapConfig, UiConfig } from "./ui/index.js";
-import type { TurnConfig, WheelConfig } from "./input/index.js";
+import type { CursorConfig, TurnConfig, WheelConfig } from "./input/index.js";
 
 import type {
   RadioSoundConfig,
@@ -55,6 +56,7 @@ interface AppConfig extends SimConfig {
   readonly minimap: MinimapConfig;
   readonly wheel: WheelConfig;
   readonly turn: TurnConfig;
+  readonly cursor: CursorConfig & CursorLook;
   readonly worldLog: WorldLogConfig;
 }
 
@@ -162,6 +164,9 @@ export const config = {
     // Uncaptured mouse: a cursor within `band` (share of width) of a side turns at `rate` rad/s.
     edge: { band: 0.1, rate: 3 },
   },
+  // The game's cursor while the mouse is captured to aim. speed: view px per mouse px, times the
+  // player's sensitivity; size: arm length in px.
+  cursor: { speed: 1, size: 8, colour: "#e8f0f8", edge: "#090b0e" },
   // zoom: multiples of the living camera's zoom; step: factor per wheel notch.
   spectate: { speed: CELL * 8, zoom: { min: 0.5, max: 2.5, step: 1.2 } },
   ripples: {
@@ -259,6 +264,9 @@ export const config = {
     eyes: { every: 4, for: 0.6, colour: "#ff3b30" },
     // Seconds in when dark / deepdark set out from the left edge; both reach the right at `end`.
     fronts: { dark: 2 * 60, deep: 4 * 60, end: END_GAME },
+    // Each row's edge leads or lags the front's mean by up to `amplitude`. scale: rows between
+    // the biggest bumps. drift: seconds to reshape (0 never; lengthened so no row goes back).
+    ragged: { amplitude: CELL * 6, scale: 12, octaves: 2, drift: 120 },
   },
   // smoothing: ease rate; glide: seconds to reach a reported position; predictionHold: seconds a
   // guest holds a predicted hit; snap: a jump further than this is placed, not glided.
@@ -636,7 +644,7 @@ export const config = {
     giantSnail: {
       spawning: {
         weight: 5,
-        after: 60*5,
+        after: 60 * 5,
         tries: 24,
         unseenDistance: CELL * 14,
         apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
@@ -1088,6 +1096,14 @@ export const config = {
       speedShare: 1.3, // of a player's walk
       slowShare: 0.9, // with a player within slowRange ahead
       slowRange: CELL * 4,
+      handling: {
+        acceleration: CELL * 6, // px/s²
+        braking: CELL * 8, // px/s²
+        turnRate: 4, // rad/s
+        cornerShare: 0.35, // of its speed, into a right-angle turn or sharper
+        lookahead: CELL, // down its way, the spot it steers at
+        reach: CELL / 2, // a waypoint this near is passed
+      },
       ride: {
         min: CELL * 14,
         max: CELL * 28,
@@ -1107,6 +1123,7 @@ export const config = {
         speedShare: 2, // of a player's walk, past a sprint
         overshoot: CELL * 6, // past whatever hurt it
         reaim: 0.75, // seconds between aims at it
+        turnRate: 6, // rad/s
       },
       stall: { distance: CELL, seconds: 1 }, // less headway than this on a ride, it plans another
       bellRange: CELL * 8, // rings at a player this near on its way
@@ -1114,9 +1131,11 @@ export const config = {
       damage: 70,
       attackCooldown: 1,
       creakInterval: 0.8,
+      skidCooldown: 1.5,
       sounds: {
         bell: CELL * 10,
         creak: CELL * 3,
+        skid: CELL * 5,
         hit: CELL * 6,
         rage: CELL * 14,
       },
@@ -1252,6 +1271,7 @@ export const config = {
       nothing: 0.5, // chance a roll brings nothing at world start, falling to 0 by certainAfter
       certainAfter: END_GAME,
       headStart: 600, // seconds of rolls a new world starts with
+      offRoad: 1, // cells from the road every arrival keeps, relocations too; 0: anywhere
     },
     // F3 menu. enabled: production hosts take requests too (always in dev and under ?debug);
     // cells: how far ahead it spawns; soundRange: the pop, which is not a noise.

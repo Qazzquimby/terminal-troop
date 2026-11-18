@@ -1,6 +1,7 @@
 import type { Point, Rng, Room, TileMap, World } from "./map.js";
 import { daylightNow } from "./day.js";
-import { darkFront, deepFront } from "./deepdark.js";
+import { NO_FRONTS, behindDeepFront, edgeAt, frontsNow } from "./deepdark.js";
+import type { Fronts } from "./deepdark.js";
 import { AREA, exitDistance, isSolid } from "./map.js";
 import type { Session } from "./session.js";
 import { noShadows, shadowCasters, shadowsOf } from "./shadow.js";
@@ -103,25 +104,6 @@ function sunReach(world: World): SunReach {
 }
 
 /**
- * How far across the world, in pixels from its left edge, the fronts sweeping it have come: no
- * sunlight falls left of `dark`, and all left of `deep` is deepdark, which no place's own light
- * lights.
- */
-export interface Fronts {
-  readonly dark: number;
-  readonly deep: number;
-}
-
-/** Fronts that have not set out: a world as it starts. */
-const NO_FRONTS: Fronts = { dark: -Infinity, deep: -Infinity };
-
-/** How far `game`'s fronts have come now, by its world clock. */
-export const frontsNow = (game: Session): Fronts => ({
-  dark: darkFront(game),
-  deep: deepFront(game),
-});
-
-/**
  * Whether the sun lights the cell at `index` with `daylight` (0..1) left: out of doors, away
  * from the exit, and, as daylight recedes, near enough the road's centre line. The line is the
  * last to stay lit, and with none left nothing is.
@@ -145,11 +127,14 @@ function cellLight(
   fronts: Fronts,
 ): AmbientLight | null {
   const { area, room, rooms } = world.layout;
-  const centre = ((index % world.map.cols) + 0.5) * world.map.cell;
-  if (centre < fronts.deep) return null;
+  const { cols } = world.map;
+  const centre = ((index % cols) + 0.5) * world.map.cell;
+  const row = Math.floor(index / cols);
+  if (centre < (fronts.deep[row] ?? -Infinity)) return null;
   const code = area[index];
   if (code === AREA.road || code === AREA.yard)
-    return centre >= fronts.dark && sunlit(world, index, daylight)
+    return centre >= (fronts.dark[row] ?? -Infinity) &&
+      sunlit(world, index, daylight)
       ? "sun"
       : null;
   if (code !== AREA.room) return null;
@@ -231,7 +216,7 @@ export function isDeepdark(
   at: Point,
   darks: readonly DarkSource[] = darksNow(game),
 ): boolean {
-  return at.x < deepFront(game) || inDarkness(game.world.map, darks, at);
+  return behindDeepFront(game, at) || inDarkness(game.world.map, darks, at);
 }
 
 /**
@@ -244,7 +229,7 @@ export function nearDeepdark(
   darks: readonly DarkSource[] = darksNow(game),
 ): boolean {
   return (
-    at.x < deepFront(game) ||
+    behindDeepFront(game, at) ||
     darks.some((dark) => Math.hypot(at.x - dark.x, at.y - dark.y) <= dark.range)
   );
 }
@@ -285,7 +270,7 @@ export function isLit(
   const fronts = frontsNow(game);
   if (ambientLightAt(world, at, daylightNow(game), fronts) !== null)
     return true;
-  const deep = at.x < fronts.deep;
+  const deep = at.x < edgeAt(fronts.deep, world.map.cell, at.y);
   const shadows = game.config.light.shadows.gameplay
     ? shadowsNow(game)
     : noShadows;

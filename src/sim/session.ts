@@ -20,6 +20,7 @@ import type { DeepdarkConfig } from "./deepdark.js";
 import type { EntityType, WorldEntity } from "./entities.js";
 import { followEntities, updateEntities } from "./entities.js";
 import { followDoors } from "./doors.js";
+import { guardBodies } from "./finite.js";
 import { emitFootsteps } from "./footsteps.js";
 import { layBodies } from "./death.js";
 import type { EngagementConfig } from "./bodies.js";
@@ -401,6 +402,8 @@ function hostStep(game: Session, dt: number): void {
     content.step(game, dt);
     profileEnd(`content:${content.name}`, start);
   }
+  // Content steps move bodies too: none goes into separation off at infinity.
+  guardBodies(game);
   phase("separate", () => {
     separateEntities(game);
   });
@@ -436,6 +439,7 @@ export function updateSession(
     emitFootsteps(game, dt);
     emitVoices(game, dt);
     settlePredictions(game);
+    guardBodies(game);
   });
   if (game.hosting) hostStep(game, dt);
   else

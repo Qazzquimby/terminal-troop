@@ -29,6 +29,12 @@ export interface SpawnerConfig {
    * world begins with.
    */
   readonly headStart: number;
+  /**
+   * Fewest cells from the road every kind it brings must appear, as `roadDistanceAt` counts them:
+   * 1 keeps them all off the road, and so off it as they move to where they might have arrived. A
+   * kind's own `offRoad` rule overrides it. Anywhere when 0 or left out.
+   */
+  readonly offRoad?: number;
 }
 
 /** How a kind arrives through the world's spawner, and where it may appear. */
@@ -99,6 +105,14 @@ interface Arrival {
   readonly rules?: SpawnRules | undefined;
   /** Spawns one at `at`. */
   spawn(game: Session, at: Point): void;
+}
+
+/** How far from the road, in cells, each session's spawner keeps what it brings. */
+const roadRules = new WeakMap<Session, number>();
+
+/** `rules`, filled in with what the spawner of `game` asks of every kind it brings. */
+function rulesIn(game: Session, rules: SpawnRules = {}): SpawnRules {
+  return { ...rules, offRoad: rules.offRoad ?? roadRules.get(game) ?? 0 };
 }
 
 /** The kinds each session's spawner may bring, in the order they registered. */
@@ -175,13 +189,17 @@ export function arrive(game: Session, kind: string, at: Point): boolean {
 /**
  * How strongly a kind keeping `rules` favours appearing at `at`: by its danger, more the farther
  * it is from the road and the nearer the exit's side of the world; 0 where it may not appear.
+ * `radius` is the half-size of its body, for the rules that mind it.
  */
 export function spawnWeight(
   game: Session,
   at: Point,
   rules: SpawnRules = {},
+  radius = 0,
 ): number {
-  return spawnAllowed(game, at, rules) ? dangerWeight(game.world, at) : 0;
+  return spawnAllowed(game, at, rulesIn(game, rules), radius)
+    ? dangerWeight(game.world, at)
+    : 0;
 }
 
 /**
@@ -240,7 +258,7 @@ function spawnPoint(
       y: Math.random() * game.world.H,
     };
     if (!isAreaFree(game.world.map, at.x, at.y, radius)) continue;
-    const allowed = spawnWeight(game, at, arrival.rules);
+    const allowed = spawnWeight(game, at, arrival.rules, radius);
     if (allowed <= 0) continue;
     const weight = allowed * apartShare(game, at, config.apart);
     const distance = nearestPlayerDistance(game, at);
@@ -323,7 +341,7 @@ function memberPoints(
   const taken: Point[] = [leader];
   const fits = (at: Point) =>
     isAreaFree(map, at.x, at.y, radius) &&
-    spawnAllowed(game, at, arrival.rules) &&
+    spawnAllowed(game, at, rulesIn(game, arrival.rules), radius) &&
     nearestPlayerDistance(game, at) >= unseen &&
     taken.every(
       (other) => Math.hypot(other.x - at.x, other.y - at.y) >= radius * 2,
@@ -455,7 +473,9 @@ export const spawner: Content<"spawner", SpawnerConfig> = {
     return {
       name: "entity/spawner",
       world: { clock },
-      register: () => undefined,
+      register(game) {
+        roadRules.set(game, config.offRoad ?? 0);
+      },
       populate(game) {
         const rolls = Math.floor(config.headStart / config.period);
         for (let i = 0; i < rolls; i++) roll(game, config, 0, true);

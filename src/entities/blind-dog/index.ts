@@ -902,8 +902,8 @@ export const blindDog = defineEntity(NAME, (config: BlindDogConfig) => ({
     kind: NAME,
     radius: config.radius,
     config: config.spawning,
-    // It comes out in the light as well as the dark.
-    rules: { inLight: true },
+    // It comes out in the light as well as the dark, and never where it is too big to get out of.
+    rules: { inLight: true, reachesRoad: true },
     fresh: (seed: number, game: Session) =>
       freshBlindDog(Math.floor(seed * 2 ** 32), game.worldTime),
   }),

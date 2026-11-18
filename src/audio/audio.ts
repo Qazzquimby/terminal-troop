@@ -101,6 +101,14 @@ export interface Sfx {
    * than keeping the mix it started with. Null hears them unpositioned.
    */
   listen: (listener: Point | null) => void;
+  /**
+   * Turns the ear `turn` radians clockwise, as the camera turns the world on the screen: a sound
+   * pans by whether it shows left or right of the listener, not by which way it lies in the world.
+   * 0, the world's up at the top, until set. Positioned sounds playing are mixed anew for it.
+   */
+  setEarTurn: (turn: number) => void;
+  /** The ear's turn, as last set. */
+  earTurn: () => number;
   stopAll: (fadeTime?: number) => void;
   /** Scales every sound; 0..1. */
   setMasterVolume: (value: number) => void;
@@ -112,24 +120,37 @@ export interface Sfx {
   output: () => AudioNode;
 }
 
-/** Volume falls linearly from `full` to `silent`; horizontal offset becomes stereo pan. */
+/**
+ * How far right of the listener an offset of `dx`, `dy` (world pixels) shows, with the world
+ * turned `turn` radians clockwise on the screen, as the camera's roll turns it.
+ */
+export function sideways(dx: number, dy: number, turn: number): number {
+  return turn === 0 ? dx : dx * Math.cos(turn) - dy * Math.sin(turn);
+}
+
+/**
+ * Volume falls linearly from `full` to `silent`; how far right or left of the listener a sound
+ * shows on the screen, with the world turned `turn` radians clockwise on it, becomes stereo pan.
+ */
 export function spatialMix(
   origin: Point | null,
   listener: Point | null,
   falloff: SpatialFalloff,
+  turn = 0,
 ): Mix {
   if (origin === null || listener === null) return { volume: 1, pan: 0 };
 
   const dx = origin.x - listener.x;
   const dy = origin.y - listener.y;
   const beyond = Math.hypot(dx, dy) - falloff.full;
+  const side = sideways(dx, dy, turn);
 
   return {
     volume: Math.min(
       1,
       Math.max(0, 1 - beyond / (falloff.silent - falloff.full)),
     ),
-    pan: Math.max(-1, Math.min(1, dx / falloff.pan)),
+    pan: Math.max(-1, Math.min(1, side / falloff.pan)),
   };
 }
 
@@ -194,6 +215,10 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
   const streams = new Set<SoundHandle>();
   /** Every positioned sound playing and not fading out, mixed anew as the listener moves. */
   const positioned = new Set<Placed>();
+  /** Radians the ear is turned clockwise, as the camera turns the world on the screen. */
+  let turn = 0;
+  /** Who positioned sounds were last heard by, to mix them anew when the ear turns. */
+  let lastListener: Point | null = null;
 
   function getAudioContext(): AudioContext {
     audioContext ??= new AudioContext();
@@ -350,7 +375,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     const copy = (point: Point | null) =>
       point === null ? null : { x: point.x, y: point.y };
     let from = copy(origin);
-    let mix = spatialMix(from, listener, fades);
+    let mix = spatialMix(from, listener, fades, turn);
     let baseVolume = volume;
     let released = false;
     const gain = context.createGain();
@@ -375,7 +400,7 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
       },
       setPosition(newOrigin: Point | null, newListener: Point | null): void {
         from = copy(newOrigin);
-        mix = spatialMix(from, newListener, fades);
+        mix = spatialMix(from, newListener, fades, turn);
         gain.gain.value = level();
         panner.pan.value = mix.pan;
         if (from === null || released) positioned.delete(out);
@@ -404,7 +429,15 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
   }
 
   function listen(listener: Point | null): void {
+    lastListener = listener === null ? null : { x: listener.x, y: listener.y };
     for (const out of positioned) out.listen(listener);
+  }
+
+  function setEarTurn(next: number): void {
+    const value = Number.isFinite(next) ? next : 0;
+    if (value === turn) return;
+    turn = value;
+    if (lastListener !== null) listen(lastListener);
   }
 
   /** Resolves to null if a newer playLoop/stop for the same id superseded this one. */
@@ -597,6 +630,8 @@ export function createSfx(falloff: SpatialFalloff): Sfx {
     stream,
     stop,
     listen,
+    setEarTurn,
+    earTurn: () => turn,
     stopAll,
     setMasterVolume,
     setChannelVolume,

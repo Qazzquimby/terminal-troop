@@ -9,33 +9,44 @@ import {
   AREA,
   createPlayer,
   createSession,
+  destroyWalls,
   dangerWeight,
   inRect,
+  isAreaFree,
   isLit,
   mulberry32,
   randomFreePosition,
   registerContent,
   remoteness,
+  roadDistanceAt,
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
 import type {
   Controls,
   DangerConfig,
+  Point,
   Session,
   SimConfig,
+  Sound,
   WorldKind,
 } from "../sim/index.js";
 import type { EntitiesConfig } from "./index.js";
 import { entityContent } from "./index.js";
+import { freshPeeper } from "./peeper/index.js";
+import { relocate } from "./relocate.js";
 import { freshSnail } from "./snail/index.js";
+import { reachesRoad } from "./road-reach.js";
+import { spanOf } from "./route.js";
 import { spawnAllowed } from "./spawn-rules.js";
 import {
   apartShare,
+  arrivalPoint,
   groupRange,
   groupSize,
   nothingChance,
   spawnWeight,
+  watchedAt,
 } from "./spawning.js";
 import type { GroupConfig, SpawnerConfig, SpawningConfig } from "./spawning.js";
 
@@ -602,4 +613,230 @@ test("the road round the exit is dark, and the most dangerous place to spawn, pa
     expect(spawnWeight(game, atExit)).toBeGreaterThan(
       dangerWeight(game.world, corner),
     );
+});
+
+/** `count` points the spawner picks for one of `kind` arriving in `game`, those it finds. */
+function arrivalPoints(game: Session, kind: string, count: number): Point[] {
+  return Array.from({ length: count }, () => arrivalPoint(game, kind)).filter(
+    (at) => at !== null,
+  );
+}
+
+/** A cell of the road in the exit, dark and the most dangerous place there is. */
+function exitRoad(game: Session): Point {
+  const { exit } = game.world.layout;
+  return cellWhere(game, AREA.road, (at) => inRect(exit, at));
+}
+
+test("a spawner that keeps off the road brings nothing onto it, not even the dark road at the exit", () => {
+  const open = world();
+  const onRoad = arrivalPoints(open, "zombie", 200).filter(
+    (at) => roadDistanceAt(open.world, at) === 0,
+  );
+  // Left free, the exit's dark road draws some.
+  expect(onRoad.length).toBeGreaterThan(0);
+  // A head start of 100 sure rolls, every zombie still where it arrived.
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1, headStart: 100 } });
+  expect(spawnWeight(game, exitRoad(game))).toBe(0);
+  const kind = game.kindIds.get("zombie");
+  const arrived = [...game.entities.values()].filter(
+    (entity) => entity.kind === kind,
+  );
+  expect(arrived.length).toBeGreaterThan(10);
+  for (const entity of arrived)
+    expect(roadDistanceAt(game.world, entity)).toBeGreaterThanOrEqual(1);
+  const { radius } = testEntitiesConfig.zombie;
+  const points = arrivalPoints(game, "zombie", 200);
+  expect(points.length).toBeGreaterThan(100);
+  for (const at of points) {
+    expect(roadDistanceAt(game.world, at)).toBeGreaterThanOrEqual(1);
+    expect(isAreaFree(game.world.map, at.x, at.y, radius)).toBe(true);
+  }
+});
+
+test("a world without a road, as the dev square, has none to keep off", () => {
+  const game = world({
+    spawner: { ...CERTAIN, offRoad: 1, headStart: 30 },
+    kind: "dev",
+  });
+  expect(count(game, "zombie")).toBeGreaterThan(0);
+});
+
+test("a kind's own off-road rule overrides the spawner's", () => {
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1 } });
+  expect(spawnWeight(game, exitRoad(game), { offRoad: 0 })).toBeGreaterThan(0);
+});
+
+test("a monster left alone relocates only where it could spawn: free, dark, off the road and unseen", () => {
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1 } });
+  const from = exitRoad(game);
+  const peeper = spawnEntity(game, "peeper", from.x, from.y, freshPeeper(0));
+  const blink: Sound = { url: "test/relocate-blink.mp3", range: 0 };
+  // No wait and no range, so it tries to move every call.
+  const restless = { after: 0, range: 0, retry: 0 };
+  const { peeper: hunting } = testEntitiesConfig;
+  let moves = 0;
+  for (let i = 0; i < 100; i++) {
+    const { moved } = relocate(
+      game,
+      "peeper",
+      peeper,
+      0,
+      hunting,
+      restless,
+      blink,
+    );
+    if (!moved) continue;
+    moves++;
+    expect(roadDistanceAt(game.world, peeper)).toBeGreaterThanOrEqual(1);
+    expect(isAreaFree(game.world.map, peeper.x, peeper.y, peeper.radius)).toBe(
+      true,
+    );
+    expect(spawnAllowed(game, peeper, { offRoad: 1 })).toBe(true);
+    expect(watchedAt(game, "peeper", peeper)).toBe(false);
+  }
+  expect(moves).toBeGreaterThan(50);
+});
+
+/** A box of cells: its top-left cell and its side. */
+interface Box {
+  readonly col: number;
+  readonly row: number;
+  readonly side: number;
+}
+
+/**
+ * The first box of `side` cells in the right half of `game`'s world, away from the start, whose
+ * cells are all `far` or more from the road.
+ */
+function farBox(game: Session, side: number, far: number): Box {
+  const { cols, rows } = game.world.map;
+  const { roadDistance } = game.world.layout;
+  const clear = (col: number, row: number): boolean => {
+    for (let r = row; r < row + side; r++)
+      for (let c = col; c < col + side; c++)
+        if ((roadDistance[r * cols + c] ?? 0) < far) return false;
+    return true;
+  };
+  for (let row = 0; row + side <= rows; row++)
+    for (let col = Math.floor(cols / 2); col + side <= cols; col++)
+      if (clear(col, row)) return { col, row, side };
+  throw new Error("no box that far from the road");
+}
+
+/** Walls `box` round in `game`, its inside cleared to open floor: a pocket cut off from all. */
+function wallIn(game: Session, box: Box): void {
+  const { map, layout } = game.world;
+  const last = box.side - 1;
+  for (let r = 0; r <= last; r++)
+    for (let c = 0; c <= last; c++) {
+      const index = (box.row + r) * map.cols + box.col + c;
+      const ring = r === 0 || c === 0 || r === last || c === last;
+      map.solid[index] = ring ? 1 : 0;
+      layout.area[index] = ring ? AREA.wall : AREA.room;
+    }
+}
+
+/** Whether `at` lies in `box`, its ring included. */
+function inBox(game: Session, box: Box, at: Point): boolean {
+  const { cell } = game.world.map;
+  const col = Math.floor(at.x / cell);
+  const row = Math.floor(at.y / cell);
+  return (
+    col >= box.col &&
+    row >= box.row &&
+    col < box.col + box.side &&
+    row < box.row + box.side
+  );
+}
+
+/** The rows, first and last, of a way from `box` straight to the road beside it, up or down. */
+function wayToRoad(game: Session, box: Box): { from: number; to: number } {
+  const { map, layout } = game.world;
+  const roadRow = (step: number): number | null => {
+    const first = step < 0 ? box.row - 1 : box.row + box.side;
+    for (let row = first; row >= 0 && row < map.rows; row += step)
+      if (layout.area[row * map.cols + box.col + 1] === AREA.road) return row;
+    return null;
+  };
+  const above = roadRow(-1);
+  if (above !== null) return { from: above + 1, to: box.row + box.side - 2 };
+  const below = roadRow(1);
+  if (below === null) throw new Error("no road above or below the box");
+  return { from: box.row + 1, to: below - 1 };
+}
+
+/** Knocks down every wall in the columns `cols` of the rows `rows` of `game`. */
+function knockThrough(
+  game: Session,
+  rows: { from: number; to: number },
+  cols: { from: number; to: number },
+): void {
+  const { cell } = game.world.map;
+  for (let row = rows.from; row <= rows.to; row++)
+    for (let col = cols.from; col <= cols.to; col++)
+      destroyWalls(game, {
+        center: { x: (col + 0.5) * cell, y: (row + 0.5) * cell },
+        radius: 1,
+        shape: "square",
+      });
+}
+
+test("a blind dog never appears shut in where it is too big to walk to the road", () => {
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1 } });
+  const { radius } = testEntitiesConfig.blindDog;
+  const { map } = game.world;
+  const box = farBox(game, spanOf(map.cell, radius) + 8, 2);
+  wallIn(game, box);
+  const middle = {
+    x: (box.col + box.side / 2) * map.cell,
+    y: (box.row + box.side / 2) * map.cell,
+  };
+  expect(spawnAllowed(game, middle, { inLight: true }, radius)).toBe(true);
+  expect(
+    spawnAllowed(game, middle, { inLight: true, reachesRoad: true }, radius),
+  ).toBe(false);
+  const points = arrivalPoints(game, "blindDog", 300);
+  expect(points.length).toBeGreaterThan(100);
+  for (const at of points) {
+    expect(inBox(game, box, at)).toBe(false);
+    expect(reachesRoad(game, at, radius)).toBe(true);
+  }
+});
+
+test("a pocket opens to a body once walls come down to make a way to the road wide enough for it", () => {
+  const { radius } = testEntitiesConfig.blindDog;
+  const rules = { inLight: true, reachesRoad: true };
+  /** A world with a pocket and a way `wide` cells wide knocked from it to the road. */
+  const pocketed = (wide: number): { game: Session; middle: Point } => {
+    const game = world();
+    const { cell } = game.world.map;
+    const box = farBox(game, spanOf(cell, radius) + 8, 2);
+    wallIn(game, box);
+    const middle = {
+      x: (box.col + box.side / 2) * cell,
+      y: (box.row + box.side / 2) * cell,
+    };
+    // Found shut in first, so the knocking through must be noticed.
+    expect(spawnAllowed(game, middle, rules, radius)).toBe(false);
+    knockThrough(game, wayToRoad(game, box), {
+      from: box.col + 1,
+      to: box.col + wide,
+    });
+    return { game, middle };
+  };
+  const span = spanOf(testSimConfig.world.cell, radius);
+  const wide = pocketed(span);
+  expect(spawnAllowed(wide.game, wide.middle, rules, radius)).toBe(true);
+  const narrow = pocketed(span - 1);
+  expect(spawnAllowed(narrow.game, narrow.middle, rules, radius)).toBe(false);
+  const small = testSimConfig.world.cell / 2 - 1;
+  expect(spawnAllowed(narrow.game, narrow.middle, rules, small)).toBe(true);
+});
+
+test("a world without a road, as the dev square, has none a kind must reach", () => {
+  const game = world({ kind: "dev" });
+  const { radius } = testEntitiesConfig.blindDog;
+  const rules = { inLight: true, reachesRoad: true };
+  expect(spawnAllowed(game, { x: 450, y: 300 }, rules, radius)).toBe(true);
 });
