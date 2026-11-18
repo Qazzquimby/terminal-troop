@@ -75,6 +75,22 @@ test.each(REGIMES)("the entity bench runs the %s regime", (regime) => {
   expect(byKind(result.parts).map(([kind]) => kind)).toContain("zombie");
 });
 
+test("a fixed mix keeps its counts and leaves out kinds the world lacks", () => {
+  const result = runBench(small, {
+    ...benchDefaults,
+    regime: "active",
+    count: 8,
+    warmup: 1,
+    steps: 1,
+    breakdown: false,
+    render: false,
+    mix: { zombie: 3, exploder: 1, noSuchKind: 4 },
+  });
+  expect(result.kinds.get("zombie")).toBe(3);
+  expect(result.kinds.get("exploder")).toBe(1);
+  expect(result.step.median).toBeGreaterThan(0);
+});
+
 test("a dormant zombie is timed standing still, an active one running", () => {
   const timed = (regime: "dormant" | "active") =>
     runBench(small, { ...benchDefaults, regime, count: 2, warmup: 1, steps: 2 })

@@ -693,6 +693,7 @@ export const testEntitiesConfig = {
       pull: 1.2,
       rest: 15,
       retry: 0.5,
+      plansPerStep: 2,
     },
     rage: { seconds: 6, speedShare: 2, overshoot: 300, reaim: 0.75 },
     bellRange: 400,

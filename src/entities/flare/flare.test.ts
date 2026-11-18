@@ -107,3 +107,20 @@ test("a flare stops at a wall", () => {
   run(game, 1.5);
   expect(flares(game)[0]?.x).toBeLessThan(200);
 });
+
+test("within a step, the lights given off follow a flare as it moves, comes and goes", () => {
+  const game = world();
+  expect(emittedLights(game)).toHaveLength(0);
+  fireFlare(game, game.local, { aim: 0, range: 400 });
+  const [flying] = flares(game);
+  expect(emittedLights(game)).toEqual([
+    expect.objectContaining({ x: flying?.x, y: flying?.y }),
+  ]);
+  if (flying === undefined) throw new Error("no flare");
+  flying.x += 40;
+  expect(emittedLights(game)).toEqual([
+    expect.objectContaining({ x: flying.x, y: flying.y }),
+  ]);
+  game.entities.delete(flying.id);
+  expect(emittedLights(game)).toHaveLength(0);
+});

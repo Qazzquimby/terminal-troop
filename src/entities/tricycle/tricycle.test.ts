@@ -453,3 +453,21 @@ test("hurt by a body it does not run down, it rages at that body and strikes it"
   run(game, 1.5);
   expect(other.health).toBeLessThan(other.maxHealth);
 });
+
+test("no more than its plans a step plan a ride in one step; the rest plan in a later one", () => {
+  seeded(1, () => {
+    const game = world(FAR.x, 75, {
+      ...thumperHunting,
+      ride: { ...config.ride, plansPerStep: 2 },
+    });
+    const trikes = [375, 425, 475].map((x) =>
+      spawnEntity(game, "tricycle", x, 325, freshTricycle(game.worldTime)),
+    );
+    const riding = () =>
+      trikes.filter((trike) => stateOf(trike).route.length > 0).length;
+    run(game, DT);
+    expect(riding()).toBe(2);
+    run(game, DT);
+    expect(riding()).toBe(3);
+  });
+});

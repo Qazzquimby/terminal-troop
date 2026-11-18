@@ -74,8 +74,52 @@ export interface BenchOptions {
   readonly render: boolean;
   /** Also run the steps again with the step profile on, for a breakdown by part and kind. */
   readonly breakdown: boolean;
+  /** Seeds where monsters are placed and every roll they make. */
   readonly seed: number;
+  /** Which kinds, how many of each: see `Mix`. */
+  readonly mix: Mix;
 }
+
+/**
+ * How the monsters divide among kinds: "shipped", in proportion to the spawner's weights, so a
+ * weight tweak changes what is timed; or fixed weights by kind name, such as `REFERENCE_MIX`, so
+ * commits compare like with like. Fixed weights are scaled to the count, and a kind the world
+ * has not registered is left out, the rest keeping their counts.
+ */
+export type Mix = "shipped" | Readonly<Record<string, number>>;
+
+/** A fixed mix, counts at N = 100: the shipped one as of #470. */
+export const REFERENCE_MIX: Readonly<Record<string, number>> = {
+  zombie: 22,
+  exploder: 15,
+  sleeper: 11,
+  hoarder: 11,
+  tricycle: 9,
+  thumper: 4,
+  mimic: 4,
+  apexPredator: 3,
+  snail: 2,
+  blindDog: 2,
+  stalker: 2,
+  mineLayer: 2,
+  livingWall: 2,
+  gloom: 2,
+  doppelganger: 2,
+  birthdayBoy: 2,
+  peeper: 2,
+  statue: 1,
+  giantSnail: 1,
+  ghostGirl: 1,
+};
+
+/** A fixed world, the shipped one as of #470, so a resized map does not read as a regression. */
+const REFERENCE_WORLD = { cols: 100, rows: 60, seed: 1 } as const;
+
+/** `config` on `REFERENCE_WORLD`'s map. */
+export const onReferenceWorld = (config: BenchConfig): BenchConfig => ({
+  ...config,
+  sim: { ...config.sim, world: { ...config.sim.world, ...REFERENCE_WORLD } },
+});
 
 export const benchDefaults: Omit<BenchOptions, "regime" | "count"> = {
   warmup: 60,
@@ -84,11 +128,13 @@ export const benchDefaults: Omit<BenchOptions, "regime" | "count"> = {
   render: true,
   breakdown: true,
   seed: 1,
+  mix: "shipped",
 };
 
-/** Milliseconds a step took: its mean, 95th percentile and worst. */
+/** Milliseconds a step took: its mean, median, 95th percentile and worst. */
 interface Timing {
   readonly mean: number;
+  readonly median: number;
   readonly p95: number;
   readonly max: number;
 }
@@ -217,9 +263,31 @@ function placeIn(
   );
 }
 
-/** `count` kinds the spawner brings, in proportion to their weights, the heaviest first. */
-function mixOf(game: Session, count: number): string[] {
-  const kinds = arrivingKinds(game).filter(({ weight }) => weight > 0);
+/**
+ * `count` kinds as `mix` divides them, the heaviest first: in proportion to the spawner's weights,
+ * or to fixed ones, leaving out a kind the world lacks.
+ */
+function mixOf(game: Session, count: number, mix: Mix): string[] {
+  const arriving = arrivingKinds(game);
+  const known = new Set(arriving.map(({ kind }) => kind));
+  const weighted =
+    mix === "shipped"
+      ? arriving
+      : Object.entries(mix).map(([kind, weight]) => ({ kind, weight }));
+  const shared = largestRemainders(
+    weighted.filter(({ weight }) => weight > 0),
+    count,
+  );
+  return [...shared]
+    .filter(([kind]) => known.has(kind))
+    .flatMap(([kind, n]) => Array<string>(n).fill(kind));
+}
+
+/** `count` shared among `kinds` in proportion to their weights, summing to `count`. */
+function largestRemainders(
+  kinds: readonly { readonly kind: string; readonly weight: number }[],
+  count: number,
+): Map<string, number> {
   const total = sum(kinds.map(({ weight }) => weight));
   // Largest remainders, so the mix sums to `count` and every kind with weight shows up early.
   const shares = kinds.map((kind) => ({
@@ -233,7 +301,7 @@ function mixOf(game: Session, count: number): string[] {
   sortBy(shares, ({ exact }) => Math.floor(exact) - exact)
     .slice(0, left)
     .forEach(({ kind }) => counts.set(kind, (counts.get(kind) ?? 0) + 1));
-  return [...counts].flatMap(([kind, n]) => Array<string>(n).fill(kind));
+  return counts;
 }
 
 /** A world on `config`, its players gathered at the rally point. */
@@ -328,6 +396,7 @@ function timing(samples: readonly number[]): Timing {
   const sorted = sortBy(samples);
   return {
     mean: sorted.length === 0 ? 0 : mean(sorted),
+    median: sorted[sorted.length >> 1] ?? 0,
     p95:
       sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ??
       0,
@@ -416,7 +485,7 @@ function measure(config: BenchConfig, options: BenchOptions): BenchResult {
     game,
     config,
     options.regime,
-    mixOf(game, options.count),
+    mixOf(game, options.count, options.mix),
     mulberry32(options.seed + 7),
   );
   const dt = config.clock.fixedDt;

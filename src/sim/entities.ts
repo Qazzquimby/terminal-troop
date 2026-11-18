@@ -296,7 +296,11 @@ export interface EntityType {
   readonly opensDoors: boolean;
   /** Its body's box, turned the way it points now; null for a kind whose body is its disc. */
   box(entity: WorldEntity): BoxPose | null;
+  /** Whether it ever gives off light: false for a kind whose `light` is always empty. */
+  readonly givesLight: boolean;
   light(entity: WorldEntity): readonly LightEmission[];
+  /** Whether it ever gives off darkness: false for a kind whose `darkness` is always 0. */
+  readonly givesDarkness: boolean;
   /** How far round it it gives off darkness, in pixels; 0 for none. */
   darkness(entity: WorldEntity): number;
   eyes(entity: WorldEntity, game: Session): Eyes | null;
@@ -402,12 +406,17 @@ function entityType<S>(definition: EntityDefinition<S>): EntityType {
       const { length, width } = box;
       return { length, width, heading: box.heading(entity, parsed.data) };
     },
+    givesLight: definition.light !== undefined,
     light(entity) {
+      // Most kinds give off none, and pay nothing to parse their state for it.
+      const { light: lightOf } = definition;
+      if (lightOf === undefined) return [];
       const parsed = schema.safeParse(entity.data);
       if (!parsed.success) return [];
-      const light = definition.light?.(entity, parsed.data) ?? [];
+      const light = lightOf(entity, parsed.data) ?? [];
       return "range" in light ? [light] : light;
     },
+    givesDarkness: definition.darkness !== undefined,
     darkness(entity) {
       const { darkness } = definition;
       // Most kinds give off none, and pay nothing to parse their state for it.

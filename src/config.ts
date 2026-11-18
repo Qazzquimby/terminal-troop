@@ -1097,6 +1097,7 @@ export const config = {
         pull: 1.2, // a pass's score; setting off straight ahead scores 1, sideways 0
         rest: 15, // seconds after passing a player before it wants to again
         retry: 0.5, // seconds it waits to look again on finding no ride
+        plansPerStep: 2, // tricycles planning a ride in one step; more wait a step
       },
       rage: {
         seconds: 6, // after a hurt
