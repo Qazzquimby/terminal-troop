@@ -639,7 +639,7 @@ export const config = {
     giantSnail: {
       spawning: {
         weight: 5,
-        after: 60*5,
+        after: 60 * 5,
         tries: 24,
         unseenDistance: CELL * 14,
         apart: { from: ["snail", "giantSnail"], distance: CELL * 40 },
