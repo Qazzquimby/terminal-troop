@@ -1074,7 +1074,7 @@ export const config = {
     tricycle: {
       dormantBeyond: DORMANT_BEYOND,
       spawning: {
-        weight: 40,
+        weight: 15,
         tries: 24,
         unseenDistance: CELL * 14,
       },
@@ -1092,7 +1092,7 @@ export const config = {
         through: 4, // spots past a player
         overshoot: { min: CELL * 6, max: CELL * 12 }, // past that player
         width: CELL, // prefers ways at least this wide
-        near: CELL * 20, // while a player is about, only to spots this near one
+        near: CELL * 40, // while a player is about, only to spots this near one
         pass: CELL * 3, // a way this near a player passes them
         pull: 1.2, // a pass's score; setting off straight ahead scores 1, sideways 0
         rest: 15, // seconds after passing a player before it wants to again
@@ -1179,7 +1179,7 @@ export const config = {
       maxHealth: SHOVEL_DAMAGE * 7,
       speedShare: 1.4, // of a player's walk
       wanderShare: 1.0, // of a player's walk
-      wanderRange: CELL * 20,
+      wanderRange: CELL * 8,
       sightRange: CELL * 7,
       followRange: CELL * 12, // keeps after its target, seen or not, until it is this far off
       standGap: CELL / 4, // stands this far in front of the body it notices
