@@ -6,6 +6,7 @@ import type { Room } from "../room/index.js";
 import {
   createSession,
   isAreaFree,
+  massOf,
   receiveEvent,
   registerContent,
   registerEntityType,
@@ -259,7 +260,7 @@ test("a body without a declared mass weighs by its size: twice a player's width,
   expect(kickedDistance(playerRadius / 2)).toBeCloseTo(KNOCK);
 });
 
-test("kicking the cruiser does not move it, but thuds and flashes as a hit", () => {
+test("kicking the cruiser moves it slowly, by its mass, and thuds and flashes as a hit", () => {
   const game = session();
   for (const content of entityContent(entities)) {
     content.register(game);
@@ -281,7 +282,12 @@ test("kicking the cruiser does not move it, but thuds and flashes as a hit", () 
   expect(play).toHaveBeenCalled();
   deliverOwn(game);
   updateSession(game, idle, DT);
-  expect(car).toMatchObject(at);
+  // Heavier than the kicker, it goes that much less far than a body of a player's mass would.
+  const share = testSimConfig.player.mass / massOf(game, car);
+  expect(share).toBeGreaterThan(0);
+  expect(share).toBeLessThan(1);
+  expect(car.x - at.x).toBeCloseTo(KNOCK * share);
+  expect(car.y).toBe(at.y);
 });
 
 test("a kick that knocks something into a wall stops it there, still hurt", () => {

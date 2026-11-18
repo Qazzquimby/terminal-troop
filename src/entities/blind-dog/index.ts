@@ -46,7 +46,7 @@ const huffUrl = new URL("./sfx/huff.mp3", import.meta.url).href;
 const growlUrl = new URL("./sfx/growl.mp3", import.meta.url).href;
 const pounceUrl = new URL("./sfx/lunge.wav", import.meta.url).href;
 const skidUrl = new URL("./sfx/skid.mp3", import.meta.url).href;
-const barkUrl = new URL("./sfx/breathe.mp3", import.meta.url).href;
+const barkUrl = new URL("./sfx/breathe.wav", import.meta.url).href;
 
 /**
  * How it pounces once it commits: a crouch, a straight dash through its target and on past it that

@@ -94,9 +94,30 @@ function blindDogAt(game: Session, x: number, y: number): WorldEntity {
 const stateOf = (entity: WorldEntity): BlindDogState =>
   BlindDogState.parse(entity.data);
 
-function played(game: Session): string[] {
-  return vi.mocked(game.sfx.play).mock.calls.map(([url]) => url);
+type Cue = keyof BlindDogConfig["sounds"];
+
+/** Each of its sounds' files. */
+const files: Record<Cue, string> = {
+  roar: "roar.ogg",
+  snarl: "growl.ogg",
+  bite: "bite.wav",
+  huff: "huff.mp3",
+  growl: "growl.mp3",
+  pounce: "lunge.wav",
+  skid: "skid.mp3",
+  bark: "breathe.wav",
+};
+
+/** How many times its `cue` has played. */
+function played(game: Session, cue: Cue): number {
+  return vi
+    .mocked(game.sfx.play)
+    .mock.calls.filter(([url]) => url.endsWith(`/blind-dog/sfx/${files[cue]}`))
+    .length;
 }
+
+/** Whether its `cue` has played. */
+const sounded = (game: Session, cue: Cue): boolean => played(game, cue) > 0;
 
 /** Steps `seconds`, each sound the host sends heard at once. */
 function run(game: Session, seconds: number): void {
@@ -125,7 +146,7 @@ describe("hearing", () => {
     expect(suspicionAt(state, game.worldTime, config)).toBeCloseTo(200, 0);
     expect(Math.hypot(hound.vx, hound.vy)).toBeCloseTo(config.stalkSpeed);
     expect(hound.vx).toBeGreaterThan(0);
-    expect(played(game).some((url) => url.endsWith("snarl.mp3"))).toBe(true);
+    expect(sounded(game, "snarl")).toBe(true);
   });
 
   test("its own kind's noise goes unheard", () => {
@@ -175,7 +196,7 @@ describe("charging", () => {
 
     const state = stateOf(hound);
     expect(state.mode).toBe("charge");
-    expect(played(game).some((url) => url.endsWith("roar.mp3"))).toBe(true);
+    expect(sounded(game, "roar")).toBe(true);
     expect(Math.hypot(hound.vx, hound.vy)).toBeCloseTo(config.chargeSpeed);
     // Where it heard the noise, as near as a blind dog's ears tell it.
     const end = state.route.at(-1) ?? { x: 0, y: 0 };
@@ -263,8 +284,8 @@ describe("pouncing", () => {
     const state = stateOf(hound);
     expect(state.facing).toBeCloseTo(0, 1);
     expect(Math.hypot(hound.vx, hound.vy)).toBe(0);
-    expect(played(game).some((url) => url.endsWith("growl.mp3"))).toBe(true);
-    expect(played(game).some((url) => url.endsWith("pounce.mp3"))).toBe(false);
+    expect(sounded(game, "growl")).toBe(true);
+    expect(sounded(game, "pounce")).toBe(false);
 
     run(game, config.pounce.windup / 2);
     expect(stateOf(hound).mode).toBe("crouch");
@@ -273,7 +294,7 @@ describe("pouncing", () => {
     until(game, hound, "pounce", config.pounce.windup);
     run(game, DT);
     expect(Math.hypot(hound.vx, hound.vy)).toBeCloseTo(config.pounce.speed);
-    expect(played(game).some((url) => url.endsWith("pounce.mp3"))).toBe(true);
+    expect(sounded(game, "pounce")).toBe(true);
   });
 
   test("it dashes in a straight line through its target and the overrun past it, then skids", () => {
@@ -291,7 +312,7 @@ describe("pouncing", () => {
       expect(offLine(at, start, dash.to)).toBeLessThan(0.01);
     // It gets there, then starts to skid on.
     expect(gap(hound, dash.to)).toBeLessThan(config.pounce.speed * DT);
-    expect(played(game).some((url) => url.endsWith("skid.mp3"))).toBe(true);
+    expect(sounded(game, "skid")).toBe(true);
 
     until(game, hound, "wander", config.pounce.recover + 0.1);
     expect(gap(start, hound)).toBeGreaterThan(gap(start, dash.to));
@@ -382,7 +403,7 @@ describe("biting", () => {
     );
     expect(stateOf(hound).bites).toEqual([game.local.id]);
     expect(other.health).toBe(config.maxHealth);
-    expect(played(game).some((url) => url.endsWith("bite.mp3"))).toBe(true);
+    expect(sounded(game, "bite")).toBe(true);
 
     run(game, config.contactCooldown / 2);
     expect(stateOf(hound).bites).toEqual([]);
@@ -462,7 +483,7 @@ describe("a noise that goes on", () => {
     expect(bored.mode).toBe("wander");
     expect(suspicionAt(bored, game.worldTime, config)).toBe(0);
     expect(radio.health).toBe(1);
-    expect(played(game).some((url) => url.endsWith("huff.mp3"))).toBe(true);
+    expect(sounded(game, "huff")).toBe(true);
 
     keepsUp(game, noise, radio, 3);
     expect(stateOf(hound)).toMatchObject({ mode: "wander", source: null });
@@ -476,8 +497,7 @@ describe("a noise that goes on", () => {
 
 describe("barking", () => {
   const barker: BlindDogConfig = { ...config, barkGap: { min: 0.5, max: 0.5 } };
-  const barks = (game: Session): number =>
-    played(game).filter((url) => url.endsWith("bark.mp3")).length;
+  const barks = (game: Session): number => played(game, "bark");
 
   test("it barks now and then as it roams, a gap after it arrives, making a noise", () => {
     const { game } = world(barker);

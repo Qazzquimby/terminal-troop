@@ -79,8 +79,8 @@ const SLEEPER_SOUNDS = [
   "bark.mp3",
   "growl.mp3",
   "enrage.mp3",
-  "rage-bark.mp3",
-  "attack.mp3",
+  "rage-bark.wav",
+  "attack.wav",
 ];
 
 /** The sleeper's sounds the ghost has had played, by file. */
