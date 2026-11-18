@@ -640,7 +640,7 @@ export function putIn(
 }
 
 /** The vehicle the local player may get in now, nearest first; null for none. */
-function boardable(game: Session): WorldEntity | null {
+export function boardable(game: Session): WorldEntity | null {
   const { local } = game;
   const near = [...game.entities.values()].filter((entity) =>
     mayBoard(game, local, entity.id),
@@ -653,21 +653,19 @@ function boardable(game: Session): WorldEntity | null {
 }
 
 /**
- * The local player's interaction with vehicles: inside one, from its cabin it takes the wheel,
- * and at the wheel it lets go, back to the cabin; on foot, it gets into the nearest it may.
- * Returns whether it had one to act on.
+ * The local player's interaction with the vehicle it rides: from its cabin it takes the wheel,
+ * and at the wheel it lets go, back to the cabin. Nothing on foot.
  */
-export function useVehicle(game: Session): boolean {
+export function useRide(game: Session): void {
   const { ride } = game.local;
-  if (ride !== null) {
-    if (ride.driving) leaveWheel.perform(game, {});
-    else takeWheel.perform(game, {});
-    return true;
-  }
-  const vehicle = boardable(game);
-  if (vehicle === null) return false;
-  board.perform(game, { id: vehicle.id });
-  return true;
+  if (ride === null) return;
+  if (ride.driving) leaveWheel.perform(game, {});
+  else takeWheel.perform(game, {});
+}
+
+/** The local player gets into the vehicle `id`, as `boardable` offers it. */
+export function boardVehicle(game: Session, id: string): void {
+  board.perform(game, { id });
 }
 
 /** Does what the local player, inside a vehicle, asks of it from its cabin. */
