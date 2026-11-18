@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { upright } from "../../lib/upright/index.js";
 import {
   bodiesIn,
   cabinStorage,
@@ -365,7 +366,9 @@ export const pocketball = defineEntity(NAME, (config: PocketballConfig) => {
       ctx.font = `${String(entity.radius * 2)}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(pocketballGlyph(state.pocket), entity.x, entity.y);
+      upright(ctx, entity, () => {
+        ctx.fillText(pocketballGlyph(state.pocket), entity.x, entity.y);
+      });
       ctx.restore();
     },
   };

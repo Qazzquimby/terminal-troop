@@ -57,7 +57,10 @@ import {
   visionOrigins,
 } from "../sim/index.js";
 import { drawApparition } from "./apparition.js";
+import { toViewSpace, worldToScreen } from "./camera.js";
 import type { Camera } from "./camera.js";
+import { upright, withRoll } from "../lib/upright/index.js";
+import type { UprightContext } from "../lib/upright/index.js";
 import { drawClock } from "./clock.js";
 import type { Eye } from "./spectate.js";
 import type {
@@ -77,14 +80,14 @@ interface Circle extends Point {
   readonly radius: number;
 }
 
-/** The width of the world the camera covers, in world units. */
+/** The width of the world-aligned box round all the camera covers, in world units. */
 function viewWidth(camera: Camera): number {
-  return camera.view.width * camera.zoom;
+  return camera.width;
 }
 
-/** The height of the world the camera covers, in world units. */
+/** The height of the world-aligned box round all the camera covers, in world units. */
 function viewHeight(camera: Camera): number {
-  return camera.view.height * camera.zoom;
+  return camera.height;
 }
 
 /** The part of the world the camera covers. */
@@ -205,7 +208,9 @@ function drawPlayer(
   if (away) {
     ctx.font = "10px system-ui";
     ctx.fillStyle = "#aaa";
-    ctx.fillText("away", player.x, player.y - player.radius - 22);
+    upright(ctx, player, () => {
+      ctx.fillText("away", player.x, player.y - player.radius - 22);
+    });
   }
   ctx.restore();
   drawCaption(ctx, game, player);
@@ -236,18 +241,16 @@ export function drawFacing(
 const EMOJI_FILL = "#fff";
 
 /** What drawing a glyph needs of a context. */
-type TextContext = Pick<
-  CanvasRenderingContext2D,
-  | "save"
-  | "restore"
-  | "fillStyle"
-  | "font"
-  | "textAlign"
-  | "textBaseline"
-  | "fillText"
->;
+type TextContext = UprightContext &
+  Pick<
+    CanvasRenderingContext2D,
+    "fillStyle" | "font" | "textAlign" | "textBaseline" | "fillText"
+  >;
 
-/** Draws `glyph` centred on `at`, about `size` pixels tall, as opaque as the context's alpha. */
+/**
+ * Draws `glyph` centred on `at`, about `size` pixels tall, as opaque as the context's alpha,
+ * upright on the screen however the camera is turned.
+ */
 export function drawEmoji(
   ctx: TextContext,
   at: Point,
@@ -259,7 +262,9 @@ export function drawEmoji(
   ctx.font = `${String(size)}px system-ui`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(glyph, at.x, at.y);
+  upright(ctx, at, () => {
+    ctx.fillText(glyph, at.x, at.y);
+  });
   ctx.restore();
 }
 
@@ -293,18 +298,20 @@ function drawStunned(
   const seconds = now / 1000;
   const turn = ((seconds % STUN_SPIN) / STUN_SPIN) * Math.PI * 2;
   const above = entity.y - entity.radius - gap;
-  for (const offset of [0, Math.PI]) {
-    const angle = turn + offset;
-    drawEmoji(
-      ctx,
-      {
-        x: entity.x + Math.cos(angle) * entity.radius * 0.8,
-        y: above + Math.sin(angle) * 3,
-      },
-      "⭐",
-      9,
-    );
-  }
+  upright(ctx, entity, () => {
+    for (const offset of [0, Math.PI]) {
+      const angle = turn + offset;
+      drawEmoji(
+        ctx,
+        {
+          x: entity.x + Math.cos(angle) * entity.radius * 0.8,
+          y: above + Math.sin(angle) * 3,
+        },
+        "⭐",
+        9,
+      );
+    }
+  });
 }
 
 /** How large a crouching player's body is drawn, as a fraction of its radius. */
@@ -352,7 +359,9 @@ function drawBody(
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.fillStyle = "#eee";
-  ctx.fillText(name, body.x, body.y - body.radius - 8);
+  upright(ctx, body, () => {
+    ctx.fillText(name, body.x, body.y - body.radius - 8);
+  });
 }
 
 /** How far over a player's top its health bar shows, clear of its name. */
@@ -387,10 +396,12 @@ function drawStamina(
   const width = player.radius * 2;
   const x = player.x - player.radius;
   const y = player.y + player.radius + 6;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.fillRect(x - 1, y - 1, width + 2, 6);
-  ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
-  ctx.fillRect(x, y, (width * value) / max, 4);
+  upright(ctx, player, () => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(x - 1, y - 1, width + 2, 6);
+    ctx.fillStyle = exhausted ? "#b5483f" : "#8fd694";
+    ctx.fillRect(x, y, (width * value) / max, 4);
+  });
 }
 
 /** The colour of the ring round the item interacting would pick up. */
@@ -418,9 +429,13 @@ function drawPickupTarget(
   ctx.restore();
 }
 
-/** A red health bar at `barY`, shown only once a body that can fall has taken damage. */
+/**
+ * A red health bar at `barY`, shown only once a body that can fall has taken damage; over its
+ * head on the screen however the camera is turned.
+ */
 export function drawHealthBar(
-  ctx: Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
+  ctx: UprightContext &
+    Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">,
   body: Entity,
   barY: number,
 ): void {
@@ -429,10 +444,12 @@ export function drawHealthBar(
 
   const width = radius * 2;
   const x = body.x - radius;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.fillRect(x - 1, barY - 1, width + 2, 5);
-  ctx.fillStyle = "#d8473a";
-  ctx.fillRect(x, barY, (width * health) / maxHealth, 3);
+  upright(ctx, body, () => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(x - 1, barY - 1, width + 2, 5);
+    ctx.fillStyle = "#d8473a";
+    ctx.fillRect(x, barY, (width * health) / maxHealth, 3);
+  });
 }
 
 /**
@@ -451,11 +468,13 @@ export function drawHeldItem(
   ctx.font = "12px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(
-    emoji,
-    holder.x + Math.cos(facing) * distance,
-    holder.y + Math.sin(facing) * distance,
-  );
+  const at = {
+    x: holder.x + Math.cos(facing) * distance,
+    y: holder.y + Math.sin(facing) * distance,
+  };
+  upright(ctx, at, () => {
+    ctx.fillText(emoji, at.x, at.y);
+  });
   ctx.restore();
 }
 
@@ -749,10 +768,7 @@ function drawRipples(
 
 /** Where `point`, in world space, falls on the screen, in screen pixels. */
 function onScreen(point: Point, camera: Camera): Point {
-  return {
-    x: (point.x - camera.x) / camera.zoom,
-    y: (point.y - camera.y) / camera.zoom,
-  };
+  return worldToScreen(camera, point);
 }
 
 /**
@@ -901,16 +917,18 @@ function sized(layer: Layer, width: number, height: number): Layer {
   return layer;
 }
 
-/** Runs `render` with the context transformed from world space to view space. */
+/**
+ * Runs `render` with the context transformed from world space to view space, and known to be
+ * turned as the camera is, so what must stay readable can stand upright (see `upright`).
+ */
 function applyCamera(
   ctx: CanvasRenderingContext2D,
   camera: Camera,
   render: () => void,
 ): void {
   ctx.save();
-  ctx.scale(1 / camera.zoom, 1 / camera.zoom);
-  ctx.translate(-camera.x, -camera.y);
-  render();
+  toViewSpace(ctx, camera);
+  withRoll(ctx, camera.roll, render);
   ctx.restore();
 }
 
@@ -968,8 +986,7 @@ function startMask(
   ctx.save();
   ctx.filter = `blur(${String(EDGE_FADE / 2)}px)`;
   ctx.translate(pad, pad);
-  ctx.scale(1 / camera.zoom, 1 / camera.zoom);
-  ctx.translate(-camera.x, -camera.y);
+  toViewSpace(ctx, camera);
   return mask;
 }
 
@@ -1255,11 +1272,14 @@ function drawCaption(
   const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
   const bottom = body.y - body.radius - CAPTION_ABOVE;
   const top = bottom - lines.length * lineHeight;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(body.x - width / 2 - 4, top - 3, width + 8, bottom - top + 5);
-  ctx.fillStyle = "#fff";
-  lines.forEach((line, index) => {
-    ctx.fillText(line, body.x, top + (index + 1) * lineHeight);
+  // Over its head on the screen, and readable, however the camera is turned.
+  upright(ctx, body, () => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(body.x - width / 2 - 4, top - 3, width + 8, bottom - top + 5);
+    ctx.fillStyle = "#fff";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, body.x, top + (index + 1) * lineHeight);
+    });
   });
   ctx.restore();
 }

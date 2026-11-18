@@ -1,6 +1,7 @@
 export {
   createCamera,
   screenToWorld,
+  screenToWorldDirection,
   snapCamera,
   updateCamera,
 } from "./camera.js";
@@ -21,3 +22,4 @@ export { createFlashes } from "./flashes.js";
 export type { FlashConfig } from "./flashes.js";
 export { createSpectator, eyeOf, stepSpectator } from "./spectate.js";
 export type { Eye, SpectateConfig } from "./spectate.js";
+export { viewHeading } from "./turning.js";

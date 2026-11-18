@@ -14,7 +14,12 @@ import { NetEvent, carries, createCountingTransport } from "./net/index.js";
 import type { CabinCommand, Point, Session } from "./sim/index.js";
 import { createRoom, playerName, randomRoomCode } from "./room/index.js";
 import type { RoomState } from "./room/index.js";
-import { createInput, actionKeyLabel } from "./input/index.js";
+import {
+  aimAhead,
+  createInput,
+  actionKeyLabel,
+  turnMove,
+} from "./input/index.js";
 import {
   cabinView,
   coinTossPanel,
@@ -45,11 +50,13 @@ import {
   createFlashes,
   createRipples,
   screenToWorld,
+  screenToWorldDirection,
   snapCamera,
   updateCamera,
   createSpectator,
   eyeOf,
   stepSpectator,
+  viewHeading,
 } from "./render/index.js";
 import type { Eye } from "./render/index.js";
 import { createSfx } from "./audio/index.js";
@@ -254,9 +261,19 @@ function showControlsHint(session: Session | null): void {
   const text = controlsHintFor(
     session === null ? "foot" : hintMode(session.local),
     settings.get().voice.mode === "pushToTalk",
+    settings.get().view.rotateCamera,
   );
   if (controlsHint.textContent !== text) controlsHint.textContent = text;
 }
+
+/**
+ * The way the local view faces while the camera turns with it, radians: turned by the mouse, or
+ * kept to what the view follows. With the rotating camera off it follows the local player's
+ * facing, so turning the camera on starts from there.
+ */
+let heading = -Math.PI / 2;
+/** The session drawn last frame, whose local player the turned view aims from. */
+let aimFrom: Session | null = null;
 
 function applySettings(current: Settings): void {
   sfx.setMasterVolume(current.audio.masterVolume);
@@ -340,7 +357,12 @@ nameInput.value = nonEmpty(localStorage.getItem(nameKey)) ?? defaultName;
 
 const input = createInput(
   canvas,
-  (point) => screenToWorld(camera, point),
+  // With the rotating camera on, the mouse turns the view rather than pointing: the aim is
+  // straight ahead.
+  (point) =>
+    settings.get().view.rotateCamera && aimFrom !== null
+      ? aimAhead(aimFrom.local, heading)
+      : screenToWorld(camera, point),
   config.view,
   config.wheel,
   {
@@ -465,13 +487,34 @@ function frame(): void {
   const frameStats = { now, steps: 0, updateMs: 0, drawMs: 0 };
 
   const session = joinedSession(room.state());
+  aimFrom = session;
+  const rotating = settings.get().view.rotateCamera;
+  const turn = input.takeTurn() * config.turn.sensitivity;
   if (session !== null) {
+    heading = rotating
+      ? viewHeading(heading, eyeOf(spectator, session), session.local, turn)
+      : session.local.aim;
+    // The mouse is captured to turn the view on foot or as a ghost; in a vehicle the view follows
+    // it, and the cabin wants the pointer.
+    input.setCapture(
+      rotating && !settingsDialog.open && session.local.ride === null,
+    );
+    // On foot or through a free camera, the keys steer as the screen shows the world: up the
+    // screen is ahead. A vehicle's keys work its pedals and wheel, turned or not.
+    const steerOnScreen = rotating && session.local.ride === null;
     const updateStart = performance.now();
     const { steps, alpha } = clock.advance(now, (until) => {
       speak(session, voice.speakingLevel());
       const held = input.getControls(until);
       const controls = {
         ...held,
+        move: steerOnScreen
+          ? turnMove(
+              held.move,
+              (direction) => screenToWorldDirection(camera, direction),
+              config.turn.directions,
+            )
+          : held.move,
         cabin: cabinCommands.shift() ?? null,
         transmit: held.transmit === true || cabinTransmit,
       };
@@ -487,11 +530,13 @@ function frame(): void {
     frameStats.updateMs = performance.now() - updateStart;
     room.frame(now);
     const eye = eyeOf(spectator, session);
+    if (rotating) heading = viewHeading(heading, eye, session.local, 0);
     updateCamera(
       camera,
       eyeTarget(session, eye, alpha),
       frameSeconds,
       spectator.zoom,
+      rotating ? heading : null,
     );
     const drawStart = performance.now();
     draw(
@@ -523,6 +568,7 @@ function frame(): void {
     });
     cabin.show(cabinView(session), session);
   } else {
+    input.setCapture(false);
     hud.show(null);
     cabin.show(null, null);
     cabinCommands.length = 0;

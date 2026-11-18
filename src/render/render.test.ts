@@ -265,7 +265,14 @@ test.each([
   ["an unhurt body", 40, 40, false],
   ["an unbreakable body, however hit", Infinity, Infinity, false],
 ])("%s shows a health bar: %s", (_label, health, maxHealth, shown) => {
-  const ctx = { fillStyle: "", fillRect: vi.fn() };
+  const ctx = {
+    fillStyle: "",
+    fillRect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+  };
   const body = { x: 100, y: 100, vx: 0, vy: 0, radius: 10, health, maxHealth };
   drawHealthBar(ctx, body, 80);
   expect(ctx.fillRect.mock.calls.length > 0).toBe(shown);
@@ -529,6 +536,8 @@ test("emojis are drawn opaque whatever translucent fill was set before them", ()
     restore() {
       ctx.fillStyle = saved.pop() ?? ctx.fillStyle;
     },
+    translate: (): void => undefined,
+    rotate: (): void => undefined,
     fillText(text: string) {
       drawn.push({ text, fill: ctx.fillStyle });
     },
@@ -565,6 +574,8 @@ test("a body drawn as a player shows its name, what it holds, and its bar where 
     arc: noop,
     fill: noop,
     stroke: noop,
+    translate: noop,
+    rotate: noop,
     fillText(text: string) {
       texts.push(text);
     },

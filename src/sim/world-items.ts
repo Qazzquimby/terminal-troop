@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { upright } from "../lib/upright/index.js";
 import {
   defineAction,
   effect,
@@ -144,7 +145,9 @@ export function drawLying(
     ctx.shadowColor = glint;
     ctx.shadowBlur = radius * (0.6 + 0.3 * Math.sin((now / 1000) * 3));
   }
-  ctx.fillText(glyph, at.x, at.y);
+  upright(ctx, at, () => {
+    ctx.fillText(glyph, at.x, at.y);
+  });
   ctx.shadowBlur = 0;
   if (glint !== undefined) drawGlint(ctx, at, radius, glint, now);
   if (isOn(state)) {

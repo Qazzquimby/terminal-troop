@@ -79,3 +79,11 @@ test("an action missing from the list does not appear", () => {
   for (const entries of Object.values(CONTROLS_HINT))
     expect(controlsHintText(entries)).not.toMatch(/F3|debug/);
 });
+
+test("with the rotating camera on, the hint says the mouse turns, on foot and as a ghost", () => {
+  expect(controlsHintFor("foot", false, true)).toMatch(/^Mouse to turn · WASD/);
+  expect(controlsHintFor("ghost", false, true)).toMatch(/^Mouse to turn · /);
+  expect(controlsHintFor("driving", false, true)).toBe(
+    controlsHintFor("driving", false),
+  );
+});
