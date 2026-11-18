@@ -422,23 +422,30 @@ test("a growing group's size moves evenly from its start to its end, then holds"
 });
 
 test("the spawner's groups grow as the world ages", () => {
-  const game = world({
-    spawner: { ...CERTAIN, period: 0.5 },
-    zombie: {
-      ...ZOMBIES,
-      group: {
-        min: 1,
-        max: 1,
-        spread: 100,
-        grows: { min: 4, max: 4, by: 20 },
+  // Groups of one at the start, of four from 20 seconds in. Stepping one world through all 25
+  // seconds piles up over a hundred zombies and runs slow, so the old world's clock starts at 20
+  // instead: the spawner reads the world's age, however it got there.
+  const groups = (age: number, seconds: number) => {
+    const game = world({
+      spawner: { ...CERTAIN, period: 0.5 },
+      zombie: {
+        ...ZOMBIES,
+        group: {
+          min: 1,
+          max: 1,
+          spread: 100,
+          grows: { min: 4, max: 4, by: 20 },
+        },
       },
-    },
-  });
-  const sizes = new Map<number, number>();
-  for (const { time } of play(game, 25))
-    sizes.set(time, (sizes.get(time) ?? 0) + 1);
-  const early = [...sizes].filter(([time]) => time < 2);
-  const late = [...sizes].filter(([time]) => time >= 20);
+    });
+    game.worldTime = age;
+    const sizes = new Map<number, number>();
+    for (const { time } of play(game, seconds))
+      sizes.set(time, (sizes.get(time) ?? 0) + 1);
+    return [...sizes];
+  };
+  const early = groups(0, 2).filter(([time]) => time < 2);
+  const late = groups(20, 5).filter(([time]) => time >= 20);
   expect(early.length).toBeGreaterThan(0);
   expect(late.length).toBeGreaterThan(5);
   expect(mean(early.map(([, size]) => size))).toBeLessThan(1.5);
