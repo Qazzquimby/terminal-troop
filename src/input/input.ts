@@ -8,6 +8,7 @@ import {
   withUiHandlers,
 } from "./actions.js";
 import { createButtonSource } from "./buttons.js";
+import { upKeys } from "./missed.js";
 import { createWheelNotches } from "./wheel.js";
 import type { WheelConfig } from "./wheel.js";
 import { edgePush, turnMovement } from "./turn.js";
@@ -17,9 +18,10 @@ import type { Point, Controls, ViewConfig } from "../sim/index.js";
 /**
  * Only actions active in the current context respond, and only their keys are kept from
  * the page; every other key keeps its default (focus moves, sliders, typing). Mouse buttons
- * pressed on the canvas drive actions like keys, and the canvas keeps its context menu to
- * itself while the right button drives an action. Each notch of the wheel over the canvas taps
- * its `WHEEL` key, pressed and released at once, and the page never scrolls under it. UI actions
+ * pressed on the canvas drive actions like keys, and the canvas never opens a context menu; a
+ * button or modifier a mouse's event shows is up is released, should its release go unheard.
+ * Each notch of the wheel over the canvas taps its `WHEEL` key, pressed and released at once,
+ * and the page never scrolls under it. UI actions
  * run immediately, outside the simulation step. `toWorld` turns a canvas point into the world
  * point aimed at. Sideways mouse movement is counted up for `takeTurn`, for a view the mouse
  * turns; while capturing, the cursor is hidden over the game and a press on the canvas captures
@@ -63,6 +65,16 @@ export function createInput(
   const captured = (): boolean => document.pointerLockElement === canvas;
 
   /**
+   * Releases what `event` shows is up: a release the page never heard, as when Firefox opens its
+   * own context menu on Shift and a right click, which no page can stop, and the menu takes the
+   * button's release. Only a mouse's events say what is down.
+   */
+  function catchUp(event: PointerEvent): void {
+    if (event.pointerType !== "mouse") return;
+    for (const code of upKeys(event)) buttons.keyUp(code, event.timeStamp);
+  }
+
+  /**
    * Captures the mouse, if it is not already. Raw movement is asked for first, unscaled by the
    * system's pointer speed; a browser without it is asked plainly. Refused, the pointer is left
    * free, and the view still turns as it moves, and at the game's sides.
@@ -93,6 +105,12 @@ export function createInput(
   // Movement is read from the whole page: a captured pointer's movement goes to the canvas, and a
   // free one that has left the game's side still pushes the view round.
   window.addEventListener("pointermove", (event) => {
+    catchUp(event);
+    // A second button pressed while one is down comes as a move, not a press (chorded buttons).
+    const chorded = MOUSE_BUTTONS[event.button];
+    if (chorded !== undefined && (captured() || event.target === canvas))
+      if (!upKeys(event).includes(chorded))
+        buttons.keyDown(chorded, false, event.timeStamp);
     if (capture) turn += turnMovement(event.movementX, turnConfig.spike);
     // A captured pointer stays where it was caught; only its movement counts.
     if (captured()) return;
@@ -112,6 +130,7 @@ export function createInput(
   });
 
   canvas.addEventListener("pointerdown", (event) => {
+    catchUp(event);
     if (capture) requestCapture();
     const code = MOUSE_BUTTONS[event.button];
     if (code !== undefined) buttons.keyDown(code, false, event.timeStamp);
@@ -137,8 +156,11 @@ export function createInput(
     { passive: false },
   );
 
+  // Nothing on the canvas wants the browser's menu, whatever the right button does now. Firefox
+  // still opens it on Shift and a right click (dom.event.contextmenu.shift_suppresses_event),
+  // never telling the page; `catchUp` frees the button the menu then keeps.
   canvas.addEventListener("contextmenu", (event) => {
-    if (buttons.actionsFor("MouseRight").length > 0) event.preventDefault();
+    event.preventDefault();
   });
 
   window.addEventListener("pointerup", (event) => {

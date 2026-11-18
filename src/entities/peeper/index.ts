@@ -7,7 +7,6 @@ import {
   hurtSinceLastStep,
   lookersAt,
   sound,
-  teleport,
 } from "../../sim/index.js";
 import type {
   EntityDefinition,
@@ -18,10 +17,11 @@ import type {
   Strike,
   WorldEntity,
 } from "../../sim/index.js";
-import { preyFor } from "../bodies.js";
 import { strikeIf, Time } from "../hunt.js";
 import type { Hunting } from "../hunt.js";
-import { arrivalPoint, arrivals, watchedAt } from "../spawning.js";
+import { relocate } from "../relocate.js";
+import type { RelocateConfig } from "../relocate.js";
+import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // The files may not be in yet: a missing one plays nothing, but its noise is still made.
@@ -54,11 +54,7 @@ export interface PeeperConfig extends Hunting {
    * have arrived, as the spawner picks it, unseen by any player at either end. Watched, or with
    * nowhere to go, it tries again `retry` seconds on.
    */
-  readonly relocate: {
-    readonly after: number;
-    readonly range: number;
-    readonly retry: number;
-  };
+  readonly relocate: RelocateConfig;
   /** How far, in pixels, each of its sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     /** The sting as a gaze is first caught, while none was. */
@@ -124,31 +120,27 @@ function lookers(
 }
 
 /**
- * Notes when a body it hunts was last near it, and once it has gone long enough with none, moves
- * `self` to wherever it might have arrived, as the spawner picks it, out of every player's sight,
- * blinking out and open again. Watched where it is, or with nowhere to go, it waits a little and
- * tries again.
+ * Once it has gone long enough with no body it hunts near, moves `self` to wherever it might have
+ * arrived, as the spawner picks it, out of every player's sight, blinking out and open again; see
+ * `relocate`.
  */
-function relocate(
+function wander(
   state: PeeperState,
   self: WorldEntity,
   game: Session,
   config: PeeperConfig,
   sounds: Sounds,
 ): PeeperState {
-  const now = game.worldTime;
-  const { after, range, retry } = config.relocate;
-  const near = preyFor(game, self, config, { at: self, range }).some(
-    (body) => Math.hypot(body.x - self.x, body.y - self.y) <= range,
+  const { nearAt, moved } = relocate(
+    game,
+    NAME,
+    self,
+    state.nearAt,
+    config,
+    config.relocate,
+    sounds.blink,
   );
-  if (near) return { ...state, nearAt: now };
-  if (now - state.nearAt < after) return state;
-  const to = watchedAt(game, NAME, self) ? null : arrivalPoint(game, NAME);
-  if (to === null) return { ...state, nearAt: now - after + retry };
-  effect(game, { at: { x: self.x, y: self.y }, sound: sounds.blink }, self);
-  teleport(game, self, to);
-  effect(game, { at: to, sound: sounds.blink }, self);
-  return { ...state, held: [], nearAt: now };
+  return moved ? { ...state, held: [], nearAt } : { ...state, nearAt };
 }
 
 /** Who looks at it now, and when it next hurts them: the drone starts as the first gaze is caught. */
@@ -317,7 +309,7 @@ function definition(config: PeeperConfig): EntityDefinition<PeeperState> {
     update(entity, state, _dt, game) {
       if (hurtSinceLastStep(game, entity.id) !== null)
         effect(game, { at: entity, sound: sounds.squelch }, entity);
-      const moved = relocate(state, entity, game, config, sounds);
+      const moved = wander(state, entity, game, config, sounds);
       return stare(moved, entity, game, config, sounds);
     },
     strikes(_entity, state): Strike[] {

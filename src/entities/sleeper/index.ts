@@ -32,7 +32,9 @@ import {
   avenged,
 } from "../hunt.js";
 import { avoidingLight, planRoute, steer } from "../route.js";
-import { arrivalPoint, arrivals, watchedAt } from "../spawning.js";
+import { relocate } from "../relocate.js";
+import type { RelocateConfig } from "../relocate.js";
+import { arrivals } from "../spawning.js";
 import type { SpawningConfig } from "../spawning.js";
 
 // Not yet in the repo: `new URL` leaves a missing file to fail when played, not when built.
@@ -94,11 +96,7 @@ export interface SleeperConfig extends Hunting {
    * she might have arrived, as the spawner picks it, unseen by any player at either end. When she
    * is watched or there is nowhere to go, she tries again `retry` seconds on.
    */
-  readonly relocate: {
-    readonly after: number;
-    readonly range: number;
-    readonly retry: number;
-  };
+  readonly relocate: RelocateConfig;
   /** How far, in pixels, each of her sounds is heard, and so how far the noise it makes carries. */
   readonly sounds: {
     readonly bark: number;
@@ -423,44 +421,31 @@ interface Sounds {
   readonly vanish: Sound;
 }
 
-/** Whether a body she hunts stands within her relocate range. */
-function bodyNear(
-  self: WorldEntity,
-  game: Session,
-  config: SleeperConfig,
-): boolean {
-  const { range } = config.relocate;
-  return preyFor(game, self, config, { at: self, range }).some(
-    (body) => Math.hypot(body.x - self.x, body.y - self.y) <= range,
-  );
-}
-
 /**
- * Notes when a body she hunts was last near her, and once she has slept long enough with none,
- * moves `self` to wherever she might have arrived, as the spawner picks it, out of every player's
- * sight, whispering as she goes and again as she comes. Watched where she lies, or with nowhere to
- * go, she waits a little and tries again.
+ * Once she has slept long enough with no body she hunts near, moves `self` to wherever she might
+ * have arrived, as the spawner picks it, out of every player's sight, whispering as she goes and
+ * again as she comes; see `relocate`.
  */
-function relocate(
+function wander(
   state: SleeperState,
   self: WorldEntity,
   game: Session,
   config: SleeperConfig,
   sounds: Sounds,
 ): SleeperState {
-  const now = game.worldTime;
-  const { after, retry } = config.relocate;
-  if (bodyNear(self, game, config)) return { ...state, nearAt: now };
-  if (state.mode !== "dormant" || now - state.nearAt < after) return state;
-  const to = watchedAt(game, NAME, self) ? null : arrivalPoint(game, NAME);
-  if (to === null) return { ...state, nearAt: now - after + retry };
-  effect(game, { at: { x: self.x, y: self.y }, sound: sounds.vanish }, self);
-  self.x = self.prevX = to.x;
-  self.y = self.prevY = to.y;
-  self.vx = 0;
-  self.vy = 0;
-  effect(game, { at: to, sound: sounds.vanish }, self);
-  return { ...state, route: [], target: null, nearAt: now };
+  const { nearAt, moved } = relocate(
+    game,
+    NAME,
+    self,
+    state.nearAt,
+    config,
+    config.relocate,
+    sounds.vanish,
+    state.mode === "dormant",
+  );
+  return moved
+    ? { ...state, route: [], target: null, nearAt }
+    : { ...state, nearAt };
 }
 
 /**
@@ -507,7 +492,7 @@ function definition(config: SleeperConfig): EntityDefinition<SleeperState> {
     update(entity, state, dt, game) {
       const acted = attack(
         think(
-          relocate(state, entity, game, config, sounds),
+          wander(state, entity, game, config, sounds),
           entity,
           game,
           config,

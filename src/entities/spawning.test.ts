@@ -11,31 +11,39 @@ import {
   createSession,
   dangerWeight,
   inRect,
+  isAreaFree,
   isLit,
   mulberry32,
   randomFreePosition,
   registerContent,
   remoteness,
+  roadDistanceAt,
   spawnEntity,
   updateSession,
 } from "../sim/index.js";
 import type {
   Controls,
   DangerConfig,
+  Point,
   Session,
   SimConfig,
+  Sound,
   WorldKind,
 } from "../sim/index.js";
 import type { EntitiesConfig } from "./index.js";
 import { entityContent } from "./index.js";
+import { freshPeeper } from "./peeper/index.js";
+import { relocate } from "./relocate.js";
 import { freshSnail } from "./snail/index.js";
 import { spawnAllowed } from "./spawn-rules.js";
 import {
   apartShare,
+  arrivalPoint,
   groupRange,
   groupSize,
   nothingChance,
   spawnWeight,
+  watchedAt,
 } from "./spawning.js";
 import type { GroupConfig, SpawnerConfig, SpawningConfig } from "./spawning.js";
 
@@ -602,4 +610,87 @@ test("the road round the exit is dark, and the most dangerous place to spawn, pa
     expect(spawnWeight(game, atExit)).toBeGreaterThan(
       dangerWeight(game.world, corner),
     );
+});
+
+/** `count` points the spawner picks for one of `kind` arriving in `game`, those it finds. */
+function arrivalPoints(game: Session, kind: string, count: number): Point[] {
+  return Array.from({ length: count }, () => arrivalPoint(game, kind)).filter(
+    (at) => at !== null,
+  );
+}
+
+/** A cell of the road in the exit, dark and the most dangerous place there is. */
+function exitRoad(game: Session): Point {
+  const { exit } = game.world.layout;
+  return cellWhere(game, AREA.road, (at) => inRect(exit, at));
+}
+
+test("a spawner that keeps off the road brings nothing onto it, not even the dark road at the exit", () => {
+  const open = world();
+  const onRoad = arrivalPoints(open, "zombie", 200).filter(
+    (at) => roadDistanceAt(open.world, at) === 0,
+  );
+  // Left free, the exit's dark road draws some.
+  expect(onRoad.length).toBeGreaterThan(0);
+  // A head start of 100 sure rolls, every zombie still where it arrived.
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1, headStart: 100 } });
+  expect(spawnWeight(game, exitRoad(game))).toBe(0);
+  const kind = game.kindIds.get("zombie");
+  const arrived = [...game.entities.values()].filter(
+    (entity) => entity.kind === kind,
+  );
+  expect(arrived.length).toBeGreaterThan(10);
+  for (const entity of arrived)
+    expect(roadDistanceAt(game.world, entity)).toBeGreaterThanOrEqual(1);
+  const { radius } = testEntitiesConfig.zombie;
+  const points = arrivalPoints(game, "zombie", 200);
+  expect(points.length).toBeGreaterThan(100);
+  for (const at of points) {
+    expect(roadDistanceAt(game.world, at)).toBeGreaterThanOrEqual(1);
+    expect(isAreaFree(game.world.map, at.x, at.y, radius)).toBe(true);
+  }
+});
+
+test("a world without a road, as the dev square, has none to keep off", () => {
+  const game = world({
+    spawner: { ...CERTAIN, offRoad: 1, headStart: 30 },
+    kind: "dev",
+  });
+  expect(count(game, "zombie")).toBeGreaterThan(0);
+});
+
+test("a kind's own off-road rule overrides the spawner's", () => {
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1 } });
+  expect(spawnWeight(game, exitRoad(game), { offRoad: 0 })).toBeGreaterThan(0);
+});
+
+test("a monster left alone relocates only where it could spawn: free, dark, off the road and unseen", () => {
+  const game = world({ spawner: { ...CERTAIN, offRoad: 1 } });
+  const from = exitRoad(game);
+  const peeper = spawnEntity(game, "peeper", from.x, from.y, freshPeeper(0));
+  const blink: Sound = { url: "test/relocate-blink.mp3", range: 0 };
+  // No wait and no range, so it tries to move every call.
+  const restless = { after: 0, range: 0, retry: 0 };
+  const { peeper: hunting } = testEntitiesConfig;
+  let moves = 0;
+  for (let i = 0; i < 100; i++) {
+    const { moved } = relocate(
+      game,
+      "peeper",
+      peeper,
+      0,
+      hunting,
+      restless,
+      blink,
+    );
+    if (!moved) continue;
+    moves++;
+    expect(roadDistanceAt(game.world, peeper)).toBeGreaterThanOrEqual(1);
+    expect(isAreaFree(game.world.map, peeper.x, peeper.y, peeper.radius)).toBe(
+      true,
+    );
+    expect(spawnAllowed(game, peeper, { offRoad: 1 })).toBe(true);
+    expect(watchedAt(game, "peeper", peeper)).toBe(false);
+  }
+  expect(moves).toBeGreaterThan(50);
 });
